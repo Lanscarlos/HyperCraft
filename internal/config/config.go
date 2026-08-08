@@ -13,10 +13,16 @@ import (
 // should be a conscious act (a reverse proxy with TLS, or an explicit --listen).
 const DefaultListen = "127.0.0.1:8080"
 
+// DefaultMaxUploadMB caps a single uploaded file. Modpack server jars and
+// world archives run to hundreds of megabytes, so a conservative limit would
+// just make the file manager useless for the thing people upload most.
+const DefaultMaxUploadMB = 2048
+
 // Panel is the persisted panel configuration.
 type Panel struct {
 	Listen          string          `json:"listen"`
 	SessionTTLHours int             `json:"sessionTtlHours"`
+	MaxUploadMB     int             `json:"maxUploadMb"`
 	Credential      auth.Credential `json:"credential"`
 }
 
@@ -25,6 +31,7 @@ func Defaults() Panel {
 	return Panel{
 		Listen:          DefaultListen,
 		SessionTTLHours: 24 * 7,
+		MaxUploadMB:     DefaultMaxUploadMB,
 	}
 }
 
@@ -35,6 +42,9 @@ func (p *Panel) ApplyDefaults() {
 	}
 	if p.SessionTTLHours <= 0 {
 		p.SessionTTLHours = 24 * 7
+	}
+	if p.MaxUploadMB <= 0 {
+		p.MaxUploadMB = DefaultMaxUploadMB
 	}
 }
 

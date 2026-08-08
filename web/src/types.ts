@@ -146,3 +146,64 @@ export function mergeState(
   }
   return merged
 }
+
+// ---------------------------------------------------------------- metrics
+
+export interface MetricSample {
+  time: string
+  /** top-style: 100 means one core fully busy. */
+  cpuPercent: number
+  memoryBytes: number
+  processes: number
+}
+
+export interface InstanceMetrics {
+  intervalSeconds: number
+  cpuCores: number
+  memoryTotal: number
+  maxMemoryMB: number
+  samples: MetricSample[]
+}
+
+export interface HostSample {
+  time: string
+  cpuPercent: number
+  memoryUsed: number
+  memoryPercent: number
+}
+
+export interface SystemInfo {
+  version: string
+  goVersion: string
+  intervalSeconds: number
+  host: {
+    hostname: string
+    platform: string
+    cpuCores: number
+    memoryTotal: number
+  }
+  disk: { path: string; total: number; free: number; percent: number }
+  samples: HostSample[]
+  panel: { heapBytes: number; goroutines: number }
+  instances: { total: number; running: number }
+}
+
+// ----------------------------------------------------------------- files
+
+export interface FileEntry {
+  name: string
+  path: string
+  isDir: boolean
+  size: number
+  modified: string
+  editable: boolean
+  symlink: boolean
+}
+
+export interface FileListing {
+  path: string
+  root: string
+  entries: FileEntry[]
+  maxEditableBytes: number
+  maxUploadBytes: number
+}

@@ -25,6 +25,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/instance"
+	"github.com/lanscarlos/hypercraft/internal/metrics"
 	"github.com/lanscarlos/hypercraft/internal/store"
 )
 
@@ -34,6 +35,13 @@ var version = "dev"
 // shutdownGrace is how long managed servers get to save and exit when the
 // panel is stopping. Minecraft can take a while to flush a large world.
 const shutdownGrace = 2 * time.Minute
+
+// Resource sampling cadence and how much history is kept in memory. One hour
+// at 5s is ~720 samples per instance, a few tens of kilobytes.
+const (
+	metricsInterval = 5 * time.Second
+	metricsWindow   = time.Hour
+)
 
 func main() {
 	if err := run(); err != nil {
@@ -118,10 +126,13 @@ func run() error {
 		"listen", panel.Listen,
 	)
 
+	collector := metrics.New(metricsInterval, metricsWindow, root, logger)
+
 	server := api.NewServer(api.Options{
 		Manager:  manager,
 		Store:    st,
 		Sessions: sessions,
+		Metrics:  collector,
 		Panel:    panel,
 		Version:  version,
 		Logger:   logger,
@@ -140,6 +151,15 @@ func run() error {
 	defer stop()
 
 	go gcSessions(ctx, sessions)
+	go collector.Run(ctx, func() []metrics.Target {
+		instances := manager.List()
+		targets := make([]metrics.Target, 0, len(instances))
+		for _, inst := range instances {
+			status := inst.Status()
+			targets = append(targets, metrics.Target{ID: status.ID, PID: status.PID})
+		}
+		return targets
+	})
 
 	manager.StartAutoStart()
 

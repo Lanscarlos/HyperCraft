@@ -4,13 +4,17 @@ import { api } from '../api'
 import type { InstanceStatus, StateInfo } from '../types'
 import { STATE_LABELS, isLive, mergeState } from '../types'
 import { Console } from './Console'
+import { FileManager } from './FileManager'
 import { LaunchSettings } from './LaunchSettings'
 import { PropertiesEditor } from './PropertiesEditor'
+import { ResourcePanel } from './ResourcePanel'
 
-type Tab = 'console' | 'launch' | 'properties'
+type Tab = 'console' | 'files' | 'resources' | 'launch' | 'properties'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'console', label: '控制台' },
+  { id: 'files', label: '文件' },
+  { id: 'resources', label: '资源' },
   { id: 'launch', label: '启动设置' },
   { id: 'properties', label: '服务器配置' },
 ]
@@ -124,6 +128,16 @@ export function InstanceView({ instance, onChanged, onDeleted }: Props) {
             onState={applyState}
           />
         </div>
+        {tab === 'files' && (
+          <div className="instance__pane instance__pane--scroll">
+            <FileManager instance={instance} />
+          </div>
+        )}
+        {tab === 'resources' && (
+          <div className="instance__pane instance__pane--scroll">
+            <ResourcePanel instance={instance} />
+          </div>
+        )}
         {tab === 'launch' && (
           <div className="instance__pane instance__pane--scroll">
             <LaunchSettings

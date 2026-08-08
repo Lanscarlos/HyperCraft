@@ -17,6 +17,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/mcprops"
+	"github.com/lanscarlos/hypercraft/internal/metrics"
 	"github.com/lanscarlos/hypercraft/internal/store"
 )
 
@@ -47,6 +48,8 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 	panel := config.Defaults()
 	panel.Credential = cred
+	// Small enough that an upload test can exceed it without moving megabytes.
+	panel.MaxUploadMB = 1
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mgr := instance.NewManager(st, paths.ServersRoot(), logger)
@@ -55,6 +58,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		Manager:  mgr,
 		Store:    st,
 		Sessions: auth.NewSessionStore(time.Hour),
+		Metrics:  metrics.New(time.Second, time.Minute, t.TempDir(), logger),
 		Panel:    panel,
 		Version:  "test",
 		Logger:   logger,

@@ -2,10 +2,13 @@ import type {
   ConsoleLine,
   EulaStatus,
   InstanceInput,
+  FileListing,
+  InstanceMetrics,
   InstanceStatus,
   JarInfo,
   PropertiesResponse,
   PropertyEntry,
+  SystemInfo,
   User,
 } from './types'
 
@@ -103,10 +106,81 @@ export const api = {
   acceptEula: (id: string) =>
     request<EulaStatus>('POST', `/api/instances/${id}/eula`),
   listJars: (id: string) => request<JarInfo[]>('GET', `/api/instances/${id}/jars`),
+
+  system: () => request<SystemInfo>('GET', '/api/system'),
+  instanceMetrics: (id: string) =>
+    request<InstanceMetrics>('GET', `/api/instances/${id}/metrics`),
+
+  listFiles: (id: string, dir: string) =>
+    request<FileListing>('GET', `/api/instances/${id}/files?path=${encodeURIComponent(dir)}`),
+  readFile: (id: string, filePath: string) =>
+    request<{ path: string; content: string }>(
+      'GET',
+      `/api/instances/${id}/files/content?path=${encodeURIComponent(filePath)}`,
+    ),
+  writeFile: (id: string, filePath: string, content: string) =>
+    request<void>('PUT', `/api/instances/${id}/files/content`, {
+      path: filePath,
+      content,
+    }),
+  mkdir: (id: string, dir: string) =>
+    request<void>('POST', `/api/instances/${id}/files/mkdir`, { path: dir }),
+  renameFile: (id: string, from: string, to: string) =>
+    request<void>('POST', `/api/instances/${id}/files/rename`, { from, to }),
+  deleteFile: (id: string, filePath: string) =>
+    request<void>('DELETE', `/api/instances/${id}/files?path=${encodeURIComponent(filePath)}`),
 }
 
 /** Absolute ws:// URL for an instance console, matching the page's scheme. */
 export function consoleSocketURL(id: string): string {
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
   return `${scheme}://${window.location.host}/api/instances/${id}/console`
+}
+
+/** Direct link for a download; the browser handles the transfer itself. */
+export function downloadURL(id: string, filePath: string): string {
+  return `/api/instances/${id}/files/download?path=${encodeURIComponent(filePath)}`
+}
+
+/**
+ * Uploads with XMLHttpRequest rather than fetch: only XHR reports upload
+ * progress, and a 300 MB modpack jar with no progress bar looks like a hang.
+ */
+export function uploadFiles(
+  id: string,
+  dir: string,
+  files: File[],
+  onProgress: (fraction: number) => void,
+  overwrite = false,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData()
+    for (const file of files) form.append('file', file, file.name)
+
+    const query = `path=${encodeURIComponent(dir)}${overwrite ? '&overwrite=true' : ''}`
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `/api/instances/${id}/files/upload?${query}`)
+    xhr.setRequestHeader(CSRF_HEADER, '1')
+    xhr.withCredentials = true
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded / event.total)
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve()
+        return
+      }
+      let message = `上传失败 (HTTP ${xhr.status})`
+      try {
+        const parsed = JSON.parse(xhr.responseText)
+        if (parsed?.error) message = parsed.error
+      } catch {
+        /* non-JSON error body */
+      }
+      reject(new ApiError(xhr.status, message))
+    }
+    xhr.onerror = () => reject(new ApiError(0, '上传失败：网络错误'))
+    xhr.send(form)
+  })
 }

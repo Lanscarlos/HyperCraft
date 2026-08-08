@@ -87,6 +87,8 @@ data/
 
 都是普通 JSON，手改也行（改完重启面板）。实例目录也可以指向磁盘上任意已有的服务器，不一定要在 `servers/` 下面。
 
+`panel.json` 里的 `maxUploadMb` 控制单个上传文件的大小上限，默认 2048。
+
 ## 部署（systemd）
 
 `deploy/hypercraft.service` 是一份可用的示例，两个关键点：
@@ -117,6 +119,8 @@ location / {
 
 ## 已经做了的
 
+- **文件管理器** —— 浏览实例目录、上传（点选或拖拽，带进度条，单文件默认上限 2 GB）、下载（支持断点续传）、重命名、新建文件夹、递归删除，以及在线编辑文本配置（ops.json、bukkit.yml、插件配置等）。所有路径操作都走 Go 1.25 的 `os.Root`，由内核层面把访问关在实例目录里 —— `..`、绝对路径、指向外部的符号链接一律拒绝，不依赖字符串清洗。上传同名文件默认拒绝，会问一句再覆盖。
+- **资源监控** —— 每个实例的 CPU 和内存曲线，5 秒采样、内存里保留 1 小时，面板守护进程采集，所以关掉网页也不断档。总览页还有整机的内存/磁盘水位和 CPU 曲线。
 - **控制台** —— xterm.js 渲染，保留服务端自己的 ANSI 颜色；命令输入框支持 ↑↓ 翻历史；一条命令会回显给所有连着的客户端。用独立输入框而不是直接在终端里打字，是为了中文输入法能正常用。
 - **多实例** —— 一台机器上管任意多个服务器，侧栏实时状态。
 - **进程管理** —— 启动 / 优雅停止 / 重启 / 强制结束；停服走 `stop` → SIGTERM → SIGKILL 三级升级，卡死的服务器不会卡住面板。可选崩溃自动重启（连续失败 5 次后放弃，退避 5→30 秒）。
@@ -131,7 +135,7 @@ location / {
 
 ## 还没做的
 
-按我觉得的优先级排：文件管理器（上传 jar / 编辑配置文件）、玩家列表和白名单/OP 管理、自动备份、CPU/内存监控图表、多用户和权限、定时任务（定时重启/广播）、一键下载服务端核心。
+按我觉得的优先级排：玩家列表和白名单/OP 管理（现在只能手改 JSON）、自动备份、多用户和权限、定时任务（定时重启/广播）、一键下载服务端核心、更长时间的监控历史（现在只在内存里存 1 小时，重启面板就没了）。
 
 ## 开发
 
@@ -152,18 +156,29 @@ make cross          # 交叉编译 linux/amd64, linux/arm64, windows, darwin/arm
 cmd/hypercraft/      入口：flag、启动、优雅关闭
 internal/instance/   核心：进程监管、状态机、控制台环形缓冲、事件广播
 internal/api/        HTTP + WebSocket
+internal/serverfiles/ 文件管理，全部经由 os.Root 限制在实例目录内
+internal/metrics/    CPU/内存采样，按进程树汇总
 internal/mcprops/    server.properties 解析/写回（保留格式，Java 转义）
 internal/store/      JSON 持久化（临时文件 + rename 原子写）
 internal/auth/       PBKDF2 凭据 + 内存会话
 internal/webui/      go:embed 前端产物
-web/                 React + TypeScript + Vite + xterm.js
+web/                 React + TypeScript + Vite + xterm.js（图表是手写 SVG，没引图表库）
 ```
 
 跨平台：Linux/macOS 用进程组 + SIGTERM/SIGKILL，Windows 用 `taskkill /T`。
 
-## 依赖
+## 依赖与环境要求
 
-后端只有一个第三方依赖：`gorilla/websocket`。密码哈希用 Go 1.24 进标准库的 `crypto/pbkdf2`，其余全是标准库。
+需要 **Go 1.25+** 构建（文件管理器用到了 1.25 的 `os.Root.Rename` / `RemoveAll` 等；`GOTOOLCHAIN` 默认会自动下载，本机 Go 版本旧一些也不影响）。前端需要 Node 20+。
+
+后端只有两个直接依赖：
+
+- `gorilla/websocket` —— 控制台长连接
+- `shirou/gopsutil` —— 跨平台读取进程和主机的 CPU / 内存
+
+密码哈希用的是 Go 1.24 进标准库的 `crypto/pbkdf2`，没有引 `golang.org/x/crypto`。
+
+面板自身很轻：实测常驻堆内存约 2 MB、十来个协程，跟它管理的 JVM 比可以忽略。
 
 ## License
 

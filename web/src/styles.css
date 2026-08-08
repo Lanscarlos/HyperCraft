@@ -787,3 +787,426 @@ a {
     margin-left: 0;
   }
 }
+
+/* ------------------------------------------------------------------ charts
+
+   The panel commits to a single dark look, so the chart tokens are defined
+   once rather than as a light/dark pair. The two series colours were checked
+   against --chart-surface with the palette validator: CVD ΔE 19.6 between
+   them, both above 3:1 contrast. Swapping either means re-running it. */
+
+:root {
+  --chart-surface: #131720;
+  --chart-grid: #232a36;
+  --chart-reference: #3b4553;
+  --series-cpu: #3987e5;
+  --series-memory: #199e70;
+  --status-ok: #0ca30c;
+  --status-warning: #fab219;
+  --status-critical: #d03b3b;
+}
+
+.chart {
+  position: relative;
+  width: 100%;
+}
+
+.chart--empty {
+  display: grid;
+  place-items: center;
+  height: 168px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.chart__svg {
+  display: block;
+  overflow: visible;
+}
+
+.chart__grid,
+.chart__axis {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+}
+
+.chart__reference {
+  stroke: var(--chart-reference);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.chart__reference-label,
+.chart__tick,
+.chart__end-label {
+  fill: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart__end-label {
+  fill: var(--text);
+  font-weight: 600;
+}
+
+.chart__crosshair {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.chart__axis-labels {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 62px 0 56px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart__tooltip {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 10px;
+  background: #1b2130;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.chart__tooltip strong {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart__tooltip span {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.chart-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.chart-head__meta {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.chart-note {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+/* Filters live in one row above the charts they scope. */
+.chart-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chart-filters__label {
+  color: var(--text-dim);
+  font-size: 12px;
+  margin-right: 4px;
+}
+
+.chip {
+  padding: 4px 12px;
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.chip:hover {
+  color: var(--text);
+}
+
+.chip--active {
+  background: #1c2330;
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.chip--right {
+  margin-left: auto;
+}
+
+/* ------------------------------------------------------------------ meters */
+
+.host {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  margin-bottom: 24px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.host__head h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.host__meta {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.meters {
+  display: grid;
+  /* Capped rather than 1fr: stretched across a wide screen the label and its
+     value drift so far apart they stop reading as one tile. */
+  grid-template-columns: repeat(auto-fit, minmax(200px, 260px));
+  gap: 24px;
+  justify-content: start;
+}
+
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.meter__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.meter__label {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.meter__value {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.meter__track {
+  height: 6px;
+  background: #1c2330;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.meter__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--status-ok);
+  transition: width 0.4s ease;
+}
+
+.meter__fill--warning {
+  background: var(--status-warning);
+}
+.meter__fill--critical {
+  background: var(--status-critical);
+}
+
+.meter__detail {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* ------------------------------------------------------------------ tables */
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.data-table th,
+.data-table td {
+  padding: 7px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.data-table th {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.data-table td.num,
+.data-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table tbody tr:hover {
+  background: #171d28;
+}
+
+.data-table .muted {
+  color: var(--text-dim);
+}
+
+.data-table .actions {
+  text-align: right;
+}
+
+.data-table .actions .link,
+.data-table .actions a {
+  margin-left: 12px;
+}
+
+.link--danger {
+  color: var(--danger-hover);
+}
+
+/* ------------------------------------------------------------- file manager */
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.breadcrumb__crumb {
+  background: none;
+  border: none;
+  color: var(--accent-hover);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 2px 4px;
+}
+
+.breadcrumb__crumb:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb__sep {
+  color: var(--text-dim);
+}
+
+.file-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.file-toolbar__hint {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 0;
+  text-align: left;
+}
+
+.file-link:hover:not(:disabled) {
+  color: var(--accent-hover);
+}
+
+.file-link--plain,
+.file-link:disabled {
+  cursor: default;
+  color: var(--text);
+}
+
+.file-icon {
+  font-size: 13px;
+}
+
+.badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  background: #1c2330;
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.settings--dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: 6px;
+  border-radius: 10px;
+}
+
+.progress {
+  position: relative;
+  height: 20px;
+  background: #1c2330;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.progress__bar {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s linear;
+}
+
+.progress__label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.file-editor {
+  width: 100%;
+  padding: 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  resize: vertical;
+  tab-size: 2;
+}
+
+.file-editor:focus {
+  outline: none;
+  border-color: var(--accent);
+}

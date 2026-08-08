@@ -16,6 +16,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/instance"
+	"github.com/lanscarlos/hypercraft/internal/metrics"
 	"github.com/lanscarlos/hypercraft/internal/store"
 )
 
@@ -35,6 +36,7 @@ type Server struct {
 	mgr      *instance.Manager
 	store    *store.Store
 	sessions *auth.SessionStore
+	metrics  *metrics.Collector
 	version  string
 
 	panelMu sync.RWMutex
@@ -49,6 +51,7 @@ type Options struct {
 	Manager  *instance.Manager
 	Store    *store.Store
 	Sessions *auth.SessionStore
+	Metrics  *metrics.Collector
 	Panel    config.Panel
 	Version  string
 	Logger   *slog.Logger
@@ -60,6 +63,7 @@ func NewServer(opts Options) *Server {
 		mgr:      opts.Manager,
 		store:    opts.Store,
 		sessions: opts.Sessions,
+		metrics:  opts.Metrics,
 		panel:    opts.Panel,
 		version:  opts.Version,
 		upgrader: websocket.Upgrader{
@@ -108,6 +112,21 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("GET /api/instances/{id}/jars", s.handleListJars)
 
 	protected.HandleFunc("GET /api/instances/{id}/console", s.handleConsoleSocket)
+
+	// File manager. Every path here is confined to the instance directory by
+	// os.Root; see internal/serverfiles.
+	protected.HandleFunc("GET /api/instances/{id}/files", s.handleListFiles)
+	protected.HandleFunc("DELETE /api/instances/{id}/files", s.handleDeleteFile)
+	protected.HandleFunc("GET /api/instances/{id}/files/content", s.handleReadFile)
+	protected.HandleFunc("PUT /api/instances/{id}/files/content", s.handleWriteFile)
+	protected.HandleFunc("GET /api/instances/{id}/files/download", s.handleDownloadFile)
+	protected.HandleFunc("POST /api/instances/{id}/files/upload", s.handleUploadFile)
+	protected.HandleFunc("POST /api/instances/{id}/files/mkdir", s.handleMkdir)
+	protected.HandleFunc("POST /api/instances/{id}/files/rename", s.handleRenameFile)
+
+	// Resource usage.
+	protected.HandleFunc("GET /api/instances/{id}/metrics", s.handleInstanceMetrics)
+	protected.HandleFunc("GET /api/system", s.handleSystem)
 
 	api.Handle("/api/", s.requireAuth(s.requireCSRF(protected)))
 
@@ -240,12 +259,15 @@ func (s *Server) writeDomainError(w http.ResponseWriter, err error) {
 // so a typo in a field name fails loudly instead of being silently ignored.
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	return decodeJSONBody(r, dst)
+}
+
+// decodeJSONBody is decodeJSON without the cap, for handlers that set their
+// own larger limit (the file editor, whose payload is a whole config file).
+func decodeJSONBody(r *http.Request, dst any) error {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(dst); err != nil {
-		return err
-	}
-	return nil
+	return dec.Decode(dst)
 }
 
 func (s *Server) instanceFromPath(w http.ResponseWriter, r *http.Request) (*instance.Instance, bool) {
