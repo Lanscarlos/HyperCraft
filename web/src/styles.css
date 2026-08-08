@@ -1210,3 +1210,13 @@ a {
   outline: none;
   border-color: var(--accent);
 }
+
+.download-status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.download-status .chart-note {
+  margin: 0;
+}

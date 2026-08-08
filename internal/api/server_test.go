@@ -18,6 +18,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/mcprops"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
+	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
 )
 
@@ -31,6 +32,8 @@ type testEnv struct {
 	server *httptest.Server
 	client *http.Client
 	mgr    *instance.Manager
+	// fill stands in for the PaperMC API and its CDN; see handlers_downloads_test.go.
+	fill *fakeFill
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -53,12 +56,14 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mgr := instance.NewManager(st, paths.ServersRoot(), logger)
+	fill := newFakeFill(t)
 
 	srv := httptest.NewServer(NewServer(Options{
 		Manager:  mgr,
 		Store:    st,
 		Sessions: auth.NewSessionStore(time.Hour),
 		Metrics:  metrics.New(time.Second, time.Minute, t.TempDir(), logger),
+		Jars:     serverjar.NewDownloader(serverjar.NewClient(fill.URL(), "test"), logger),
 		Panel:    panel,
 		Version:  "test",
 		Logger:   logger,
@@ -69,7 +74,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	if err != nil {
 		t.Fatalf("cookiejar: %v", err)
 	}
-	return &testEnv{t: t, server: srv, client: &http.Client{Jar: jar}, mgr: mgr}
+	return &testEnv{t: t, server: srv, client: &http.Client{Jar: jar}, mgr: mgr, fill: fill}
 }
 
 // do issues a request with the CSRF header the UI always sends.

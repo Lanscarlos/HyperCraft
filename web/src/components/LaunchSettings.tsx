@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '../api'
 import type { InstanceInput, InstanceStatus, JarInfo } from '../types'
 import { isLive } from '../types'
+import { CoreDownloader } from './CoreDownloader'
 
 interface Props {
   instance: InstanceStatus
@@ -46,6 +47,8 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
     toLines(instance.command ?? []),
   )
   const [jars, setJars] = useState<JarInfo[]>([])
+  // Bumped after a core download so the jar list picks up the new file.
+  const [jarsRev, setJarsRev] = useState(0)
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -62,7 +65,28 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
       .listJars(instance.id)
       .then(setJars)
       .catch(() => setJars([]))
-  }, [instance.id, instance.directory])
+  }, [instance.id, instance.directory, jarsRev])
+
+  // A finished download has already been applied server-side, so the form only
+  // has to catch up on the fields the daemon touched — anything else the
+  // operator was editing stays as they left it.
+  const onDownloaded = useCallback(
+    async (fileName: string, appliedAsJar: boolean) => {
+      setJarsRev((rev) => rev + 1)
+      if (!appliedAsJar) return
+      try {
+        const fresh = await api.getInstance(instance.id)
+        onSaved(fresh)
+        setForm((prev) => ({ ...prev, jar: fresh.jar }))
+        setServerText(toLines(fresh.serverArgs ?? []))
+        setStatus(`已下载 ${fileName} 并设为启动 jar`)
+        setError(null)
+      } catch {
+        // The jar is on disk either way; a failed refresh is not worth a banner.
+      }
+    },
+    [instance.id, onSaved],
+  )
 
   const update = <K extends keyof InstanceInput>(
     key: K,
@@ -140,6 +164,8 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
         </label>
       </section>
 
+      <CoreDownloader instance={instance} onDownloaded={onDownloaded} />
+
       <section className="panel">
         <h3 className="panel__title">启动方式</h3>
 
@@ -171,7 +197,7 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
           <small>
             {jars.length > 0
               ? `目录下找到 ${jars.length} 个 jar 文件`
-              : '目录下暂时没有 jar 文件，放进去后刷新页面'}
+              : '目录下暂时没有 jar 文件，上面下一个或自己传一个'}
           </small>
         </label>
 

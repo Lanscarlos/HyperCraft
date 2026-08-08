@@ -17,6 +17,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
+	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
 )
 
@@ -37,7 +38,10 @@ type Server struct {
 	store    *store.Store
 	sessions *auth.SessionStore
 	metrics  *metrics.Collector
-	version  string
+	// jars fetches server cores from PaperMC. Optional: a nil downloader turns
+	// the feature off and leaves uploading a jar as the only way in.
+	jars    *serverjar.Downloader
+	version string
 
 	panelMu sync.RWMutex
 	panel   config.Panel
@@ -52,6 +56,7 @@ type Options struct {
 	Store    *store.Store
 	Sessions *auth.SessionStore
 	Metrics  *metrics.Collector
+	Jars     *serverjar.Downloader
 	Panel    config.Panel
 	Version  string
 	Logger   *slog.Logger
@@ -64,6 +69,7 @@ func NewServer(opts Options) *Server {
 		store:    opts.Store,
 		sessions: opts.Sessions,
 		metrics:  opts.Metrics,
+		jars:     opts.Jars,
 		panel:    opts.Panel,
 		version:  opts.Version,
 		upgrader: websocket.Upgrader{
@@ -110,6 +116,14 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("GET /api/instances/{id}/eula", s.handleGetEULA)
 	protected.HandleFunc("POST /api/instances/{id}/eula", s.handleAcceptEULA)
 	protected.HandleFunc("GET /api/instances/{id}/jars", s.handleListJars)
+
+	// Server core downloads, fetched by the daemon straight onto the machine.
+	protected.HandleFunc("GET /api/downloads/projects", s.handleListCoreProjects)
+	protected.HandleFunc("GET /api/downloads/projects/{project}/versions", s.handleListCoreVersions)
+	protected.HandleFunc("GET /api/downloads/projects/{project}/versions/{version}/build", s.handleLatestCoreBuild)
+	protected.HandleFunc("GET /api/instances/{id}/jars/download", s.handleCoreDownloadStatus)
+	protected.HandleFunc("POST /api/instances/{id}/jars/download", s.handleStartCoreDownload)
+	protected.HandleFunc("POST /api/instances/{id}/jars/download/cancel", s.handleCancelCoreDownload)
 
 	protected.HandleFunc("GET /api/instances/{id}/console", s.handleConsoleSocket)
 

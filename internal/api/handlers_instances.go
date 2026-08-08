@@ -115,6 +115,11 @@ func (s *Server) handleDeleteInstance(w http.ResponseWriter, r *http.Request) {
 		s.writeDomainError(w, err)
 		return
 	}
+	if s.jars != nil {
+		// Stop a core download that is still writing into a directory nobody
+		// owns any more, and drop the finished-job record with it.
+		s.jars.Forget(r.PathValue("id"))
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

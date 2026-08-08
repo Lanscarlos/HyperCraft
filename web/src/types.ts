@@ -102,6 +102,56 @@ export interface JarInfo {
   size: number
 }
 
+// -------------------------------------------------------- core downloads
+
+/** A downloadable server core. "proxy" cores have no world and no EULA. */
+export interface CoreProject {
+  id: string
+  name: string
+  kind: 'server' | 'proxy'
+  description: string
+}
+
+export interface CoreVersion {
+  id: string
+  /** Upstream support status, e.g. SUPPORTED or UNSUPPORTED. */
+  support: string
+  /** Lowest Java major version this build runs on, 0 when unknown. */
+  javaMinimum: number
+  /** False for pre-releases, release candidates and snapshots. */
+  stable: boolean
+  builds: number
+}
+
+export interface CoreBuild {
+  build: number
+  channel: string
+  time: string
+  fileName: string
+  url: string
+  sha256: string
+  size: number
+}
+
+export type CoreDownloadState = 'downloading' | 'done' | 'failed' | 'cancelled'
+
+export interface CoreDownloadJob {
+  instanceId: string
+  project: string
+  projectName: string
+  version: string
+  build: number
+  channel: string
+  fileName: string
+  total: number
+  downloaded: number
+  state: CoreDownloadState
+  error?: string
+  setAsJar: boolean
+  startedAt: string
+  finishedAt?: string
+}
+
 export interface User {
   username: string
   version: string

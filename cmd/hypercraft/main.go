@@ -26,6 +26,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
+	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
 )
 
@@ -128,11 +129,20 @@ func run() error {
 
 	collector := metrics.New(metricsInterval, metricsWindow, root, logger)
 
+	// Core downloads run in the daemon, so they keep going with nobody watching
+	// — same reason the server processes live here rather than in a request.
+	downloads := serverjar.NewDownloader(
+		serverjar.NewClient("", "HyperCraft/"+version+" (+https://github.com/Lanscarlos/HyperCraft)"),
+		logger,
+	)
+	defer downloads.Close()
+
 	server := api.NewServer(api.Options{
 		Manager:  manager,
 		Store:    st,
 		Sessions: sessions,
 		Metrics:  collector,
+		Jars:     downloads,
 		Panel:    panel,
 		Version:  version,
 		Logger:   logger,
@@ -189,6 +199,9 @@ func run() error {
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Warn("http shutdown was not clean", "err", err)
 	}
+	// Downloads go before the servers do: a half-written jar is worth nothing,
+	// and the servers deserve the whole shutdown budget.
+	downloads.Close()
 
 	logger.Info("stopping managed servers", "grace", shutdownGrace)
 	manager.Shutdown(shutdownGrace)

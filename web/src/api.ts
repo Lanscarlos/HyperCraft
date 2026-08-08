@@ -1,5 +1,9 @@
 import type {
   ConsoleLine,
+  CoreBuild,
+  CoreDownloadJob,
+  CoreProject,
+  CoreVersion,
   EulaStatus,
   InstanceInput,
   FileListing,
@@ -106,6 +110,30 @@ export const api = {
   acceptEula: (id: string) =>
     request<EulaStatus>('POST', `/api/instances/${id}/eula`),
   listJars: (id: string) => request<JarInfo[]>('GET', `/api/instances/${id}/jars`),
+
+  listCoreProjects: () => request<CoreProject[]>('GET', '/api/downloads/projects'),
+  listCoreVersions: (project: string) =>
+    request<CoreVersion[]>('GET', `/api/downloads/projects/${project}/versions`),
+  latestCoreBuild: (project: string, version: string) =>
+    request<CoreBuild>(
+      'GET',
+      `/api/downloads/projects/${project}/versions/${encodeURIComponent(version)}/build`,
+    ),
+  /** null when this instance has never downloaded a core. */
+  coreDownload: (id: string) =>
+    request<CoreDownloadJob | null>('GET', `/api/instances/${id}/jars/download`),
+  startCoreDownload: (
+    id: string,
+    input: { project: string; version: string; setAsJar: boolean; overwrite?: boolean },
+  ) =>
+    request<CoreDownloadJob>('POST', `/api/instances/${id}/jars/download`, {
+      project: input.project,
+      version: input.version,
+      setAsJar: input.setAsJar,
+      overwrite: input.overwrite ?? false,
+    }),
+  cancelCoreDownload: (id: string) =>
+    request<void>('POST', `/api/instances/${id}/jars/download/cancel`),
 
   system: () => request<SystemInfo>('GET', '/api/system'),
   instanceMetrics: (id: string) =>

@@ -72,7 +72,8 @@ export function NewInstanceDialog({ onCreated, onCancel }: Props) {
             spellCheck={false}
           />
           <small>
-            创建后把服务端 jar 放进上面的目录即可，也可以之后在「启动设置」里改。
+            没有 jar 也不要紧：创建后可以在「启动设置」里一键下载 Paper 或 Velocity，
+            也可以自己把 jar 放进上面的目录。
           </small>
         </label>
 
