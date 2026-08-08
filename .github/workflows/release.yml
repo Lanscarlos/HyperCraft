@@ -1,7 +1,12 @@
 name: Release
 
+# Releases are cut by bumping the version heading in CHANGELOG.md: when a merge
+# into main introduces a version that has no tag yet, this workflow tags that
+# commit and publishes it. Merges that do not touch the version are skipped in a
+# few seconds. Pushing a vX.Y.Z tag by hand still works and takes the same path.
 on:
   push:
+    branches: [main]
     tags:
       - 'v*'
   # Lets you re-run a release for a tag that already exists, e.g. after fixing
@@ -9,27 +14,102 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '要发布的 tag，例如 v1.0.0（必须已经推送到仓库）'
+        description: '要发布的 tag，例如 v1.0.0（必须已经存在）'
         required: true
 
-# Needed to create the release and upload the archives.
+# Needed to create the tag and the release.
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  group: release-${{ github.event.inputs.tag || github.ref }}
   cancel-in-progress: false
 
 jobs:
+  # Cheap gate: works out which version this event is asking for, and whether it
+  # still needs releasing. Keeping it separate means an ordinary merge costs one
+  # short job instead of a full cross-compile.
+  resolve:
+    name: 确定版本
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.v.outputs.release }}
+      tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The tag reaches the shell through the environment, never through string
+      # interpolation into the script body.
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT" = workflow_dispatch ]; then
+            tag="$INPUT_TAG"
+          elif [ "$REF_TYPE" = tag ]; then
+            tag="$REF_NAME"
+          else
+            # Push to main: the top heading in CHANGELOG.md is the version this
+            # branch currently claims to be.
+            version=$(sed -n 's/^## \[\([0-9][^]]*\)\].*/\1/p' CHANGELOG.md | head -1)
+            if [ -z "$version" ]; then
+              echo "::warning::CHANGELOG.md 里没找到 ## [x.y.z] 形式的版本标题，跳过发布"
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            tag="v$version"
+          fi
+
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::版本号「$tag」不符合 vX.Y.Z 或 vX.Y.Z-rc.1 的格式"
+            exit 1
+          fi
+
+          # A merge that did not bump the version lands on a tag that already
+          # exists; that is the common case and is not an error. An explicit tag
+          # push or dispatch is always honoured, so a botched upload can be
+          # retried without inventing a new version.
+          if [ "$EVENT" = push ] && [ "$REF_TYPE" != tag ] \
+             && gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "$tag 已经发布过了，跳过"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A tag with a pre-release suffix (v1.2.0-rc.1) ships as a prerelease.
+          if printf '%s' "$tag" | grep -q -- '-'; then
+            prerelease=true
+          else
+            prerelease=false
+          fi
+
+          echo "准备发布 $tag (prerelease=$prerelease)"
+          {
+            echo "release=true"
+            echo "tag=$tag"
+            echo "version=${tag#v}"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+
   release:
     name: 构建并发布
+    needs: resolve
+    if: needs.resolve.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
-      # Tag pushes check out the tag already; workflow_dispatch checks out the
-      # branch, so the tag is passed explicitly.
+      # A dispatch runs from a branch, so the tag is checked out explicitly.
+      # Everything else releases exactly the commit that triggered it.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ github.event.inputs.tag || github.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-go@v5
@@ -43,35 +123,10 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      # The tag reaches the shell through the environment, never through string
-      # interpolation into the script body.
-      - name: 解析版本号
-        id: meta
-        env:
-          RAW_TAG: ${{ github.event.inputs.tag || github.ref_name }}
-        run: |
-          set -euo pipefail
-          tag="$RAW_TAG"
-          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
-            echo "::error::tag「$tag」不符合 vX.Y.Z 或 vX.Y.Z-rc.1 的格式"
-            exit 1
-          fi
-          # A tag with a pre-release suffix (v1.2.0-rc.1) ships as a prerelease.
-          if printf '%s' "$tag" | grep -q -- '-'; then
-            prerelease=true
-          else
-            prerelease=false
-          fi
-          {
-            echo "tag=$tag"
-            echo "version=${tag#v}"
-            echo "prerelease=$prerelease"
-          } >> "$GITHUB_OUTPUT"
-
       - name: 安装前端依赖
         run: npm ci --prefix web
 
-      # A tag that cannot pass CI should not become a release.
+      # A commit that cannot pass CI should not become a release.
       - name: 检查代码风格
         run: make lint
 
@@ -82,11 +137,11 @@ jobs:
       # ldflag) so the workflow and a local build stay in sync. It builds the
       # frontend first, so every archive embeds the same UI.
       - name: 交叉编译
-        run: make cross VERSION=${{ steps.meta.outputs.tag }}
+        run: make cross VERSION=${{ needs.resolve.outputs.tag }}
 
       - name: 打包
         env:
-          VERSION: ${{ steps.meta.outputs.version }}
+          VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p release
@@ -122,7 +177,7 @@ jobs:
       # a warning, not a failure — the release still goes out with a stub.
       - name: 生成发布说明
         env:
-          VERSION: ${{ steps.meta.outputs.version }}
+          VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           set -euo pipefail
           awk -v ver="$VERSION" '
@@ -158,23 +213,31 @@ jobs:
           \`\`\`
           EOF
 
+      # --target makes GitHub create the tag on this commit when it does not
+      # exist yet, which is the merge-into-main path; for a tag push the tag is
+      # already there and --target is ignored.
       - name: 创建 Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.meta.outputs.tag }}
-          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          PRERELEASE: ${{ needs.resolve.outputs.prerelease }}
         run: |
           set -euo pipefail
-          flags=()
+          # Always stated explicitly, so re-running fixes a release that was
+          # marked prerelease by mistake instead of leaving the flag as it was.
           if [ "$PRERELEASE" = true ]; then
-            flags+=(--prerelease)
+            flag=--prerelease
+          else
+            flag=--prerelease=false
           fi
 
-          # Re-running for an existing tag replaces the assets instead of failing.
+          # Re-running for an existing release replaces the assets and the notes
+          # instead of failing.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --title "$TAG" --notes-file notes.md "${flags[@]}"
+            gh release edit "$TAG" --title "$TAG" --notes-file notes.md "$flag"
             gh release upload "$TAG" release/* --clobber
           else
             gh release create "$TAG" release/* \
-              --title "$TAG" --notes-file notes.md "${flags[@]}"
+              --title "$TAG" --notes-file notes.md "$flag" \
+              --target "$GITHUB_SHA"
           fi

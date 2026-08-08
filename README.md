@@ -169,18 +169,24 @@ web/                 React + TypeScript + Vite + xterm.js（图表是手写 SVG�
 
 ## 发布
 
-推送一个 `vX.Y.Z` 的 tag，GitHub Actions 会跑完 lint 和测试，交叉编译四个平台，
-打包好上传到对应的 Release：
+发版动作就是抬 `CHANGELOG.md` 顶部的版本号。在 PR 里加上这一版的日志：
 
-```bash
-# 先把这一版的更新日志写进 CHANGELOG.md，标题格式是 ## [1.0.1] - 2026-08-09
-git tag v1.0.1
-git push origin v1.0.1
+```markdown
+## [1.0.1] - 2026-08-09
+
+### 修复
+- ...
 ```
 
-发布说明取自 `CHANGELOG.md` 里对应版本的那一节，所以 tag 号要和日志标题对得上。
-带后缀的 tag（`v1.1.0-rc.1`）会发成 prerelease。传错了或者日志写漏了，改完在
-Actions 页面手动重跑 Release 工作流，填上同一个 tag 就会覆盖原来的产物。
+合进 main 之后，GitHub Actions 发现这个版本还没有对应的 tag，就会跑完 lint 和
+测试、交叉编译四个平台、打好包，然后给这个 commit 打上 `v1.0.1` 并发布 Release。
+没动版本号的合并只会跑一个几秒钟的检查然后跳过，不会发版。
+
+发布说明取自 `CHANGELOG.md` 里对应版本的那一节。带后缀的版本号（`1.1.0-rc.1`）
+会发成 prerelease。手动推 `vX.Y.Z` 的 tag 也照样能发，走的是同一条流程。
+
+传错了或者日志写漏了：改完在 Actions 页面手动重跑 Release 工作流，填上同一个
+tag，产物和发布说明都会覆盖掉，不用另开一个版本号。
 
 每个压缩包里是单文件二进制加 README、CHANGELOG、LICENSE，Linux 的还带一份
 `hypercraft.service`。`SHA256SUMS.txt` 单独传，用 `sha256sum -c` 校验。
