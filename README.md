@@ -174,6 +174,30 @@ web/                 React + TypeScript + Vite + xterm.js（图表是手写 SVG�
 
 跨平台：Linux/macOS 用进程组 + SIGTERM/SIGKILL，Windows 用 `taskkill /T`。
 
+## 发布
+
+发版动作就是抬 `CHANGELOG.md` 顶部的版本号。在 PR 里加上这一版的日志：
+
+```markdown
+## [1.0.1] - 2026-08-09
+
+### 修复
+- ...
+```
+
+合进 main 之后，GitHub Actions 发现这个版本还没有对应的 tag，就会跑完 lint 和
+测试、交叉编译四个平台、打好包，然后给这个 commit 打上 `v1.0.1` 并发布 Release。
+没动版本号的合并只会跑一个几秒钟的检查然后跳过，不会发版。
+
+发布说明取自 `CHANGELOG.md` 里对应版本的那一节。带后缀的版本号（`1.1.0-rc.1`）
+会发成 prerelease。手动推 `vX.Y.Z` 的 tag 也照样能发，走的是同一条流程。
+
+传错了或者日志写漏了：改完在 Actions 页面手动重跑 Release 工作流，填上同一个
+tag，产物和发布说明都会覆盖掉，不用另开一个版本号。
+
+每个压缩包里是单文件二进制加 README、CHANGELOG、LICENSE，Linux 的还带一份
+`hypercraft.service`。`SHA256SUMS.txt` 单独传，用 `sha256sum -c` 校验。
+
 ## 依赖与环境要求
 
 需要 **Go 1.25+** 构建（文件管理器用到了 1.25 的 `os.Root.Rename` / `RemoveAll` 等；`GOTOOLCHAIN` 默认会自动下载，本机 Go 版本旧一些也不影响）。前端需要 Node 20+。
