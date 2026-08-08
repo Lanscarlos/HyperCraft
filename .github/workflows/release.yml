@@ -1,0 +1,180 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Lets you re-run a release for a tag that already exists, e.g. after fixing
+  # the changelog or a failed upload.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag，例如 v1.0.0（必须已经推送到仓库）'
+        required: true
+
+# Needed to create the release and upload the archives.
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: 构建并发布
+    runs-on: ubuntu-latest
+    steps:
+      # Tag pushes check out the tag already; workflow_dispatch checks out the
+      # branch, so the tag is passed explicitly.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # The tag reaches the shell through the environment, never through string
+      # interpolation into the script body.
+      - name: 解析版本号
+        id: meta
+        env:
+          RAW_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="$RAW_TAG"
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::tag「$tag」不符合 vX.Y.Z 或 vX.Y.Z-rc.1 的格式"
+            exit 1
+          fi
+          # A tag with a pre-release suffix (v1.2.0-rc.1) ships as a prerelease.
+          if printf '%s' "$tag" | grep -q -- '-'; then
+            prerelease=true
+          else
+            prerelease=false
+          fi
+          {
+            echo "tag=$tag"
+            echo "version=${tag#v}"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 安装前端依赖
+        run: npm ci --prefix web
+
+      # A tag that cannot pass CI should not become a release.
+      - name: 检查代码风格
+        run: make lint
+
+      - name: 运行测试
+        run: make test
+
+      # `make cross` owns the build flags (-trimpath, -s -w, the version
+      # ldflag) so the workflow and a local build stay in sync. It builds the
+      # frontend first, so every archive embeds the same UI.
+      - name: 交叉编译
+        run: make cross VERSION=${{ steps.meta.outputs.tag }}
+
+      - name: 打包
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          for bin in dist/hypercraft-*; do
+            target=${bin#dist/hypercraft-}          # linux-amd64, windows-amd64.exe, ...
+            target=${target%.exe}
+            stage="hypercraft-${VERSION}-${target}"
+            mkdir -p "$stage"
+
+            case "$bin" in
+              *.exe) cp "$bin" "$stage/hypercraft.exe" ;;
+              *)     cp "$bin" "$stage/hypercraft"; chmod +x "$stage/hypercraft" ;;
+            esac
+            cp README.md CHANGELOG.md LICENSE "$stage/"
+            # The systemd unit is only useful on Linux.
+            case "$target" in
+              linux-*) cp deploy/hypercraft.service "$stage/" ;;
+            esac
+
+            # zip for Windows, tar.gz everywhere else.
+            case "$target" in
+              windows-*) zip -qr "release/${stage}.zip" "$stage" ;;
+              *)         tar -czf "release/${stage}.tar.gz" "$stage" ;;
+            esac
+            rm -rf "$stage"
+          done
+
+          cd release
+          sha256sum hypercraft-* > SHA256SUMS.txt
+          ls -lh
+
+      # Pulls the section for this version out of CHANGELOG.md. Missing entry is
+      # a warning, not a failure — the release still goes out with a stub.
+      - name: 生成发布说明
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { found = 1; next }
+            found && /^## \[/        { exit }
+            found                    { print }
+          ' CHANGELOG.md > notes.md
+
+          if [ ! -s notes.md ]; then
+            echo "::warning::CHANGELOG.md 里没有 [$VERSION] 这一节，发布说明将只包含安装指引"
+            printf '本次发布没有对应的更新日志条目。\n' > notes.md
+          fi
+
+          cat >> notes.md <<EOF
+
+          ## 安装
+
+          下载对应平台的压缩包，解压后直接运行：
+
+          \`\`\`bash
+          tar -xzf hypercraft-${VERSION}-linux-amd64.tar.gz
+          cd hypercraft-${VERSION}-linux-amd64
+          ./hypercraft -data ./data
+          \`\`\`
+
+          前端已经嵌在二进制里，不需要另外部署。开机自启参考包内的
+          \`hypercraft.service\`。
+
+          ## 校验
+
+          \`\`\`bash
+          sha256sum -c SHA256SUMS.txt --ignore-missing
+          \`\`\`
+          EOF
+
+      - name: 创建 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          flags=()
+          if [ "$PRERELEASE" = true ]; then
+            flags+=(--prerelease)
+          fi
+
+          # Re-running for an existing tag replaces the assets instead of failing.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file notes.md "${flags[@]}"
+            gh release upload "$TAG" release/* --clobber
+          else
+            gh release create "$TAG" release/* \
+              --title "$TAG" --notes-file notes.md "${flags[@]}"
+          fi

@@ -167,6 +167,24 @@ web/                 React + TypeScript + Vite + xterm.js（图表是手写 SVG�
 
 跨平台：Linux/macOS 用进程组 + SIGTERM/SIGKILL，Windows 用 `taskkill /T`。
 
+## 发布
+
+推送一个 `vX.Y.Z` 的 tag，GitHub Actions 会跑完 lint 和测试，交叉编译四个平台，
+打包好上传到对应的 Release：
+
+```bash
+# 先把这一版的更新日志写进 CHANGELOG.md，标题格式是 ## [1.0.1] - 2026-08-09
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+发布说明取自 `CHANGELOG.md` 里对应版本的那一节，所以 tag 号要和日志标题对得上。
+带后缀的 tag（`v1.1.0-rc.1`）会发成 prerelease。传错了或者日志写漏了，改完在
+Actions 页面手动重跑 Release 工作流，填上同一个 tag 就会覆盖原来的产物。
+
+每个压缩包里是单文件二进制加 README、CHANGELOG、LICENSE，Linux 的还带一份
+`hypercraft.service`。`SHA256SUMS.txt` 单独传，用 `sha256sum -c` 校验。
+
 ## 依赖与环境要求
 
 需要 **Go 1.25+** 构建（文件管理器用到了 1.25 的 `os.Root.Rename` / `RemoveAll` 等；`GOTOOLCHAIN` 默认会自动下载，本机 Go 版本旧一些也不影响）。前端需要 Node 20+。
