@@ -1,0 +1,36 @@
+[Unit]
+Description=HyperCraft Minecraft server panel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=minecraft
+Group=minecraft
+WorkingDirectory=/opt/hypercraft
+ExecStart=/opt/hypercraft/hypercraft -data /opt/hypercraft/data -listen 127.0.0.1:8080
+
+# The panel is the parent of every Minecraft process. On stop it sends each one
+# the graceful stop command and waits for the world to save, so this timeout has
+# to be longer than the slowest server's shutdown, not the usual 90s.
+TimeoutStopSec=300
+KillSignal=SIGTERM
+
+# Only the panel gets the signal; it stops its children itself in the right
+# order. Without this, systemd would SIGTERM the JVMs directly and skip the
+# graceful save.
+KillMode=mixed
+
+Restart=on-failure
+RestartSec=5s
+
+# Hardening. ReadWritePaths must cover the data directory and anything outside
+# it that an instance's directory points at.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/hypercraft
+
+[Install]
+WantedBy=multi-user.target
