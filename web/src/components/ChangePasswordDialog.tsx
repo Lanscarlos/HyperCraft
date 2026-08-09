@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { api } from '../api'
+import { Modal } from './Modal'
 
 interface Props {
   onChanged: () => void
@@ -32,7 +33,7 @@ export function ChangePasswordDialog({ onChanged, onCancel }: Props) {
   }
 
   return (
-    <div className="modal" role="dialog" aria-modal="true">
+    <Modal onClose={onCancel} busy={busy}>
       <form className="modal__card" onSubmit={submit}>
         <h2 className="modal__title">修改密码</h2>
         <p className="modal__lead">修改后所有登录状态都会失效，需要重新登录。</p>
@@ -84,6 +85,6 @@ export function ChangePasswordDialog({ onChanged, onCancel }: Props) {
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   )
 }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import type { LibraryPlugin } from '../types'
 import type { PluginInput } from '../usePlugins'
+import { Modal } from './Modal'
 
 /**
  * Add and edit share a form: the fields are the same, and so are the rules.
@@ -36,7 +37,7 @@ export function PluginDialog({
   }
 
   return (
-    <div className="modal" role="dialog" aria-modal="true">
+    <Modal onClose={onCancel} busy={busy}>
       <form className="modal__card" onSubmit={(event) => void submit(event)}>
         <h2 className="modal__title">{item ? `编辑「${item.name}」` : '添加插件'}</h2>
         <p className="modal__lead">
@@ -125,6 +126,6 @@ export function PluginDialog({
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   )
 }

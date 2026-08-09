@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { UPDATE_CHANNELS, UPDATE_MIRRORS } from '../types'
 import type { UpdateChannel, UpdateStatus } from '../types'
 import type { UpdateController } from '../useUpdate'
+import { Modal } from './Modal'
 
 interface Props {
   update: UpdateController
@@ -305,7 +306,7 @@ function ConfirmUpdateDialog({
   onConfirm: () => void
 }) {
   return (
-    <div className="modal" role="dialog" aria-modal="true">
+    <Modal onClose={onCancel}>
       <div className="modal__card">
         <h2 className="modal__title">
           {downgrade ? '回到' : '更新到'} {version}
@@ -355,6 +356,6 @@ function ConfirmUpdateDialog({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }

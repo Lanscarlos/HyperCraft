@@ -1,7 +1,16 @@
+import { useLayoutEffect, useRef } from 'react'
 import type { MouseEvent, ReactNode, Ref } from 'react'
 
+import { DUR } from '../motion'
 import type { Route, Scope } from '../routes'
-import { HOST_SECTIONS, INSTANCE_SECTIONS, pathOf, samePage } from '../routes'
+import {
+  HOST_SECTIONS,
+  INSTANCE_SECTIONS,
+  SETTINGS_SECTIONS,
+  pathOf,
+  samePage,
+} from '../routes'
+import { captureScope, playScope } from '../scopeMorph'
 import type { InstanceStatus, SystemInfo, User } from '../types'
 import { STATE_LABELS, isLive } from '../types'
 import type { CoreController } from '../useCores'
@@ -35,29 +44,63 @@ interface Props {
 }
 
 /**
- * The panel's navigation, in whichever of its three forms applies.
+ * The panel's navigation, in whichever of its four forms applies.
  *
- * There are three kinds of thing to manage here and they do not belong in one
- * flat list: the panel and its shared stock, one server, and the machine
- * underneath. Their lifetimes differ by orders of magnitude — you visit the
- * host page monthly and the console hourly — so entering a server or the host
- * *replaces* this list rather than expanding an item inside it. Nesting them
- * would put the console three levels deep, and a console three levels deep is
- * a console nobody uses.
+ * There are four kinds of thing to manage here and they do not belong in one
+ * flat list: the panel and its shared stock, one server, the machine
+ * underneath, and the panel's own settings. Their lifetimes differ by orders
+ * of magnitude — you visit the host page monthly and the console hourly — so
+ * entering one of the inner three *replaces* this list rather than expanding
+ * an item inside it. Nesting them would put the console three levels deep, and
+ * a console three levels deep is a console nobody uses.
  *
- * What the two inner scopes owe the reader in exchange is a way out and a way
+ * What an inner scope owes the reader in exchange is a way out and a way
  * across: every one of them opens with 返回上级 and the name of the thing you
- * are inside.
+ * are inside. And it does not simply appear — the row you clicked flies up to
+ * become that header while the list it belonged to clears out of the way, so
+ * the replacement is something you watched happen rather than something you
+ * have to re-read the sidebar to understand. See scopeMorph.ts.
  */
 export function Sidebar(props: Props) {
   const { scope, sidebarRef } = props
+  const self = useRef<HTMLElement | null>(null)
+  const previous = useRef<Scope>(scope)
+
+  // Entering or leaving a scope is the one navigation in the panel that
+  // replaces the whole sidebar, so it is the one that has to be shown rather
+  // than simply performed — see scopeMorph.ts, which has already taken a copy
+  // of the outgoing list by the time this runs. `useLayoutEffect`, not
+  // `useEffect`: the incoming header has to be measured and moved back to
+  // where the row was in the same frame it is committed, or the first frame
+  // paints it at its destination and the movement starts from the wrong place.
+  useLayoutEffect(() => {
+    const el = self.current
+    if (previous.current === scope || !el) return
+    previous.current = scope
+    playScope(el)
+    el.dataset.entering = ''
+    const timer = window.setTimeout(() => delete el.dataset.entering, DUR.slow)
+    return () => window.clearTimeout(timer)
+  }, [scope])
 
   return (
-    <aside className="sidebar" id="sidebar" ref={sidebarRef} tabIndex={-1} data-scope={scope}>
+    <aside
+      className="sidebar"
+      id="sidebar"
+      ref={(node) => {
+        self.current = node
+        if (typeof sidebarRef === 'function') sidebarRef(node)
+        else if (sidebarRef) (sidebarRef as { current: HTMLElement | null }).current = node
+      }}
+      tabIndex={-1}
+      data-scope={scope}
+    >
       {scope === 'instance' ? (
         <InstanceScope {...props} />
       ) : scope === 'host' ? (
         <HostScope {...props} />
+      ) : scope === 'settings' ? (
+        <SettingsScope {...props} />
       ) : (
         <GlobalScope {...props} />
       )}
@@ -131,10 +174,15 @@ function GlobalScope(props: Props) {
             <a
               key={item.id}
               className="sidebar__link sidebar__link--instance"
+              // Half of a pair: the scope header this row becomes carries the
+              // same key, which is how the two are matched up and animated
+              // into one another.
+              data-nav-key={`instance:${item.id}`}
               href={pathOf({ kind: 'instance', id: item.id, section: 'console' })}
-              onClick={follow(() =>
-                navigate({ kind: 'instance', id: item.id, section: 'console' }),
-              )}
+              onClick={follow(() => {
+                captureScope(`instance:${item.id}`)
+                navigate({ kind: 'instance', id: item.id, section: 'console' })
+              })}
               title={`${item.name} · ${STATE_LABELS[item.state]}`}
             >
               <span className="sidebar__initial" aria-hidden="true">
@@ -169,7 +217,7 @@ function GlobalScope(props: Props) {
           <NavLink
             {...props}
             icon="plugins"
-            label="插件 / 模组"
+            label="插件库"
             target={{ kind: 'library', section: 'plugins' }}
             active={route.kind === 'library' && route.section === 'plugins'}
             badge={
@@ -184,13 +232,20 @@ function GlobalScope(props: Props) {
 
         <Group label="系统" />
         <nav className="sidebar__nav" aria-label="系统导航">
-          <NavLink {...props} icon="host" label="主机" target={{ kind: 'host', section: 'metrics' }} />
+          <NavLink
+            {...props}
+            icon="host"
+            label="主机"
+            target={{ kind: 'host', section: 'metrics' }}
+            navKey="host"
+          />
           <NavLink
             {...props}
             icon="settings"
             label="面板设置"
             target={{ kind: 'settings', section: 'devices' }}
             active={route.kind === 'settings'}
+            navKey="settings"
             badge={updateNotice ? <span className="badge badge--update">1</span> : null}
           />
         </nav>
@@ -240,6 +295,7 @@ function InstanceScope(props: Props) {
         backLabel="返回实例列表"
         backTo={{ kind: 'instances', query: '', state: 'all' }}
         switcherLabel="切换实例（⌘K）"
+        navKey={`instance:${id}`}
         name={instance?.name ?? '实例'}
         meta={instance ? STATE_LABELS[instance.state] : '找不到这个实例'}
         dot={instance ? <span className={`status__dot status__dot--${instance.state}`} /> : null}
@@ -301,6 +357,7 @@ function HostScope(props: Props) {
         backLabel="返回面板"
         backTo={{ kind: 'overview' }}
         switcherLabel={undefined}
+        navKey="host"
         name={system?.host.hostname || '本机'}
         meta={system ? `${system.host.platform} · ${system.host.cpuCores} 核` : '正在读取…'}
         dot={<Icon name="host" />}
@@ -353,6 +410,66 @@ const HOST_ICONS: Record<string, IconName> = {
   terminal: 'lock',
 }
 
+// ---------------------------------------------------------------- settings
+
+/**
+ * The panel's own settings, as a scope rather than as a page with tabs.
+ *
+ * These four used to be a tab strip across the top of one page, which made
+ * 面板设置 the only destination in the panel you could not reach from the
+ * sidebar — you navigated to a page and then navigated again inside it, and
+ * which of the four you landed on depended on where you had been last. A
+ * second navigation for four items, sitting under a first navigation that
+ * already had a shape for exactly this.
+ */
+function SettingsScope(props: Props) {
+  const { route, follow, navigate, user, updateNotice } = props
+  const section = route.kind === 'settings' ? route.section : 'devices'
+
+  return (
+    <>
+      <ScopeHead
+        {...props}
+        backLabel="返回面板"
+        backTo={{ kind: 'overview' }}
+        switcherLabel={undefined}
+        navKey="settings"
+        name="面板设置"
+        meta={user.version}
+        dot={<Icon name="settings" />}
+      />
+
+      <div className="sidebar__scroll">
+        <nav className="sidebar__nav" aria-label="面板设置">
+          {SETTINGS_SECTIONS.map((entry) => (
+            <a
+              key={entry.id}
+              className={`sidebar__link${section === entry.id ? ' sidebar__link--active' : ''}`}
+              href={pathOf({ kind: 'settings', section: entry.id })}
+              onClick={follow(() => navigate({ kind: 'settings', section: entry.id }))}
+              title={entry.label}
+              aria-current={section === entry.id ? 'page' : undefined}
+            >
+              <Icon name={SETTINGS_ICONS[entry.id]} />
+              <span className="sidebar__name">{entry.label}</span>
+              {entry.id === 'update' && updateNotice && (
+                <span className="badge badge--update">{updateNotice}</span>
+              )}
+            </a>
+          ))}
+        </nav>
+      </div>
+    </>
+  )
+}
+
+const SETTINGS_ICONS: Record<string, IconName> = {
+  devices: 'devices',
+  security: 'lock',
+  'plugin-source': 'plugins',
+  update: 'update',
+}
+
 // ----------------------------------------------------------------- pieces
 
 /** The fixed top of an inner scope: the way out, and what you are inside. */
@@ -363,6 +480,7 @@ function ScopeHead({
   backLabel,
   backTo,
   switcherLabel,
+  navKey,
   name,
   meta,
   dot,
@@ -370,6 +488,8 @@ function ScopeHead({
   backLabel: string
   backTo: Route
   switcherLabel?: string
+  /** Pairs this header with the row it came from, in both directions. */
+  navKey: string
   name: string
   meta: string
   dot: ReactNode
@@ -394,7 +514,14 @@ function ScopeHead({
       <a
         className="sidebar__back"
         href={pathOf(backTo)}
-        onClick={follow(() => navigate(backTo))}
+        // The same capture as the row that opened this scope, which is what
+        // makes leaving the exact reverse: the header shrinks back down into
+        // the row it came from, and the list it displaced comes back in from
+        // above and below.
+        onClick={follow(() => {
+          captureScope(navKey)
+          navigate(backTo)
+        })}
         title={backLabel}
       >
         <Icon name="back" />
@@ -404,13 +531,16 @@ function ScopeHead({
       {switcherLabel ? (
         <button
           className="sidebar__entity sidebar__entity--switch"
+          data-nav-key={navKey}
           onClick={onOpenPalette}
           title={switcherLabel}
         >
           {body}
         </button>
       ) : (
-        <div className="sidebar__entity">{body}</div>
+        <div className="sidebar__entity" data-nav-key={navKey}>
+          {body}
+        </div>
       )}
     </div>
   )
@@ -443,20 +573,28 @@ function NavLink({
   label,
   target,
   active,
+  navKey,
   badge,
 }: Props & {
   icon: IconName
   label: string
   target: Route
   active?: boolean
+  /** Set on the two rows that open a scope of their own, and matching the key
+   *  on the header they become. Everything else navigates in place. */
+  navKey?: string
   badge?: ReactNode
 }) {
   const current = active ?? samePage(route, target)
   return (
     <a
       className={`sidebar__link${current ? ' sidebar__link--active' : ''}`}
+      data-nav-key={navKey}
       href={pathOf(target)}
-      onClick={follow(() => navigate(target))}
+      onClick={follow(() => {
+        if (navKey) captureScope(navKey)
+        navigate(target)
+      })}
       title={label}
       aria-current={current ? 'page' : undefined}
     >

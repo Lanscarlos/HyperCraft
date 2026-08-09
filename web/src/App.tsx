@@ -29,7 +29,7 @@ import {
   routeFromLocation,
   scopeOf,
 } from './routes'
-import type { InstanceSection, Route, SettingsSection, StateFilter } from './routes'
+import type { InstanceSection, Route, StateFilter } from './routes'
 import type { InstanceStatus, User } from './types'
 import { mergeState } from './types'
 import { useCores } from './useCores'
@@ -391,7 +391,6 @@ export default function App() {
           {route.kind === 'settings' ? (
             <SettingsPage
               section={route.section}
-              onSection={(section: SettingsSection) => navigate({ kind: 'settings', section })}
               update={update}
               plugins={plugins}
               runningNames={runningNames}

@@ -12,6 +12,8 @@
  * first paint is already in the right mode.
  */
 
+import { crossFade } from './motion'
+
 export type ThemePref = 'system' | 'light' | 'dark'
 export type Theme = 'light' | 'dark'
 
@@ -48,7 +50,6 @@ export function current(): Theme {
 
 export function applyPref(pref: ThemePref): Theme {
   const theme = resolve(pref)
-  document.documentElement.dataset.theme = theme
   try {
     // "system" is stored as the absence of a choice, so a machine that later
     // switches to dark follows along instead of being pinned to today's mode.
@@ -57,7 +58,19 @@ export function applyPref(pref: ThemePref): Theme {
   } catch {
     /* nothing to remember it with; the session still switches */
   }
-  for (const listener of listeners) listener(theme)
+
+  // Every painted pixel changes at once here, and there is no element to hang a
+  // transition on — which is why the switch used to be the one hard cut left in
+  // the panel. crossFade takes a snapshot, flips the attribute, and dissolves
+  // between the two frames; where the browser has no such thing, or motion is
+  // unwanted, it just runs the callback and the switch is instant as before.
+  crossFade(() => {
+    document.documentElement.dataset.theme = theme
+    // Inside the callback rather than after it: the terminals repaint their
+    // canvases from these tokens, and a canvas that repaints a frame late is a
+    // dark rectangle sitting in the middle of the dissolve.
+    for (const listener of listeners) listener(theme)
+  })
   return theme
 }
 

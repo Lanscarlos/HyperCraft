@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+
+import { useDismiss } from '../useDismiss'
 
 export interface MenuItem {
   label: string
@@ -32,13 +34,21 @@ export function Menu({ items, children, className, title, ariaLabel }: Props) {
   const [open, setOpen] = useState(false)
   const wrap = useRef<HTMLDivElement | null>(null)
 
+  // The sheet outlives the decision to close it by one exit animation, so
+  // dismissing it looks like the reverse of opening it rather than like the
+  // sheet failing to render. `open` is still the single source of truth for
+  // whether the menu is *usable*: the leaving sheet is on its way out and
+  // stops taking clicks the moment `leaving` is set.
+  const hide = useCallback(() => setOpen(false), [])
+  const { leaving, close } = useDismiss(hide)
+
   useEffect(() => {
     if (!open) return
     const onDown = (event: MouseEvent) => {
-      if (!wrap.current?.contains(event.target as Node)) setOpen(false)
+      if (!wrap.current?.contains(event.target as Node)) close()
     }
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key === 'Escape') close()
     }
     // Pointerdown rather than click: a menu that survives until mouseup looks
     // stuck when you click straight through to something behind it.
@@ -48,13 +58,13 @@ export function Menu({ items, children, className, title, ariaLabel }: Props) {
       window.removeEventListener('pointerdown', onDown)
       window.removeEventListener('keydown', onKey)
     }
-  }, [open])
+  }, [open, close])
 
   return (
-    <div className="menu" ref={wrap}>
+    <div className="menu" ref={wrap} data-state={leaving ? 'out' : undefined}>
       <button
         className={className}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => (open ? close() : setOpen(true))}
         aria-haspopup="menu"
         aria-expanded={open}
         title={title}
@@ -72,7 +82,9 @@ export function Menu({ items, children, className, title, ariaLabel }: Props) {
               className={`menu__item${item.danger ? ' menu__item--danger' : ''}`}
               disabled={item.disabled}
               onClick={() => {
-                setOpen(false)
+                // The sheet closes on its own time; the action does not wait
+                // for it. 强制结束 should not sit behind a fading menu.
+                close()
                 item.onSelect()
               }}
             >

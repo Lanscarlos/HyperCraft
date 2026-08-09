@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { DUR } from '../motion'
 import type { Route } from '../routes'
 import { HOST_SECTIONS, LIBRARY_SECTIONS, SETTINGS_SECTIONS } from '../routes'
 import type { InstanceStatus } from '../types'
 import { STATE_LABELS, isLive } from '../types'
+import { useDismiss } from '../useDismiss'
 import { Icon } from './Icon'
 
 interface Props {
@@ -37,6 +39,10 @@ export function CommandPalette({ instances, onClose, onNavigate, onCreate }: Pro
   const [cursor, setCursor] = useState(0)
   const input = useRef<HTMLInputElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
+  // The shortest exit in the panel, and it overlaps the thing it was used to
+  // reach: the route changes on the keystroke, the box spends the next ninety
+  // milliseconds getting out of the way of a page that is already arriving.
+  const { leaving, close } = useDismiss(onClose, DUR.fast)
 
   useEffect(() => {
     input.current?.focus()
@@ -138,7 +144,7 @@ export function CommandPalette({ instances, onClose, onNavigate, onCreate }: Pro
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'Escape') {
       event.preventDefault()
-      onClose()
+      close()
       return
     }
     if (event.key === 'ArrowDown') {
@@ -155,7 +161,7 @@ export function CommandPalette({ instances, onClose, onNavigate, onCreate }: Pro
       event.preventDefault()
       const entry = shown[cursor]
       if (entry) {
-        onClose()
+        close()
         entry.run()
       }
     }
@@ -164,8 +170,14 @@ export function CommandPalette({ instances, onClose, onNavigate, onCreate }: Pro
   let lastGroup = ''
 
   return (
-    <div className="palette" role="dialog" aria-modal="true" aria-label="搜索与跳转">
-      <div className="palette__scrim" onClick={onClose} />
+    <div
+      className="palette"
+      data-state={leaving ? 'out' : 'in'}
+      role="dialog"
+      aria-modal="true"
+      aria-label="搜索与跳转"
+    >
+      <div className="palette__scrim" onClick={close} />
       <div className="palette__box" onKeyDown={onKeyDown}>
         <div className="palette__field">
           <Icon name="search" />
@@ -199,7 +211,7 @@ export function CommandPalette({ instances, onClose, onNavigate, onCreate }: Pro
                   // hand the selection to whatever the resting pointer is over.
                   onMouseMove={() => setCursor(index)}
                   onClick={() => {
-                    onClose()
+                    close()
                     entry.run()
                   }}
                 >
