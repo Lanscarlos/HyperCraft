@@ -3,10 +3,12 @@
 package instance
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -36,7 +38,21 @@ while IFS= read -r line; do
 done
 `
 
+// newTestInstance builds an instance with the shipped defaults, which means it
+// runs on a pseudo-terminal.
 func newTestInstance(t *testing.T, body string) *Instance {
+	t.Helper()
+	return newInstanceWith(t, body, nil)
+}
+
+// newPipeInstance builds one with the terminal turned off.
+func newPipeInstance(t *testing.T, body string) *Instance {
+	t.Helper()
+	off := false
+	return newInstanceWith(t, body, &off)
+}
+
+func newInstanceWith(t *testing.T, body string, tty *bool) *Instance {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -44,6 +60,7 @@ func newTestInstance(t *testing.T, body string) *Instance {
 		ID:        "test",
 		Name:      "test",
 		Directory: dir,
+		TTY:       tty,
 		Command:   fakeServer(t, dir, body),
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
@@ -54,6 +71,27 @@ func newTestInstance(t *testing.T, body string) *Instance {
 		inst.Close()
 	})
 	return inst
+}
+
+// terminalScrollback is what a console attaching right now would replay.
+func terminalScrollback(inst *Instance) []byte {
+	att := inst.Attach()
+	defer inst.Unsubscribe(att.Events)
+	return att.Terminal
+}
+
+func waitForTerminal(t *testing.T, inst *Instance, substr string) {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(string(terminalScrollback(inst)), substr) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for terminal output containing %q\nterminal:\n%s\nconsole:\n%s",
+		substr, terminalScrollback(inst), consoleDump(inst))
 }
 
 func waitForState(t *testing.T, inst *Instance, want State) {
@@ -172,7 +210,33 @@ exit 1
 		t.Errorf("expected exit code 1, got %v", status.ExitCode)
 	}
 
-	// stderr must be captured too, or crash causes would be invisible.
+	// The crash cause must be captured, or a failed start is a blank console.
+	// Which *stream* it is labelled as depends on the transport: a terminal
+	// has only one, and that is the trade this panel makes for it.
+	var sawCause bool
+	for _, line := range inst.LinesSince(0) {
+		if strings.Contains(line.Text, "eula.txt") {
+			sawCause = true
+		}
+	}
+	if !sawCause {
+		t.Errorf("stderr was not captured:\n%s", consoleDump(inst))
+	}
+}
+
+// The pipe console is the one place stdout and stderr stay apart, which is the
+// reason it is still offered after the terminal became the default.
+func TestPipeConsoleKeepsStderrSeparate(t *testing.T) {
+	inst := newPipeInstance(t, `#!/bin/sh
+echo "[12:00:00] [main/ERROR]: Failed to load eula.txt" >&2
+exit 1
+`)
+
+	if err := inst.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitForState(t, inst, StateCrashed)
+
 	var sawStderr bool
 	for _, line := range inst.LinesSince(0) {
 		if line.Stream == StreamStderr && strings.Contains(line.Text, "eula.txt") {
@@ -180,7 +244,7 @@ exit 1
 		}
 	}
 	if !sawStderr {
-		t.Errorf("stderr was not captured:\n%s", consoleDump(inst))
+		t.Errorf("stderr was not captured as stderr:\n%s", consoleDump(inst))
 	}
 }
 
@@ -213,11 +277,15 @@ func TestServerSurvivesEveryConsoleDisconnect(t *testing.T) {
 	}
 	waitForState(t, inst, StateRunning)
 
-	events, history, _ := inst.Subscribe()
-	if len(history) == 0 {
+	att := inst.Attach()
+	if len(att.Lines) == 0 && len(att.Terminal) == 0 {
 		t.Error("a client connecting to a running server should get scrollback")
 	}
-	inst.Unsubscribe(events)
+	history := inst.LinesSince(0)
+	if len(history) == 0 {
+		t.Error("a running server's output should be recorded")
+	}
+	inst.Unsubscribe(att.Events)
 
 	if got := inst.State(); got != StateRunning {
 		t.Fatalf("server stopped when its console disconnected: state %q", got)
@@ -230,11 +298,12 @@ func TestServerSurvivesEveryConsoleDisconnect(t *testing.T) {
 	waitForLine(t, inst, "ran list")
 
 	// A late-joining client sees everything it missed.
-	_, history2, state := inst.Subscribe()
-	if state.State != StateRunning {
-		t.Errorf("reconnecting client saw state %q", state.State)
+	late := inst.Attach()
+	defer inst.Unsubscribe(late.Events)
+	if late.State.State != StateRunning {
+		t.Errorf("reconnecting client saw state %q", late.State.State)
 	}
-	if len(history2) <= len(history) {
+	if history2 := inst.LinesSince(0); len(history2) <= len(history) {
 		t.Errorf("scrollback did not grow while disconnected: %d -> %d", len(history), len(history2))
 	}
 }
@@ -326,4 +395,205 @@ while true; do sleep 1; done
 		t.Fatalf("Stop: %v", err)
 	}
 	waitForState(t, inst, StateStopped)
+}
+
+// ---------------------------------------------------------------- terminal
+
+// The point of the whole terminal mode: the server can see a tty, which is what
+// JLine and TerminalConsoleAppender look for before offering the server's own
+// completion and colouring their output.
+func TestTerminalConsoleGivesTheServerATTY(t *testing.T) {
+	inst := newTestInstance(t, `#!/bin/sh
+if [ -t 1 ]; then echo "stdout is a terminal"; else echo "stdout is a pipe"; fi
+echo "[12:00:01] [Server thread/INFO]: Done (0.1s)! For help, type \"help\""
+while IFS= read -r line; do
+  case "$line" in
+    stop) exit 0 ;;
+    *)    echo "ran $line" ;;
+  esac
+done
+`)
+
+	if err := inst.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitForState(t, inst, StateRunning)
+	waitForLine(t, inst, "stdout is a terminal")
+
+	if !inst.Status().TTYActive {
+		t.Error("the running process should report a live terminal")
+	}
+	if !inst.UsesTTY() {
+		t.Error("the console should be speaking the terminal protocol")
+	}
+}
+
+// A pipe console cannot show output that has not ended in a newline yet, which
+// is why every progress bar a pregenerator or a mod loader draws used to look
+// like the server had hung. On a terminal it arrives as it is drawn.
+func TestTerminalShowsOutputThatHasNoNewlineYet(t *testing.T) {
+	inst := newTestInstance(t, `#!/bin/sh
+printf 'Pregenerating chunks: 42%%\r'
+while true; do sleep 1; done
+`)
+
+	if err := inst.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitForTerminal(t, inst, "Pregenerating chunks: 42%")
+
+	// The same bytes cannot have reached the line view: there is no line yet.
+	for _, line := range inst.LinesSince(0) {
+		if strings.Contains(line.Text, "Pregenerating") {
+			t.Errorf("a line was recorded before its newline arrived: %q", line.Text)
+		}
+	}
+}
+
+// Once the redraws do end in a newline, the log view keeps the finished state
+// rather than every percentage that was overwritten on the way there.
+func TestCarriageReturnRedrawsCollapseInTheLineView(t *testing.T) {
+	inst := newTestInstance(t, `#!/bin/sh
+printf 'Progress: 10%%\rProgress: 60%%\rProgress: 100%%\n'
+echo "[12:00:01] [Server thread/INFO]: Done (0.1s)! For help, type \"help\""
+while true; do sleep 1; done
+`)
+
+	if err := inst.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitForState(t, inst, StateRunning)
+	waitForLine(t, inst, "Progress: 100%")
+
+	for _, line := range inst.LinesSince(0) {
+		if strings.Contains(line.Text, "Progress:") && !strings.Contains(line.Text, "100%") {
+			t.Errorf("an overwritten redraw was kept as a line: %q", line.Text)
+		}
+	}
+}
+
+// A browser attaching to a server that has been up for hours has to be able to
+// rebuild the screen, the same way reconnecting to tmux does.
+func TestTerminalScrollbackReplaysToALateConsole(t *testing.T) {
+	inst := newTestInstance(t, wellBehavedServer)
+
+	if err := inst.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitForState(t, inst, StateRunning)
+	waitForTerminal(t, inst, "Done (1.234s)!")
+
+	att := inst.Attach()
+	defer inst.Unsubscribe(att.Events)
+	if !att.TTY {
+		t.Fatal("attachment should be in terminal mode")
+	}
+	if len(att.Lines) != 0 {
+		t.Errorf("a terminal attachment should not carry lines, got %d", len(att.Lines))
+	}
+	if !strings.Contains(string(att.Terminal), "Starting minecraft server") {
+		t.Errorf("scrollback missing the startup output:\n%s", att.Terminal)
+	}
+}
+
+// Keystrokes go to the server's own line editor, which is what makes its tab
+// completion and history work in the browser at all.
+func TestSendInputReachesTheServer(t *testing.T) {
+	inst := newTestInstance(t, wellBehavedServer)
+
+	if err := inst.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitForState(t, inst, StateRunning)
+
+	if err := inst.SendInput([]byte("list\r")); err != nil {
+		t.Fatalf("SendInput: %v", err)
+	}
+	waitForLine(t, inst, "ran list")
+}
+
+// Raw input has nowhere to go on a pipe console, and must not be quietly
+// reinterpreted as a command.
+func TestSendInputIsRejectedWithoutATerminal(t *testing.T) {
+	inst := newPipeInstance(t, wellBehavedServer)
+
+	if err := inst.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitForState(t, inst, StateRunning)
+
+	if err := inst.SendInput([]byte("list\r")); !errors.Is(err, ErrNotRunning) {
+		t.Errorf("expected ErrNotRunning for input without a terminal, got %v", err)
+	}
+}
+
+// Output must reach an attached console exactly once: it is either in the
+// snapshot it replays or in the stream it then follows, never both. A terminal
+// has no sequence numbers for a client to de-duplicate on, so this is the
+// server's problem to get right.
+func TestTerminalAttachDoesNotDuplicateOutput(t *testing.T) {
+	inst := newTestInstance(t, `#!/bin/sh
+i=0
+while [ $i -lt 200 ]; do echo "line $i"; i=$((i+1)); done
+while true; do sleep 1; done
+`)
+
+	if err := inst.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Attach while the output is still being produced, then collect both what
+	// was replayed and what arrived afterwards.
+	att := inst.Attach()
+	defer inst.Unsubscribe(att.Events)
+
+	// A terminal's line discipline translates every \n on the way out, so the
+	// bytes on the wire end lines with \r\n whatever the server wrote.
+	const eol = "\r\n"
+
+	seen := append([]byte(nil), att.Terminal...)
+	deadline := time.After(5 * time.Second)
+	for !strings.Contains(string(seen), "line 199"+eol) {
+		select {
+		case ev, open := <-att.Events:
+			if !open {
+				t.Fatal("console was dropped for lagging")
+			}
+			if ev.Type == EventOutput {
+				seen = append(seen, ev.Data...)
+			}
+		case <-deadline:
+			t.Fatalf("timed out; got:\n%s", seen)
+		}
+	}
+
+	for i := 0; i < 200; i++ {
+		if n := strings.Count(string(seen), "line "+strconv.Itoa(i)+eol); n != 1 {
+			t.Fatalf("line %d appeared %d times, want exactly 1", i, n)
+		}
+	}
+}
+
+// The grace period for draining a terminal belongs to the server's *exit*, not
+// to its lifetime. Starting that clock at launch — which an earlier version of
+// reap did — hangs up on a perfectly healthy server a few seconds in, and the
+// only symptom is that the console silently stops accepting input.
+func TestTerminalSurvivesLongerThanTheDrainGrace(t *testing.T) {
+	inst := newTestInstance(t, wellBehavedServer)
+	inst.drainGrace = 150 * time.Millisecond
+	if err := inst.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitForState(t, inst, StateRunning)
+
+	// Comfortably past the grace period, with the server still up.
+	time.Sleep(10 * inst.drainGrace)
+
+	if got := inst.State(); got != StateRunning {
+		t.Fatalf("server left %q after the drain grace elapsed", got)
+	}
+	if err := inst.SendInput([]byte("list\r")); err != nil {
+		t.Fatalf("terminal was closed under a running server: %v", err)
+	}
+	waitForLine(t, inst, "ran list")
 }

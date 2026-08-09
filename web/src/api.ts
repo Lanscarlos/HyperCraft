@@ -314,9 +314,17 @@ export async function panelVersion(): Promise<string | null> {
 }
 
 /** Absolute ws:// URL for an instance console, matching the page's scheme. */
-export function consoleSocketURL(id: string): string {
+export function consoleSocketURL(
+  id: string,
+  size?: { cols: number; rows: number } | null,
+): string {
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${scheme}://${window.location.host}/api/instances/${id}/console`
+  const base = `${scheme}://${window.location.host}/api/instances/${id}/console`
+  // Sizing the terminal in the handshake rather than in a follow-up message
+  // means the server's first line is already wrapped for the window that will
+  // show it. Omitted when the pane has not been laid out yet.
+  if (!size) return base
+  return `${base}?cols=${size.cols}&rows=${size.rows}`
 }
 
 /**

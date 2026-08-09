@@ -21,6 +21,7 @@ type instanceRequest struct {
 	ServerArgs     []string `json:"serverArgs"`
 	Command        []string `json:"command"`
 	Encoding       string   `json:"encoding"`
+	TTY            *bool    `json:"tty"`
 	ForceColor     *bool    `json:"forceColor"`
 	AutoStart      bool     `json:"autoStart"`
 	AutoRestart    bool     `json:"autoRestart"`
@@ -40,8 +41,9 @@ func (req instanceRequest) toConfig() instance.Config {
 		ServerArgs:  cleanArgs(req.ServerArgs),
 		Command:     cleanArgs(req.Command),
 		Encoding:    strings.TrimSpace(req.Encoding),
-		// Absent means "unset": applyDefaults turns it into colours-on rather
-		// than silently taking Go's zero value for a bool.
+		// Absent means "unset" for both of these: applyDefaults turns them on
+		// rather than silently taking Go's zero value for a bool.
+		TTY:            req.TTY,
 		ForceColor:     req.ForceColor,
 		AutoStart:      req.AutoStart,
 		AutoRestart:    req.AutoRestart,

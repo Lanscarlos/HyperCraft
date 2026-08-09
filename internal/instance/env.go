@@ -60,6 +60,25 @@ func launchEnv() []string {
 	return env
 }
 
+// terminalType is what a server on a pseudo-terminal is told it is talking to.
+//
+// The other end really is an xterm — xterm.js, driving the same escape
+// sequences — so claiming anything less would only make JLine and ncurses
+// programs hold back features the browser can render perfectly well. An
+// inherited TERM is overridden rather than passed through: it describes the
+// panel's own terminal, which nothing here is attached to.
+const terminalType = "xterm-256color"
+
+// withTerminalEnv adds the variables that only make sense once the process has
+// a terminal. Without TERM, JLine decides it is on a dumb terminal and gives up
+// on exactly the completion and line editing this mode exists to provide.
+func withTerminalEnv(env []string) []string {
+	env = setEnv(env, "TERM", terminalType)
+	// jansi and JLine both check COLORTERM before emitting 24-bit colour.
+	env = setEnv(env, "COLORTERM", "truecolor")
+	return env
+}
+
 // isUnsetLocale reports whether a locale value means "nobody chose one".
 func isUnsetLocale(value string) bool {
 	return value == "" || strings.EqualFold(value, "C") || strings.EqualFold(value, "POSIX")

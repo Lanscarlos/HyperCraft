@@ -33,6 +33,7 @@ function toInput(instance: InstanceStatus): InstanceInput {
     serverArgs: instance.serverArgs ?? [],
     command: instance.command ?? [],
     encoding: instance.encoding || 'auto',
+    tty: instance.tty ?? true,
     forceColor: instance.forceColor ?? true,
     autoStart: instance.autoStart,
     autoRestart: instance.autoRestart,
@@ -76,6 +77,10 @@ export function LaunchSettings({
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  // Whether this host has pseudo-terminals at all. A switch that silently
+  // falls back is worse than one that is visibly unavailable.
+  const ttySupported = instance.ttySupported ?? true
 
   // The jar list follows the directory field rather than the saved config, so
   // retargeting an instance at an existing server directory offers that
@@ -357,14 +362,39 @@ export function LaunchSettings({
         <label className="checkbox">
           <input
             type="checkbox"
+            checked={form.tty && ttySupported}
+            disabled={!ttySupported}
+            onChange={(e) => update('tty', e.target.checked)}
+          />
+          <span>使用终端模式（推荐）</span>
+          <small>
+            {ttySupported ? (
+              <>
+                把服务器跑在伪终端上，就像你自己在 SSH 里开着它一样。这样 Tab 补全由
+                <strong>正在运行的服务端</strong>回答（插件命令、真实玩家名都算数），
+                进度条不用等换行就能看到，颜色也不需要强制。代价是终端只有一条流，
+                stderr 不再单独标红。关掉则回到管道模式。
+              </>
+            ) : (
+              <>本系统没有可用的伪终端（Windows 需要 ConPTY），所有实例都以管道模式运行。</>
+            )}
+          </small>
+        </label>
+
+        <label className="checkbox">
+          <input
+            type="checkbox"
             checked={form.forceColor}
+            disabled={form.tty && ttySupported}
             onChange={(e) => update('forceColor', e.target.checked)}
           />
           <span>强制彩色输出（推荐）</span>
           <small>
-            服务端只在检测到终端时才上色，而面板是通过管道读它的输出，所以默认会加上
+            仅在管道模式下有意义：服务端只在检测到终端时才上色，所以管道模式会加上
             <code> -Dterminal.jline=false -Dterminal.ansi=true</code>，让网页控制台和
-            cmd 里一样有颜色。自定义启动命令不受影响，需要自己加。
+            cmd 里一样有颜色。终端模式下服务端本来就看得到终端，这两个参数不会被加上
+            —— <code>terminal.jline=false</code> 恰好会关掉终端模式想要的那个补全。
+            自定义启动命令不受影响，需要自己加。
           </small>
         </label>
       </section>

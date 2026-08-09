@@ -21,7 +21,15 @@ export interface InstanceConfig {
   command: string[] | null
   /** Console charset: 'auto', 'utf-8', 'gbk', … See ENCODING_OPTIONS. */
   encoding: string
-  /** Make the server emit ANSI colour even though its stdout is a pipe. */
+  /**
+   * Run the server on a pseudo-terminal rather than pipes. Default true: it is
+   * what gives the console the server's own tab completion, output that appears
+   * before its newline does, and colour without forcing it. Off falls back to
+   * the pipe console, which is the only one that keeps stderr separate.
+   */
+  tty: boolean
+  /** Make the server emit ANSI colour even though its stdout is a pipe. Has no
+   *  effect in TTY mode, where the server can see a terminal. */
   forceColor: boolean
   autoStart: boolean
   autoRestart: boolean
@@ -37,7 +45,13 @@ export interface InstanceStatus extends InstanceConfig {
   startedAt?: string
   exitCode?: number
   message?: string
+  /** Whether the running process actually got a terminal. Differs from `tty`
+   *  when the platform has none, or when opening one failed and the start fell
+   *  back to pipes. */
+  ttyActive?: boolean
   lastSeq: number
+  /** Whether this host can back a console with a pseudo-terminal at all. */
+  ttySupported: boolean
 }
 
 /** The editable subset the API accepts on create/update. */
@@ -76,11 +90,20 @@ export interface StateInfo {
   startedAt?: string
   exitCode?: number
   message?: string
+  ttyActive?: boolean
 }
 
-/** Messages pushed over the console websocket. */
+/**
+ * Text messages pushed over the console websocket.
+ *
+ * A terminal console's output does not appear here: raw bytes arrive in binary
+ * frames instead, because splicing them into JSON would break the multi-byte
+ * characters and escape sequences that are the point of having a terminal. The
+ * opening `history` frame says which protocol the connection speaks, and that
+ * does not change while it is open.
+ */
 export type ConsoleMessage =
-  | { type: 'history'; lines: ConsoleLine[]; state: StateInfo }
+  | { type: 'history'; tty: boolean; lines: ConsoleLine[]; state: StateInfo }
   | { type: 'line'; line: ConsoleLine }
   | { type: 'state'; state: StateInfo }
   | { type: 'error'; message: string }

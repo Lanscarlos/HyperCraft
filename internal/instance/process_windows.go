@@ -12,7 +12,7 @@ import (
 // Ctrl+C in the panel's own console from propagating into managed servers.
 const createNewProcessGroup = 0x00000200
 
-func configureProcAttr(cmd *exec.Cmd) {
+func configureProcAttr(cmd *exec.Cmd, _ bool) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNewProcessGroup}
 }
 
