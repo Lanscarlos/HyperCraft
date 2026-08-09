@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 
 import type { InstanceState, User } from '../types'
 import { Icon } from './Icon'
+import { Menu } from './Menu'
 import { ThemeToggle } from './ThemeToggle'
 
 /** One step of the trail. The last one is where you are and never links. */
@@ -115,64 +115,19 @@ function UserMenu({
   onChangePassword: () => void
   onSignOut: () => void
 }) {
-  const [open, setOpen] = useState(false)
-  const wrap = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onDown = (event: MouseEvent) => {
-      if (!wrap.current?.contains(event.target as Node)) setOpen(false)
-    }
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-    // Pointerdown rather than click: a menu that survives until mouseup looks
-    // stuck when you click straight through to something behind it.
-    window.addEventListener('pointerdown', onDown)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('pointerdown', onDown)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [open])
-
   return (
-    <div className="usermenu" ref={wrap}>
-      <button
-        className="usermenu__button"
-        onClick={() => setOpen((value) => !value)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        title={user.username}
-      >
-        <span className="usermenu__avatar" aria-hidden="true">
-          {user.username.slice(0, 1).toUpperCase()}
-        </span>
-        <span className="usermenu__name">{user.username}</span>
-      </button>
-
-      {open && (
-        <div className="usermenu__sheet" role="menu">
-          <button
-            role="menuitem"
-            onClick={() => {
-              setOpen(false)
-              onChangePassword()
-            }}
-          >
-            修改密码
-          </button>
-          <button
-            role="menuitem"
-            onClick={() => {
-              setOpen(false)
-              onSignOut()
-            }}
-          >
-            退出登录
-          </button>
-        </div>
-      )}
-    </div>
+    <Menu
+      className="usermenu__button"
+      title={user.username}
+      items={[
+        { label: '修改密码', onSelect: onChangePassword },
+        { label: '退出登录', onSelect: onSignOut },
+      ]}
+    >
+      <span className="usermenu__avatar" aria-hidden="true">
+        {user.username.slice(0, 1).toUpperCase()}
+      </span>
+      <span className="usermenu__name">{user.username}</span>
+    </Menu>
   )
 }

@@ -16,7 +16,7 @@ import { SETTINGS_SECTIONS, SettingsPage, isSettingsSection } from './components
 import type { SettingsSection } from './components/SettingsPage'
 import { TopBar } from './components/TopBar'
 import type { Crumb } from './components/TopBar'
-import type { InstanceStatus, User } from './types'
+import type { InstanceState, InstanceStatus, User } from './types'
 import { STATE_LABELS, isLive, mergeState } from './types'
 import { useCores } from './useCores'
 import { useJava } from './useJava'
@@ -37,6 +37,39 @@ const DRAWER_QUERY = '(max-width: 720px)'
 /** Whether the desktop sidebar is folded to icons. A per-device preference,
  *  like the theme, so it lives next to it in localStorage. */
 const RAIL_KEY = 'hypercraft.sidebar'
+
+/** Below this many servers the list is short enough to read, and a search box
+ *  over four rows is furniture. */
+const FILTER_FROM = 6
+
+/** Sidebar order. A crashed server is the one thing in the list that is asking
+ *  for something, so it goes first even though it is not running; after that
+ *  the live ones, and the deliberately-stopped ones last. Within a group the
+ *  order is whatever the API gave, which is creation order — stable, so a
+ *  server does not move under the pointer while you are aiming at it. */
+const STATE_RANK: Record<InstanceState, number> = {
+  crashed: 0,
+  running: 1,
+  starting: 2,
+  stopping: 3,
+  stopped: 4,
+}
+
+function forSidebar(
+  instances: InstanceStatus[],
+  query: string,
+  liveOnly: boolean,
+): InstanceStatus[] {
+  const needle = query.trim().toLowerCase()
+  const kept = instances.filter((item) => {
+    if (liveOnly && !isLive(item.state)) return false
+    return needle === '' || item.name.toLowerCase().includes(needle)
+  })
+  return kept
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => STATE_RANK[a.item.state] - STATE_RANK[b.item.state] || a.index - b.index)
+    .map((entry) => entry.item)
+}
 
 /** Where the app is. Panel-wide pages sit beside the per-instance view; the
  *  URL is the only place it is stored, so deep links and reloads work. */
@@ -151,6 +184,8 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const compact = useMediaQuery(DRAWER_QUERY)
+  const [query, setQuery] = useState('')
+  const [liveOnly, setLiveOnly] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
   const [railed, setRailed] = useState(() => window.localStorage.getItem(RAIL_KEY) === 'rail')
   const sidebarRef = useRef<HTMLElement | null>(null)
@@ -309,6 +344,7 @@ export default function App() {
       : null
   const updateNotice = updateLabel(update.status)
   const crumbs = crumbsFor(route, selected, openedPlugin?.name, () => select(null), openPlugins)
+  const shown = forSidebar(instances, query, liveOnly)
 
   return (
     <div
@@ -424,11 +460,37 @@ export default function App() {
           )}
         </div>
 
+        {/* Appears only once the list is long enough to need it. Four servers
+            are read at a glance; twenty are searched. */}
+        {instances.length >= FILTER_FROM && (
+          <div className="sidebar__filter">
+            <input
+              className="sidebar__search"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="搜索"
+              aria-label="搜索实例"
+            />
+            <button
+              className={`sidebar__only${liveOnly ? ' sidebar__only--on' : ''}`}
+              onClick={() => setLiveOnly((value) => !value)}
+              aria-pressed={liveOnly}
+              title="只看运行中的实例"
+            >
+              运行中
+            </button>
+          </div>
+        )}
+
         <nav className="sidebar__list">
           {instances.length === 0 && (
             <p className="sidebar__empty">还没有实例，先新建一个吧。</p>
           )}
-          {instances.map((item) => (
+          {instances.length > 0 && shown.length === 0 && (
+            <p className="sidebar__empty">没有符合条件的实例。</p>
+          )}
+          {shown.map((item) => (
             <button
               key={item.id}
               className={`sidebar__item${item.id === selectedId ? ' sidebar__item--active' : ''}`}

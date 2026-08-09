@@ -8,6 +8,7 @@ import { Console } from './Console'
 import { FileManager } from './FileManager'
 import { InstancePlugins } from './InstancePlugins'
 import { LaunchSettings } from './LaunchSettings'
+import { Menu } from './Menu'
 import { PropertiesEditor } from './PropertiesEditor'
 import { ResourcePanel } from './ResourcePanel'
 
@@ -82,6 +83,10 @@ export function InstanceView({
           <StatusBadge instance={instance} />
         </div>
 
+        {/* Only the two you reach for daily are buttons. 重启 and 强制结束 sit
+            behind the ⋯: a kill button the same size as 启动, one row from the
+            pointer that just started the server, is how a world gets lost to a
+            misclick. */}
         <div className="instance__actions">
           <button
             className="btn btn--primary"
@@ -97,20 +102,22 @@ export function InstanceView({
           >
             停止
           </button>
-          <button
-            className="btn"
-            onClick={() => power('restart')}
-            disabled={busy}
+          <Menu
+            className="btn btn--icon"
+            title="更多操作"
+            ariaLabel="更多操作"
+            items={[
+              { label: '重启', onSelect: () => void power('restart'), disabled: busy },
+              {
+                label: '强制结束',
+                onSelect: () => void power('kill'),
+                disabled: busy || !live,
+                danger: true,
+              },
+            ]}
           >
-            重启
-          </button>
-          <button
-            className="btn btn--danger"
-            onClick={() => power('kill')}
-            disabled={busy || !live}
-          >
-            强制结束
-          </button>
+            ⋯
+          </Menu>
         </div>
       </header>
 

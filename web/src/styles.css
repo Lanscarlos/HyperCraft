@@ -536,6 +536,63 @@ a:hover {
   letter-spacing: 0;
 }
 
+/* Search and a running-only switch over the instance list. */
+.sidebar__filter {
+  display: flex;
+  gap: 6px;
+  padding: 0 2px 2px;
+}
+
+.sidebar__search {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 9px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.sidebar__search::placeholder {
+  color: var(--text-faint);
+}
+
+.sidebar__search:focus-visible {
+  border-color: var(--border-accent);
+  box-shadow: var(--ring);
+  outline: none;
+}
+
+.sidebar__only {
+  flex: none;
+  padding: 5px 9px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.sidebar__only:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.sidebar__only--on {
+  background: var(--accent-soft);
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
 .sidebar__list {
   display: flex;
   flex-direction: column;
@@ -615,6 +672,7 @@ a:hover {
 
 .app[data-rail='on'] .sidebar__title,
 .app[data-rail='on'] .sidebar__section,
+.app[data-rail='on'] .sidebar__filter,
 .app[data-rail='on'] .sidebar__state,
 .app[data-rail='on'] .sidebar__empty,
 .app[data-rail='on'] .sidebar__name {
@@ -771,11 +829,66 @@ a:hover {
   font-weight: 600;
 }
 
-/* --------------------------------------------------------- account menu */
+/* ------------------------------------------------------------------ menu
 
-.usermenu {
+   A button and the actions behind it: the account controls on the top bar,
+   the power actions you should not be able to hit by accident on an instance
+   header. One sheet, wherever it is opened from. */
+
+.menu {
   position: relative;
+  display: inline-flex;
 }
+
+.menu__sheet {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  animation: rise 120ms var(--ease) both;
+}
+
+.menu__item {
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.menu__item:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.menu__item:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+/* Destructive actions keep their colour in the sheet: the whole point of
+   moving 强制结束 in here was that it should never look like 停止. */
+.menu__item--danger {
+  color: var(--danger-ink);
+}
+
+.menu__item--danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+
+/* --------------------------------------------------------- account menu */
 
 .usermenu__button {
   display: flex;
@@ -818,38 +931,6 @@ a:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.usermenu__sheet {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  min-width: 150px;
-  padding: 4px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
-  animation: rise 120ms var(--ease) both;
-}
-
-.usermenu__sheet button {
-  padding: 8px 10px;
-  background: none;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 13px;
-  text-align: left;
-}
-
-.usermenu__sheet button:hover {
-  background: var(--surface-2);
 }
 
 /* ------------------------------------------------------------------ scrim
@@ -1072,6 +1153,14 @@ a:hover {
 
 .btn--danger:focus-visible {
   box-shadow: var(--ring-danger);
+}
+
+/* A button whose whole label is one glyph — the ⋯ that opens a menu. Square
+   rather than pill-shaped so it does not read as a third action. */
+.btn--icon {
+  padding: 7px 11px;
+  font-size: 15px;
+  line-height: 1;
 }
 
 .link {
