@@ -19,6 +19,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/mcprops"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
+	"github.com/lanscarlos/hypercraft/internal/plugin"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
 )
@@ -39,6 +40,8 @@ type testEnv struct {
 	fill *fakeFill
 	// adoptium stands in for the Java download API; see handlers_java_test.go.
 	adoptium *fakeAdoptium
+	// github stands in for the GitHub releases API; see handlers_plugins_test.go.
+	github *fakeGitHub
 }
 
 // newTestEnv builds a panel backed by a temporary data directory. Tests that
@@ -66,6 +69,8 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 	mgr := instance.NewManager(st, paths.ServersRoot(), logger)
 	fill := newFakeFill(t)
 	adoptium := newFakeAdoptium(t)
+	gh := newFakeGitHub(t)
+	pluginLibrary := plugin.NewLibrary(paths.PluginsRoot())
 
 	options := Options{
 		Manager:  mgr,
@@ -83,9 +88,15 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 			javaruntime.NewStore(paths.JavaRoot()),
 			logger,
 		),
-		Panel:   panel,
-		Version: "test",
-		Logger:  logger,
+		Plugins: plugin.NewDownloader(
+			plugin.NewClient(gh.URL(), "test"),
+			pluginLibrary,
+			logger,
+		),
+		InstancePlugins: plugin.NewInstances(pluginLibrary, paths.InstancePluginsFile()),
+		Panel:           panel,
+		Version:         "test",
+		Logger:          logger,
 	}
 	for _, opt := range opts {
 		opt(&options)
@@ -100,7 +111,7 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 	}
 	return &testEnv{
 		t: t, server: srv, client: &http.Client{Jar: jar},
-		mgr: mgr, store: st, paths: paths, fill: fill, adoptium: adoptium,
+		mgr: mgr, store: st, paths: paths, fill: fill, adoptium: adoptium, github: gh,
 	}
 }
 

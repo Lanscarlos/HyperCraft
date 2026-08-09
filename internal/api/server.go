@@ -19,6 +19,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
+	"github.com/lanscarlos/hypercraft/internal/plugin"
 	"github.com/lanscarlos/hypercraft/internal/selfupdate"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
@@ -62,6 +63,12 @@ type Server struct {
 	// java manages the Java runtimes servers are launched with. Optional, on
 	// the same terms as jars.
 	java *javaruntime.Installer
+	// plugins fetches plugin releases into the panel-wide plugin library, and
+	// instancePlugins hands copies out to servers. Optional as a pair: both
+	// nil turns plugin management off, and neither is useful without the
+	// other.
+	plugins         *plugin.Downloader
+	instancePlugins *plugin.Instances
 	// updater installs new panel releases. Optional in the same way: nil turns
 	// in-panel updates off.
 	updater *selfupdate.Service
@@ -97,6 +104,9 @@ type Options struct {
 	Panel    config.Panel
 	Version  string
 	Logger   *slog.Logger
+
+	Plugins         *plugin.Downloader
+	InstancePlugins *plugin.Instances
 }
 
 func NewServer(opts Options) *Server {
@@ -110,10 +120,13 @@ func NewServer(opts Options) *Server {
 		paths:    opts.Paths,
 		jars:     opts.Jars,
 		java:     opts.Java,
+		plugins:  opts.Plugins,
 		updater:  opts.Updater,
 		terminal: opts.Terminal,
 		panel:    opts.Panel,
 		version:  opts.Version,
+
+		instancePlugins: opts.InstancePlugins,
 		upgrader: websocket.Upgrader{
 			HandshakeTimeout: 10 * time.Second,
 			ReadBufferSize:   4096,
@@ -199,6 +212,28 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("POST /api/cores/cancel", s.handleCancelCoreDownload)
 	protected.HandleFunc("DELETE /api/cores/{id}", s.handleDeleteCore)
 	protected.HandleFunc("POST /api/instances/{id}/core", s.handleApplyCore)
+
+	// Plugins. Panel-wide on purpose, and more strictly so than cores are: a
+	// plugin is added, versioned and updated here and nowhere else, and an
+	// instance may only take a copy, swap which version it holds, or switch
+	// one off. Letting every server manage its own downloads is how a panel
+	// ends up with six subtly different copies of the same plugin and nobody
+	// able to say which is which.
+	protected.HandleFunc("GET /api/plugins", s.handlePluginLibrary)
+	protected.HandleFunc("POST /api/plugins", s.handleAddPlugin)
+	protected.HandleFunc("POST /api/plugins/check", s.handleCheckPlugins)
+	protected.HandleFunc("POST /api/plugins/cancel", s.handleCancelPluginDownload)
+	protected.HandleFunc("PUT /api/plugins/{id}", s.handleUpdatePlugin)
+	protected.HandleFunc("DELETE /api/plugins/{id}", s.handleDeletePlugin)
+	protected.HandleFunc("GET /api/plugins/{id}/releases", s.handlePluginReleases)
+	protected.HandleFunc("POST /api/plugins/{id}/check", s.handleCheckPlugin)
+	protected.HandleFunc("POST /api/plugins/{id}/download", s.handleDownloadPlugin)
+	protected.HandleFunc("DELETE /api/plugins/{id}/versions", s.handleDeletePluginVersion)
+
+	protected.HandleFunc("GET /api/instances/{id}/plugins", s.handleListInstancePlugins)
+	protected.HandleFunc("POST /api/instances/{id}/plugins", s.handleInstallInstancePlugin)
+	protected.HandleFunc("PUT /api/instances/{id}/plugins", s.handleToggleInstancePlugin)
+	protected.HandleFunc("DELETE /api/instances/{id}/plugins", s.handleUninstallInstancePlugin)
 
 	// Java runtimes. Panel-wide rather than per-instance: one download serves
 	// every server that needs that version.

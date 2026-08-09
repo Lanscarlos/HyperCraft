@@ -117,9 +117,18 @@ func (s *Server) handleDeleteInstance(w http.ResponseWriter, r *http.Request) {
 	// happens when the caller opts in explicitly.
 	deleteFiles := r.URL.Query().Get("deleteFiles") == "true"
 
-	if err := s.mgr.Delete(r.PathValue("id"), deleteFiles); err != nil {
+	id := r.PathValue("id")
+	if err := s.mgr.Delete(id, deleteFiles); err != nil {
 		s.writeDomainError(w, err)
 		return
+	}
+	// The plugin records describe an instance that no longer exists. Dropping
+	// them after the delete succeeded — never before — means a refused delete
+	// leaves the instance exactly as it was, plugins included.
+	if s.instancePlugins != nil {
+		if err := s.instancePlugins.Forget(id); err != nil {
+			s.log.Warn("could not drop the instance's plugin records", "instance", id, "err", err)
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

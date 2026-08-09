@@ -281,6 +281,114 @@ export interface CoreLibrary {
   job: CoreDownloadJob | null
 }
 
+// ------------------------------------------------------------------ plugins
+
+/** Where a plugin's releases come from. GitHub is the only kind so far. */
+export interface PluginSource {
+  kind: 'github'
+  repo: string
+  /** Glob picking the jar when a release publishes several. */
+  assetPattern?: string
+  /** Include GitHub prereleases in the version list. */
+  prerelease?: boolean
+}
+
+/** One release upstream offers, whether or not it has been downloaded. */
+export interface PluginRelease {
+  tag: string
+  name: string
+  version: string
+  notes: string
+  prerelease: boolean
+  publishedAt: string
+  asset: { name: string; size: number; url: string }
+  assets: { name: string; size: number; url: string }[]
+}
+
+/** One release the panel has downloaded into the library. */
+export interface PluginVersion {
+  tag: string
+  version: string
+  fileName: string
+  size: number
+  sha256: string
+  prerelease: boolean
+  notes?: string
+  publishedAt: string
+  addedAt: string
+}
+
+export interface LibraryPlugin {
+  id: string
+  name: string
+  note?: string
+  source: PluginSource
+  /** Directory inside the instance a copy lands in — "plugins", or "mods". */
+  targetDir: string
+  addedAt: string
+  versions: PluginVersion[]
+  /** What the last update check found upstream; cached, see checkedAt. */
+  latest?: PluginRelease
+  checkedAt?: string
+  checkError?: string
+  /** Instances that have this plugin installed. */
+  usedBy: string[]
+}
+
+export type PluginDownloadState = 'downloading' | 'done' | 'failed' | 'cancelled'
+
+export interface PluginDownloadJob {
+  pluginId: string
+  pluginName: string
+  tag: string
+  version: string
+  fileName: string
+  total: number
+  downloaded: number
+  state: PluginDownloadState
+  error?: string
+  startedAt: string
+  finishedAt?: string
+}
+
+export interface PluginLibrary {
+  root: string
+  plugins: LibraryPlugin[]
+  job: PluginDownloadJob | null
+}
+
+/** One row of an instance's plugin list: the panel's record joined with disk. */
+export interface InstancePlugin {
+  /** Addresses this row in the toggle and remove calls. */
+  key: string
+  pluginId?: string
+  name: string
+  fileName: string
+  dir: string
+  enabled: boolean
+  /** False for a jar the panel found rather than installed. */
+  managed: boolean
+  /** True for a plugin the panel installed whose file has since gone. */
+  missing: boolean
+  size: number
+  modified?: string
+  tag?: string
+  version?: string
+  installedAt?: string
+}
+
+export interface InstancePluginList {
+  entries: InstancePlugin[]
+  library: LibraryPlugin[]
+  root: string
+}
+
+/** True when upstream's newest release is not one the library holds. */
+export function hasPluginUpdate(item: LibraryPlugin): boolean {
+  if (!item.latest) return false
+  return !item.versions.some((version) => version.tag === item.latest?.tag)
+}
+
 // ------------------------------------------------------- host directories
 
 export interface HostEntry {

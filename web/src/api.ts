@@ -14,7 +14,12 @@ import type {
   InstanceInput,
   FileListing,
   InstanceMetrics,
+  InstancePluginList,
   InstanceStatus,
+  LibraryPlugin,
+  PluginDownloadJob,
+  PluginLibrary,
+  PluginRelease,
   PropertiesResponse,
   PropertyEntry,
   SystemInfo,
@@ -157,6 +162,69 @@ export const api = {
         overwrite: input.overwrite ?? false,
       },
     ),
+
+  pluginLibrary: () => request<PluginLibrary>('GET', '/api/plugins'),
+  addPlugin: (input: {
+    name: string
+    repo: string
+    assetPattern?: string
+    prerelease?: boolean
+    targetDir?: string
+    note?: string
+  }) =>
+    request<LibraryPlugin>('POST', '/api/plugins', {
+      name: input.name,
+      repo: input.repo,
+      assetPattern: input.assetPattern ?? '',
+      prerelease: input.prerelease ?? false,
+      targetDir: input.targetDir ?? '',
+      note: input.note ?? '',
+    }),
+  editPlugin: (
+    id: string,
+    input: {
+      name: string
+      repo: string
+      assetPattern?: string
+      prerelease?: boolean
+      targetDir?: string
+      note?: string
+    },
+  ) =>
+    request<LibraryPlugin>('PUT', `/api/plugins/${encodeURIComponent(id)}`, {
+      name: input.name,
+      repo: input.repo,
+      assetPattern: input.assetPattern ?? '',
+      prerelease: input.prerelease ?? false,
+      targetDir: input.targetDir ?? '',
+      note: input.note ?? '',
+    }),
+  deletePlugin: (id: string) => request<void>('DELETE', `/api/plugins/${encodeURIComponent(id)}`),
+  /** Asks upstream what versions exist. Always a network round trip. */
+  pluginReleases: (id: string) =>
+    request<PluginRelease[]>('GET', `/api/plugins/${encodeURIComponent(id)}/releases`),
+  checkPlugin: (id: string) =>
+    request<LibraryPlugin>('POST', `/api/plugins/${encodeURIComponent(id)}/check`),
+  checkPlugins: () => request<PluginLibrary>('POST', '/api/plugins/check'),
+  /** Downloads one release into the library. Empty tag means the newest. */
+  downloadPlugin: (id: string, tag: string) =>
+    request<PluginDownloadJob>('POST', `/api/plugins/${encodeURIComponent(id)}/download`, { tag }),
+  cancelPluginDownload: () => request<void>('POST', '/api/plugins/cancel'),
+  deletePluginVersion: (id: string, tag: string) =>
+    request<void>(
+      'DELETE',
+      `/api/plugins/${encodeURIComponent(id)}/versions?tag=${encodeURIComponent(tag)}`,
+    ),
+
+  instancePlugins: (id: string) =>
+    request<InstancePluginList>('GET', `/api/instances/${id}/plugins`),
+  /** Installs a library version, or swaps the version already installed. */
+  installInstancePlugin: (id: string, pluginId: string, tag: string) =>
+    request<void>('POST', `/api/instances/${id}/plugins`, { pluginId, tag }),
+  setInstancePluginEnabled: (id: string, key: string, enabled: boolean) =>
+    request<void>('PUT', `/api/instances/${id}/plugins`, { key, enabled }),
+  uninstallInstancePlugin: (id: string, key: string) =>
+    request<void>('DELETE', `/api/instances/${id}/plugins?key=${encodeURIComponent(key)}`),
 
   /** Lists a directory on the host. Empty path means the panel's servers root. */
   browseHost: (dir: string) =>

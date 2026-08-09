@@ -154,6 +154,16 @@ func (p Paths) JavaRoot() string { return filepath.Join(p.Root, "java") }
 // offline; a jar dropped in here by hand is listed too.
 func (p Paths) CoresRoot() string { return filepath.Join(p.Root, "cores") }
 
+// PluginsRoot is the panel-wide plugin library. Unlike the core library, which
+// holds one file per jar, a plugin keeps every version the panel downloaded —
+// pinning and rolling back a plugin is routine, so the history is the point.
+func (p Paths) PluginsRoot() string { return filepath.Join(p.Root, "plugins") }
+
+// InstancePluginsFile records which library plugins each instance was given,
+// and at which version. It sits beside instances.json rather than inside the
+// plugin library, so a plugin id can never collide with it.
+func (p Paths) InstancePluginsFile() string { return filepath.Join(p.Root, "instance-plugins.json") }
+
 // ResumeFile records which servers were running when the panel restarted
 // itself to install an update, so they can be brought back afterwards. It is
 // written just before the restart and consumed on the next boot.

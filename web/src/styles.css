@@ -3193,3 +3193,77 @@ input.input-slim:disabled {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ----------------------------------------------------------- plugin versions
+
+   A plugin is the one asset the panel keeps a history of, so its card carries
+   a list the core and Java cards do not need: every version on disk, and what
+   upstream has published. Rows rather than cards — the difference between two
+   entries is a version string and a date, and a grid of tiles would spend a
+   lot of space saying the same word eight times. */
+
+.plugin-versions {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.plugin-version {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.plugin-version:last-child {
+  border-bottom: none;
+}
+
+.plugin-version:hover {
+  background: var(--surface-2);
+}
+
+.plugin-version__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-version__meta {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* The version picker sits inline in a row of buttons, so it has to line up
+   with them rather than with the full-width inputs in a form. */
+.device-row__main select.input-slim {
+  max-width: 190px;
+}
+
+/* A checkbox whose hint is a sentence rather than a few words. Side by side,
+   the hint squeezes the label until it wraps mid-word; stacking them under the
+   box keeps both readable in a 470px modal. */
+.checkbox--stacked {
+  flex-wrap: wrap;
+}
+
+.checkbox--stacked > span {
+  flex: 1 1 auto;
+}
+
+.checkbox--stacked > small {
+  flex: 1 0 100%;
+  padding-left: 24px;
+}

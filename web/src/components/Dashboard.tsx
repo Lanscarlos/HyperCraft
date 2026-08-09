@@ -5,6 +5,7 @@ import type { InstanceStatus, User } from '../types'
 import { STATE_LABELS, isLive } from '../types'
 import type { CoreController } from '../useCores'
 import type { JavaController } from '../useJava'
+import type { PluginController } from '../usePlugins'
 import { updateLabel } from '../useUpdate'
 import type { UpdateController } from '../useUpdate'
 import { HostOverview } from './HostOverview'
@@ -16,11 +17,13 @@ interface Props {
   onCreate: () => void
   onOpenJava: () => void
   onOpenCores: () => void
+  onOpenPlugins: () => void
   onOpenUpdate: () => void
   onChanged: (instance: InstanceStatus) => void
   update: UpdateController
   java: JavaController
   cores: CoreController
+  plugins: PluginController
 }
 
 /**
@@ -39,11 +42,13 @@ export function Dashboard({
   onCreate,
   onOpenJava,
   onOpenCores,
+  onOpenPlugins,
   onOpenUpdate,
   onChanged,
   update,
   java,
   cores,
+  plugins,
 }: Props) {
   const notice = updateLabel(update.status)
   const running = instances.filter((item) => isLive(item.state))
@@ -99,6 +104,20 @@ export function Dashboard({
                 : '还没下载过核心'
           }
           onClick={onOpenCores}
+        />
+        <Stat
+          label="插件"
+          value={plugins.downloading ? '下载中' : String(plugins.plugins.length)}
+          detail={
+            plugins.downloading
+              ? `正在下载 ${plugins.job?.pluginName ?? ''}`
+              : plugins.updates > 0
+                ? `${plugins.updates} 个有新版本`
+                : plugins.plugins.length > 0
+                  ? '都是最新的'
+                  : '还没添加插件'
+          }
+          onClick={onOpenPlugins}
         />
         <Stat
           label="面板版本"
