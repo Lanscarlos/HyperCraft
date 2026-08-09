@@ -37,12 +37,12 @@
 ```bash
 sudo mkdir -p /opt/hypercraft
 cd /opt/hypercraft
-sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v1.2.0/hypercraft-1.2.0-linux-amd64.tar.gz
-sudo tar -xzf hypercraft-1.2.0-linux-amd64.tar.gz --strip-components=1
+sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v1.3.0/hypercraft-1.3.0-linux-amd64.tar.gz
+sudo tar -xzf hypercraft-1.3.0-linux-amd64.tar.gz --strip-components=1
 ```
 
 包里是二进制、`hypercraft.service` 和几个文档文件。ARM 机器（`uname -m` 显示 `aarch64`）把 URL 里的
-`amd64` 换成 `arm64`。上面这个 URL 固定指向 v1.2.0，更新的版本见
+`amd64` 换成 `arm64`。上面这个 URL 固定指向 v1.3.0，更新的版本见
 [Releases 页面](https://github.com/Lanscarlos/HyperCraft/releases/latest) —— 不过装好之后面板能自己升级，
 这个链接一般只用一次。
 
@@ -53,7 +53,7 @@ sudo tar -xzf hypercraft-1.2.0-linux-amd64.tar.gz --strip-components=1
 校验文件和压缩包都从同一个镜像拿的话，校验就没多大意义了）：
 
 ```bash
-sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v1.2.0/SHA256SUMS.txt
+sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v1.3.0/SHA256SUMS.txt
 sha256sum -c SHA256SUMS.txt --ignore-missing
 ```
 
@@ -353,7 +353,7 @@ go run ./cmd/hypercraft -data ./data     # 后端 :19190
 npm --prefix web run dev                 # 前端 :5173，API 自动代理到 19190
 
 make cross          # 交叉编译 linux/amd64, linux/arm64, windows, darwin/arm64
-make package VERSION=v1.2.0   # 交叉编译 + 打包出 release/ 里的压缩包和 SHA256SUMS.txt
+make package VERSION=v1.3.0   # 交叉编译 + 打包出 release/ 里的压缩包和 SHA256SUMS.txt
 ```
 
 ### 发布

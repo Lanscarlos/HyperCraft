@@ -4,7 +4,7 @@
 
 <!-- 把下面的「未发布」改成 ## [x.y.z] - 日期 并合进 main，就会自动发布这一版。 -->
 
-## 未发布
+## [1.3.0] - 2026-08-09
 
 ### 新增
 
@@ -264,6 +264,7 @@
 
 构建需要 Go 1.25+ 与 Node 20+；运行只需要目标平台的二进制文件本身。
 
+[1.3.0]: https://github.com/Lanscarlos/HyperCraft/releases/tag/v1.3.0
 [1.2.0]: https://github.com/Lanscarlos/HyperCraft/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Lanscarlos/HyperCraft/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Lanscarlos/HyperCraft/releases/tag/v1.0.0
