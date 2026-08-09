@@ -145,7 +145,9 @@ func TestInstallJavaThenDelete(t *testing.T) {
 	env := newTestEnv(t)
 	env.login()
 
-	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{Major: 21, ImageType: "jre"})
+	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{
+		Major: 21, ImageType: "jre", Source: javaruntime.SourceOfficial,
+	})
 	var started javaruntime.Job
 	decodeBody(t, resp, &started)
 	if resp.StatusCode != http.StatusAccepted {
@@ -176,7 +178,9 @@ func TestInstallJavaThenDelete(t *testing.T) {
 	}
 
 	// Installing the same build again has nothing to do.
-	again := env.do(http.MethodPost, "/api/java/install", installJavaRequest{Major: 21, ImageType: "jre"})
+	again := env.do(http.MethodPost, "/api/java/install", installJavaRequest{
+		Major: 21, ImageType: "jre", Source: javaruntime.SourceOfficial,
+	})
 	again.Body.Close()
 	if again.StatusCode != http.StatusConflict {
 		t.Errorf("expected 409 for an already-installed runtime, got %d", again.StatusCode)
@@ -205,7 +209,9 @@ func TestRuntimeReportsTheInstancesUsingIt(t *testing.T) {
 	env := newTestEnv(t)
 	env.login()
 
-	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{Major: 21, ImageType: "jre"})
+	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{
+		Major: 21, ImageType: "jre", Source: javaruntime.SourceOfficial,
+	})
 	resp.Body.Close()
 	if job := env.awaitInstall(); job.State != javaruntime.JobDone {
 		t.Fatalf("install failed: %s / %s", job.State, job.Error)
@@ -238,7 +244,66 @@ func TestInstallUnknownMajorIsRejected(t *testing.T) {
 	env := newTestEnv(t)
 	env.login()
 
-	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{Major: 99, ImageType: "jre"})
+	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{
+		Major: 99, ImageType: "jre", Source: javaruntime.SourceOfficial,
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+// The download source is remembered from one install to the next: the reason
+// to be off the official link — this machine's route to GitHub — does not
+// change between them.
+func TestInstallRemembersTheDownloadSource(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	var fresh javaOverview
+	decodeBody(t, env.do(http.MethodGet, "/api/java", nil), &fresh)
+	if fresh.Source != javaruntime.SourceAuto {
+		t.Errorf("a panel that has never installed should default to %q, got %q",
+			javaruntime.SourceAuto, fresh.Source)
+	}
+	if len(fresh.Sources) < 2 || fresh.Sources[0].ID != javaruntime.SourceAuto {
+		t.Errorf("the page needs the source list, got %+v", fresh.Sources)
+	}
+
+	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{
+		Major: 21, ImageType: "jre", Source: javaruntime.SourceOfficial,
+	})
+	resp.Body.Close()
+	if job := env.awaitInstall(); job.State != javaruntime.JobDone {
+		t.Fatalf("install failed: %s / %s", job.State, job.Error)
+	}
+
+	var overview javaOverview
+	decodeBody(t, env.do(http.MethodGet, "/api/java", nil), &overview)
+	if overview.Source != javaruntime.SourceOfficial {
+		t.Errorf("source = %q, want the one that was just used", overview.Source)
+	}
+	if overview.Job == nil || overview.Job.Source != javaruntime.SourceOfficial {
+		t.Errorf("the job should report the source that served it: %+v", overview.Job)
+	}
+
+	// And it outlives the process, not just this server's memory.
+	panel, err := env.store.LoadPanel()
+	if err != nil {
+		t.Fatalf("LoadPanel: %v", err)
+	}
+	if panel.JavaSource != javaruntime.SourceOfficial {
+		t.Errorf("panel.json holds %q", panel.JavaSource)
+	}
+}
+
+func TestInstallRejectsAnUnknownDownloadSource(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{
+		Major: 21, ImageType: "jre", Source: "mirrors.evil.example",
+	})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.StatusCode)

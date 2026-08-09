@@ -40,8 +40,12 @@ const (
 
 // Job is a snapshot of the most recent install.
 type Job struct {
-	Major      int        `json:"major"`
-	ImageType  string     `json:"imageType"`
+	Major     int    `json:"major"`
+	ImageType string `json:"imageType"`
+	// Source is the download source in use. It starts out as the one that was
+	// asked for and becomes the one that actually answered, so a job that fell
+	// back off an out-of-date mirror says so on the page.
+	Source     string     `json:"source,omitempty"`
 	Version    string     `json:"version"`
 	FileName   string     `json:"fileName"`
 	Total      int64      `json:"total"`
@@ -80,8 +84,16 @@ func (i *Installer) Client() *Client { return i.client }
 func (i *Installer) Store() *Store { return i.store }
 
 // Start resolves a build and begins installing it in the background.
-func (i *Installer) Start(major int, imageType string) (Job, error) {
+//
+// source names where the archive comes from; empty means SourceAuto. It has no
+// bearing on which build gets installed — that comes from the Adoptium API
+// either way — only on where the bytes are pulled from.
+func (i *Installer) Start(major int, imageType, source string) (Job, error) {
 	platform, err := CurrentPlatform()
+	if err != nil {
+		return Job{}, err
+	}
+	source, err = ResolveSource(source)
 	if err != nil {
 		return Job{}, err
 	}
@@ -94,7 +106,13 @@ func (i *Installer) Start(major int, imageType string) (Job, error) {
 		cancel()
 		return Job{}, ErrBusy
 	}
-	i.job = &Job{Major: major, ImageType: imageType, State: JobDownloading, StartedAt: time.Now()}
+	i.job = &Job{
+		Major:     major,
+		ImageType: imageType,
+		Source:    source,
+		State:     JobDownloading,
+		StartedAt: time.Now(),
+	}
 	i.cancel = cancel
 	i.done = make(chan struct{})
 	job, done := i.job, i.done
@@ -121,12 +139,12 @@ func (i *Installer) Start(major int, imageType string) (Job, error) {
 
 	i.log.Info("java install started",
 		"major", major, "image", imageType, "version", release.Version,
-		"file", release.FileName, "size", release.Size)
+		"file", release.FileName, "size", release.Size, "source", source)
 
 	go func() {
 		defer cancel()
 		defer close(done)
-		i.run(ctx, job, release)
+		i.run(ctx, job, release, source)
 	}()
 	return snapshot, nil
 }
@@ -148,7 +166,7 @@ func (i *Installer) checkNotInstalled(release Release) error {
 // run downloads the archive, checks it, and unpacks it into a staging
 // directory that is only renamed into place once a working java is in it —
 // so a half-unpacked runtime never shows up in the dropdown.
-func (i *Installer) run(ctx context.Context, job *Job, release Release) {
+func (i *Installer) run(ctx context.Context, job *Job, release Release, source string) {
 	id := installID(release)
 	staging := filepath.Join(i.store.Root(), ".installing-"+id)
 
@@ -157,7 +175,7 @@ func (i *Installer) run(ctx context.Context, job *Job, release Release) {
 	// into the new runtime, and flatten() would not recognise the layout.
 	err := os.RemoveAll(staging)
 	if err == nil {
-		err = i.fetchAndUnpack(ctx, job, staging, release)
+		err = i.fetchAndUnpack(ctx, job, staging, release, source)
 	}
 
 	switch {
@@ -177,8 +195,8 @@ func (i *Installer) run(ctx context.Context, job *Job, release Release) {
 
 // fetchAndUnpack downloads the archive and unpacks it, deleting the temporary
 // download either way.
-func (i *Installer) fetchAndUnpack(ctx context.Context, job *Job, staging string, release Release) error {
-	archive, err := i.download(ctx, job, release)
+func (i *Installer) fetchAndUnpack(ctx context.Context, job *Job, staging string, release Release, source string) error {
+	archive, err := i.download(ctx, job, release, source)
 	if err != nil {
 		return err
 	}
@@ -194,7 +212,10 @@ func (i *Installer) fetchAndUnpack(ctx context.Context, job *Job, staging string
 // download streams the archive to a temp file and verifies it. Nothing is
 // unpacked until the bytes match what Adoptium published: an archive is a lot
 // of files to have to clean up after deciding not to trust it.
-func (i *Installer) download(ctx context.Context, job *Job, release Release) (*os.File, error) {
+//
+// That check is also what makes the mirrors safe to offer — the checksum comes
+// from the Adoptium API, never from the source serving the file.
+func (i *Installer) download(ctx context.Context, job *Job, release Release, source string) (*os.File, error) {
 	if err := os.MkdirAll(i.store.Root(), 0o755); err != nil {
 		return nil, err
 	}
@@ -207,12 +228,20 @@ func (i *Installer) download(ctx context.Context, job *Job, release Release) (*o
 		_ = os.Remove(temp.Name())
 	}
 
-	body, err := i.client.Fetch(ctx, release)
+	body, served, err := i.client.Fetch(ctx, release, source)
 	if err != nil {
 		cleanup()
 		return nil, err
 	}
 	defer body.Close()
+
+	if served != source {
+		i.log.Info("java download fell back to another source",
+			"asked", source, "using", served, "file", release.FileName)
+	}
+	i.mu.Lock()
+	job.Source = served
+	i.mu.Unlock()
 
 	limit := release.Size
 	if limit <= 0 {
@@ -233,18 +262,23 @@ func (i *Installer) download(ctx context.Context, job *Job, release Release) (*o
 		cleanup()
 		return nil, err
 	}
+	// Every failure below names the source that served the bytes. With more
+	// than one to choose from, "which mirror handed me this" is the first
+	// thing an operator needs to know — a stale or half-synced copy shows up
+	// exactly here, and the fix is to install from somewhere else.
+	from := SourceName(served)
 	switch {
 	case written > limit:
 		cleanup()
-		return nil, fmt.Errorf("%w: download exceeds the declared %d bytes", ErrUpstream, limit)
+		return nil, fmt.Errorf("%w: %s: download exceeds the declared %d bytes", ErrUpstream, from, limit)
 	case release.Size > 0 && written != release.Size:
 		cleanup()
-		return nil, fmt.Errorf("%w: got %d bytes, expected %d", ErrUpstream, written, release.Size)
+		return nil, fmt.Errorf("%w: %s: got %d bytes, expected %d", ErrUpstream, from, written, release.Size)
 	}
 	if release.SHA256 != "" {
 		if sum := hex.EncodeToString(digest.Sum(nil)); sum != release.SHA256 {
 			cleanup()
-			return nil, fmt.Errorf("%w: got %s, expected %s", ErrChecksum, sum, release.SHA256)
+			return nil, fmt.Errorf("%w: %s: got %s, expected %s", ErrChecksum, from, sum, release.SHA256)
 		}
 	}
 	return temp, nil

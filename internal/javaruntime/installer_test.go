@@ -91,7 +91,7 @@ func TestInstallUnpacksAndRegistersRuntime(t *testing.T) {
 	fake := newFakeAdoptium(t, buildTarGz(t, jdkEntries()))
 	installer, root := newTestInstaller(t, fake)
 
-	job, err := installer.Start(21, ImageJRE)
+	job, err := installer.Start(21, ImageJRE, SourceOfficial)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestInstallDiscardsStaleStagingDirectory(t *testing.T) {
 		t.Fatalf("stage leftovers: %v", err)
 	}
 
-	if _, err := installer.Start(21, ImageJRE); err != nil {
+	if _, err := installer.Start(21, ImageJRE, SourceOfficial); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	if done := awaitInstall(t, installer); done.State != JobDone {
@@ -274,7 +274,7 @@ func TestInstallRejectsCorruptArchive(t *testing.T) {
 	fake.corrupt = true
 	installer, root := newTestInstaller(t, fake)
 
-	if _, err := installer.Start(21, ImageJRE); err != nil {
+	if _, err := installer.Start(21, ImageJRE, SourceOfficial); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	done := awaitInstall(t, installer)
@@ -300,10 +300,10 @@ func TestInstallRefusesDuplicateAndConcurrent(t *testing.T) {
 	fake.gate = make(chan struct{})
 	installer, _ := newTestInstaller(t, fake)
 
-	if _, err := installer.Start(21, ImageJRE); err != nil {
+	if _, err := installer.Start(21, ImageJRE, SourceOfficial); err != nil {
 		t.Fatalf("first Start: %v", err)
 	}
-	if _, err := installer.Start(17, ImageJRE); !errors.Is(err, ErrBusy) {
+	if _, err := installer.Start(17, ImageJRE, SourceOfficial); !errors.Is(err, ErrBusy) {
 		t.Fatalf("second Start: got %v, want ErrBusy", err)
 	}
 
@@ -313,7 +313,7 @@ func TestInstallRefusesDuplicateAndConcurrent(t *testing.T) {
 	}
 
 	// Same version again: already on disk, so there is nothing to do.
-	if _, err := installer.Start(21, ImageJRE); !errors.Is(err, ErrExists) {
+	if _, err := installer.Start(21, ImageJRE, SourceOfficial); !errors.Is(err, ErrExists) {
 		t.Fatalf("repeat install: got %v, want ErrExists", err)
 	}
 }
@@ -324,7 +324,7 @@ func TestCancelInstall(t *testing.T) {
 	defer close(fake.gate)
 
 	installer, root := newTestInstaller(t, fake)
-	if _, err := installer.Start(21, ImageJRE); err != nil {
+	if _, err := installer.Start(21, ImageJRE, SourceOfficial); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	if err := installer.Cancel(); err != nil {
@@ -347,7 +347,7 @@ func TestInstallUnknownMajor(t *testing.T) {
 	fake := newFakeAdoptium(t, buildTarGz(t, jdkEntries()))
 	installer, _ := newTestInstaller(t, fake)
 
-	if _, err := installer.Start(99, ImageJRE); !errors.Is(err, ErrUnknownRelease) {
+	if _, err := installer.Start(99, ImageJRE, SourceOfficial); !errors.Is(err, ErrUnknownRelease) {
 		t.Fatalf("got %v, want ErrUnknownRelease", err)
 	}
 	job, ok := installer.Status()

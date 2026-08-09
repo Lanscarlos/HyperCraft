@@ -48,6 +48,15 @@ type Panel struct {
 	// there is nothing to express beyond the two channels, and stable is both
 	// the default and the safe answer for anything unrecognised.
 	UpdateChannel string `json:"updateChannel,omitempty"`
+	// JavaSource is where Java runtime downloads are pulled from, by the id of
+	// one of javaruntime's sources. Empty means the automatic choice, which is
+	// both the default and what every config written before sources existed
+	// carries — so no pointer is needed to tell them apart.
+	//
+	// It is remembered from the last install rather than set on a settings
+	// page: "this machine's line to GitHub is bad" is true for every download,
+	// and re-picking the mirror each time would be the annoyance.
+	JavaSource string `json:"javaSource,omitempty"`
 	// Terminal configures the host shell terminal. Off unless the operator
 	// turns it on — see Terminal.
 	Terminal   Terminal        `json:"terminal"`

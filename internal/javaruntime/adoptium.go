@@ -25,6 +25,8 @@ var (
 	ErrUnsupported = errors.New("unsupported platform")
 	// ErrUnknownRelease is returned when no build matches the request.
 	ErrUnknownRelease = errors.New("no matching java build")
+	// ErrUnknownSource is returned for a download source we do not know.
+	ErrUnknownSource = errors.New("unknown download source")
 	// ErrUpstream wraps anything the Adoptium API did that we cannot act on.
 	ErrUpstream = errors.New("adoptium api")
 )
@@ -207,12 +209,34 @@ func (c *Client) LatestRelease(ctx context.Context, major int, imageType string,
 	}, nil
 }
 
-// Fetch opens the archive body. The caller closes it.
-func (c *Client) Fetch(ctx context.Context, release Release) (io.ReadCloser, error) {
-	if err := c.checkDownloadURL(release.URL); err != nil {
+// Fetch opens the archive body from the requested download source, falling
+// back through the rest as described in attempts. It returns the body — which
+// the caller closes — and the id of the source that answered.
+func (c *Client) Fetch(ctx context.Context, release Release, sourceID string) (io.ReadCloser, string, error) {
+	tries := attempts(sourceID, release)
+	if len(tries) == 0 {
+		return nil, "", fmt.Errorf("%w: unusable download URL %q", ErrUpstream, release.URL)
+	}
+
+	var lastErr error
+	for _, try := range tries {
+		if err := ctx.Err(); err != nil {
+			return nil, "", err
+		}
+		body, err := c.fetchFrom(ctx, try.url)
+		if err == nil {
+			return body, try.id, nil
+		}
+		lastErr = fmt.Errorf("%s: %w", SourceName(try.id), err)
+	}
+	return nil, "", lastErr
+}
+
+func (c *Client) fetchFrom(ctx context.Context, link string) (io.ReadCloser, error) {
+	if err := c.checkDownloadURL(link); err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, release.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, link, nil)
 	if err != nil {
 		return nil, err
 	}
