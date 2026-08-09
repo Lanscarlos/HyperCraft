@@ -16,6 +16,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/instance"
+	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
@@ -40,8 +41,17 @@ type Server struct {
 	metrics  *metrics.Collector
 	// jars fetches server cores from PaperMC. Optional: a nil downloader turns
 	// the feature off and leaves uploading a jar as the only way in.
-	jars    *serverjar.Downloader
+	jars *serverjar.Downloader
+	// java manages the Java runtimes servers are launched with. Optional, on
+	// the same terms as jars.
+	java    *javaruntime.Installer
 	version string
+
+	// The system java is found by forking one, so the answer is cached.
+	systemJavaMu    sync.Mutex
+	systemJavaCache javaruntime.SystemJava
+	systemJavaFound bool
+	systemJavaAt    time.Time
 
 	panelMu sync.RWMutex
 	panel   config.Panel
@@ -57,6 +67,7 @@ type Options struct {
 	Sessions *auth.SessionStore
 	Metrics  *metrics.Collector
 	Jars     *serverjar.Downloader
+	Java     *javaruntime.Installer
 	Panel    config.Panel
 	Version  string
 	Logger   *slog.Logger
@@ -70,6 +81,7 @@ func NewServer(opts Options) *Server {
 		sessions: opts.Sessions,
 		metrics:  opts.Metrics,
 		jars:     opts.Jars,
+		java:     opts.Java,
 		panel:    opts.Panel,
 		version:  opts.Version,
 		upgrader: websocket.Upgrader{
@@ -124,6 +136,14 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("GET /api/instances/{id}/jars/download", s.handleCoreDownloadStatus)
 	protected.HandleFunc("POST /api/instances/{id}/jars/download", s.handleStartCoreDownload)
 	protected.HandleFunc("POST /api/instances/{id}/jars/download/cancel", s.handleCancelCoreDownload)
+
+	// Java runtimes. Panel-wide rather than per-instance: one download serves
+	// every server that needs that version.
+	protected.HandleFunc("GET /api/java", s.handleJavaOverview)
+	protected.HandleFunc("GET /api/java/available", s.handleListJavaMajors)
+	protected.HandleFunc("POST /api/java/install", s.handleInstallJava)
+	protected.HandleFunc("POST /api/java/install/cancel", s.handleCancelJavaInstall)
+	protected.HandleFunc("DELETE /api/java/{id}", s.handleDeleteJava)
 
 	protected.HandleFunc("GET /api/instances/{id}/console", s.handleConsoleSocket)
 

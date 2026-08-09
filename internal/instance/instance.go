@@ -179,6 +179,7 @@ func (i *Instance) Start() error {
 
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = cfg.Directory
+	cmd.Env = launchEnv()
 	configureProcAttr(cmd)
 
 	stdin, err := cmd.StdinPipe()

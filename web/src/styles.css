@@ -1220,3 +1220,34 @@ a {
 .download-status .chart-note {
   margin: 0;
 }
+
+.java-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.java-row {
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.java-row__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.java-row__spacer {
+  flex: 1;
+}
+
+.java-row__meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}

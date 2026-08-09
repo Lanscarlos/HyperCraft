@@ -63,3 +63,7 @@ func (p Paths) InstancesFile() string { return filepath.Join(p.Root, "instances.
 
 // ServersRoot is the default parent directory for new instances.
 func (p Paths) ServersRoot() string { return filepath.Join(p.Root, "servers") }
+
+// JavaRoot is where downloaded Java runtimes are unpacked. Anything dropped in
+// here by hand is picked up too, so it doubles as "the panel's JDK shelf".
+func (p Paths) JavaRoot() string { return filepath.Join(p.Root, "java") }

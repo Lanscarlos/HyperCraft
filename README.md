@@ -59,7 +59,8 @@ make build     # 构建前端 + 编译单二进制 ./hypercraft
 2. 「启动设置」→「下载服务端核心」，选 Paper（或 Velocity）和版本，点下载。
    面板会直接把 jar 下到实例目录（默认在 `data/servers/<名字>/`），并设为启动 jar。
    想用别的核心就自己把 jar 丢进那个目录，一样能跑。
-3. 「启动设置」里调内存 —— jar 下拉会自动列出目录里的文件。
+3. 「启动设置」里选 Java 运行时、调内存 —— jar 下拉会自动列出目录里的文件。
+   机器上没有合适的 Java 就去总览页「Java 运行时」一键装一个（1.20.5 起要 Java 21）。
 4. 「服务器配置」里点「我已阅读并同意 EULA」，改改 MOTD、端口、难度。
 5. 回「控制台」点启动。
 
@@ -82,6 +83,8 @@ make build     # 构建前端 + 编译单二进制 ./hypercraft
 data/
 ├── panel.json        # 面板配置 + 密码哈希 (PBKDF2-SHA256, 0600)
 ├── instances.json    # 实例注册表
+├── java/             # 面板下载的 Java 运行时，一个版本一个目录
+│   └── temurin-21.0.12-8-jre/
 └── servers/
     ├── 生存服/        # 实例的工作目录：jar、存档、配置全在这
     └── 创造服/
@@ -121,6 +124,10 @@ location / {
 
 ## 已经做了的
 
+- **Java 运行时管理** —— 总览页可以一键下载 Eclipse Temurin 的 JRE / JDK（任意大版本，LTS 有标注），
+  装进面板数据目录，不碰系统里的 Java；每个实例在「启动设置」里各自选一个，所以 1.12 的老服和
+  1.21 的新服可以在同一台机器上共存。列表里会显示系统自带的 Java、每个运行时被哪些实例用着，
+  正在跑的不让删。手动解压进 `data/java/` 的 JDK 也会被自动认出来。
 - **一键下载服务端核心** —— 目前是 Paper 和 Velocity，数据来自 PaperMC 的 Fill API。选版本后
   面板自己去下（走服务器的网络，不经过你的浏览器），下载归守护进程管，关掉网页也会继续，
   重开页面能接上进度。落盘前校验 sha256 和体积，先写 `.part` 再改名 —— 失败、取消或断网都不会
@@ -143,6 +150,8 @@ location / {
 
 按我觉得的优先级排：玩家列表和白名单/OP 管理（现在只能手改 JSON）、自动备份、多用户和权限、定时任务（定时重启/广播）、更多可下载的核心（Fabric / Forge / 基岩版）、更长时间的监控历史（现在只在内存里存 1 小时，重启面板就没了）。
 
+Java 那块有个已知边界：Temurin 只有 glibc 构建，musl 系统（Alpine 之类）装了也跑不起来 —— 面板会检测到并直接说明，让你改用系统包管理器装。
+
 ## 开发
 
 ```bash
@@ -164,6 +173,7 @@ internal/instance/   核心：进程监管、状态机、控制台环形缓冲�
 internal/api/        HTTP + WebSocket
 internal/serverfiles/ 文件管理，全部经由 os.Root 限制在实例目录内
 internal/serverjar/   服务端核心下载：PaperMC Fill API 客户端 + 后台下载任务
+internal/javaruntime/ Java 运行时：Adoptium 客户端、安全解压、已装运行时注册表
 internal/metrics/    CPU/内存采样，按进程树汇总
 internal/mcprops/    server.properties 解析/写回（保留格式，Java 转义）
 internal/store/      JSON 持久化（临时文件 + rename 原子写）

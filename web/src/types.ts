@@ -133,6 +133,76 @@ export interface CoreBuild {
   size: number
 }
 
+// --------------------------------------------------------- java runtimes
+
+/** A Java installation the panel can launch servers with. */
+export interface JavaRuntime {
+  id: string
+  path: string
+  /** The launcher an instance's config points at; empty if the directory is broken. */
+  javaPath: string
+  vendor: string
+  version: string
+  major: number
+  imageType: string
+  size: number
+  installedAt: string
+  /** Instances whose launch config points into this runtime. */
+  usedBy: string[]
+  /** True while one of those instances is running on it. */
+  live: boolean
+}
+
+export interface SystemJava {
+  path: string
+  version: string
+  major: number
+  vendor: string
+  source: string
+}
+
+export interface JavaPlatform {
+  os: string
+  arch: string
+  /** Non-fatal note, e.g. musl systems where Temurin will not run. */
+  warning?: string
+}
+
+export type JavaInstallState =
+  | 'downloading'
+  | 'extracting'
+  | 'done'
+  | 'failed'
+  | 'cancelled'
+
+export interface JavaInstallJob {
+  major: number
+  imageType: string
+  version: string
+  fileName: string
+  total: number
+  downloaded: number
+  state: JavaInstallState
+  error?: string
+  runtimeId?: string
+  startedAt: string
+  finishedAt?: string
+}
+
+export interface JavaOverview {
+  root: string
+  platform: JavaPlatform
+  runtimes: JavaRuntime[]
+  system: SystemJava | null
+  job: JavaInstallJob | null
+}
+
+export interface JavaMajor {
+  major: number
+  lts: boolean
+  installed: boolean
+}
+
 export type CoreDownloadState = 'downloading' | 'done' | 'failed' | 'cancelled'
 
 export interface CoreDownloadJob {

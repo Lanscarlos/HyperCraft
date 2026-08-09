@@ -25,6 +25,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/instance"
+	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
@@ -131,11 +132,18 @@ func run() error {
 
 	// Core downloads run in the daemon, so they keep going with nobody watching
 	// — same reason the server processes live here rather than in a request.
-	downloads := serverjar.NewDownloader(
-		serverjar.NewClient("", "HyperCraft/"+version+" (+https://github.com/Lanscarlos/HyperCraft)"),
+	userAgent := "HyperCraft/" + version + " (+https://github.com/Lanscarlos/HyperCraft)"
+	downloads := serverjar.NewDownloader(serverjar.NewClient("", userAgent), logger)
+	defer downloads.Close()
+
+	// Java runtimes live beside the servers, in the data directory, so a panel
+	// that manages its own JDKs stays as movable as one that does not.
+	javaInstaller := javaruntime.NewInstaller(
+		javaruntime.NewClient("", userAgent),
+		javaruntime.NewStore(paths.JavaRoot()),
 		logger,
 	)
-	defer downloads.Close()
+	defer javaInstaller.Close()
 
 	server := api.NewServer(api.Options{
 		Manager:  manager,
@@ -143,6 +151,7 @@ func run() error {
 		Sessions: sessions,
 		Metrics:  collector,
 		Jars:     downloads,
+		Java:     javaInstaller,
 		Panel:    panel,
 		Version:  version,
 		Logger:   logger,
@@ -202,6 +211,7 @@ func run() error {
 	// Downloads go before the servers do: a half-written jar is worth nothing,
 	// and the servers deserve the whole shutdown budget.
 	downloads.Close()
+	javaInstaller.Close()
 
 	logger.Info("stopping managed servers", "grace", shutdownGrace)
 	manager.Shutdown(shutdownGrace)

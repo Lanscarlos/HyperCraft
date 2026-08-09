@@ -2,6 +2,29 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布]
+
+### 新增
+
+- **Java 运行时管理** —— 总览页多了「Java 运行时」：一键下载 Eclipse Temurin 的 JRE 或 JDK
+  （任意大版本，LTS 有标注），装进 `data/java/`，不动系统里的 Java。每个实例在「启动设置」
+  里单独选一个，所以 1.12 的老服（Java 8）和 1.21 的新服（Java 21）能在同一台机器上共存。
+  列表里会显示系统自带的 Java、每个运行时被哪些实例用着；正在跑的实例所用的运行时不让删。
+  自己解压进 `data/java/` 的 JDK 也会被认出来 —— 认的是每个 OpenJDK 都有的 `release` 文件。
+
+  下载同样归守护进程管，先校验 Adoptium 公布的 sha256 与体积再解压，解压全程经由 `os.Root`
+  限制在目标目录内（`..`、绝对路径、指向外部的符号链接一律拒绝），解压完确认有 `bin/java`
+  才把目录改名到位 —— 失败或取消都不会留下一个半截的运行时。
+
+### 修复
+
+- **中文实例目录在没有 UTF-8 locale 的机器上起不来**。JVM 用 `sun.jnu.encoding` 解码文件路径，
+  而 systemd 服务和精简容器镜像通常一个 locale 变量都没有，于是它退化成 ASCII，
+  `data/servers/生存服/` 里的 jar 就打不开，报错是
+  `Error: An unexpected error occurred while trying to open file paper.jar` —— 一个字都没提编码。
+  现在启动服务端进程时，如果环境里没有任何 locale（或只是 `C` / `POSIX`），会补一个
+  `LANG=C.UTF-8`；已经明确设了 locale 的（哪怕是 `zh_CN.GBK`，它照样编得了中文名）不动。
+
 ## [1.1.0] - 2026-08-09
 
 ### 新增

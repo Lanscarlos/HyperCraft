@@ -4,6 +4,7 @@ import { ApiError, api } from './api'
 import { ChangePasswordDialog } from './components/ChangePasswordDialog'
 import { HostOverview } from './components/HostOverview'
 import { InstanceView } from './components/InstanceView'
+import { JavaRuntimes } from './components/JavaRuntimes'
 import { Login } from './components/Login'
 import { NewInstanceDialog } from './components/NewInstanceDialog'
 import type { InstanceStatus, User } from './types'
@@ -205,6 +206,8 @@ function Welcome({
       </p>
 
       <HostOverview />
+
+      <JavaRuntimes />
 
       {instances.length === 0 ? (
         <div className="welcome__empty">
