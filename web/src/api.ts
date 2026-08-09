@@ -164,8 +164,8 @@ export const api = {
 
   javaOverview: () => request<JavaOverview>('GET', '/api/java'),
   javaMajors: () => request<JavaMajor[]>('GET', '/api/java/available'),
-  installJava: (major: number, imageType: 'jre' | 'jdk') =>
-    request<JavaInstallJob>('POST', '/api/java/install', { major, imageType }),
+  installJava: (major: number, imageType: 'jre' | 'jdk', source: string) =>
+    request<JavaInstallJob>('POST', '/api/java/install', { major, imageType, source }),
   cancelJavaInstall: () => request<void>('POST', '/api/java/install/cancel'),
   deleteJavaRuntime: (id: string) =>
     request<void>('DELETE', `/api/java/${encodeURIComponent(id)}`),

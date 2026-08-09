@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { api } from './api'
-import type { JavaInstallJob, JavaMajor, JavaOverview } from './types'
+import type { JavaInstallJob, JavaMajor, JavaOverview, JavaSource } from './types'
 
 /** Cadence while an install runs, for a progress bar that moves. */
 const ACTIVE_POLL_MS = 800
@@ -9,6 +9,8 @@ const ACTIVE_POLL_MS = 800
 export interface JavaController {
   overview: JavaOverview | null
   majors: JavaMajor[]
+  /** Where an install can download from, automatic first. */
+  sources: JavaSource[]
   job: JavaInstallJob | null
   /** True while an install is downloading or extracting. */
   installing: boolean
@@ -16,7 +18,7 @@ export interface JavaController {
   busy: boolean
   error: string | null
   clearError: () => void
-  install: (major: number, imageType: 'jre' | 'jdk') => Promise<void>
+  install: (major: number, imageType: 'jre' | 'jdk', source: string) => Promise<void>
   cancel: () => Promise<void>
   remove: (id: string) => Promise<void>
 }
@@ -88,9 +90,9 @@ export function useJava(enabled: boolean): JavaController {
   }, [])
 
   const install = useCallback(
-    (major: number, imageType: 'jre' | 'jdk') =>
+    (major: number, imageType: 'jre' | 'jdk', source: string) =>
       act(async () => {
-        const started = await api.installJava(major, imageType)
+        const started = await api.installJava(major, imageType, source)
         // Show the job immediately; the poll takes over from here.
         setOverview((prev) => (prev ? { ...prev, job: started } : prev))
       }, '安装失败'),
@@ -119,6 +121,7 @@ export function useJava(enabled: boolean): JavaController {
   return {
     overview,
     majors,
+    sources: overview?.sources ?? [],
     job,
     installing,
     busy,

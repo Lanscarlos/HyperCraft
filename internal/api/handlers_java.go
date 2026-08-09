@@ -28,13 +28,59 @@ type javaOverview struct {
 	Runtimes []runtimeView           `json:"runtimes"`
 	System   *javaruntime.SystemJava `json:"system"`
 	Job      *javaruntime.Job        `json:"job"`
+	// Sources are the download sources an install can pick from. They are a
+	// fixed list rather than an endpoint of their own: nothing has to be
+	// fetched to produce them, and the page needs them to name the source a
+	// running job is downloading from.
+	Sources []javaruntime.Source `json:"sources"`
+	// Source is the one the last install used, which is what the page
+	// preselects.
+	Source string `json:"source"`
+}
+
+// javaSource is the remembered download source, or the automatic one when
+// nothing has been chosen yet — or when panel.json names a source this build
+// does not have, which is how a mirror that gets retired stops being a
+// permanently failing install.
+func (s *Server) javaSource() string {
+	s.panelMu.RLock()
+	stored := s.panel.JavaSource
+	s.panelMu.RUnlock()
+
+	source, err := javaruntime.ResolveSource(stored)
+	if err != nil {
+		return javaruntime.SourceAuto
+	}
+	return source
+}
+
+// rememberJavaSource persists the source an install was started with, so the
+// next one defaults to it. A failure to save is logged and otherwise ignored:
+// the install is already running, and losing a preference is not worth
+// failing it over.
+func (s *Server) rememberJavaSource(source string) {
+	s.panelMu.Lock()
+	if s.panel.JavaSource == source {
+		s.panelMu.Unlock()
+		return
+	}
+	s.panel.JavaSource = source
+	panel := s.panel
+	s.panelMu.Unlock()
+
+	if err := s.store.SavePanel(panel); err != nil {
+		s.log.Error("could not persist the java download source", "err", err)
+		return
+	}
+	s.log.Info("java download source changed", "source", source)
 }
 
 func (s *Server) writeJavaError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, javaruntime.ErrNotFound), errors.Is(err, javaruntime.ErrInvalidID):
 		writeError(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, javaruntime.ErrUnknownRelease), errors.Is(err, javaruntime.ErrUnsupported):
+	case errors.Is(err, javaruntime.ErrUnknownRelease), errors.Is(err, javaruntime.ErrUnsupported),
+		errors.Is(err, javaruntime.ErrUnknownSource):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, javaruntime.ErrBusy), errors.Is(err, javaruntime.ErrExists):
 		writeError(w, http.StatusConflict, err.Error())
@@ -58,7 +104,11 @@ func (s *Server) javaAvailable(w http.ResponseWriter) bool {
 // what is installed, what the system has, and how any install is going.
 func (s *Server) handleJavaOverview(w http.ResponseWriter, r *http.Request) {
 	if s.java == nil {
-		writeJSON(w, http.StatusOK, javaOverview{Runtimes: []runtimeView{}})
+		writeJSON(w, http.StatusOK, javaOverview{
+			Runtimes: []runtimeView{},
+			Sources:  javaruntime.Sources(),
+			Source:   s.javaSource(),
+		})
 		return
 	}
 
@@ -71,6 +121,8 @@ func (s *Server) handleJavaOverview(w http.ResponseWriter, r *http.Request) {
 	overview := javaOverview{
 		Root:     s.java.Store().Root(),
 		Runtimes: make([]runtimeView, 0, len(runtimes)),
+		Sources:  javaruntime.Sources(),
+		Source:   s.javaSource(),
 	}
 	// A platform we cannot install for is still worth reporting: the page says
 	// so instead of offering a download that would fail.
@@ -185,6 +237,8 @@ func (s *Server) handleListJavaMajors(w http.ResponseWriter, r *http.Request) {
 type installJavaRequest struct {
 	Major     int    `json:"major"`
 	ImageType string `json:"imageType"`
+	// Source names where to download from; empty is the automatic choice.
+	Source string `json:"source"`
 }
 
 func (s *Server) handleInstallJava(w http.ResponseWriter, r *http.Request) {
@@ -200,12 +254,19 @@ func (s *Server) handleInstallJava(w http.ResponseWriter, r *http.Request) {
 	if req.ImageType == "" {
 		req.ImageType = javaruntime.ImageJRE
 	}
+	// A request that names no source gets the one the last install used, not
+	// the built-in default: an operator who moved off it did so for a reason.
+	source := req.Source
+	if source == "" {
+		source = s.javaSource()
+	}
 
-	job, err := s.java.Start(req.Major, req.ImageType)
+	job, err := s.java.Start(req.Major, req.ImageType, source)
 	if err != nil {
 		s.writeJavaError(w, err)
 		return
 	}
+	s.rememberJavaSource(source)
 	writeJSON(w, http.StatusAccepted, job)
 }
 

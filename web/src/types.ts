@@ -193,9 +193,20 @@ export type JavaInstallState =
   | 'failed'
   | 'cancelled'
 
+/** Somewhere the panel can download a Java archive from. */
+export interface JavaSource {
+  id: string
+  name: string
+  note: string
+  /** The one an install gets when it names no source. */
+  default?: boolean
+}
+
 export interface JavaInstallJob {
   major: number
   imageType: string
+  /** The source serving this download — the fallback's, if one kicked in. */
+  source?: string
   version: string
   fileName: string
   total: number
@@ -213,6 +224,10 @@ export interface JavaOverview {
   runtimes: JavaRuntime[]
   system: SystemJava | null
   job: JavaInstallJob | null
+  /** Where an install can download from, automatic first. */
+  sources: JavaSource[]
+  /** The source the last install used; what the picker starts on. */
+  source: string
 }
 
 export interface JavaMajor {

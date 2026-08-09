@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { formatBytes, formatDate } from '../format'
-import type { JavaInstallJob, JavaRuntime, SystemJava } from '../types'
+import type { JavaInstallJob, JavaRuntime, JavaSource, SystemJava } from '../types'
 import type { JavaController } from '../useJava'
 
 /** Which Java a Minecraft version needs, shown on the version being picked. */
@@ -38,10 +38,11 @@ export function JavaPage({
   java: JavaController
   onOpenCores: () => void
 }) {
-  const { overview, majors, job, installing, busy } = java
+  const { overview, majors, sources, job, installing, busy } = java
   const [major, setMajor] = useState<number | null>(null)
   const [imageType, setImageType] = useState<'jre' | 'jdk'>('jre')
   const [showAllMajors, setShowAllMajors] = useState(false)
+  const [source, setSource] = useState<string | null>(null)
 
   // Default to the newest LTS: it is what current Minecraft wants and what
   // upstream supports longest. Only until the operator picks something.
@@ -49,6 +50,15 @@ export function JavaPage({
     if (majors.length === 0) return
     setMajor((current) => current ?? (majors.find((m) => m.lts) ?? majors[0]).major)
   }, [majors])
+
+  // The source the last install used, until this page picks another. It comes
+  // from the panel rather than this browser: it describes the server's route
+  // out, so it should be the same on a phone as on the laptop that set it.
+  const remembered = overview?.source
+  useEffect(() => {
+    if (!remembered) return
+    setSource((current) => current ?? remembered)
+  }, [remembered])
 
   const remove = async (runtime: JavaRuntime) => {
     const warning =
@@ -141,7 +151,7 @@ export function JavaPage({
           <p className="chart-head__meta">下载走服务器自己的网络，关掉网页也会继续</p>
         </div>
 
-        {job && <InstallStatus job={job} />}
+        {job && <InstallStatus job={job} sources={sources} />}
         {java.error && <div className="alert alert--error">{java.error}</div>}
 
         {majors.length === 0 ? (
@@ -208,6 +218,35 @@ export function JavaPage({
               </div>
             </div>
 
+            {sources.length > 0 && (
+              <div className="field">
+                <span>下载源</span>
+                <div className="choice-grid choice-grid--wide">
+                  {sources.map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      className={`choice${entry.id === source ? ' choice--active' : ''}`}
+                      aria-pressed={entry.id === source}
+                      disabled={installing}
+                      onClick={() => setSource(entry.id)}
+                    >
+                      <span className="choice__label">
+                        {entry.name}
+                        {entry.default && <span className="badge">推荐</span>}
+                      </span>
+                      <span className="choice__note">{entry.note}</span>
+                    </button>
+                  ))}
+                </div>
+                <small>
+                  装的都是同一个 Eclipse Temurin 构建 —— 版本信息和校验和始终来自 Adoptium
+                  官方，镜像只负责传那几十兆的压缩包，对不上的一律不装。选的源没有这个版本
+                  （镜像同步有延迟）会自动换下一个，下次安装默认还用这次选的。
+                </small>
+              </div>
+            )}
+
             <div className="settings__actions">
               {installing ? (
                 <button
@@ -220,7 +259,7 @@ export function JavaPage({
               ) : (
                 <button
                   className="btn btn--primary"
-                  onClick={() => major != null && void java.install(major, imageType)}
+                  onClick={() => major != null && void java.install(major, imageType, source ?? '')}
                   disabled={busy || major == null}
                 >
                   {selected?.installed ? '重新安装' : '安装'} Java {major ?? ''}{' '}
@@ -348,7 +387,13 @@ function RuntimeCard({
   )
 }
 
-function InstallStatus({ job }: { job: JavaInstallJob }) {
+function InstallStatus({ job, sources }: { job: JavaInstallJob; sources: JavaSource[] }) {
+  // The job carries the source that is actually serving it, which is not
+  // always the one that was picked — a mirror that has not synced this build
+  // yet hands over to the next one. Saying so is the difference between "why
+  // is this slow" and "ah, it fell back to GitHub".
+  const from = sources.find((entry) => entry.id === job.source)?.name ?? job.source
+
   if (job.state === 'downloading') {
     const fraction = job.total > 0 ? job.downloaded / job.total : 0
     return (
@@ -363,6 +408,7 @@ function InstallStatus({ job }: { job: JavaInstallJob }) {
         </div>
         <p className="chart-note">
           正在下载 Java {job.major} {job.imageType.toUpperCase()}（{job.version}）
+          {from && ` · 下载源：${from}`}
         </p>
       </div>
     )
@@ -388,5 +434,10 @@ function InstallStatus({ job }: { job: JavaInstallJob }) {
     return <div className="alert alert--ok">已取消安装 Java {job.major}，没有留下任何文件。</div>
   }
 
-  return <div className="alert alert--error">安装失败：{job.error ?? '未知错误'}</div>
+  return (
+    <div className="alert alert--error">
+      安装失败：{job.error ?? '未知错误'}
+      {from && <> —— 可以换个下载源再试一次（这次用的是{from}）。</>}
+    </div>
+  )
 }
