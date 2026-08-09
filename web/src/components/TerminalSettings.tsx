@@ -68,7 +68,7 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
                 都可以在这台机器上以 {status.user || '面板用户'} 的身份执行任意命令 ——
                 所以面板密码要当成 SSH 密码来管，别把面板裸奔在公网上。
               </div>
-              <div className="settings__actions">
+              <div className="actions">
                 <button className="btn btn--primary" onClick={onOpenTerminal}>
                   打开终端
                 </button>
@@ -94,7 +94,7 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
                 <br />
                 2. 面板没有直接暴露在公网，或者前面有 HTTPS 反代 + 访问控制。
               </div>
-              <div className="settings__actions">
+              <div className="actions">
                 <button className="btn btn--primary" disabled={saving} onClick={() => void enable()}>
                   {saving ? '保存中…' : '我明白，开启终端'}
                 </button>
@@ -108,7 +108,7 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
               <p className="update__note">
                 终端默认是关闭的，升级面板也不会把它打开。
               </p>
-              <div className="settings__actions">
+              <div className="actions">
                 <button className="btn btn--primary" onClick={() => setConfirming(true)}>
                   开启终端
                 </button>

@@ -1826,13 +1826,15 @@ a:hover {
   cursor: not-allowed;
 }
 
-/* -------------------------------------------------------------- settings */
+/* ----------------------------------------------------------------- stack */
 
 /* A stack of panels inside a pane that already scrolls — the instance tabs use
    it. Not a page: it has no head and does not own a scrollbar. It shares the
    page's reading width so the panel has one measure, not two that differ by
-   sixty pixels for no reason anyone can state. */
-.settings {
+   sixty pixels for no reason anyone can state. It was called .settings until
+   the file manager and the resource charts were also built out of it, which is
+   two thirds of its uses having nothing to do with settings. */
+.stack {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1878,14 +1880,16 @@ a:hover {
   gap: 8px;
 }
 
-.settings__actions {
+/* The row of buttons a panel ends with. Destructive ones are pushed to the far
+   end of it, away from the button the hand is already going for. */
+.actions {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
 }
 
-.settings__danger {
+.actions__danger {
   display: flex;
   gap: 8px;
   margin-left: auto;
@@ -2735,7 +2739,7 @@ a:hover {
   white-space: nowrap;
 }
 
-.settings--dropping {
+.stack--dropping {
   outline: 2px dashed var(--accent);
   outline-offset: 6px;
   border-radius: var(--radius-lg);
@@ -3759,7 +3763,7 @@ input.input-slim:disabled {
     grid-template-columns: 1fr;
   }
 
-  .settings__danger {
+  .actions__danger {
     margin-left: 0;
   }
 

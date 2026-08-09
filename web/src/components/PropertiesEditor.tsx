@@ -108,7 +108,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
   }
 
   return (
-    <form className="settings" onSubmit={save}>
+    <form className="stack" onSubmit={save}>
       {eula && !eula.accepted && (
         <section className="panel panel--warn">
           <h3 className="panel__title">还没有同意 EULA</h3>
@@ -173,7 +173,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
       {error && <div className="alert alert--error">{error}</div>}
       {status && <div className="alert alert--ok">{status}</div>}
 
-      <div className="settings__actions">
+      <div className="actions">
         <button className="btn btn--primary" type="submit" disabled={busy}>
           保存配置
         </button>

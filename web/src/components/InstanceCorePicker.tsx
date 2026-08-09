@@ -130,7 +130,7 @@ export function InstanceCorePicker({ instance, cores, onApplied, onOpenLibrary }
           {error && <div className="alert alert--error">{error}</div>}
           {status && <div className="alert alert--ok">{status}</div>}
 
-          <div className="settings__actions">
+          <div className="actions">
             <button
               className="btn btn--primary"
               type="button"

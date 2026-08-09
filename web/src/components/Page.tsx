@@ -21,10 +21,10 @@ interface Props {
  * The frame every panel-wide page sits in.
  *
  * There used to be three of these — one for prose pages, one for the dashboard,
- * one for settings — with three different maximum widths and two different
- * ideas about who owns the scrollbar. A page that picked the wrong one looked
- * almost right, which is the worst way for a mistake to look. Now there is one
- * frame and one decision to make: prose, or tiles.
+ * one for the instance tabs — with three different maximum widths and two
+ * different ideas about who owns the scrollbar. A page that picked the wrong
+ * one looked almost right, which is the worst way for a mistake to look. Now
+ * there is one frame and one decision to make: prose, or tiles.
  */
 export function Page({ title, lead, aside, above, wide, children }: Props) {
   const head = above ?? title ?? lead ?? aside

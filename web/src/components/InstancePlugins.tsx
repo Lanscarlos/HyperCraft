@@ -81,7 +81,7 @@ export function InstancePlugins({
   }
 
   return (
-    <div className="settings">
+    <div className="stack">
       {error && <div className="alert alert--error">{error}</div>}
       {changed && isLive(instance.state) && (
         <div className="alert alert--warn">

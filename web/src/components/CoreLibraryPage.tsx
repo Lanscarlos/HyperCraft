@@ -335,7 +335,7 @@ export function CoreLibraryPage({
             </div>
           )}
 
-          <div className="settings__actions">
+          <div className="actions">
             {downloading ? (
               <button
                 className="btn btn--danger"

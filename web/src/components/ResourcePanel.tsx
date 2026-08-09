@@ -91,7 +91,7 @@ export function ResourcePanel({ instance }: { instance: InstanceStatus }) {
   const xmxBytes = data.maxMemoryMB > 0 ? data.maxMemoryMB * 1024 * 1024 : 0
 
   return (
-    <div className="settings">
+    <div className="stack">
       {/* Filters sit in one row above everything they scope. */}
       <div className="chart-filters">
         <span className="chart-filters__label">时间范围</span>

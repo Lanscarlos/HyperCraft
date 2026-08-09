@@ -242,7 +242,7 @@ export function JavaPage({
               </div>
             )}
 
-            <div className="settings__actions">
+            <div className="actions">
               {installing ? (
                 <button
                   className="btn btn--danger"

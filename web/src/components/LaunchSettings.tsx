@@ -168,7 +168,7 @@ export function LaunchSettings({
   const showCustomJava = customJava || (javaLoaded && !knownJava)
 
   return (
-    <form className="settings" onSubmit={save}>
+    <form className="stack" onSubmit={save}>
       <section className="panel">
         <h3 className="panel__title">基本信息</h3>
 
@@ -415,11 +415,11 @@ export function LaunchSettings({
       {error && <div className="alert alert--error">{error}</div>}
       {status && <div className="alert alert--ok">{status}</div>}
 
-      <div className="settings__actions">
+      <div className="actions">
         <button className="btn btn--primary" type="submit" disabled={busy}>
           保存设置
         </button>
-        <div className="settings__danger">
+        <div className="actions__danger">
           <button
             className="btn"
             type="button"
