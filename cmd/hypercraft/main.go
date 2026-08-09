@@ -197,7 +197,7 @@ func run() error {
 		IdleTimeout: 120 * time.Second,
 	}
 
-	go gcSessions(ctx, sessions)
+	go gcSessions(ctx, sessions, server, logger)
 	go updater.Run(ctx)
 	go collector.Run(ctx, func() []metrics.Target {
 		instances := manager.List()
@@ -305,15 +305,28 @@ func printCredentialBanner(username, password string) {
 `, line, username, password, line)
 }
 
-func gcSessions(ctx context.Context, sessions *auth.SessionStore) {
+// gcSessions drops expired sessions and writes out device activity on the same
+// slow timer. Neither is urgent enough to deserve its own goroutine, and both
+// are cheap enough that an hour is a generous interval.
+func gcSessions(ctx context.Context, sessions *auth.SessionStore, server *api.Server, log *slog.Logger) {
+	flush := func() {
+		if err := server.FlushDevices(); err != nil {
+			log.Warn("could not persist device activity", "err", err)
+		}
+	}
+
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
+			// One last write, so a clean shutdown does not discard up to an
+			// hour of "last used" the ticker has not got to yet.
+			flush()
 			return
 		case <-ticker.C:
 			sessions.GC()
+			flush()
 		}
 	}
 }

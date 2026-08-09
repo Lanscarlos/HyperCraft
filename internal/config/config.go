@@ -36,6 +36,10 @@ type Panel struct {
 	// to GitHub). A plain string could not express the second.
 	UpdateMirror *string         `json:"updateMirror,omitempty"`
 	Credential   auth.Credential `json:"credential"`
+	// Devices are the paired native clients. Unlike sessions, which are
+	// deliberately in-memory, these survive a restart — a phone app should not
+	// be signed out every time the panel updates itself.
+	Devices []auth.DeviceToken `json:"devices,omitempty"`
 }
 
 // Defaults returns a config with everything but the credential filled in.
