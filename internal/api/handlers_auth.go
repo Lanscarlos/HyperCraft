@@ -253,17 +253,13 @@ func (s *Server) handleListDevices(w http.ResponseWriter, r *http.Request) {
 	devices := s.devices.List()
 	out := make([]deviceResponse, 0, len(devices))
 	for _, dev := range devices {
-		item := deviceResponse{
+		out = append(out, deviceResponse{
 			ID:        dev.ID,
 			Name:      dev.Name,
 			CreatedAt: dev.CreatedAt,
+			LastUsed:  dev.LastUsed,
 			Current:   who.device != nil && who.device.ID == dev.ID,
-		}
-		if !dev.LastUsed.IsZero() {
-			used := dev.LastUsed
-			item.LastUsed = &used
-		}
-		out = append(out, item)
+		})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -26,7 +27,7 @@ func TestDeviceIssueAndValidate(t *testing.T) {
 	if got.ID != dev.ID || got.Name != "Lans 的手机" {
 		t.Errorf("Validate returned %+v, want the device just issued", got)
 	}
-	if got.LastUsed.IsZero() {
+	if got.LastUsed == nil {
 		t.Error("Validate did not record the use")
 	}
 }
@@ -210,6 +211,27 @@ func TestCleanDeviceName(t *testing.T) {
 			t.Errorf("rejected a name that is %d runes: %v", maxDeviceNameLen, err)
 		}
 	})
+}
+
+// omitempty does nothing for a time.Time — a struct is never "empty" to
+// encoding/json — so a plain field would put "0001-01-01T00:00:00Z" in the
+// panel.json operators are told they can read.
+func TestUnusedDeviceOmitsLastUsed(t *testing.T) {
+	store := NewDeviceStore(nil)
+	if _, _, err := store.Issue("phone"); err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	encoded, err := json.Marshal(store.Snapshot())
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(encoded), "lastUsed") {
+		t.Errorf("a never-used device serialised a lastUsed field: %s", encoded)
+	}
+	if strings.Contains(string(encoded), "0001-01-01") {
+		t.Errorf("the zero time reached the JSON: %s", encoded)
+	}
 }
 
 func TestIssueRejectsBadName(t *testing.T) {

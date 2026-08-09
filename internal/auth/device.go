@@ -50,7 +50,11 @@ type DeviceToken struct {
 	// request and only reaches disk when the panel is next persisted, because a
 	// write per API call would be a poor trade for a field that exists so the
 	// operator can recognise a device they no longer use.
-	LastUsed time.Time `json:"lastUsed,omitempty"`
+	//
+	// It is a pointer because omitempty does nothing for a time.Time: a struct
+	// is never "empty" to encoding/json, so a plain field would write
+	// "0001-01-01T00:00:00Z" into a panel.json operators are invited to read.
+	LastUsed *time.Time `json:"lastUsed,omitempty"`
 }
 
 // DeviceStore holds the paired clients. It is the runtime owner of the list;
@@ -137,7 +141,8 @@ func (s *DeviceStore) Validate(token string) (DeviceToken, bool) {
 		return DeviceToken{}, false
 	}
 	dev := s.byID[id]
-	dev.LastUsed = time.Now()
+	now := time.Now()
+	dev.LastUsed = &now
 	s.byID[id] = dev
 	s.dirty = true
 	return dev, true
