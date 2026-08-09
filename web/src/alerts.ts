@@ -157,7 +157,7 @@ export function collectAlerts(input: {
       level: 'info',
       title: `${pluginUpdates} 个插件有新版本`,
       detail: '插件库里可以一次性下载新版本，再挑实例更新。',
-      action: { label: '去插件库', route: { kind: 'library', section: 'plugins' } },
+      action: { label: '去插件库', route: { kind: 'library', section: 'plugins', view: 'list' } },
     })
   }
 

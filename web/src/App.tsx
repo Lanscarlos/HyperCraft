@@ -9,6 +9,7 @@ import { CoreLibraryPage } from './components/CoreLibraryPage'
 import { Dashboard } from './components/Dashboard'
 import { HostPage } from './components/HostPage'
 import { HostTerminal } from './components/HostTerminal'
+import { ImportInstanceDialog } from './components/ImportInstanceDialog'
 import { InstanceList } from './components/InstanceList'
 import { InstanceView } from './components/InstanceView'
 import { JavaPage } from './components/JavaPage'
@@ -16,6 +17,7 @@ import { Login } from './components/Login'
 import { NewInstanceDialog } from './components/NewInstanceDialog'
 import { PluginDetailPage } from './components/PluginDetailPage'
 import { PluginLibraryPage } from './components/PluginLibraryPage'
+import { PluginSourceSettings } from './components/PluginSourceSettings'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
@@ -24,12 +26,14 @@ import {
   HOST_SECTIONS,
   INSTANCE_SECTIONS,
   LIBRARY_SECTIONS,
+  LIBRARY_VIEWS,
   SETTINGS_SECTIONS,
+  defaultView,
   pathOf,
   routeFromLocation,
   scopeOf,
 } from './routes'
-import type { InstanceSection, Route, StateFilter } from './routes'
+import type { InstanceSection, LibrarySection, LibraryView, Route, StateFilter } from './routes'
 import type { InstanceStatus, User } from './types'
 import { mergeState } from './types'
 import { useCores } from './useCores'
@@ -110,15 +114,21 @@ function crumbsFor(
     }
     case 'library': {
       const section = labelOf(LIBRARY_SECTIONS, route.section)
+      const home: Route = {
+        kind: 'library',
+        section: route.section,
+        view: defaultView(route.section),
+      }
       const base: Crumb[] = [{ label: '资源库' }]
       if (pluginName) {
-        return [
-          ...base,
-          { label: section, ...link({ kind: 'library', section: route.section }) },
-          { label: pluginName },
-        ]
+        return [...base, { label: section, ...link(home) }, { label: pluginName }]
       }
-      return [...base, { label: section }]
+      const view = labelOf(LIBRARY_VIEWS[route.section], route.view)
+      // The first page of a section is the section: repeating its name under
+      // itself would be a step that goes nowhere.
+      return route.view === defaultView(route.section)
+        ? [...base, { label: section }]
+        : [...base, { label: section, ...link(home) }, { label: view }]
     }
     case 'host':
       return [
@@ -138,6 +148,7 @@ export default function App() {
   const [instances, setInstances] = useState<InstanceStatus[]>([])
   const [route, setRoute] = useState<Route>(routeFromLocation)
   const [showNew, setShowNew] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -241,6 +252,11 @@ export default function App() {
   const openInstance = useCallback(
     (id: string, section: InstanceSection = 'console') =>
       navigate({ kind: 'instance', id, section }),
+    [navigate],
+  )
+
+  const openLibrary = useCallback(
+    (section: LibrarySection, view: LibraryView) => navigate({ kind: 'library', section, view }),
     [navigate],
   )
 
@@ -389,12 +405,7 @@ export default function App() {
           {loadError && <div className="alert alert--error">{loadError}</div>}
 
           {route.kind === 'settings' ? (
-            <SettingsPage
-              section={route.section}
-              update={update}
-              plugins={plugins}
-              runningNames={runningNames}
-            />
+            <SettingsPage section={route.section} update={update} runningNames={runningNames} />
           ) : route.kind === 'host' ? (
             route.section === 'terminal' ? (
               <HostTerminal
@@ -412,24 +423,35 @@ export default function App() {
             )
           ) : route.kind === 'library' ? (
             route.section === 'java' ? (
-              <JavaPage java={java} onOpenCores={() => navigate({ kind: 'library', section: 'cores' })} />
+              <JavaPage
+                java={java}
+                view={route.view}
+                onOpenView={(view) => openLibrary('java', view)}
+                onOpenCores={() => openLibrary('cores', 'stock')}
+              />
             ) : route.section === 'cores' ? (
               <CoreLibraryPage
                 cores={cores}
-                onOpenJava={() => navigate({ kind: 'library', section: 'java' })}
+                view={route.view}
+                onOpenView={(view) => openLibrary('cores', view)}
+                onOpenJava={() => openLibrary('java', 'installed')}
               />
             ) : openedPlugin ? (
               <PluginDetailPage
                 key={openedPlugin.id}
                 item={openedPlugin}
                 plugins={plugins}
-                onBack={() => navigate({ kind: 'library', section: 'plugins' })}
+                onBack={() => openLibrary('plugins', 'list')}
               />
+            ) : route.view === 'source' ? (
+              <PluginSourceSettings plugins={plugins} />
             ) : (
               <PluginLibraryPage
                 plugins={plugins}
-                onOpenPlugin={(id) => navigate({ kind: 'library', section: 'plugins', pluginId: id })}
-                onOpenSettings={() => navigate({ kind: 'settings', section: 'plugin-source' })}
+                onOpenPlugin={(id) =>
+                  navigate({ kind: 'library', section: 'plugins', view: 'list', pluginId: id })
+                }
+                onOpenSettings={() => openLibrary('plugins', 'source')}
               />
             )
           ) : route.kind === 'instances' ? (
@@ -444,6 +466,7 @@ export default function App() {
               }
               onNavigate={navigate}
               onCreate={() => setShowNew(true)}
+              onImport={() => setShowImport(true)}
               onChanged={applyInstance}
             />
           ) : route.kind === 'instance' ? (
@@ -460,8 +483,8 @@ export default function App() {
                   void refresh()
                 }}
                 onOpenSection={(section) => openInstance(route.id, section)}
-                onOpenCoreLibrary={() => navigate({ kind: 'library', section: 'cores' })}
-                onOpenPluginLibrary={() => navigate({ kind: 'library', section: 'plugins' })}
+                onOpenCoreLibrary={() => openLibrary('cores', 'stock')}
+                onOpenPluginLibrary={() => openLibrary('plugins', 'list')}
               />
             ) : (
               <div className="alert">
@@ -497,6 +520,10 @@ export default function App() {
             setPaletteOpen(false)
             setShowNew(true)
           }}
+          onImport={() => {
+            setPaletteOpen(false)
+            setShowImport(true)
+          }}
         />
       )}
 
@@ -511,7 +538,18 @@ export default function App() {
           }}
           onOpenLibrary={() => {
             setShowNew(false)
-            navigate({ kind: 'library', section: 'cores' })
+            openLibrary('cores', 'download')
+          }}
+        />
+      )}
+
+      {showImport && (
+        <ImportInstanceDialog
+          onCancel={() => setShowImport(false)}
+          onImported={(created) => {
+            setShowImport(false)
+            setInstances((prev) => [...prev, created])
+            openInstance(created.id)
           }}
         />
       )}

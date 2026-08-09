@@ -19,34 +19,55 @@ const CheckInterval = 6 * time.Hour
 type Phase string
 
 const (
-	PhaseIdle        Phase = "idle"
-	PhaseChecking    Phase = "checking"
+	PhaseIdle     Phase = "idle"
+	PhaseChecking Phase = "checking"
+	// PhaseDownloading is the first half of an update: the release is coming
+	// down and the servers are being stopped, at the same time.
 	PhaseDownloading Phase = "downloading"
-	PhaseInstalling  Phase = "installing"
-	PhaseRestarting  Phase = "restarting"
+	// PhaseStopping is that same half with the download already finished — all
+	// that is left is waiting for the last world to save.
+	PhaseStopping   Phase = "stopping"
+	PhaseInstalling Phase = "installing"
+	PhaseRestarting Phase = "restarting"
 )
 
 // ErrBusy means an update is already running.
 var ErrBusy = errors.New("an update is already in progress")
 
+// Shutdown is how far the "stop every server" half of an update has got. Zero
+// total means there was nothing running to stop.
+type Shutdown struct {
+	Total   int `json:"total"`
+	Stopped int `json:"stopped"`
+	// Pending names the servers still saving, so the UI can say which one the
+	// update is waiting on rather than only how many.
+	Pending []string `json:"pending,omitempty"`
+}
+
 // Hooks lets the panel take part in an update without this package knowing
 // anything about instances or HTTP.
 type Hooks struct {
-	// BeforeInstall runs once the new binary is downloaded and verified, just
-	// before it is moved into place. The panel uses it to record which servers
-	// are running so they can be brought back afterwards. Returning an error
-	// aborts the update with nothing replaced.
-	BeforeInstall func() error
+	// StopServers records which servers are running — so they can be brought
+	// back on the other side — and then stops them all gracefully, returning
+	// once the last one is down. It runs *beside* the download rather than
+	// after it: the two waits are independent, and a world that takes a minute
+	// to save can spend that minute overlapping the transfer instead of after
+	// it. Returning an error abandons the update with nothing replaced.
+	//
+	// report, when the panel calls it, updates Status.Shutdown.
+	StopServers func(ctx context.Context, report func(Shutdown)) error
 
-	// InstallAborted undoes BeforeInstall when the install fails after it ran.
-	// Without it the recorded server list would outlive the failed update and
-	// start those servers on some later, unrelated restart.
-	InstallAborted func()
+	// ServersAborted undoes StopServers for an update that failed after it ran:
+	// the panel is not restarting after all, so servers stopped for it should
+	// come back rather than stay down, and the recorded resume list has to go
+	// with them — otherwise it would outlive this update and start those
+	// servers on some later, unrelated restart.
+	ServersAborted func()
 
-	// TriggerRestart asks the panel to shut down — stopping managed servers
-	// gracefully — and then exec the newly installed binary, whose path it is
-	// given. It must not block, and it must use that path rather than asking
-	// the OS for the running executable; see Staged.Target.
+	// TriggerRestart asks the panel to shut down and then exec the newly
+	// installed binary, whose path it is given. By the time it runs the servers
+	// are already down. It must not block, and it must use that path rather
+	// than asking the OS for the running executable; see Staged.Target.
 	TriggerRestart func(binary string)
 }
 
@@ -79,6 +100,10 @@ type Status struct {
 	// Downgrade means installing the offered version moves backwards; see
 	// Updater.Offer for the one case that happens in.
 	Downgrade bool `json:"downgrade"`
+	// Shutdown tracks the servers being stopped for this update. Nil outside an
+	// update, and while one is running it is what the progress bar's second
+	// half is made of.
+	Shutdown *Shutdown `json:"shutdown,omitempty"`
 }
 
 // Service keeps the last check result and runs updates one at a time.
@@ -94,6 +119,7 @@ type Service struct {
 	phase     Phase
 	progress  int
 	lastErr   string
+	shutdown  *Shutdown
 }
 
 func NewService(repo, currentVersion, mirror string, channel Channel, hooks Hooks, log *slog.Logger) *Service {
@@ -212,6 +238,10 @@ func (s *Service) statusLocked() Status {
 		t := s.checkedAt
 		st.CheckedAt = &t
 	}
+	if s.shutdown != nil {
+		snapshot := *s.shutdown
+		st.Shutdown = &snapshot
+	}
 	// Snapshots carry a real version and stay updatable; this is about builds
 	// with no version at all, which a local `go build` produces.
 	if !IsReleaseVersion(s.up.CurrentVersion()) {
@@ -240,6 +270,16 @@ func (s *Service) statusLocked() Status {
 	return st
 }
 
+// Applying reports whether an update is actually running, as opposed to the
+// panel merely asking GitHub what is out there. The API uses it to refuse
+// starting a server that this update is in the middle of emptying the machine
+// of; a check is no reason to refuse anything.
+func (s *Service) Applying() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.phase != PhaseIdle && s.phase != PhaseChecking
+}
+
 // Apply downloads and installs the cached latest release, then asks the panel
 // to restart into it. It returns once the new binary is in place; the restart
 // itself happens asynchronously so the caller can still answer the HTTP request
@@ -263,12 +303,14 @@ func (s *Service) Apply(ctx context.Context) error {
 	s.phase = PhaseDownloading
 	s.progress = 0
 	s.lastErr = ""
+	s.shutdown = nil
 	s.mu.Unlock()
 
 	if err := s.apply(ctx, rel); err != nil {
 		s.mu.Lock()
 		s.phase = PhaseIdle
 		s.progress = 0
+		s.shutdown = nil
 		s.lastErr = err.Error()
 		s.mu.Unlock()
 		s.log.Error("update failed", "version", rel.Version, "err", err)
@@ -277,21 +319,66 @@ func (s *Service) Apply(ctx context.Context) error {
 	return nil
 }
 
+// apply runs an update in two steps.
+//
+// Step one is the download and the shutdown, at the same time: neither needs
+// the other, and the shutdown is the slow half — a big world can take a minute
+// to save, which is a minute the transfer may as well spend running. Step two
+// starts only once both are finished, because replacing the binary under live
+// server processes is exactly what the old order was arranged to avoid: the
+// panel is the parent of those processes, and the exec at the end of the
+// restart inherits none of them.
+//
+// If either half fails, nothing is replaced and the servers this update stopped
+// are started again — a panel still on the old version with its servers down is
+// an outage, not a failed update.
 func (s *Service) apply(ctx context.Context, rel *Release) error {
 	s.log.Info("update starting", "from", s.up.CurrentVersion(), "to", rel.Version)
 
-	staged, err := s.up.Prepare(ctx, rel, func(done, total int64) {
-		if total <= 0 {
-			return
-		}
-		pct := int(done * 100 / total)
-		s.mu.Lock()
-		s.progress = pct
-		s.mu.Unlock()
-	})
-	if err != nil {
-		return err
+	type download struct {
+		staged *Staged
+		err    error
 	}
+	downloaded := make(chan download, 1)
+	go func() {
+		staged, err := s.up.Prepare(ctx, rel, func(done, total int64) {
+			if total <= 0 {
+				return
+			}
+			pct := int(done * 100 / total)
+			s.mu.Lock()
+			s.progress = pct
+			s.mu.Unlock()
+		})
+		if err == nil {
+			// The servers may still be saving. Say so rather than leaving the
+			// bar sitting at "下载中 100%" for the rest of the wait.
+			s.mu.Lock()
+			s.progress = 100
+			if s.phase == PhaseDownloading {
+				s.phase = PhaseStopping
+			}
+			s.mu.Unlock()
+		}
+		downloaded <- download{staged, err}
+	}()
+
+	stopErr := s.stopServers(ctx)
+	got := <-downloaded
+
+	switch {
+	case got.err != nil:
+		// The archive never arrived, so there is nothing to install. Whatever
+		// the shutdown managed has to be undone either way.
+		s.resumeServers()
+		return got.err
+	case stopErr != nil:
+		got.staged.Discard()
+		s.resumeServers()
+		return fmt.Errorf("stop the servers: %w", stopErr)
+	}
+	staged := got.staged
+
 	s.log.Info("release downloaded and verified", "from", staged.ArchiveURL())
 	if staged.ChecksumFromMirror() {
 		s.log.Warn("GitHub was unreachable for the checksums, so the mirror supplied them; "+
@@ -304,17 +391,9 @@ func (s *Service) apply(ctx context.Context, rel *Release) error {
 	s.progress = 100
 	s.mu.Unlock()
 
-	if s.hooks.BeforeInstall != nil {
-		if err := s.hooks.BeforeInstall(); err != nil {
-			staged.Discard()
-			return fmt.Errorf("prepare for restart: %w", err)
-		}
-	}
 	if err := staged.Commit(); err != nil {
 		staged.Discard()
-		if s.hooks.InstallAborted != nil {
-			s.hooks.InstallAborted()
-		}
+		s.resumeServers()
 		return err
 	}
 	s.log.Info("new binary installed", "version", rel.Version)
@@ -327,4 +406,26 @@ func (s *Service) apply(ctx context.Context, rel *Release) error {
 		s.hooks.TriggerRestart(staged.Target())
 	}
 	return nil
+}
+
+// stopServers runs the shutdown half of step one, publishing its progress into
+// the status the UI polls.
+func (s *Service) stopServers(ctx context.Context) error {
+	if s.hooks.StopServers == nil {
+		return nil
+	}
+	return s.hooks.StopServers(ctx, func(progress Shutdown) {
+		s.mu.Lock()
+		snapshot := progress
+		s.shutdown = &snapshot
+		s.mu.Unlock()
+	})
+}
+
+// resumeServers brings back what stopServers stopped, for an update that is not
+// going to happen after all.
+func (s *Service) resumeServers() {
+	if s.hooks.ServersAborted != nil {
+		s.hooks.ServersAborted()
+	}
 }

@@ -150,6 +150,13 @@ func (s *Server) handlePower(action powerAction) http.HandlerFunc {
 		if !ok {
 			return
 		}
+		// An update stops every server and then replaces the panel's own
+		// binary; a server started in that window would be counted as down,
+		// left out of the resume list, and killed by the restart moments later.
+		if (action == powerStart || action == powerRestart) && s.updater != nil && s.updater.Applying() {
+			writeError(w, http.StatusConflict, "面板正在更新，服务器会在更新完成后自动恢复运行")
+			return
+		}
 
 		var err error
 		switch action {

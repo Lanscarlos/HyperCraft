@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { DUR } from '../motion'
 import type { Route } from '../routes'
-import { HOST_SECTIONS, LIBRARY_SECTIONS, SETTINGS_SECTIONS } from '../routes'
+import { HOST_SECTIONS, LIBRARY_SECTIONS, LIBRARY_VIEWS, SETTINGS_SECTIONS, defaultView } from '../routes'
 import type { InstanceStatus } from '../types'
 import { STATE_LABELS, isLive } from '../types'
 import { useDismiss } from '../useDismiss'
@@ -13,6 +13,7 @@ interface Props {
   onClose: () => void
   onNavigate: (route: Route) => void
   onCreate: () => void
+  onImport: () => void
 }
 
 interface Entry {
@@ -34,7 +35,13 @@ interface Entry {
  * the pages are in the same list, it doubles as the way to reach 磁盘 or
  * 插件源 without first remembering which group they were filed under.
  */
-export function CommandPalette({ instances, onClose, onNavigate, onCreate }: Props) {
+export function CommandPalette({
+  instances,
+  onClose,
+  onNavigate,
+  onCreate,
+  onImport,
+}: Props) {
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
   const input = useRef<HTMLInputElement | null>(null)
@@ -75,13 +82,19 @@ export function CommandPalette({ instances, onClose, onNavigate, onCreate }: Pro
       },
     )
     for (const section of LIBRARY_SECTIONS) {
-      items.push({
-        id: `p:lib:${section.id}`,
-        group: '页面',
-        label: `资源库 · ${section.label}`,
-        keywords: section.id,
-        run: go({ kind: 'library', section: section.id }),
-      })
+      // Every second-level page too: 插件源 and 下载核心 are exactly the kind
+      // of destination you reach for by name rather than by remembering which
+      // entry they were filed under.
+      for (const view of LIBRARY_VIEWS[section.id]) {
+        const first = view.id === defaultView(section.id)
+        items.push({
+          id: `p:lib:${section.id}:${view.id}`,
+          group: '页面',
+          label: first ? `资源库 · ${section.label}` : `资源库 · ${section.label} · ${view.label}`,
+          keywords: `${section.id} ${view.id}`,
+          run: go({ kind: 'library', section: section.id, view: view.id }),
+        })
+      }
     }
     for (const section of HOST_SECTIONS) {
       items.push({
@@ -103,16 +116,25 @@ export function CommandPalette({ instances, onClose, onNavigate, onCreate }: Pro
       })
     }
 
-    items.push({
-      id: 'a:new',
-      group: '操作',
-      label: '新建实例',
-      keywords: 'create new server',
-      run: onCreate,
-    })
+    items.push(
+      {
+        id: 'a:new',
+        group: '操作',
+        label: '新建实例',
+        keywords: 'create new server',
+        run: onCreate,
+      },
+      {
+        id: 'a:import',
+        group: '操作',
+        label: '导入现有目录',
+        keywords: 'import adopt existing daoru 导入 已有',
+        run: onImport,
+      },
+    )
 
     return items
-  }, [instances, onNavigate, onCreate])
+  }, [instances, onNavigate, onCreate, onImport])
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase()

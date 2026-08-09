@@ -381,7 +381,7 @@ function HostDisk({
             <span className="rows__cell rows__cell--end" role="cell">
               <button
                 className="link"
-                onClick={() => onNavigate({ kind: 'library', section: 'cores' })}
+                onClick={() => onNavigate({ kind: 'library', section: 'cores', view: 'stock' })}
               >
                 去清理
               </button>
@@ -395,7 +395,7 @@ function HostDisk({
             <span className="rows__cell rows__cell--end" role="cell">
               <button
                 className="link"
-                onClick={() => onNavigate({ kind: 'library', section: 'plugins' })}
+                onClick={() => onNavigate({ kind: 'library', section: 'plugins', view: 'list' })}
               >
                 去清理
               </button>
@@ -409,7 +409,7 @@ function HostDisk({
             <span className="rows__cell rows__cell--end" role="cell">
               <button
                 className="link"
-                onClick={() => onNavigate({ kind: 'library', section: 'java' })}
+                onClick={() => onNavigate({ kind: 'library', section: 'java', view: 'installed' })}
               >
                 去清理
               </button>

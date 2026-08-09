@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,6 +20,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fakeRelease serves a GitHub-shaped release whose archive really does contain
@@ -319,9 +321,12 @@ func TestServiceRestartsTheInstalledBinaryNotTheBackup(t *testing.T) {
 	f := newFakeRelease(t, "1.2.0", want)
 
 	var restartedWith string
-	var beforeInstallRan bool
+	var stoppedServers bool
 	svc := NewService("owner/repo", "v1.0.0", "", ChannelStable, Hooks{
-		BeforeInstall:  func() error { beforeInstallRan = true; return nil },
+		StopServers: func(context.Context, func(Shutdown)) error {
+			stoppedServers = true
+			return nil
+		},
 		TriggerRestart: func(binary string) { restartedWith = binary },
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
@@ -339,8 +344,8 @@ func TestServiceRestartsTheInstalledBinaryNotTheBackup(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 
-	if !beforeInstallRan {
-		t.Error("BeforeInstall never ran, so no servers would be recorded for resume")
+	if !stoppedServers {
+		t.Error("StopServers never ran, so the binary was swapped under live servers")
 	}
 	if restartedWith != exe {
 		t.Errorf("restart target = %q, want %q", restartedWith, exe)
@@ -361,10 +366,10 @@ func TestServiceAbortsCleanlyWhenPreparationFails(t *testing.T) {
 	f := newFakeRelease(t, "1.2.0", []byte("new binary"))
 	f.corruptSum = true
 
-	var restarted, aborted bool
+	var restarted, resumed bool
 	svc := NewService("owner/repo", "v1.0.0", "", ChannelStable, Hooks{
-		BeforeInstall:  func() error { return nil },
-		InstallAborted: func() { aborted = true },
+		StopServers:    func(context.Context, func(Shutdown)) error { return nil },
+		ServersAborted: func() { resumed = true },
 		TriggerRestart: func(string) { restarted = true },
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
@@ -384,8 +389,10 @@ func TestServiceAbortsCleanlyWhenPreparationFails(t *testing.T) {
 	if restarted {
 		t.Error("the panel was restarted after a failed download")
 	}
-	if aborted {
-		t.Error("InstallAborted ran even though the install was never reached")
+	// The servers were stopped beside the download, so a download that fails
+	// has to put them back — otherwise a failed update reads as an outage.
+	if !resumed {
+		t.Error("ServersAborted never ran, so the servers stayed down after a failed download")
 	}
 	// The panel must be left usable, on the old binary, ready to retry.
 	if got, _ := os.ReadFile(exe); string(got) != "old binary" {
@@ -398,4 +405,111 @@ func TestServiceAbortsCleanlyWhenPreparationFails(t *testing.T) {
 	if status.Error == "" {
 		t.Error("no error surfaced to the UI after a failed update")
 	}
+}
+
+func TestUpdateDownloadsWhileTheServersStop(t *testing.T) {
+	// The two halves of step one are independent, and the shutdown is the slow
+	// one — a large world takes longer to save than a 20 MB archive takes to
+	// arrive. What must not overlap is step two: replacing the binary while a
+	// server is still alive would leave the panel's own children behind at the
+	// exec that follows.
+	want := []byte("the new binary contents")
+	f := newFakeRelease(t, "1.2.0", want)
+
+	exe := filepath.Join(t.TempDir(), "hypercraft")
+	if err := os.WriteFile(exe, []byte("old binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		svc                  *Service
+		binaryDuringShutdown []byte
+	)
+	svc = NewService("owner/repo", "v1.0.0", "", ChannelStable, Hooks{
+		StopServers: func(_ context.Context, report func(Shutdown)) error {
+			report(Shutdown{Total: 1, Pending: []string{"生存服"}})
+			// Hold the shutdown open until the download has finished, which is
+			// what makes the overlap observable rather than merely likely.
+			waitForPhase(t, svc, PhaseStopping)
+			binaryDuringShutdown, _ = os.ReadFile(exe)
+			report(Shutdown{Total: 1, Stopped: 1})
+			return nil
+		},
+		ServersAborted: func() { t.Error("the servers were resumed even though the update succeeded") },
+		TriggerRestart: func(string) {},
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	svc.up.apiBase = f.server.URL
+	svc.up.exePath = exe
+
+	if _, err := svc.Check(context.Background()); err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if err := svc.Apply(context.Background()); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	if string(binaryDuringShutdown) != "old binary" {
+		t.Errorf("binary was replaced while a server was still stopping: %q", binaryDuringShutdown)
+	}
+	if got, _ := os.ReadFile(exe); !bytes.Equal(got, want) {
+		t.Errorf("executable = %q, want the new binary %q", got, want)
+	}
+	if status := svc.Status(); status.Shutdown == nil || status.Shutdown.Stopped != 1 {
+		t.Errorf("Shutdown = %+v, want the UI to see 1 of 1 stopped", status.Shutdown)
+	}
+}
+
+func TestUpdateResumesTheServersWhenTheShutdownFails(t *testing.T) {
+	f := newFakeRelease(t, "1.2.0", []byte("new binary"))
+
+	exe := filepath.Join(t.TempDir(), "hypercraft")
+	if err := os.WriteFile(exe, []byte("old binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var resumed, restarted bool
+	svc := NewService("owner/repo", "v1.0.0", "", ChannelStable, Hooks{
+		StopServers: func(context.Context, func(Shutdown)) error {
+			return errors.New("could not record the resume list")
+		},
+		ServersAborted: func() { resumed = true },
+		TriggerRestart: func(string) { restarted = true },
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	svc.up.apiBase = f.server.URL
+	svc.up.exePath = exe
+
+	if _, err := svc.Check(context.Background()); err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if err := svc.Apply(context.Background()); err == nil {
+		t.Fatal("Apply succeeded even though the servers could not be stopped")
+	}
+	if restarted {
+		t.Error("the panel restarted into a binary it never installed")
+	}
+	if !resumed {
+		t.Error("the servers stayed down after an update that never happened")
+	}
+	if got, _ := os.ReadFile(exe); string(got) != "old binary" {
+		t.Errorf("executable = %q, want it untouched", got)
+	}
+	if phase := svc.Status().Phase; phase != PhaseIdle {
+		t.Errorf("Phase = %q, want idle so the operator can retry", phase)
+	}
+}
+
+// waitForPhase blocks until the updater reaches phase, or fails the test. Used
+// from inside a hook to pin down the order two concurrent steps ran in.
+func waitForPhase(t *testing.T, svc *Service, phase Phase) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if svc.Status().Phase == phase {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("updater never reached phase %q", phase)
 }

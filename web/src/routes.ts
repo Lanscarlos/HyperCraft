@@ -23,11 +23,24 @@ export type InstanceSection =
 /** The shared-asset pages. Stock, as opposed to what one server has chosen. */
 export type LibrarySection = 'cores' | 'java' | 'plugins'
 
+/**
+ * The second level inside one library section.
+ *
+ * Each of the three used to be a single page that stacked everything it could
+ * do into one scroll: what you already have, the catalogue to download from,
+ * and the settings that govern the downloading. Three different jobs with
+ * three different frequencies — you look at the shelf weekly, download monthly
+ * and choose a mirror once — and the first of them, the one you actually came
+ * for, was the one you had to scroll past the others to read. They are pages of
+ * their own now, under the entry they belong to.
+ */
+export type LibraryView = 'stock' | 'download' | 'installed' | 'install' | 'source' | 'list'
+
 /** Pages about the machine. `terminal` is the shell and is fenced off. */
 export type HostSection = 'metrics' | 'instances' | 'disk' | 'config' | 'terminal'
 
 /** Panel-wide settings. Sections a sub-user should not see live elsewhere. */
-export type SettingsSection = 'devices' | 'security' | 'plugin-source' | 'update'
+export type SettingsSection = 'devices' | 'security' | 'update'
 
 /** Which states the 所有实例 list is showing. Part of the URL. */
 export type StateFilter = 'all' | 'live' | 'stopped' | 'problem'
@@ -36,7 +49,7 @@ export type Route =
   | { kind: 'overview' }
   | { kind: 'instances'; query: string; state: StateFilter }
   | { kind: 'instance'; id: string; section: InstanceSection }
-  | { kind: 'library'; section: LibrarySection; pluginId?: string }
+  | { kind: 'library'; section: LibrarySection; view: LibraryView; pluginId?: string }
   | { kind: 'host'; section: HostSection }
   | { kind: 'settings'; section: SettingsSection }
 
@@ -66,6 +79,28 @@ export const LIBRARY_SECTIONS: { id: LibrarySection; label: string }[] = [
   { id: 'plugins', label: '插件库' },
 ]
 
+/** The pages inside each library section, in order. The first is the default —
+ *  always "what you already have", never a form. */
+export const LIBRARY_VIEWS: Record<LibrarySection, { id: LibraryView; label: string }[]> = {
+  cores: [
+    { id: 'stock', label: '核心库' },
+    { id: 'download', label: '下载核心' },
+  ],
+  java: [
+    { id: 'installed', label: '已安装' },
+    { id: 'install', label: '安装新版本' },
+    { id: 'source', label: '下载源' },
+  ],
+  plugins: [
+    { id: 'list', label: '插件列表' },
+    { id: 'source', label: '插件源' },
+  ],
+}
+
+export function defaultView(section: LibrarySection): LibraryView {
+  return LIBRARY_VIEWS[section][0].id
+}
+
 export const HOST_SECTIONS: { id: HostSection; label: string }[] = [
   { id: 'metrics', label: '监控' },
   { id: 'instances', label: '实例分布' },
@@ -77,7 +112,6 @@ export const HOST_SECTIONS: { id: HostSection; label: string }[] = [
 export const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: 'devices', label: '已配对设备' },
   { id: 'security', label: '登录记录' },
-  { id: 'plugin-source', label: '插件源' },
   { id: 'update', label: '面板更新' },
 ]
 
@@ -110,12 +144,23 @@ export function routeFromLocation(): Route {
   const host = path.match(/^\/host(?:\/([^/]+))?/)
   if (host) return { kind: 'host', section: pick(HOST_SECTIONS, host[1] ?? '', 'metrics') }
 
-  const library = path.match(/^\/library(?:\/([^/]+))?(?:\/([^/]+))?/)
+  const library = path.match(/^\/library(?:\/([^/]+))?(?:\/([^/]+))?(?:\/([^/]+))?/)
   if (library) {
     const section = pick(LIBRARY_SECTIONS, library[1] ?? '', 'cores')
-    return section === 'plugins' && library[2]
-      ? { kind: 'library', section, pluginId: decodeURIComponent(library[2]) }
-      : { kind: 'library', section }
+    const second = library[2] ?? ''
+    const view = LIBRARY_VIEWS[section].find((entry) => entry.id === second)?.id
+    if (view) {
+      return section === 'plugins' && view === 'list' && library[3]
+        ? { kind: 'library', section, view, pluginId: decodeURIComponent(library[3]) }
+        : { kind: 'library', section, view }
+    }
+    // A plugin used to live directly under its section — /library/plugins/<id>
+    // — which is what every bookmark and every link in an older release says.
+    // The views took that slot, so anything that is not one of them is still
+    // read as a plugin id.
+    return section === 'plugins' && second
+      ? { kind: 'library', section, view: 'list', pluginId: decodeURIComponent(second) }
+      : { kind: 'library', section, view: defaultView(section) }
   }
 
   if (path === '/instances' || path.startsWith('/instances/')) {
@@ -133,19 +178,27 @@ export function routeFromLocation(): Route {
     // and links from an earlier release land on whatever replaced them rather
     // than on a default tab.
     const section = settings[1] ?? ''
-    if (section === 'java') return { kind: 'library', section: 'java' }
-    if (section === 'cores') return { kind: 'library', section: 'cores' }
+    if (section === 'java') return { kind: 'library', section: 'java', view: 'installed' }
+    if (section === 'cores') return { kind: 'library', section: 'cores', view: 'stock' }
     if (section === 'terminal') return { kind: 'host', section: 'config' }
+    // The plugin source moved under 插件库, where the rest of the plugin
+    // machinery already was.
+    if (section === 'plugin-source') return { kind: 'library', section: 'plugins', view: 'source' }
     return { kind: 'settings', section: pick(SETTINGS_SECTIONS, section, 'devices') }
   }
 
-  if (path === '/java') return { kind: 'library', section: 'java' }
-  if (path === '/cores') return { kind: 'library', section: 'cores' }
+  if (path === '/java') return { kind: 'library', section: 'java', view: 'installed' }
+  if (path === '/cores') return { kind: 'library', section: 'cores', view: 'stock' }
   const legacyPlugin = path.match(/^\/plugins\/([^/]+)/)
   if (legacyPlugin) {
-    return { kind: 'library', section: 'plugins', pluginId: decodeURIComponent(legacyPlugin[1]) }
+    return {
+      kind: 'library',
+      section: 'plugins',
+      view: 'list',
+      pluginId: decodeURIComponent(legacyPlugin[1]),
+    }
   }
-  if (path === '/plugins') return { kind: 'library', section: 'plugins' }
+  if (path === '/plugins') return { kind: 'library', section: 'plugins', view: 'list' }
   if (path === '/terminal') return { kind: 'host', section: 'terminal' }
 
   return { kind: 'overview' }
@@ -159,8 +212,8 @@ export function pathOf(route: Route): string {
       return `/host/${route.section}`
     case 'library':
       return route.pluginId
-        ? `/library/plugins/${encodeURIComponent(route.pluginId)}`
-        : `/library/${route.section}`
+        ? `/library/plugins/list/${encodeURIComponent(route.pluginId)}`
+        : `/library/${route.section}/${route.view}`
     case 'settings':
       return `/settings/${route.section}`
     case 'instances': {
@@ -184,7 +237,12 @@ export function samePage(a: Route, b: Route): boolean {
     case 'host':
       return b.kind === 'host' && a.section === b.section
     case 'library':
-      return b.kind === 'library' && a.section === b.section && a.pluginId === b.pluginId
+      return (
+        b.kind === 'library' &&
+        a.section === b.section &&
+        a.view === b.view &&
+        a.pluginId === b.pluginId
+      )
     case 'settings':
       return b.kind === 'settings' && a.section === b.section
     default:

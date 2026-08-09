@@ -7,11 +7,13 @@ import { Page } from './Page'
  * Where plugins come from: the credential private repositories are read with,
  * and the proxy their jars are downloaded through.
  *
- * These live in 设置 rather than on the plugin library page for the same reason
- * the panel's update mirror does — they are configured once, on the day the
- * panel is set up or the day something stops working, while the library page is
- * somewhere an operator goes weekly to actually install things. A settings form
- * sitting under the list of plugins is a settings form in everybody's way.
+ * A page of its own under 插件库 rather than a card on the list, and for the
+ * same reason it used to live in 面板设置: it is configured once, on the day
+ * the panel is set up or the day something stops working, while the list is
+ * where an operator goes weekly to actually install things. A settings form
+ * stacked under thirty plugin rows is a settings form in everybody's way.
+ * What moved is only where it sits — beside the plugins it is about, instead
+ * of three groups away in the panel's own settings.
  */
 export function PluginSourceSettings({ plugins }: { plugins: PluginController }) {
   const { library, busy } = plugins
@@ -19,7 +21,7 @@ export function PluginSourceSettings({ plugins }: { plugins: PluginController })
   return (
     <Page
       title="插件源"
-      lead="插件都来自 GitHub Release。这里管两件事：私有仓库要用的访问令牌，以及 jar 走哪个下载源 —— 两个都只影响下载，插件本身、版本和更新在「资源库 → 插件库」里管，装到某台服上则在那台服的「已装插件」页。"
+      lead="插件都来自 GitHub Release。这里管两件事：私有仓库要用的访问令牌，以及 jar 走哪个下载源 —— 两个都只影响下载。插件本身、版本和更新在「插件列表」里管，装到某台服上则在那台服的「已装插件」页。"
     >
 
       <GitHubTokenPanel
@@ -29,12 +31,18 @@ export function PluginSourceSettings({ plugins }: { plugins: PluginController })
         onSave={(token) => plugins.setToken(token)}
       />
 
-      <MirrorPanel
-        mirrors={library?.mirrors ?? []}
-        current={library?.mirror ?? 'auto'}
-        busy={busy}
-        onChange={(mirror) => plugins.setMirror(mirror)}
-      />
+      {/* Only once the library has answered. The picker decides on mount
+          whether the stored value is one of the offered mirrors or a custom
+          prefix, and mounting it against an empty list makes every panel come
+          up on 自定义 with the mirror's id typed into the box. */}
+      {library && (
+        <MirrorPanel
+          mirrors={library.mirrors}
+          current={library.mirror}
+          busy={busy}
+          onChange={(mirror) => plugins.setMirror(mirror)}
+        />
+      )}
 
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
     </Page>

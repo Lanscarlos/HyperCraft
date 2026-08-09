@@ -103,6 +103,14 @@ func (m *Manager) Create(cfg Config) (*Instance, error) {
 			return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 		}
 		cfg.Directory = abs
+		// Two instances on one directory means two servers writing the same
+		// chunks the moment both are started, which corrupts the world rather
+		// than merely confusing the panel. Only reachable when a directory is
+		// given by hand — importing an existing server, mostly — since the
+		// generated ones already skip what is taken.
+		if name, taken := m.directoryOwner(abs); taken {
+			return nil, fmt.Errorf("%w: 实例「%s」已经在用这个目录了", ErrInvalidConfig, name)
+		}
 	}
 
 	inst, err := New(cfg, m.log)
@@ -189,6 +197,104 @@ func (m *Manager) RunningIDs() []string {
 		}
 	}
 	return ids
+}
+
+// Stopping is one progress report from StopAll: how far the shutdown has got,
+// and the names of the servers still saving. The panel shows it during an
+// update, where stopping the servers is half the wait.
+type Stopping struct {
+	Total   int
+	Stopped int
+	// Pending holds the names of the servers still on their way down, in the
+	// same order they are listed in the UI.
+	Pending []string
+}
+
+// StopAll gracefully stops every running instance and waits for them, leaving
+// the instances usable afterwards. It returns the ids it stopped, in list
+// order, so the caller can bring exactly those back.
+//
+// Unlike Shutdown this runs while the panel keeps going — it is what an update
+// uses to empty the machine before replacing the binary — so nothing here
+// closes an instance: a stopped instance still has its console, its scrollback
+// and a working start button, which is what makes an aborted update
+// recoverable. report, when given, is called once at the start and then after
+// each server goes down.
+func (m *Manager) StopAll(timeout time.Duration, report func(Stopping)) []string {
+	running := make([]*Instance, 0)
+	for _, inst := range m.List() {
+		if inst.State().Running() {
+			running = append(running, inst)
+		}
+	}
+
+	total := len(running)
+	var (
+		mu      sync.Mutex
+		stopped int
+		pending = make([]string, 0, total)
+	)
+	for _, inst := range running {
+		pending = append(pending, inst.Config().Name)
+	}
+	publish := func() {
+		if report == nil {
+			return
+		}
+		names := make([]string, len(pending))
+		copy(names, pending)
+		report(Stopping{Total: total, Stopped: stopped, Pending: names})
+	}
+	publish()
+
+	ids := make([]string, 0, total)
+	var wg sync.WaitGroup
+	for _, inst := range running {
+		ids = append(ids, inst.ID())
+		wg.Add(1)
+		go func(inst *Instance) {
+			defer wg.Done()
+			name := inst.Config().Name
+			m.log.Info("stopping instance for an update", "name", name)
+			if err := inst.Stop(); err != nil && !errors.Is(err, ErrNotRunning) {
+				m.log.Warn("graceful stop failed, killing", "name", name, "err", err)
+				_ = inst.Kill()
+			}
+			inst.Wait(timeout)
+
+			mu.Lock()
+			defer mu.Unlock()
+			stopped++
+			for n, other := range pending {
+				if other == name {
+					pending = append(pending[:n], pending[n+1:]...)
+					break
+				}
+			}
+			publish()
+		}(inst)
+	}
+	wg.Wait()
+	return ids
+}
+
+// StartEach starts the named instances, one after the other, logging whatever
+// fails rather than giving up on the rest. It is how servers come back after an
+// update that was abandoned partway.
+func (m *Manager) StartEach(ids []string) {
+	for _, id := range ids {
+		inst, err := m.Get(id)
+		if err != nil {
+			m.log.Warn("cannot restart an instance that no longer exists", "id", id)
+			continue
+		}
+		if inst.State().Running() {
+			continue
+		}
+		if err := inst.Start(); err != nil {
+			m.log.Warn("restart after an abandoned update failed", "name", inst.Config().Name, "err", err)
+		}
+	}
 }
 
 // StartAutoStart launches every instance flagged AutoStart, plus any listed in
@@ -283,14 +389,21 @@ func (m *Manager) defaultDirectory(name string) (string, error) {
 }
 
 func (m *Manager) directoryTaken(dir string) bool {
+	_, taken := m.directoryOwner(dir)
+	return taken
+}
+
+// directoryOwner names the instance already using dir, if any.
+func (m *Manager) directoryOwner(dir string) (string, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for _, inst := range m.byID {
-		if inst.Config().Directory == dir {
-			return true
+		cfg := inst.Config()
+		if cfg.Directory == dir {
+			return cfg.Name, true
 		}
 	}
-	return false
+	return "", false
 }
 
 // unsafeInPath matches characters that are illegal or awkward in a path on

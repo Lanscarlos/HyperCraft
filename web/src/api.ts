@@ -8,6 +8,7 @@ import type {
   CoreVersion,
   Device,
   EulaStatus,
+  HostInspection,
   HostListing,
   JavaMajor,
   JavaOverview,
@@ -248,6 +249,11 @@ export const api = {
   /** Lists a directory on the host. Empty path means the panel's servers root. */
   browseHost: (dir: string) =>
     request<HostListing>('GET', `/api/fs?path=${encodeURIComponent(dir)}`),
+
+  /** Reads a directory as a candidate for import: its jar, its properties, its
+   *  worlds, and whether an instance already owns it. */
+  inspectHost: (dir: string) =>
+    request<HostInspection>('GET', `/api/fs/inspect?path=${encodeURIComponent(dir)}`),
 
   javaOverview: () => request<JavaOverview>('GET', '/api/java'),
   javaMajors: () => request<JavaMajor[]>('GET', '/api/java/available'),

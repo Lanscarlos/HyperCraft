@@ -174,7 +174,7 @@ export function LaunchSettings({
 
   return (
     <form className="stack" onSubmit={save}>
-      <section className="panel">
+      <section className="panel panel--form">
         <h3 className="panel__title">基本信息</h3>
 
         <label className="field">
@@ -187,6 +187,7 @@ export function LaunchSettings({
         </label>
 
         <DirectoryField
+          className="field--full"
           value={form.directory}
           onChange={(value) => update('directory', value)}
           disabled={isLive(instance.state)}
@@ -208,7 +209,7 @@ export function LaunchSettings({
         onOpenLibrary={onOpenLibrary}
       />
 
-      <section className="panel">
+      <section className="panel panel--form">
         <h3 className="panel__title">启动方式</h3>
 
         <label className="field">
@@ -298,7 +299,7 @@ export function LaunchSettings({
           </label>
         </div>
 
-        <label className="field">
+        <label className="field field--full">
           <span>JVM 参数</span>
           <textarea
             rows={4}
@@ -310,7 +311,7 @@ export function LaunchSettings({
           <small>一行一个参数，会放在 -jar 之前。</small>
         </label>
 
-        <label className="field">
+        <label className="field field--full">
           <span>服务端参数</span>
           <textarea
             rows={2}
@@ -322,7 +323,7 @@ export function LaunchSettings({
           <small>一行一个参数，会放在 jar 之后。</small>
         </label>
 
-        <label className="field">
+        <label className="field field--full">
           <span>自定义启动命令（可选）</span>
           <textarea
             rows={3}
@@ -337,7 +338,7 @@ export function LaunchSettings({
         </label>
       </section>
 
-      <section className="panel">
+      <section className="panel panel--form">
         <h3 className="panel__title">控制台</h3>
 
         <label className="field">
@@ -399,7 +400,7 @@ export function LaunchSettings({
         </label>
       </section>
 
-      <section className="panel">
+      <section className="panel panel--form">
         <h3 className="panel__title">进程管理</h3>
 
         <label className="checkbox">

@@ -798,6 +798,61 @@ a:hover {
   margin-left: auto;
 }
 
+/* The second level, shown under the library entry you are inside. Indented
+   under the parent's icon and drawn as text rather than as rows: they are
+   pages *of* the entry above, and painting them like the entry above would
+   make the sidebar look two navigations deep instead of one navigation with a
+   page open. The rule down the left is what ties them to it. */
+.sidebar__sub {
+  display: flex;
+  flex-direction: column;
+  margin: 2px 0 6px 20px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+  animation: rise var(--dur-2) var(--ease) backwards;
+}
+
+.sidebar__sublink {
+  position: relative;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  font-size: 13px;
+  text-decoration: none;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.sidebar__sublink:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.sidebar__sublink--active {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* Same doubled marking as a top-level row: a dot on the rule, so which page
+   you are on survives a screenshot with no colour in it. */
+.sidebar__sublink--active::before {
+  content: '';
+  position: absolute;
+  left: -11px;
+  top: 50%;
+  width: 1px;
+  height: 14px;
+  background: var(--accent);
+  transform: translateY(-50%);
+}
+
+/* Folded to icons there is nothing to indent under and no room for a label,
+   and the parent row still takes you to the section's first page. */
+.app[data-rail='on'] .sidebar__sub {
+  display: none;
+}
+
 /* One of the handful of servers with a permanent seat. Indented under 所有实例
    so the group reads as a list and not as five more top-level destinations. */
 .sidebar__link--instance {
@@ -2201,6 +2256,19 @@ a:hover {
   overflow-y: auto;
 }
 
+/* An instance section takes the width of its pane, the way the console does.
+   .stack's reading measure is right for a settings form standing on its own
+   page; inside an instance it left every section but the console in a column
+   with a third of the window empty beside it — and the file listing, the charts
+   and the plugin rows are precisely the things that wanted that space. Capped
+   at the panel's wide measure rather than uncapped, so an ultrawide monitor
+   does not get a three-thousand-pixel row of properties. */
+.instance__pane .stack,
+.instance__pane .skeleton-screen--stack {
+  max-width: var(--content-max-wide);
+}
+
+
 /* ------------------------------------------------------------- cockpit
 
    The instance home page. Identity and power on top, three numbers under it,
@@ -2766,6 +2834,33 @@ a:hover {
   font-weight: 600;
 }
 
+/* Given the extra width, a form's fields lay out in columns instead of
+   stretching: a text input as wide as the window is harder to read, not
+   easier, and it is what makes a wide settings page look like a narrow one
+   that was pulled sideways. Only panels that ask for it — .panel--form — are
+   laid out this way; the ones holding a chart or a table already fill the
+   space with something worth having. */
+.panel--form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  align-items: start;
+  gap: 14px 20px;
+}
+
+/* The parts of such a panel that are about the whole of it rather than about
+   one field: its title, its notes, its button row — plus whatever asks for the
+   full measure because it is a paragraph of text in a box (.field--full). */
+.panel--form > .panel__title,
+.panel--form > .panel__path,
+.panel--form > .alert,
+.panel--form > .chart-note,
+.panel--form > .actions,
+.panel--form > .field--full,
+.panel--form > p,
+.panel--form > .props-grid {
+  grid-column: 1 / -1;
+}
+
 .panel__path {
   margin: -10px 0 0;
   color: var(--text-faint);
@@ -2774,9 +2869,14 @@ a:hover {
   word-break: break-all;
 }
 
+/* The long tail of server.properties: dozens of one-line key/value pairs the
+   panel has no opinion about. They are the clearest case for columns — every
+   row is the same shape and the same height — so they wrap into as many as fit
+   rather than making a single list four screens long. */
 .props-grid {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 8px 20px;
 }
 
 /* The row of buttons a panel ends with. Destructive ones are pushed to the far
@@ -3019,7 +3119,11 @@ details[open]::details-content {
   flex-wrap: wrap;
 }
 
-.page__head > div {
+/* The title column, and only it: `> div` also caught an aside that happened to
+   be a div — a button row beside the title — and gave it the title's column
+   direction and 280px floor, which is how two buttons ended up stacked in a
+   box a third of the head wide. */
+.page__head > div:first-child {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -3040,6 +3144,15 @@ details[open]::details-content {
   margin: 4px 0 0;
   color: var(--text-dim);
   font-size: 12px;
+}
+
+/* A button row beside a page title stays on one line. The head is a wrapping
+   flex row whose left half claims the space, which squeezes anything on the
+   right down to its narrowest column — two buttons, stacked. They move under
+   the title together instead. */
+.page__head .actions {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
 }
 
 /* Beside a title the chips are the secondary half, so they wrap onto a second
@@ -5033,7 +5146,12 @@ button.rows__name:hover strong {
   min-width: 0;
 }
 
+/* The dialogs that are showing you something — a directory listing, what the
+   panel found in a folder — rather than asking you for four fields. The base
+   card fixes its own width, so a max-width on its own never widened anything;
+   this sets the width the same way. */
 .modal__card--wide {
+  width: min(640px, 100%);
   max-width: 640px;
 }
 

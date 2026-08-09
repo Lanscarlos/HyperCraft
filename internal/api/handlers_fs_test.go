@@ -303,3 +303,75 @@ func TestFileAccessIsScopedToTheInstance(t *testing.T) {
 		t.Errorf("expected 404 reading another instance's file, got %d", resp.StatusCode)
 	}
 }
+
+func TestInspectHostDescribesAnExistingServer(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"paper-1.21.4.jar":  "jar",
+		"server.properties": "motd=Adopt me\nserver-port=25577\n",
+		"eula.txt":          "eula=true\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	resp := env.do(http.MethodGet, "/api/fs/inspect?path="+url.QueryEscape(dir), nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var got hostInspectResponse
+	decodeBody(t, resp, &got)
+	if !got.Server || got.Jar != "paper-1.21.4.jar" {
+		t.Errorf("got %+v, want the paper jar recognised", got)
+	}
+	if got.Properties == nil || got.Properties.Port != "25577" {
+		t.Errorf("Properties = %+v, want the port read", got.Properties)
+	}
+	if got.TakenBy != "" {
+		t.Errorf("TakenBy = %q for a directory no instance owns", got.TakenBy)
+	}
+}
+
+// Two instances on one directory means two servers writing the same chunks, so
+// the import dialog has to be able to say no before it is too late — and the
+// create endpoint has to refuse even if it does not.
+func TestInspectHostNamesTheInstanceAlreadyUsingTheDirectory(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	created := env.createInstance("生存服")
+
+	resp := env.do(http.MethodGet, "/api/fs/inspect?path="+url.QueryEscape(created.Directory), nil)
+	defer resp.Body.Close()
+
+	var got hostInspectResponse
+	decodeBody(t, resp, &got)
+	if got.TakenBy != "生存服" {
+		t.Errorf("TakenBy = %q, want 生存服", got.TakenBy)
+	}
+
+	resp = env.do(http.MethodPost, "/api/instances", instanceRequest{
+		Name:      "生存服（副本）",
+		Directory: created.Directory,
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("creating a second instance on the same directory returned %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestInspectHostRejectsAMissingPath(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	resp := env.do(http.MethodGet, "/api/fs/inspect", nil)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 without a path, got %d", resp.StatusCode)
+	}
+}

@@ -4,8 +4,10 @@
 // This is deliberately read-only and deliberately not jailed: an instance
 // directory may legitimately be anywhere — a second disk, a NAS mount, a
 // pre-existing server someone is adopting — and the panel already accepts any
-// absolute path in that field. Nothing here opens, reads or writes a file; it
-// reports names, sizes and which entries are directories, and callers are
+// absolute path in that field. Listing reports names, sizes and which entries
+// are directories; Inspect additionally reads a directory's server.properties
+// and eula.txt, which is what makes adopting an existing server one dialog
+// instead of a form filled in from memory. Nothing here writes, and callers are
 // expected to keep it behind authentication.
 package hostfs
 
