@@ -1,10 +1,13 @@
 package plugin
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // instanceFixture builds a library with one downloaded plugin plus an empty
@@ -313,6 +316,145 @@ func TestRecordsSurviveAReopen(t *testing.T) {
 func TestInstallRefusesAVersionTheLibraryDoesNotHold(t *testing.T) {
 	instances, _, dir, item := instanceFixture(t)
 	if _, err := instances.Install("inst", dir, item.ID, "v9.9.9"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+// storeJar puts a real jar in the library the way a finished download would,
+// digest included — which is what recognition matches against.
+func storeJar(t *testing.T, library *Library, id, tag, fileName string, body []byte) {
+	t.Helper()
+	slug, err := versionSlug(tag)
+	if err != nil {
+		t.Fatalf("versionSlug: %v", err)
+	}
+	dir := filepath.Join(library.Root(), id, slug)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, fileName), body, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	digest := sha256.Sum256(body)
+	err = library.record(id, Version{
+		Tag:         tag,
+		Version:     VersionOf(tag),
+		FileName:    fileName,
+		Size:        int64(len(body)),
+		SHA256:      hex.EncodeToString(digest[:]),
+		PublishedAt: time.Now(),
+		AddedAt:     time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("record: %v", err)
+	}
+}
+
+func findEntry(entries []Entry, fileName string) *Entry {
+	for i := range entries {
+		if entries[i].FileName == fileName {
+			return &entries[i]
+		}
+	}
+	return nil
+}
+
+func TestListSaysWhatAHandPlacedJarActuallyIs(t *testing.T) {
+	_, _, dir, _ := instanceFixture(t)
+
+	// The name a build produces and the name the server calls the plugin are
+	// routinely different; the file name alone tells the operator nothing.
+	body := jarBytes(t, "plugin.yml", "name: Vault\nversion: 1.7.3\nauthor: cereal\n")
+	if err := os.MkdirAll(filepath.Join(dir, "plugins"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "plugins", "build-42-shaded.jar"), body, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	instances, _, _, _ := instanceFixture(t)
+	entries, err := instances.List("inst", dir)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	row := findEntry(entries, "build-42-shaded.jar")
+	if row == nil {
+		t.Fatal("the jar was not listed")
+	}
+	if row.Name != "Vault" || row.Version != "1.7.3" {
+		t.Fatalf("the jar's own description was not read: %+v", row)
+	}
+	if row.Jar == nil || row.Jar.Platform != "bukkit" || len(row.Jar.Authors) != 1 {
+		t.Errorf("unexpected jar info: %+v", row.Jar)
+	}
+	// Nothing in the library matches it, so there is nothing to adopt.
+	if row.Adoptable != nil {
+		t.Errorf("unexpected match: %+v", row.Adoptable)
+	}
+}
+
+func TestAHandInstalledLibraryJarIsRecognisedAndAdoptable(t *testing.T) {
+	library := newLibrary(t)
+	item := addPlugin(t, library, "Vault", "MilkBowl/Vault")
+	body := jarBytes(t, "plugin.yml", "name: Vault\nversion: 1.7.3\n")
+	storeJar(t, library, item.ID, "v1.7.3", "Vault-1.7.3.jar", body)
+
+	dir := t.TempDir()
+	instances := NewInstances(library, filepath.Join(t.TempDir(), "instance-plugins.json"))
+	if err := os.MkdirAll(filepath.Join(dir, "plugins"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// Same bytes, different name: the operator copied it in over SSH.
+	if err := os.WriteFile(filepath.Join(dir, "plugins", "vault.jar"), body, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	entries, err := instances.List("inst", dir)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	row := findEntry(entries, "vault.jar")
+	if row == nil || row.Managed {
+		t.Fatalf("expected an unmanaged row: %+v", row)
+	}
+	if row.Adoptable == nil || row.Adoptable.Tag != "v1.7.3" || row.Adoptable.PluginID != item.ID {
+		t.Fatalf("the library's own download was not recognised: %+v", row.Adoptable)
+	}
+
+	adopted, err := instances.Adopt("inst", dir, row.Key)
+	if err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+	if !adopted.Managed || adopted.Tag != "v1.7.3" || adopted.FileName != "vault.jar" {
+		t.Fatalf("unexpected adopted entry: %+v", adopted)
+	}
+
+	// Adopting changes the record, not the disk: the file keeps its name, and
+	// the row is now one managed plugin rather than two entries for one jar.
+	after, err := instances.List("inst", dir)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(after) != 1 || !after[0].Managed || after[0].FileName != "vault.jar" {
+		t.Fatalf("unexpected listing: %+v", after)
+	}
+	if !exists(t, dir, "plugins/vault.jar") {
+		t.Error("the jar should have been left exactly where it was")
+	}
+}
+
+func TestAdoptRefusesAJarTheLibraryDoesNotHave(t *testing.T) {
+	instances, _, dir, _ := instanceFixture(t)
+	if err := os.MkdirAll(filepath.Join(dir, "plugins"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "plugins", "stranger.jar"), []byte("who?"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// Adopting is the panel claiming it knows which version this is. Without a
+	// content match it does not, and saying so beats a plausible guess.
+	if _, err := instances.Adopt("inst", dir, "file:plugins/stranger.jar"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }

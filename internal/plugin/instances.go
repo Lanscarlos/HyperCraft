@@ -1,6 +1,8 @@
 package plugin
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -74,6 +76,30 @@ type Entry struct {
 	Tag         string    `json:"tag,omitempty"`
 	Version     string    `json:"version,omitempty"`
 	InstalledAt time.Time `json:"installedAt,omitempty"`
+	// Jar is what the file says about itself: the name and version the server
+	// will read at startup, rather than whatever the file happens to be called.
+	// Read for jars the panel did not install, which are the ones where the
+	// file name is all it would otherwise know.
+	Jar *JarInfo `json:"jar,omitempty"`
+	// Adoptable names the library plugin an unmanaged jar turned out to be,
+	// matched by content rather than by name, so the panel can offer to start
+	// tracking a file somebody installed by hand. Nil when the jar is not
+	// byte-for-byte one of the library's downloads.
+	Adoptable *Adoptable `json:"adoptable,omitempty"`
+}
+
+// Adoptable is a library version an unmanaged jar was recognised as.
+//
+// The match is on the SHA-256 the library recorded when it downloaded the file,
+// so this says "this is that download", not "this looks like it". Nothing
+// weaker would do: adopting a jar makes the panel claim it knows the version,
+// and a guess from a similar file name is exactly how a server ends up pinned
+// to a version it is not running.
+type Adoptable struct {
+	PluginID string `json:"pluginId"`
+	Name     string `json:"name"`
+	Tag      string `json:"tag"`
+	Version  string `json:"version"`
 }
 
 // Instances tracks which library plugins each server has, and applies changes
@@ -184,7 +210,9 @@ func (m *Instances) List(instanceID, directory string) ([]Entry, error) {
 		if claimed[key] {
 			continue
 		}
-		out = append(out, *found[key])
+		entry := *found[key]
+		m.identify(browser, &entry)
+		out = append(out, entry)
 	}
 
 	sort.Slice(out, func(a, b int) bool {
@@ -196,6 +224,152 @@ func (m *Instances) List(instanceID, directory string) ([]Entry, error) {
 		return strings.ToLower(out[a].Name) < strings.ToLower(out[b].Name)
 	})
 	return out, nil
+}
+
+// identify says what an unmanaged jar actually is.
+//
+// Two questions, both answered from the file itself. What does it call itself —
+// which is what the server will call it, and rarely what the file is named. And
+// is it one of the library's own downloads that simply was not installed
+// through the panel, which is the common case for a server restored from a
+// backup or set up before the panel existed.
+//
+// Failure is silence: this is decoration on a listing that has to work for a
+// directory full of arbitrary files, and a jar that cannot be read is still a
+// jar the operator can see, switch off and delete.
+func (m *Instances) identify(browser *serverfiles.Browser, entry *Entry) {
+	name := entry.FileName
+	if !entry.Enabled {
+		name += disabledSuffix
+	}
+	file, info, closer, err := browser.Open(entry.Dir + "/" + name)
+	if err != nil {
+		return
+	}
+	defer closer()
+
+	if jar, ok := ReadJarInfo(file, info.Size()); ok {
+		entry.Jar = &jar
+		if jar.Name != "" {
+			entry.Name = jar.Name
+		}
+		if entry.Version == "" {
+			entry.Version = jar.Version
+		}
+	}
+	entry.Adoptable = m.recognise(file, info.Size())
+}
+
+// recognise matches a file against the library's downloads by content.
+//
+// Size first, digest second: the size is already known for every version, and
+// hashing a few megabytes per jar on every page load to answer "no" for all of
+// them would be a page that gets slower with every plugin the operator keeps.
+func (m *Instances) recognise(file io.ReadSeeker, size int64) *Adoptable {
+	var candidates []Adoptable
+	for _, item := range m.library.List() {
+		for _, version := range item.Versions {
+			if version.Size == size && version.SHA256 != "" {
+				candidates = append(candidates, Adoptable{
+					PluginID: item.ID,
+					Name:     item.Name,
+					Tag:      version.Tag,
+					Version:  version.Version,
+				})
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	digest, err := fileDigest(file)
+	if err != nil {
+		return nil
+	}
+	for _, candidate := range candidates {
+		item, err := m.library.Get(candidate.PluginID)
+		if err != nil {
+			continue
+		}
+		if version := item.Version(candidate.Tag); version != nil && version.SHA256 == digest {
+			return &candidate
+		}
+	}
+	return nil
+}
+
+func fileDigest(file io.ReadSeeker) (string, error) {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+	digest := sha256.New()
+	if _, err := io.Copy(digest, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(digest.Sum(nil)), nil
+}
+
+// Adopt starts tracking a jar the panel found rather than installed.
+//
+// Only a jar that is byte-for-byte one of the library's downloads can be
+// adopted — see Adoptable. Nothing on disk changes: the file is already in
+// place and already loading, and all this adds is the panel's record of which
+// plugin and version it is, which is what makes "update it" and "roll it back"
+// available afterwards.
+func (m *Instances) Adopt(instanceID, directory, key string) (Entry, error) {
+	dir, name, err := m.resolveKey(instanceID, key)
+	if err != nil {
+		return Entry{}, err
+	}
+	browser := serverfiles.New(directory)
+
+	path, enabled, ok := m.locate(browser, dir, name)
+	if !ok {
+		return Entry{}, fmt.Errorf("%w: %s/%s is not there", ErrNotInstalled, dir, name)
+	}
+	file, info, closer, err := browser.Open(path)
+	if err != nil {
+		return Entry{}, err
+	}
+	defer closer()
+
+	match := m.recognise(file, info.Size())
+	if match == nil {
+		return Entry{}, fmt.Errorf("%w: %s does not match any version in the plugin library", ErrNotFound, name)
+	}
+	// One record per plugin per instance, so adopting a second copy of a plugin
+	// the instance already tracks would silently drop the first.
+	if existing := m.record(instanceID, match.PluginID); existing != nil &&
+		(existing.Dir != dir || existing.FileName != name) {
+		return Entry{}, fmt.Errorf("%w: %s is already tracked here as %s/%s",
+			ErrExists, match.Name, existing.Dir, existing.FileName)
+	}
+
+	if err := m.put(instanceID, Installed{
+		PluginID:    match.PluginID,
+		Tag:         match.Tag,
+		Version:     match.Version,
+		FileName:    name,
+		Dir:         dir,
+		InstalledAt: time.Now(),
+	}); err != nil {
+		return Entry{}, err
+	}
+
+	return Entry{
+		Key:         keyPluginPrefix + match.PluginID,
+		PluginID:    match.PluginID,
+		Name:        match.Name,
+		FileName:    name,
+		Dir:         dir,
+		Enabled:     enabled,
+		Managed:     true,
+		Size:        info.Size(),
+		Tag:         match.Tag,
+		Version:     match.Version,
+		InstalledAt: time.Now(),
+	}, nil
 }
 
 // Install copies a library version into an instance, replacing whatever that

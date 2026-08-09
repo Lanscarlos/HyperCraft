@@ -57,6 +57,17 @@ type Panel struct {
 	// page: "this machine's line to GitHub is bad" is true for every download,
 	// and re-picking the mirror each time would be the annoyance.
 	JavaSource string `json:"javaSource,omitempty"`
+	// PluginMirror is the proxy plugin jars are downloaded through, by the id
+	// of one of plugin.Mirrors() or as a custom URL prefix. Empty means the
+	// automatic order, which is both the default and what a config written
+	// before this setting existed carries — so no pointer is needed to tell
+	// them apart.
+	//
+	// Separate from UpdateMirror on purpose, even though both proxy the same
+	// GitHub CDN: the panel updates a few times a year and plugins download
+	// weekly, so "the proxy that works for my plugins" is a choice worth making
+	// on its own rather than inheriting from a page about panel updates.
+	PluginMirror string `json:"pluginMirror,omitempty"`
 	// GitHubToken authenticates the panel's plugin lookups and downloads, so a
 	// plugin the operator publishes to their own private repository can be
 	// tracked like any other. Empty means anonymous requests, which is all a

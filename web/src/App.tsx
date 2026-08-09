@@ -9,6 +9,7 @@ import { JavaPage } from './components/JavaPage'
 import { Login } from './components/Login'
 import { HostTerminal } from './components/HostTerminal'
 import { NewInstanceDialog } from './components/NewInstanceDialog'
+import { PluginDetailPage } from './components/PluginDetailPage'
 import { PluginLibraryPage } from './components/PluginLibraryPage'
 import { SettingsPage, isSettingsSection } from './components/SettingsPage'
 import type { SettingsSection } from './components/SettingsPage'
@@ -31,7 +32,9 @@ type Route =
   | { kind: 'dashboard' }
   | { kind: 'java' }
   | { kind: 'cores' }
-  | { kind: 'plugins' }
+  // The plugin library is a list; one plugin's own page hangs off it, so a
+  // link to a plugin survives a reload the same way an instance link does.
+  | { kind: 'plugins'; id?: string }
   | { kind: 'settings'; section: SettingsSection }
   | { kind: 'terminal' }
   | { kind: 'instance'; id: string }
@@ -48,6 +51,8 @@ function routeFromPath(): Route {
   if (startsWith(path, '/terminal')) return { kind: 'terminal' }
   if (startsWith(path, '/java')) return { kind: 'java' }
   if (startsWith(path, '/cores')) return { kind: 'cores' }
+  const plugin = path.match(/^\/plugins\/([^/]+)/)
+  if (plugin) return { kind: 'plugins', id: plugin[1] }
   if (startsWith(path, '/plugins')) return { kind: 'plugins' }
 
   const settings = path.match(/^\/settings(?:\/([^/]+))?/)
@@ -76,7 +81,7 @@ function pathOf(route: Route): string {
     case 'cores':
       return '/cores'
     case 'plugins':
-      return '/plugins'
+      return route.id ? `/plugins/${route.id}` : '/plugins'
     default:
       return '/'
   }
@@ -135,6 +140,10 @@ export default function App() {
   const openJava = useCallback(() => navigate({ kind: 'java' }), [navigate])
   const openCores = useCallback(() => navigate({ kind: 'cores' }), [navigate])
   const openPlugins = useCallback(() => navigate({ kind: 'plugins' }), [navigate])
+  const openPlugin = useCallback(
+    (id: string) => navigate({ kind: 'plugins', id }),
+    [navigate],
+  )
 
   const refresh = useCallback(async () => {
     try {
@@ -191,6 +200,12 @@ export default function App() {
   // servers recorded for resume — so the update dialog promises exactly what
   // will happen.
   const runningNames = instances.filter((item) => isLive(item.state)).map((item) => item.name)
+  // A plugin id from the URL that no longer exists (deleted, or a stale
+  // bookmark) falls back to the list rather than to an error page.
+  const openedPlugin =
+    route.kind === 'plugins' && route.id
+      ? (plugins.plugins.find((item) => item.id === route.id) ?? null)
+      : null
   const updateNotice = updateLabel(update.status)
 
   return (
@@ -318,6 +333,7 @@ export default function App() {
             onSection={openSettings}
             terminal={terminal}
             update={update}
+            plugins={plugins}
             onOpenTerminal={openTerminal}
             runningNames={runningNames}
           />
@@ -326,7 +342,20 @@ export default function App() {
         ) : route.kind === 'cores' ? (
           <CoreLibraryPage cores={cores} onOpenJava={openJava} />
         ) : route.kind === 'plugins' ? (
-          <PluginLibraryPage plugins={plugins} onOpenInstances={() => select(instances[0]?.id ?? null)} />
+          openedPlugin ? (
+            <PluginDetailPage
+              key={openedPlugin.id}
+              item={openedPlugin}
+              plugins={plugins}
+              onBack={openPlugins}
+            />
+          ) : (
+            <PluginLibraryPage
+              plugins={plugins}
+              onOpenPlugin={openPlugin}
+              onOpenSettings={() => openSettings('plugin-source')}
+            />
+          )
         ) : route.kind === 'terminal' ? (
           <HostTerminal terminal={terminal} onOpenSettings={() => openSettings('terminal')} />
         ) : selected ? (

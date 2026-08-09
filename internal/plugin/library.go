@@ -278,6 +278,36 @@ func (l *Library) Edit(id, name string, src Source, targetDir, note string) (Plu
 	return l.describe(item), nil
 }
 
+// SetPrivate records a repository's visibility as GitHub reports it, and says
+// whether that changed anything.
+//
+// It overwrites what the operator ticked rather than deferring to it: the flag
+// decides how a jar is fetched, GitHub is the authority on which way works, and
+// a box ticked wrongly is exactly the case this exists to repair. It is
+// deliberately not the same call as Edit — nothing else about the plugin is
+// touched, so a visibility check racing an operator's open edit form cannot
+// revert the repository they were changing.
+func (l *Library) SetPrivate(id string, private bool) (bool, error) {
+	if err := validID(id); err != nil {
+		return false, err
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	registry := l.load()
+
+	item, ok := registry[id]
+	if !ok {
+		return false, fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	if item.Source.Private == private {
+		return false, nil
+	}
+	item.Source.Private = private
+	registry[id] = item
+	return true, l.save(registry)
+}
+
 // Remove stops tracking a plugin and deletes its downloads. Copies already
 // handed to instances are untouched — they are ordinary files in their own
 // directories, exactly like a core.

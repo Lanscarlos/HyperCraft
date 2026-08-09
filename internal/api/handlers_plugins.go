@@ -64,6 +64,11 @@ type pluginLibraryResponse struct {
 	// looking at two accounts' tokens can tell which one this panel holds
 	// without being shown anything that could be replayed.
 	TokenHint string `json:"tokenHint,omitempty"`
+	// Mirrors are the download proxies to choose between, and Mirror is the one
+	// in use. Static per build, but they travel with the listing so the settings
+	// page needs no second request to render the picker.
+	Mirrors []plugin.Mirror `json:"mirrors"`
+	Mirror  string          `json:"mirror"`
 }
 
 // handlePluginLibrary answers everything the library page needs in one request.
@@ -90,6 +95,8 @@ func (s *Server) pluginLibrary() pluginLibraryResponse {
 		Plugins:         make([]pluginView, 0, len(items)),
 		TokenConfigured: token != "",
 		TokenHint:       tokenHint(token),
+		Mirrors:         plugin.Mirrors(),
+		Mirror:          s.plugins.Client().Mirror(),
 	}
 	for _, item := range items {
 		view := pluginView{Plugin: item, UsedBy: []string{}}
@@ -172,6 +179,51 @@ func (s *Server) handlePluginToken(w http.ResponseWriter, r *http.Request) {
 	} else {
 		s.log.Info("GitHub token configured")
 	}
+	writeJSON(w, http.StatusOK, s.pluginLibrary())
+}
+
+type pluginMirrorRequest struct {
+	// Mirror is a mirror id from plugin.Mirrors(), a custom "https://…/"
+	// prefix, or "" for the automatic order.
+	Mirror string `json:"mirror"`
+}
+
+// handlePluginMirror chooses which proxy plugin jars are downloaded through.
+//
+// Deliberately not the same setting as the panel's own update mirror, even
+// though both proxy the same CDN: plugins download weekly and the panel updates
+// a few times a year, so the proxy that works for one is worth choosing without
+// digging through a page about the other.
+func (s *Server) handlePluginMirror(w http.ResponseWriter, r *http.Request) {
+	if !s.pluginsAvailable(w) {
+		return
+	}
+
+	var req pluginMirrorRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "malformed request body")
+		return
+	}
+	mirror, err := plugin.ResolveMirror(req.Mirror)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.plugins.Client().SetMirror(mirror)
+
+	s.panelMu.Lock()
+	panel := s.panel
+	panel.PluginMirror = mirror
+	s.panel = panel
+	s.panelMu.Unlock()
+
+	if err := s.persistPanel(); err != nil {
+		s.log.Error("could not persist the plugin download mirror", "err", err)
+		writeError(w, http.StatusInternalServerError, "已生效，但保存失败，重启面板后会丢失")
+		return
+	}
+	s.log.Info("plugin download mirror changed", "mirror", mirror)
 	writeJSON(w, http.StatusOK, s.pluginLibrary())
 }
 
@@ -448,6 +500,47 @@ func (s *Server) handleInstallInstancePlugin(w http.ResponseWriter, r *http.Requ
 	}
 	s.log.Info("plugin installed into instance",
 		"instance", cfg.Name, "plugin", req.PluginID, "tag", entry.Tag)
+	writeJSON(w, http.StatusOK, entry)
+}
+
+type adoptPluginRequest struct {
+	// Key is the unmanaged row to adopt, as handed out by the listing.
+	Key string `json:"key"`
+}
+
+// handleAdoptInstancePlugin starts tracking a jar the panel found rather than
+// installed, when it turns out to be one of the library's own downloads.
+//
+// Nothing on disk changes: the file is already there and already loading. What
+// it adds is the record of which plugin and version it is, which is what makes
+// updating and rolling it back possible afterwards.
+func (s *Server) handleAdoptInstancePlugin(w http.ResponseWriter, r *http.Request) {
+	inst, ok := s.instanceFromPath(w, r)
+	if !ok {
+		return
+	}
+	if !s.pluginsAvailable(w) {
+		return
+	}
+
+	var req adoptPluginRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "malformed request body")
+		return
+	}
+	if strings.TrimSpace(req.Key) == "" {
+		writeError(w, http.StatusBadRequest, "key is required")
+		return
+	}
+
+	cfg := inst.Config()
+	entry, err := s.instancePlugins.Adopt(cfg.ID, cfg.Directory, req.Key)
+	if err != nil {
+		s.writePluginError(w, err)
+		return
+	}
+	s.log.Info("instance plugin adopted",
+		"instance", cfg.Name, "plugin", entry.PluginID, "tag", entry.Tag)
 	writeJSON(w, http.StatusOK, entry)
 }
 

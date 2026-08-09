@@ -195,6 +195,37 @@ func TestEditKeepsDownloadsAndClearsTheStaleCheck(t *testing.T) {
 	}
 }
 
+func TestSetPrivateCorrectsTheFlagAndLeavesEverythingElseAlone(t *testing.T) {
+	library := newLibrary(t)
+	item, err := library.Add("Mine", Source{Repo: "me/mine", AssetPattern: "Mine-*.jar"}, "mods", "note")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	changed, err := library.SetPrivate(item.ID, true)
+	if err != nil || !changed {
+		t.Fatalf("SetPrivate: changed=%v err=%v", changed, err)
+	}
+	// Nothing but the flag: this runs behind an operator's back, before checks
+	// and downloads, and must not undo an edit they are in the middle of.
+	stored, err := library.Get(item.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	want := Source{Kind: SourceGitHub, Repo: "me/mine", AssetPattern: "Mine-*.jar", Private: true}
+	if stored.Source != want || stored.TargetDir != "mods" || stored.Note != "note" {
+		t.Fatalf("unexpected plugin: %+v", stored)
+	}
+
+	// Saying the same thing twice is not a change, so nothing is rewritten.
+	if changed, err := library.SetPrivate(item.ID, true); err != nil || changed {
+		t.Fatalf("expected no change, got changed=%v err=%v", changed, err)
+	}
+	if changed, err := library.SetPrivate(item.ID, false); err != nil || !changed {
+		t.Fatalf("a repository that went public should change back: changed=%v err=%v", changed, err)
+	}
+}
+
 func TestRecordCheckKeepsTheLastKnownLatestOnFailure(t *testing.T) {
 	library := newLibrary(t)
 	item := addPlugin(t, library, "Foo", "o/foo")

@@ -161,11 +161,11 @@ func run() error {
 
 	// Plugins are a panel-wide library too, and for a stronger reason than
 	// cores: a plugin has a version history that instances pin, so the panel
-	// keeps every release it downloaded and hands out copies. Downloads follow
-	// the panel's own update mirror, since they come off the same GitHub CDN.
+	// keeps every release it downloaded and hands out copies. Downloads have
+	// their own mirror setting — see config.Panel.PluginMirror.
 	pluginLibrary := plugin.NewLibrary(paths.PluginsRoot())
 	pluginClient := plugin.NewClient("", userAgent)
-	pluginClient.SetMirror(panel.Mirror())
+	pluginClient.SetMirror(panel.PluginMirror)
 	// A token is what makes the operator's own private repository readable, and
 	// it also lifts the anonymous API's 60 calls an hour out of the way.
 	pluginClient.SetToken(panel.GitHubToken)
