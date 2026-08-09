@@ -109,12 +109,10 @@ func (s *Server) handleTerminalToggle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.panelMu.Lock()
-	panel := s.panel
-	panel.Terminal.Enabled = req.Enabled
-	s.panel = panel
+	s.panel.Terminal.Enabled = req.Enabled
 	s.panelMu.Unlock()
 
-	if err := s.store.SavePanel(panel); err != nil {
+	if err := s.persistPanel(); err != nil {
 		s.log.Error("could not persist the terminal switch", "err", err)
 		writeError(w, http.StatusInternalServerError, "保存失败")
 		return
@@ -127,9 +125,9 @@ func (s *Server) handleTerminalToggle(w http.ResponseWriter, r *http.Request) {
 		hungUp = s.terminal.CloseAll()
 	}
 
-	sess, _ := sessionFrom(r.Context())
+	who, _ := principalFrom(r.Context())
 	s.log.Warn("host terminal switched",
-		"enabled", req.Enabled, "by", sess.Username, "sessionsClosed", hungUp)
+		"enabled", req.Enabled, "by", who.username, "sessionsClosed", hungUp)
 	writeJSON(w, http.StatusOK, s.terminalStatus())
 }
 
@@ -179,9 +177,9 @@ func (s *Server) handleTerminalSocket(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 	defer sess.Close()
 
-	who, _ := sessionFrom(r.Context())
-	s.log.Info("terminal attached", "user", who.Username, "pid", sess.PID(), "remote", r.RemoteAddr)
-	defer s.log.Info("terminal detached", "user", who.Username, "pid", sess.PID())
+	who, _ := principalFrom(r.Context())
+	s.log.Info("terminal attached", "user", who.username, "pid", sess.PID(), "remote", r.RemoteAddr)
+	defer s.log.Info("terminal detached", "user", who.username, "pid", sess.PID())
 
 	// Every write to the socket happens on this goroutine; gorilla allows only
 	// one concurrent writer. The two pumps below only ever hand it work.

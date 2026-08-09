@@ -4,17 +4,19 @@ import type { TerminalController } from '../useTerminal'
 import { updateLabel } from '../useUpdate'
 import type { UpdateController } from '../useUpdate'
 import { CoreLibraryPage } from './CoreLibraryPage'
+import { DevicesPage } from './DevicesPage'
 import { JavaPage } from './JavaPage'
 import { TerminalSettings } from './TerminalSettings'
 import { UpdatePanel } from './UpdatePanel'
 
 /** Which settings page is open. Part of the URL, so it survives a reload. */
-export type SettingsSection = 'java' | 'cores' | 'terminal' | 'update'
+export type SettingsSection = 'java' | 'cores' | 'terminal' | 'devices' | 'update'
 
 export const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: 'java', label: 'Java 运行时' },
   { id: 'cores', label: '服务端核心' },
   { id: 'terminal', label: '终端' },
+  { id: 'devices', label: '已配对设备' },
   { id: 'update', label: '面板更新' },
 ]
 
@@ -81,6 +83,7 @@ export function SettingsPage({
         {section === 'terminal' && (
           <TerminalSettings terminal={terminal} onOpenTerminal={onOpenTerminal} />
         )}
+        {section === 'devices' && <DevicesPage />}
         {section === 'update' && (
           <div className="page">
             <h1>面板更新</h1>

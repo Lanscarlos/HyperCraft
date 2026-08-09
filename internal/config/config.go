@@ -49,6 +49,10 @@ type Panel struct {
 	// turns it on — see Terminal.
 	Terminal   Terminal        `json:"terminal"`
 	Credential auth.Credential `json:"credential"`
+	// Devices are the paired native clients. Unlike sessions, which are
+	// deliberately in-memory, these survive a restart — a phone app should not
+	// be signed out every time the panel updates itself.
+	Devices []auth.DeviceToken `json:"devices,omitempty"`
 }
 
 // Terminal configures the in-panel shell.

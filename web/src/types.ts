@@ -300,6 +300,22 @@ export interface HostListing {
 export interface User {
   username: string
   version: string
+  /** Name of the paired client, set only when a device token authenticated. */
+  device?: string
+}
+
+/**
+ * A paired native client. The panel only ever returns the token itself once,
+ * from the pairing call, so it is not part of this type.
+ */
+export interface Device {
+  id: string
+  name: string
+  createdAt: string
+  /** Absent until the device has made its first authenticated request. */
+  lastUsed?: string
+  /** True for the device making the request; always false in the browser. */
+  current: boolean
 }
 
 export const STATE_LABELS: Record<InstanceState, string> = {
