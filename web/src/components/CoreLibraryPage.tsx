@@ -5,6 +5,7 @@ import { formatBytes, formatDate } from '../format'
 import type { CoreBuild, CoreDownloadJob, CoreProject, CoreVersion, ServerCore } from '../types'
 import type { CoreController } from '../useCores'
 import { Page } from './Page'
+import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
 const SUPPORT_LABELS: Record<string, string> = {
   SUPPORTED: '官方支持中',
@@ -189,6 +190,23 @@ export function CoreLibraryPage({
         )}
       </section>
 
+      {/* The list of downloadable projects comes from upstream, so this card
+          is the one thing on the page that waits on the network — and it used
+          to simply not be there until it was, which reads as the page having
+          finished a card short. */}
+      {loading && (
+        <SkeletonScreen inPage label="正在读取可下载的核心…">
+          <SkeletonPanel title={false}>
+            <div className="chart-head">
+              <Skeleton w="88px" h={15} />
+              <Skeleton w="260px" h={12} />
+            </div>
+            <Skeleton w="100%" h={34} />
+            <Skeleton w="72%" h={34} />
+          </SkeletonPanel>
+        </SkeletonScreen>
+      )}
+
       {!loading && projects.length > 0 && (
         <section className="panel">
           <div className="chart-head">
@@ -324,7 +342,7 @@ export function CoreLibraryPage({
             <p className="chart-note">
               该版本至少需要 Java {selected.javaMinimum}，机器上的 Java 太旧会在启动时直接报错 ——
               <button className="link" onClick={onOpenJava}>
-                Java 运行时
+                Java 环境
               </button>
               页面可以一键装一个。
             </p>

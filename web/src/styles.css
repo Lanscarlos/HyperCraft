@@ -1196,6 +1196,55 @@ a:hover {
   box-shadow: var(--ring-danger);
 }
 
+/* ---- a button with a request in flight ---------------------------------
+
+   启动 does three things over about a second: post the request, wait for the
+   daemon, wait for the first state to come back over the websocket. Until now
+   all three looked identical to a button that had not been pressed — greyed
+   out, which is also what 启动 looks like on a server that is already up. So
+   the honest reading of a click was "nothing happened", and the second click
+   is how you find out it did.
+
+   `aria-busy` is both the hook and the announcement: a spinner appears where
+   the label's own gap already is, so the button neither resizes nor reflows
+   the row it sits in. The label stays — swapping it for 处理中… would lose the
+   one word that says which button you pressed. */
+.btn[aria-busy='true'] {
+  /* Not the disabled look: this button is doing what it was asked, and the
+     greying reserved for "you cannot press this" would say the opposite. */
+  opacity: 1;
+  cursor: progress;
+  color: color-mix(in srgb, currentColor 78%, transparent);
+}
+
+.btn[aria-busy='true']::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 26%, transparent);
+  border-top-color: currentColor;
+  animation: spin 620ms linear infinite;
+  /* Compositor-only, so a second of spinning next to a console streaming a
+     thousand lines a minute costs nothing. */
+  will-change: transform;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+/* The filled button is disabled while its request is out, and .btn--primary
+   :disabled would otherwise drain it to the flat off-face — the same one it
+   wears when the server is already running. It keeps its face; only the ink
+   softens, which is enough to say "not yet" without saying "not available". */
+.btn--primary[aria-busy='true'] {
+  background: var(--accent-face);
+  color: color-mix(in srgb, var(--accent-ink) 80%, transparent);
+}
+
 /* A button whose whole label is one glyph — the ⋯ that opens a menu. Square
    rather than pill-shaped so it does not read as a third action. */
 .btn--icon {
@@ -1330,6 +1379,133 @@ a:hover {
 }
 
 /* --------------------------------------------------------------- feedback */
+
+/* Off screen but still read out. Used to hand a screen reader the one sentence
+   a wall of placeholder bars is standing in for. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- placeholders ------------------------------------------------------
+
+   The rule that matters here is the delay, not the shimmer: a placeholder is
+   held at opacity 0 for 140ms before it fades in, so a fetch the daemon
+   answers off its own memory — which is most of them — swaps straight to real
+   content and never shows grey. Only a request slow enough to be noticed gets
+   a placeholder, which is the only case where one helps.
+
+   `both` is what makes the delay work: without a fill the element would paint
+   at full opacity while it waits. */
+.skeleton-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: fade 180ms var(--ease) both;
+  animation-delay: 140ms;
+}
+
+/* The same box .stack is, because that is what it stands in for — a
+   placeholder laid out differently from the content is a placeholder that
+   still moves the page when the content arrives. Not needed inside <Page>,
+   which is already this column with this gap. */
+.skeleton-screen--stack {
+  padding: 16px 2px 40px;
+  max-width: var(--content-max);
+}
+
+/* No box of its own: the bars are children of the stack above, and this only
+   exists to take the whole block out of the accessibility tree at once. */
+.skeleton-screen__body {
+  display: contents;
+}
+
+.skeleton {
+  display: block;
+  border-radius: var(--radius-sm);
+  /* Three stops over twice the width, slid from one end to the other: a band
+     of light crossing a dull bar. The colours are the same surface ladder
+     everything else uses, so it stays a card that has not filled in yet
+     rather than a grey rectangle sitting on a warm page. */
+  background: linear-gradient(
+    90deg,
+    var(--surface-3) 0%,
+    var(--surface-4) 42%,
+    var(--surface-4) 58%,
+    var(--surface-3) 100%
+  );
+  background-size: 220% 100%;
+  animation: sweep 1.5s linear infinite;
+  /* Sits between the two lines it stands in for rather than butting against
+     them, so a stack of bars has the rhythm of text. */
+  flex: 0 0 auto;
+}
+
+.skeleton--pill {
+  border-radius: var(--radius-pill);
+}
+
+@keyframes sweep {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+
+.skeleton-panel {
+  gap: 11px;
+}
+
+.skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.skeleton-rows__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* Matches a real .file-row / .device-row, which is the whole point — the
+     listing that replaces this lands on the same grid. */
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.skeleton-rows__row:last-child {
+  border-bottom: none;
+}
+
+.skeleton-rows__row > .skeleton:last-child {
+  margin-left: auto;
+}
+
+/* ---- refreshing in place ----------------------------------------------
+
+   Different problem from the one above: the content is already on screen and
+   correct, and a *newer* copy is on its way — stepping into a directory,
+   switching a chart's range. Replacing it with placeholders would throw away
+   something the operator is still reading, so the old copy stays put and only
+   says it is stale. The pointer says the same thing, and clicks are refused
+   for the moment it takes, so a double-click cannot queue two navigations. */
+[data-pending='true'] {
+  opacity: 0.55;
+  cursor: progress;
+  transition: opacity var(--dur) var(--ease);
+}
+
+[data-pending='true'] * {
+  pointer-events: none;
+}
 
 .alert {
   display: flex;

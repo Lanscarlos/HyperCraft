@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, api, downloadURL, uploadFiles } from '../api'
 import { formatBytes } from '../format'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
+import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
 interface EditorState {
   path: string
@@ -22,14 +23,25 @@ export function FileManager({ instance }: { instance: InstanceStatus }) {
 
   const fileInput = useRef<HTMLInputElement | null>(null)
 
+  // Only ever true while a *different* directory is being fetched. Stepping
+  // into a folder used to be silent for as long as the listing took — nothing
+  // moved, nothing spun — so a slow disk read was indistinguishable from a
+  // click that missed, and the answer was to click again. The listing on
+  // screen is still correct until the new one lands, so it stays where it is
+  // and only says it is on its way out.
+  const [pending, setPending] = useState(false)
+
   const load = useCallback(
     async (target: string) => {
+      setPending(true)
       try {
         setListing(await api.listFiles(instance.id, target))
         setDir(target)
         setError(null)
       } catch (err) {
         setError(err instanceof Error ? err.message : '读取目录失败')
+      } finally {
+        setPending(false)
       }
     },
     [instance.id],
@@ -129,7 +141,22 @@ export function FileManager({ instance }: { instance: InstanceStatus }) {
   }
 
   if (!listing) {
-    return <div className="panel">{error ?? '加载中…'}</div>
+    if (error) return <div className="alert alert--error">{error}</div>
+    return (
+      <SkeletonScreen label="正在读取目录…">
+        <SkeletonPanel title={false}>
+          {/* 实例根目录, the toolbar, then the listing — the same three bands
+              the real panel is, in the same order and at the same heights. */}
+          <Skeleton w="88px" h={15} />
+          <div className="file-toolbar">
+            <Skeleton w="82px" h={30} />
+            <Skeleton w="96px" h={30} />
+            <Skeleton w="60px" h={30} />
+          </div>
+          <SkeletonRows rows={8} />
+        </SkeletonPanel>
+      </SkeletonScreen>
+    )
   }
 
   if (editor) {
@@ -230,7 +257,7 @@ export function FileManager({ instance }: { instance: InstanceStatus }) {
         {error && <div className="alert alert--error">{error}</div>}
         {status && <div className="alert alert--ok">{status}</div>}
 
-        <div className="table-scroll">
+        <div className="table-scroll" data-pending={pending || undefined}>
           <table className="data-table data-table--files">
             <thead>
               <tr>

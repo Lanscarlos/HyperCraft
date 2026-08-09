@@ -7,6 +7,7 @@ import type {
   KnownProperty,
   PropertiesResponse,
 } from '../types'
+import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
 /**
  * Edits server.properties.
@@ -104,7 +105,24 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
   }
 
   if (!data) {
-    return <div className="panel">{error ?? '加载中…'}</div>
+    if (error) return <div className="alert alert--error">{error}</div>
+    return (
+      <SkeletonScreen label="正在读取 server.properties…">
+        <SkeletonPanel title={false}>
+          <Skeleton w="30%" h={15} />
+          <Skeleton w="46%" h={12} />
+          {/* A form is label-then-control down the page, and each pair is
+              taller than a line of prose — a stack of even bars would be the
+              wrong height and put the first field back where it started. */}
+          {Array.from({ length: 6 }, (_, index) => (
+            <div className="field" key={index}>
+              <Skeleton w={`${22 + ((index * 29) % 18)}%`} h={12} />
+              <Skeleton w="100%" h={32} />
+            </div>
+          ))}
+        </SkeletonPanel>
+      </SkeletonScreen>
+    )
   }
 
   return (

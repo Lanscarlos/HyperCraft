@@ -166,7 +166,7 @@ function crumbsFor(
 ): Crumb[] {
   switch (route.kind) {
     case 'java':
-      return [{ label: 'Java 运行时' }]
+      return [{ label: 'Java 环境' }]
     case 'cores':
       return [{ label: '服务端核心' }]
     case 'plugins':
@@ -301,12 +301,21 @@ export default function App() {
   const refresh = useCallback(async () => {
     try {
       const fetched = await api.listInstances()
-      setInstances((prev) =>
-        fetched.map((item) => {
+      setInstances((prev) => {
+        const next = fetched.map((item) => {
           const existing = prev.find((p) => p.id === item.id)
           return existing ? mergeState(existing, item) : item
-        }),
-      )
+        })
+        // mergeState hands back the object it was given when nothing moved, so
+        // an idle poll produces the same instances in the same order — and
+        // returning `prev` for that case is what turns it into no render at
+        // all. Building `next` first and throwing it away costs a few object
+        // spreads every five seconds; not doing it costs a full re-render of
+        // whatever page is open, at the same cadence, all day.
+        const unchanged =
+          next.length === prev.length && next.every((item, index) => item === prev[index])
+        return unchanged ? prev : next
+      })
       setLoadError(null)
     } catch (err) {
       if (err instanceof ApiError && err.isUnauthorized) {
@@ -420,11 +429,11 @@ export default function App() {
             className={`sidebar__link${route.kind === 'java' ? ' sidebar__link--active' : ''}`}
             href={pathOf({ kind: 'java' })}
             onClick={follow(openJava)}
-            title="Java 运行时"
+            title="Java 环境"
             aria-current={route.kind === 'java' ? 'page' : undefined}
           >
             <Icon name="java" />
-            <span className="sidebar__name">Java 运行时</span>
+            <span className="sidebar__name">Java 环境</span>
             {java.installing && <span className="badge badge--update">安装中</span>}
           </a>
           <a

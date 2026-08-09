@@ -16,6 +16,8 @@ import { Tabs } from './Tabs'
 
 type Tab = 'console' | 'files' | 'plugins' | 'resources' | 'launch' | 'properties'
 
+type PowerAction = 'start' | 'stop' | 'restart' | 'kill'
+
 /** Whether the console keeps its status strip. Per-device, like the sidebar. */
 const SIDE_KEY = 'hypercraft.console-side'
 
@@ -47,15 +49,42 @@ export function InstanceView({
 }: Props) {
   const [tab, setTab] = useState<Tab>('console')
   const [busy, setBusy] = useState(false)
+  // Which power request is out, as opposed to merely that one is: it takes the
+  // daemon about a second to spawn a JVM and report back, and for that second
+  // 启动 was indistinguishable from 启动 on a server that is already running.
+  const [pending, setPending] = useState<PowerAction | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [side, setSide] = useState(() => window.localStorage.getItem(SIDE_KEY) !== 'off')
+
+  // Which tabs have been opened at least once, this visit.
+  //
+  // A tab used to be mounted only while it was selected, so 文件 → 控制台 →
+  // 文件 threw the listing away and fetched it again, and 资源 refetched a
+  // minute of samples and redrew both charts from nothing. Both are two clicks
+  // apart, both are things you go back and forth between while a server starts,
+  // and the second visit was as slow as the first — with the scroll position
+  // and any open editor gone besides.
+  //
+  // So a tab mounts lazily and then stays: the first visit pays for the fetch,
+  // every later one is a style change. Lazily, because mounting all six up
+  // front would fire six requests for panels most sessions never open — 6× the
+  // work to make a second visit free is the wrong trade the other way.
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>(['console']))
+
+  const openTab = useCallback((next: Tab) => {
+    setTab(next)
+    setVisited((prev) => (prev.has(next) ? prev : new Set(prev).add(next)))
+  }, [])
 
   useEffect(() => {
     window.localStorage.setItem(SIDE_KEY, side ? 'on' : 'off')
   }, [side])
 
+  // A different server is a different set of files, plugins and samples, so
+  // nothing carries over — the visit history resets with the tab.
   useEffect(() => {
     setTab('console')
+    setVisited(new Set<Tab>(['console']))
   }, [instance.id])
 
   // The console websocket is the fastest source of state changes, so state
@@ -65,7 +94,7 @@ export function InstanceView({
     [instance, onChanged],
   )
 
-  const power = async (action: 'start' | 'stop' | 'restart' | 'kill') => {
+  const power = async (action: PowerAction) => {
     if (action === 'kill') {
       const ok = window.confirm(
         '强制结束会直接杀掉进程，不会保存世界，可能丢失最近的存档数据。确定继续吗？',
@@ -73,6 +102,7 @@ export function InstanceView({
       if (!ok) return
     }
     setBusy(true)
+    setPending(action)
     setError(null)
     try {
       onChanged(await api.power(instance.id, action))
@@ -80,6 +110,7 @@ export function InstanceView({
       setError(err instanceof Error ? err.message : '操作失败')
     } finally {
       setBusy(false)
+      setPending(null)
     }
   }
 
@@ -98,10 +129,13 @@ export function InstanceView({
             pointer that just started the server, is how a world gets lost to a
             misclick. */}
         <div className="instance__actions">
+          {/* aria-busy only on the button that was actually pressed: marking
+              both would say two requests are out when one is. */}
           <button
             className="btn btn--primary"
             onClick={() => power('start')}
             disabled={busy || live}
+            aria-busy={pending === 'start' || undefined}
           >
             启动
           </button>
@@ -109,6 +143,7 @@ export function InstanceView({
             className="btn"
             onClick={() => power('stop')}
             disabled={busy || !live}
+            aria-busy={pending === 'stop' || undefined}
           >
             停止
           </button>
@@ -139,7 +174,7 @@ export function InstanceView({
       <Tabs
         items={TABS}
         active={tab}
-        onSelect={setTab}
+        onSelect={openTab}
         label={`${instance.name} 的页面`}
         idPrefix="instance"
       />
@@ -166,7 +201,7 @@ export function InstanceView({
             <ConsoleStatus
               instance={instance}
               active={tab === 'console'}
-              onOpenResources={() => setTab('resources')}
+              onOpenResources={() => openTab('resources')}
               onCollapse={() => setSide(false)}
             />
           ) : (
@@ -180,8 +215,13 @@ export function InstanceView({
             </button>
           )}
         </div>
-        {tab === 'files' && (
+        {/* The five below follow the console's pattern now: mounted once and
+            then hidden rather than torn down, so going back to one is instant
+            and finds it where you left it. `hidden` is what stops a background
+            pane from being tabbed into or read out. */}
+        {visited.has('files') && (
           <div
+            hidden={tab !== 'files'}
             className="instance__pane instance__pane--scroll"
             id="instance-panel-files"
             role="tabpanel"
@@ -190,8 +230,9 @@ export function InstanceView({
             <FileManager instance={instance} />
           </div>
         )}
-        {tab === 'plugins' && (
+        {visited.has('plugins') && (
           <div
+            hidden={tab !== 'plugins'}
             className="instance__pane instance__pane--scroll"
             id="instance-panel-plugins"
             role="tabpanel"
@@ -200,18 +241,20 @@ export function InstanceView({
             <InstancePlugins instance={instance} onOpenLibrary={onOpenPlugins} />
           </div>
         )}
-        {tab === 'resources' && (
+        {visited.has('resources') && (
           <div
+            hidden={tab !== 'resources'}
             className="instance__pane instance__pane--scroll"
             id="instance-panel-resources"
             role="tabpanel"
             aria-labelledby="instance-tab-resources"
           >
-            <ResourcePanel instance={instance} />
+            <ResourcePanel instance={instance} active={tab === 'resources'} />
           </div>
         )}
-        {tab === 'launch' && (
+        {visited.has('launch') && (
           <div
+            hidden={tab !== 'launch'}
             className="instance__pane instance__pane--scroll"
             id="instance-panel-launch"
             role="tabpanel"
@@ -226,8 +269,9 @@ export function InstanceView({
             />
           </div>
         )}
-        {tab === 'properties' && (
+        {visited.has('properties') && (
           <div
+            hidden={tab !== 'properties'}
             className="instance__pane instance__pane--scroll"
             id="instance-panel-properties"
             role="tabpanel"

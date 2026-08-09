@@ -4,6 +4,7 @@ import { api } from '../api'
 import { formatBytes, formatDate } from '../format'
 import type { InstancePlugin, InstanceStatus, LibraryPlugin } from '../types'
 import { isLive } from '../types'
+import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
 /**
  * One instance's plugins.
@@ -77,7 +78,24 @@ export function InstancePlugins({
   )
 
   if (loading) {
-    return <p className="muted">正在读取插件…</p>
+    return (
+      <SkeletonScreen label="正在读取插件…">
+        <SkeletonPanel title={false}>
+          <div className="chart-head">
+            <Skeleton w="72px" h={15} />
+            <Skeleton w="52%" h={12} />
+          </div>
+          <SkeletonRows rows={4} />
+        </SkeletonPanel>
+        <SkeletonPanel title={false}>
+          <div className="chart-head">
+            <Skeleton w="112px" h={15} />
+            <Skeleton w="60px" h={12} />
+          </div>
+          <SkeletonRows rows={3} />
+        </SkeletonPanel>
+      </SkeletonScreen>
+    )
   }
 
   return (

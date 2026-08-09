@@ -88,7 +88,7 @@ export function Dashboard({
           detail={instances.length === 0 ? '还没有实例' : '运行中 / 总数'}
         />
         <Stat
-          label="Java 运行时"
+          label="Java 环境"
           value={java.installing ? '安装中' : String(java.overview?.runtimes.length ?? 0)}
           detail={javaDetail(java)}
           onClick={onOpenJava}

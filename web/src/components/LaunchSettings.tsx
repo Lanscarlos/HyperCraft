@@ -212,7 +212,7 @@ export function LaunchSettings({
         <h3 className="panel__title">启动方式</h3>
 
         <label className="field">
-          <span>Java 运行时</span>
+          <span>Java 环境</span>
           <select
             value={showCustomJava ? CUSTOM_JAVA : form.java}
             onChange={(e) => {
@@ -247,8 +247,8 @@ export function LaunchSettings({
           )}
           <small>
             {runtimes.length > 0
-              ? '面板装的 Java 在这里直接选；左侧「Java 运行时」可以再装别的版本。'
-              : '左侧「Java 运行时」可以一键装一个，装完这里就能选。'}
+              ? '面板装的 Java 在这里直接选；左侧「Java 环境」可以再装别的版本。'
+              : '左侧「Java 环境」可以一键装一个，装完这里就能选。'}
           </small>
         </label>
 

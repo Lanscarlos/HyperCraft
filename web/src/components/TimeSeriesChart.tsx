@@ -29,7 +29,11 @@ interface Props {
 }
 
 const PADDING = { top: 14, right: 62, bottom: 22, left: 56 }
-const HEIGHT = 168
+/** Exported so the placeholder that stands in for a chart is exactly as tall
+ *  as the chart — the whole point of a placeholder is that nothing moves when
+ *  the real thing replaces it, and a hardcoded copy of this drifts. */
+export const CHART_HEIGHT = 168
+const HEIGHT = CHART_HEIGHT
 
 /**
  * A single-series area chart over time.
@@ -57,6 +61,12 @@ export function TimeSeriesChart({
     const host = hostRef.current
     if (!host) return
     const observer = new ResizeObserver(([entry]) => {
+      // A chart in a background tab is display:none, which reports 0×0 — and
+      // taking that measurement would redraw it at the 240px floor, so coming
+      // back to 资源 would show one frame of a squashed chart snapping open.
+      // Zero is not a width the chart can ever have on screen, so it is not a
+      // measurement; keep the last real one until the pane is visible again.
+      if (entry.contentRect.width === 0) return
       setWidth(Math.max(240, entry.contentRect.width))
     })
     observer.observe(host)
