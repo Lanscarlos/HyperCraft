@@ -141,6 +141,79 @@ func TestCollectForgetsRemovedInstances(t *testing.T) {
 	}
 }
 
+// The first host sample has no interval behind it, so it must not turn a
+// since-boot counter into a transfer rate — on a machine with any uptime that
+// would draw a spike of hundreds of megabytes a second at the left of the chart.
+func TestFirstNetworkSampleHasNoRate(t *testing.T) {
+	collector := newTestCollector(t)
+	ctx := context.Background()
+
+	collector.collectHost(ctx, time.Now())
+	first := collector.HostSeries()[0]
+	if first.NetRecvPerSec != 0 || first.NetSentPerSec != 0 {
+		t.Errorf("the first sample has no baseline, expected 0, got %+v", first)
+	}
+	if usage := collector.Net(); usage.RecvBytes != 0 || usage.SentBytes != 0 {
+		t.Errorf("nothing has been counted yet, got %+v", usage)
+	}
+
+	collector.collectHost(ctx, time.Now().Add(time.Second))
+	second := collector.HostSeries()[1]
+	if second.NetRecvPerSec < 0 || second.NetSentPerSec < 0 {
+		t.Errorf("a rate cannot be negative, got %+v", second)
+	}
+	for _, name := range collector.Net().Interfaces {
+		if collector.isLoopback(name) {
+			t.Errorf("loopback interface %q is being counted as network traffic", name)
+		}
+	}
+}
+
+// A bridge and the veth plugged into it carry the same bytes the physical card
+// carries. Counting all three reports three times the traffic — on a machine
+// running Docker, which is most of them.
+func TestBridgesAndTunnelsAreNotCounted(t *testing.T) {
+	for _, name := range []string{"docker0", "veth1a2b3c", "br-9f8e", "virbr0", "tun0", "wg0", "ifb0"} {
+		if !isVirtual(name) {
+			t.Errorf("%q should not be counted as a physical interface", name)
+		}
+	}
+	for _, name := range []string{"eth0", "enp3s0", "wlan0", "ens5", "venet0", "em1"} {
+		if isVirtual(name) {
+			t.Errorf("%q is a real interface and must be counted", name)
+		}
+	}
+}
+
+// An interface that is reset or unplugged reports a counter lower than the
+// last one. That is not traffic, and unsigned arithmetic would turn it into
+// sixteen exabytes of it.
+func TestNetworkCounterResetReadsAsZero(t *testing.T) {
+	if got := since(5, 9); got != 0 {
+		t.Errorf("since(5, 9) = %d, want 0", got)
+	}
+	if got := since(9, 5); got != 4 {
+		t.Errorf("since(9, 5) = %d, want 4", got)
+	}
+}
+
+// Without the flags — a container with a restricted /proc — the conventional
+// names still have to be recognised, or the panel reports a machine talking to
+// itself as network traffic.
+func TestLoopbackIsExcludedByNameWhenFlagsAreMissing(t *testing.T) {
+	collector := newTestCollector(t)
+	collector.loopback = nil
+
+	for _, name := range []string{"lo", "lo0", "Loopback Pseudo-Interface 1"} {
+		if !collector.isLoopback(name) {
+			t.Errorf("%q should be treated as loopback", name)
+		}
+	}
+	if collector.isLoopback("eth0") {
+		t.Error("eth0 is not loopback")
+	}
+}
+
 func TestRunStopsWithTheContext(t *testing.T) {
 	collector := newTestCollector(t)
 	ctx, cancel := context.WithCancel(context.Background())

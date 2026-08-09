@@ -20,11 +20,15 @@ interface Props {
   user: User
   /** True while the sidebar is a drawer rather than a rail beside the content. */
   compact: boolean
-  /** True while the desktop sidebar is collapsed to icons. */
-  railed: boolean
   navOpen: boolean
   onToggleNav: () => void
   toggleRef: RefObject<HTMLButtonElement>
+  /** One step up the trail, or null at the top of it. */
+  onBack: (() => void) | null
+  /** Where that step lands, so the button is a real link like the trail is. */
+  backHref: string | null
+  /** Named in the tooltip: "返回" alone is the question, not the answer. */
+  backLabel: string | null
   /** ⌘K. On a drawer layout the sidebar's own search button is off screen, so
    *  this is the only one left — which is exactly when it is needed most. */
   onOpenPalette: () => void
@@ -45,38 +49,60 @@ export function TopBar({
   crumbs,
   user,
   compact,
-  railed,
   navOpen,
   onToggleNav,
   toggleRef,
+  onBack,
+  backHref,
+  backLabel,
   onOpenPalette,
   onChangePassword,
   onSignOut,
 }: Props) {
-  // One button, two jobs: it opens the drawer where there is no room for the
-  // sidebar and folds the rail where there is. Labelling it for the wrong one
-  // is worse than having two buttons, so the label follows the layout.
-  const toggleLabel = compact
-    ? navOpen
-      ? '关闭导航'
-      : '打开导航'
-    : railed
-      ? '展开侧边栏（[）'
-      : '收起侧边栏（[）'
+  // The corner every browser, every phone and every file manager puts 返回 in.
+  // It used to hold the sidebar's fold — a chevron pointing left, which is the
+  // back arrow's own shape — and people pressed it expecting to leave the page.
+  // The fold moved to the foot of the sidebar it folds; this is what they were
+  // reaching for. On a drawer layout the sidebar is off screen and nothing else
+  // can open it, so there the corner still belongs to the drawer.
+  const drawerLabel = navOpen ? '关闭导航' : '打开导航'
 
   return (
     <header className="topbar">
-      <button
-        ref={toggleRef}
-        className="topbar__toggle"
-        onClick={onToggleNav}
-        title={toggleLabel}
-        aria-label={toggleLabel}
-        aria-expanded={compact ? navOpen : !railed}
-        aria-controls="sidebar"
-      >
-        <Icon name={compact ? 'menu' : railed ? 'expand' : 'collapse'} />
-      </button>
+      {compact ? (
+        <button
+          ref={toggleRef}
+          className="topbar__toggle"
+          onClick={onToggleNav}
+          title={drawerLabel}
+          aria-label={drawerLabel}
+          aria-expanded={navOpen}
+          aria-controls="sidebar"
+        >
+          <Icon name="menu" />
+        </button>
+      ) : onBack && backHref ? (
+        <a
+          className="topbar__toggle"
+          href={backHref}
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+            event.preventDefault()
+            onBack()
+          }}
+          title={backLabel ? `返回${backLabel}` : '返回上一级'}
+          aria-label={backLabel ? `返回${backLabel}` : '返回上一级'}
+        >
+          <Icon name="back" />
+        </a>
+      ) : (
+        // The overview is the top of the trail. The button stays in place
+        // rather than being removed, because a strip whose contents shift left
+        // on one page out of six is a strip that has to be re-read.
+        <span className="topbar__toggle topbar__toggle--idle" aria-hidden="true">
+          <Icon name="back" />
+        </span>
+      )}
 
       <nav className="crumbs" aria-label="当前位置">
         {crumbs.map((crumb, index) => {

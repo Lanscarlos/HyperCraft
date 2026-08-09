@@ -6,8 +6,10 @@ import type { LibrarySection, Route, Scope } from '../routes'
 import {
   HOST_SECTIONS,
   INSTANCE_SECTIONS,
+  LIBRARY_SECTIONS,
   LIBRARY_VIEWS,
   SETTINGS_SECTIONS,
+  defaultView,
   pathOf,
   samePage,
 } from '../routes'
@@ -24,6 +26,10 @@ import type { IconName } from './Icon'
 interface Props {
   route: Route
   scope: Scope
+  /** True while the sidebar is a drawer; the fold is a desktop-only idea. */
+  compact: boolean
+  railed: boolean
+  onToggleRail: () => void
   navigate: (route: Route) => void
   /** A plain left click on a sidebar link; every other click stays the
    *  browser's, because these are real hrefs. */
@@ -45,15 +51,15 @@ interface Props {
 }
 
 /**
- * The panel's navigation, in whichever of its four forms applies.
+ * The panel's navigation, in whichever of its forms applies.
  *
- * There are four kinds of thing to manage here and they do not belong in one
- * flat list: the panel and its shared stock, one server, the machine
+ * There are several kinds of thing to manage here and they do not belong in one
+ * flat list: the panel, one server, one shelf of the shared library, the machine
  * underneath, and the panel's own settings. Their lifetimes differ by orders
  * of magnitude — you visit the host page monthly and the console hourly — so
- * entering one of the inner three *replaces* this list rather than expanding
- * an item inside it. Nesting them would put the console three levels deep, and
- * a console three levels deep is a console nobody uses.
+ * entering an inner one *replaces* this list rather than expanding an item
+ * inside it. Nesting them would put the console three levels deep, and a
+ * console three levels deep is a console nobody uses.
  *
  * What an inner scope owes the reader in exchange is a way out and a way
  * across: every one of them opens with 返回上级 and the name of the thing you
@@ -63,7 +69,7 @@ interface Props {
  * have to re-read the sidebar to understand. See scopeMorph.ts.
  */
 export function Sidebar(props: Props) {
-  const { scope, sidebarRef } = props
+  const { scope, sidebarRef, compact, railed, onToggleRail } = props
   const self = useRef<HTMLElement | null>(null)
   const previous = useRef<Scope>(scope)
 
@@ -98,12 +104,36 @@ export function Sidebar(props: Props) {
     >
       {scope === 'instance' ? (
         <InstanceScope {...props} />
+      ) : scope === 'library' ? (
+        <LibraryScope {...props} />
       ) : scope === 'host' ? (
         <HostScope {...props} />
       ) : scope === 'settings' ? (
         <SettingsScope {...props} />
       ) : (
         <GlobalScope {...props} />
+      )}
+
+      {/* The fold, at the foot of the column it folds.
+          It used to be the leftmost button in the top bar — a chevron pointing
+          left, in the corner every browser and every phone puts 返回 in — so
+          the control that narrows the navigation was sitting exactly where a
+          reader expects the control that leaves the page. Moved down here it is
+          attached to the thing it acts on, and that corner is free for the back
+          button people were already trying to press. */}
+      {!compact && (
+        <button
+          className="sidebar__fold"
+          onClick={onToggleRail}
+          title={railed ? '展开侧边栏（[）' : '收起侧边栏（[）'}
+          aria-label={railed ? '展开侧边栏' : '收起侧边栏'}
+          aria-expanded={!railed}
+          aria-controls="sidebar"
+        >
+          <Icon name={railed ? 'expand' : 'collapse'} />
+          <span className="sidebar__name">收起侧边栏</span>
+          <kbd className="sidebar__kbd">[</kbd>
+        </button>
       )}
     </aside>
   )
@@ -206,27 +236,23 @@ function GlobalScope(props: Props) {
             icon="cores"
             label="服务端核心"
             target={{ kind: 'library', section: 'cores', view: 'stock' }}
-            active={route.kind === 'library' && route.section === 'cores'}
+            navKey="library:cores"
             badge={cores.downloading ? <span className="badge badge--update">下载中</span> : null}
           />
-          <LibraryViews {...props} section="cores" />
-
           <NavLink
             {...props}
             icon="java"
             label="Java 环境"
             target={{ kind: 'library', section: 'java', view: 'installed' }}
-            active={route.kind === 'library' && route.section === 'java'}
+            navKey="library:java"
             badge={java.installing ? <span className="badge badge--update">安装中</span> : null}
           />
-          <LibraryViews {...props} section="java" />
-
           <NavLink
             {...props}
             icon="plugins"
             label="插件库"
             target={{ kind: 'library', section: 'plugins', view: 'list' }}
-            active={route.kind === 'library' && route.section === 'plugins'}
+            navKey="library:plugins"
             badge={
               plugins.downloading ? (
                 <span className="badge badge--update">下载中</span>
@@ -235,7 +261,6 @@ function GlobalScope(props: Props) {
               ) : null
             }
           />
-          <LibraryViews {...props} section="plugins" />
         </nav>
 
         <Group label="系统" />
@@ -264,45 +289,6 @@ function GlobalScope(props: Props) {
         <span className="sidebar__name">新建实例</span>
       </button>
     </>
-  )
-}
-
-/**
- * The pages inside one library entry, shown only while you are in it.
- *
- * A second level in a sidebar that has spent a lot of effort staying one level
- * deep needs a reason. This one: the three library entries each turned into a
- * page with three jobs stacked in one scroll — the shelf, the catalogue, and
- * the settings that govern downloading — and the shelf, which is what you came
- * for, was underneath the other two. Splitting them needs somewhere to put the
- * split, and a strip of tabs across the top of the page is the shape this panel
- * already decided against for 面板设置.
- *
- * It expands rather than replaces, unlike an instance or the host: these are
- * two or three short pages, not a scope you spend an afternoon in, and folding
- * the rest of the panel away to show them would be a bigger movement than the
- * thing it reveals.
- */
-function LibraryViews({ route, follow, navigate, section }: Props & { section: LibrarySection }) {
-  if (route.kind !== 'library' || route.section !== section) return null
-
-  return (
-    <div className="sidebar__sub" role="group" aria-label={`${section} 子页面`}>
-      {LIBRARY_VIEWS[section].map((view) => {
-        const current = route.view === view.id
-        return (
-          <a
-            key={view.id}
-            className={`sidebar__sublink${current ? ' sidebar__sublink--active' : ''}`}
-            href={pathOf({ kind: 'library', section, view: view.id })}
-            onClick={follow(() => navigate({ kind: 'library', section, view: view.id }))}
-            aria-current={current ? 'page' : undefined}
-          >
-            {view.label}
-          </a>
-        )
-      })}
-    </div>
   )
 }
 
@@ -385,6 +371,108 @@ const INSTANCE_ICONS: Record<string, IconName> = {
   plugins: 'plugins',
   properties: 'properties',
   settings: 'settings',
+}
+
+// ----------------------------------------------------------------- library
+
+/**
+ * One shelf of the shared library, with its pages as the whole navigation.
+ *
+ * These three were the panel's last second-level list: an indented strip that
+ * unfolded under 服务端核心 while you were in it. The strip was not wrong about
+ * the structure — the shelf, the catalogue and the download settings really are
+ * pages *of* one entry — it was wrong about the depth it implied and about the
+ * fact that it arrived out of nowhere. Everything else in here that has pages
+ * inside it takes the column over and says so by moving; a strip that appears
+ * under a row you clicked is a fourth thing the reader has to have learned.
+ *
+ * So a shelf is a scope now, on exactly the terms an instance is: the row flies
+ * up and becomes this header, its pages come up underneath, and 返回上级 puts
+ * the row back where it was.
+ */
+function LibraryScope(props: Props) {
+  const { route, follow, navigate, java, cores, plugins } = props
+  const section: LibrarySection = route.kind === 'library' ? route.section : 'cores'
+  const view = route.kind === 'library' ? route.view : defaultView(section)
+  const entry = LIBRARY_SECTIONS.find((item) => item.id === section)
+
+  return (
+    <>
+      <ScopeHead
+        {...props}
+        backLabel="返回面板"
+        backTo={{ kind: 'overview' }}
+        switcherLabel={undefined}
+        navKey={`library:${section}`}
+        name={entry?.label ?? '资源库'}
+        meta={libraryMeta(props, section)}
+        dot={<Icon name={LIBRARY_ICONS[section]} />}
+      />
+
+      <div className="sidebar__scroll">
+        <nav className="sidebar__nav" aria-label={`${entry?.label ?? '资源库'}页面`}>
+          {LIBRARY_VIEWS[section].map((page) => {
+            const current = view === page.id
+            const badge =
+              section === 'cores' && page.id === 'download' && cores.downloading ? (
+                <span className="badge badge--update">下载中</span>
+              ) : section === 'java' && page.id === 'install' && java.installing ? (
+                <span className="badge badge--update">安装中</span>
+              ) : section === 'plugins' && page.id === 'list' && plugins.updates > 0 ? (
+                <span className="badge badge--update">{plugins.updates}</span>
+              ) : null
+
+            return (
+              <a
+                key={page.id}
+                className={`sidebar__link${current ? ' sidebar__link--active' : ''}`}
+                href={pathOf({ kind: 'library', section, view: page.id })}
+                onClick={follow(() => navigate({ kind: 'library', section, view: page.id }))}
+                title={page.label}
+                aria-current={current ? 'page' : undefined}
+              >
+                <Icon name={LIBRARY_VIEW_ICONS[page.id]} />
+                <span className="sidebar__name">{page.label}</span>
+                {badge}
+              </a>
+            )
+          })}
+        </nav>
+      </div>
+    </>
+  )
+}
+
+/** What is on the shelf, under its name — the same job the instance header's
+ *  state line does: enough to know whether you need to be here at all. */
+function libraryMeta({ java, cores, plugins }: Props, section: LibrarySection): string {
+  switch (section) {
+    case 'cores':
+      return cores.cores.length > 0 ? `${cores.cores.length} 个核心` : '还没有核心'
+    case 'java': {
+      const count = java.overview?.runtimes.length ?? 0
+      return count > 0 ? `${count} 个运行时` : '还没装 Java'
+    }
+    default:
+      return plugins.plugins.length > 0 ? `${plugins.plugins.length} 个插件` : '还没有插件'
+  }
+}
+
+const LIBRARY_ICONS: Record<LibrarySection, IconName> = {
+  cores: 'cores',
+  java: 'java',
+  plugins: 'plugins',
+}
+
+/** A page inside a shelf is one of three things: what you have, where to get
+ *  more, and where the getting is configured. The icons say which. */
+const LIBRARY_VIEW_ICONS: Record<string, IconName> = {
+  stock: 'cores',
+  installed: 'java',
+  list: 'plugins',
+  download: 'update',
+  install: 'update',
+  source: 'settings',
 }
 
 // -------------------------------------------------------------------- host

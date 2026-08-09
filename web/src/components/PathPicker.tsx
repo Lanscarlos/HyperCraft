@@ -59,6 +59,11 @@ export function PathPicker({ initialPath, onPick, onCancel }: Props) {
           className="picker__path"
           onSubmit={(event) => {
             event.preventDefault()
+            // The picker is opened from inside another dialog's form, and a
+            // portal does not stop a React event from reaching the component
+            // that rendered it. Without this, pressing 前往 to list a directory
+            // also submits the dialog behind — which is 创建实例.
+            event.stopPropagation()
             setPath(typed.trim())
           }}
         >
@@ -104,7 +109,7 @@ export function PathPicker({ initialPath, onPick, onCancel }: Props) {
           {listing?.parent && (
             <button className="picker__row" type="button" onClick={() => setPath(listing.parent)}>
               <span className="file-icon">↑</span>
-              <span className="sidebar__name">上级目录</span>
+              <span className="picker__name">上级目录</span>
             </button>
           )}
           {directories.map((entry) => (
@@ -115,13 +120,13 @@ export function PathPicker({ initialPath, onPick, onCancel }: Props) {
               onClick={() => setPath(entry.path)}
             >
               <span className="file-icon">📁</span>
-              <span className="sidebar__name">{entry.name}</span>
+              <span className="picker__name">{entry.name}</span>
             </button>
           ))}
           {files.map((entry) => (
             <div key={entry.path} className="picker__row picker__row--plain">
               <span className="file-icon">📄</span>
-              <span className="sidebar__name">{entry.name}</span>
+              <span className="picker__name">{entry.name}</span>
             </div>
           ))}
           {!loading && listing?.exists && listing.entries.length === 0 && (

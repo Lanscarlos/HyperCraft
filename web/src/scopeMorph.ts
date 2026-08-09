@@ -92,6 +92,11 @@ export function captureScope(key: string): void {
     'transform:none;visibility:visible;background:transparent;' +
     'border-right-color:transparent;box-shadow:none;'
 
+  // The one control that is in every scope's sidebar, in the same place, doing
+  // the same thing. Leaving it in the copy would animate it out from under
+  // itself — a second chevron sliding off a chevron that never moved.
+  clone.querySelector('.sidebar__fold')?.remove()
+
   const ghost = document.createElement('div')
   ghost.className = 'sidebar__ghost'
   ghost.setAttribute('aria-hidden', 'true')

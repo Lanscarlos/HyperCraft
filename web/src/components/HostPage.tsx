@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 
 import { DISK_CRITICAL_FREE, DISK_WARN_FREE, diskUsedPercent, hostMemory } from '../alerts'
-import { formatBytes, formatPercent } from '../format'
+import { formatBytes, formatPercent, formatRate } from '../format'
 import type { HostSection, Route } from '../routes'
 import type { InstanceStatus, SystemInfo } from '../types'
 import { STATE_LABELS, byUrgency, isLive } from '../types'
@@ -13,7 +13,14 @@ import { TerminalSettings } from './TerminalSettings'
 import { TimeSeriesChart, type Point } from './TimeSeriesChart'
 
 const CPU_COLOR = 'var(--series-cpu)'
+const NET_DOWN_COLOR = 'var(--series-net-down)'
+const NET_UP_COLOR = 'var(--series-net-up)'
 const WINDOW_MS = 30 * 60_000
+
+/** The floor for the traffic charts' y-axis: 128 KB/s. Below it the axis would
+ *  rescale around a keepalive packet and an idle machine would look like it was
+ *  serving something. */
+const NET_MIN_YMAX = 128 * 1024
 
 interface Props {
   section: HostSection
@@ -57,11 +64,22 @@ function HostMetrics({
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const info = system.info
 
-  const cpuPoints = useMemo<Point[]>(() => {
-    if (!info) return []
-    const samples = info.samples.map((s) => ({ t: new Date(s.time).getTime(), v: s.cpuPercent }))
+  // One pass over the ring for all three series: they share an x-axis and a
+  // hover index, so they have to be the same points filtered the same way —
+  // three separate windowings is three chances for them to disagree by a
+  // sample and for the crosshair to sit on a different moment in each chart.
+  const series = useMemo(() => {
+    if (!info) return { cpu: [] as Point[], down: [] as Point[], up: [] as Point[] }
+
+    const samples = info.samples.map((s) => ({ ...s, t: new Date(s.time).getTime() }))
     const newest = samples.length > 0 ? samples[samples.length - 1].t : Date.now()
-    return samples.filter((s) => s.t >= newest - WINDOW_MS)
+    const visible = samples.filter((s) => s.t >= newest - WINDOW_MS)
+
+    return {
+      cpu: visible.map((s) => ({ t: s.t, v: s.cpuPercent })),
+      down: visible.map((s) => ({ t: s.t, v: s.netRecvPerSec })),
+      up: visible.map((s) => ({ t: s.t, v: s.netSentPerSec })),
+    }
   }, [info])
 
   if (!info) {
@@ -156,7 +174,7 @@ function HostMetrics({
           </p>
         </div>
         <TimeSeriesChart
-          points={cpuPoints}
+          points={series.cpu}
           color={CPU_COLOR}
           format={(v) => formatPercent(v)}
           windowMs={WINDOW_MS}
@@ -166,6 +184,14 @@ function HostMetrics({
           ariaLabel="本机 CPU 占用曲线，最近 30 分钟"
         />
       </section>
+
+      <NetworkPanel
+        info={info}
+        down={series.down}
+        up={series.up}
+        hoverIndex={hoverIndex}
+        onHover={setHoverIndex}
+      />
 
       <section className="panel">
         <h2 className="panel__title">面板自身</h2>
@@ -216,6 +242,115 @@ function AllocationBar({
         <span className="alloc__key">物理 {formatBytes(total)}</span>
       </div>
     </div>
+  )
+}
+
+// -------------------------------------------------------------- network
+
+/**
+ * What the machine is sending and receiving.
+ *
+ * Two charts rather than one with two lines, and not because they could not
+ * share an axis — they are the same unit, so they could. It is that the pair
+ * is read for two different things: 下行 is mostly other people's traffic
+ * arriving, 上行 is what your players are being served, and a spike in one
+ * means something entirely different from a spike in the other. Stacked, with
+ * one crosshair moving through both, a moment can still be compared across
+ * them without either line being drawn on top of the other's shape.
+ *
+ * Loopback is excluded upstream (see collector.go), so a server talking to a
+ * database on the same box does not appear here. That is deliberate and it is
+ * why this can be read as "what is on the wire".
+ */
+function NetworkPanel({
+  info,
+  down,
+  up,
+  hoverIndex,
+  onHover,
+}: {
+  info: SystemInfo
+  down: Point[]
+  up: Point[]
+  hoverIndex: number | null
+  onHover: (index: number | null) => void
+}) {
+  const net = info.net
+  const interfaces = net?.interfaces ?? []
+  const peak = (points: Point[]) => points.reduce((max, p) => Math.max(max, p.v), 0)
+
+  return (
+    <section className="panel">
+      <div className="chart-head">
+        <h2 className="panel__title">网络流量</h2>
+        <p className="chart-head__meta">
+          最近 30 分钟 ·{' '}
+          {interfaces.length > 0 ? `${interfaces.join('、')}（不含回环）` : '正在识别网卡…'}
+        </p>
+      </div>
+
+      <dl className="figures">
+        <div>
+          <dt>当前下行</dt>
+          <dd>{formatRate(net?.recvPerSec ?? 0)}</dd>
+        </div>
+        <div>
+          <dt>当前上行</dt>
+          <dd>{formatRate(net?.sentPerSec ?? 0)}</dd>
+        </div>
+        <div>
+          <dt>累计接收</dt>
+          <dd>
+            {formatBytes(net?.recvBytes ?? 0)}
+            <small> · 自面板启动</small>
+          </dd>
+        </div>
+        <div>
+          <dt>累计发送</dt>
+          <dd>
+            {formatBytes(net?.sentBytes ?? 0)}
+            <small> · 自面板启动</small>
+          </dd>
+        </div>
+      </dl>
+
+      <div className="chart-head chart-head--stacked">
+        <h3 className="chart-head__title">下行（接收）</h3>
+        <p className="chart-head__meta">峰值 {formatRate(peak(down))}</p>
+      </div>
+      <TimeSeriesChart
+        points={down}
+        color={NET_DOWN_COLOR}
+        format={(v) => formatRate(v)}
+        windowMs={WINDOW_MS}
+        minYMax={NET_MIN_YMAX}
+        scale="binary"
+        hoverIndex={hoverIndex}
+        onHover={onHover}
+        ariaLabel="本机下行流量曲线，最近 30 分钟"
+      />
+
+      <div className="chart-head chart-head--stacked">
+        <h3 className="chart-head__title">上行（发送）</h3>
+        <p className="chart-head__meta">峰值 {formatRate(peak(up))}</p>
+      </div>
+      <TimeSeriesChart
+        points={up}
+        color={NET_UP_COLOR}
+        format={(v) => formatRate(v)}
+        windowMs={WINDOW_MS}
+        minYMax={NET_MIN_YMAX}
+        scale="binary"
+        hoverIndex={hoverIndex}
+        onHover={onHover}
+        ariaLabel="本机上行流量曲线，最近 30 分钟"
+      />
+
+      <p className="chart-note">
+        全机的量，不是某一台服的：面板自己的更新下载、备份上传、其它服务都在里面。
+        上行长期贴着带宽上限，玩家看到的就是延迟和卡顿 —— 那通常是带宽不够，不是 CPU 不够。
+      </p>
+    </section>
   )
 }
 

@@ -703,6 +703,21 @@ export interface HostSample {
   cpuPercent: number
   memoryUsed: number
   memoryPercent: number
+  /** Bytes per second over the interval ending at `time`, every non-loopback
+   *  interface summed. Zero on the first sample, which has no interval. */
+  netRecvPerSec: number
+  netSentPerSec: number
+}
+
+/** What the network has carried, counted from when the panel started rather
+ *  than from when the machine booted. */
+export interface NetUsage {
+  /** The interfaces being counted; loopback is not one of them. */
+  interfaces: string[] | null
+  recvBytes: number
+  sentBytes: number
+  recvPerSec: number
+  sentPerSec: number
 }
 
 export interface SystemInfo {
@@ -716,6 +731,7 @@ export interface SystemInfo {
     memoryTotal: number
   }
   disk: { path: string; total: number; free: number; percent: number }
+  net: NetUsage
   samples: HostSample[]
   panel: { heapBytes: number; goroutines: number }
   instances: { total: number; running: number }

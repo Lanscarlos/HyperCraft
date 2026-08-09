@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import type { MouseEvent, ReactNode } from 'react'
 
 import { useDismiss } from '../useDismiss'
@@ -73,7 +74,22 @@ export function Modal({ onClose, label, busy, children }: Props) {
     if (event.target === event.currentTarget) close()
   }
 
-  return (
+  // Rendered into <body>, not where it was written.
+  //
+  // A dialog is `position: fixed`, which means "relative to the viewport" only
+  // as long as nothing above it in the DOM has a transform, a filter or a
+  // backdrop-filter — any of those turn an ancestor into the containing block
+  // that fixed positioning resolves against. Both are true here: the scrim
+  // carries a backdrop blur, and a card that has finished its entrance is left
+  // holding an identity matrix, which counts.
+  //
+  // That only matters for a dialog opened from inside another one, and there is
+  // exactly one — the directory picker, opened from 新建实例 and 导入现有目录 —
+  // which is precisely how it went unnoticed. It was being laid out inside the
+  // card that opened it and clipped by that card's scroll box: no title, no
+  // path bar, no buttons, a directory listing cut off top and bottom. Out here
+  // there is nothing overhead to be trapped by.
+  return createPortal(
     <div
       className="modal"
       data-state={leaving ? 'out' : 'in'}
@@ -83,6 +99,7 @@ export function Modal({ onClose, label, busy, children }: Props) {
       onMouseDown={onBackdrop}
     >
       {children}
-    </div>
+    </div>,
+    document.body,
   )
 }
