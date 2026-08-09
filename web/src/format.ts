@@ -18,6 +18,13 @@ export function formatBytes(bytes: number, digits = 1): string {
   return `${text} ${BYTE_UNITS[unit]}`
 }
 
+/** A transfer rate. Bytes per second rather than bits: everything else in the
+ *  panel — memory, disk, a jar's size — is bytes, and a chart that switched
+ *  units halfway down the page would be read wrong long before it was noticed. */
+export function formatRate(bytesPerSecond: number): string {
+  return `${formatBytes(bytesPerSecond)}/s`
+}
+
 export function formatPercent(value: number, digits = 0): string {
   if (!Number.isFinite(value)) return '0%'
   return `${value.toFixed(digits)}%`

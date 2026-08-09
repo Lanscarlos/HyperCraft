@@ -798,59 +798,42 @@ a:hover {
   margin-left: auto;
 }
 
-/* The second level, shown under the library entry you are inside. Indented
-   under the parent's icon and drawn as text rather than as rows: they are
-   pages *of* the entry above, and painting them like the entry above would
-   make the sidebar look two navigations deep instead of one navigation with a
-   page open. The rule down the left is what ties them to it. */
-.sidebar__sub {
+/* The fold, at the foot of the column it folds — see Sidebar.tsx for why it is
+   not in the top bar's left corner any more. Painted a step quieter than a
+   navigation row: it is a control on this column, not a place to go. */
+.sidebar__fold {
   display: flex;
-  flex-direction: column;
-  margin: 2px 0 6px 20px;
-  padding-left: 10px;
-  border-left: 1px solid var(--border);
-  animation: rise var(--dur-2) var(--ease) backwards;
-}
-
-.sidebar__sublink {
-  position: relative;
-  padding: 6px 8px;
-  border-radius: var(--radius-sm);
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 7px 10px;
+  margin-top: -4px;
+  background: none;
+  border: 1px solid transparent;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
   color: var(--text-faint);
-  font-size: 13px;
-  text-decoration: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  text-align: left;
   transition:
     background var(--dur) var(--ease),
     color var(--dur) var(--ease);
 }
 
-.sidebar__sublink:hover {
+.sidebar__fold:hover {
   background: var(--surface-2);
   color: var(--text);
 }
 
-.sidebar__sublink--active {
-  color: var(--text);
-  font-weight: 500;
-}
-
-/* Same doubled marking as a top-level row: a dot on the rule, so which page
-   you are on survives a screenshot with no colour in it. */
-.sidebar__sublink--active::before {
-  content: '';
-  position: absolute;
-  left: -11px;
-  top: 50%;
-  width: 1px;
-  height: 14px;
-  background: var(--accent);
-  transform: translateY(-50%);
-}
-
-/* Folded to icons there is nothing to indent under and no room for a label,
-   and the parent row still takes you to the section's first page. */
-.app[data-rail='on'] .sidebar__sub {
-  display: none;
+/* Folded, it is the one row that has to stay findable with its label gone —
+   it is the only way back out — so it centres like every other folded row. */
+.app[data-rail='on'] .sidebar__fold {
+  display: grid;
+  place-items: center;
+  gap: 0;
+  padding: 9px 0;
 }
 
 /* One of the handful of servers with a permanent seat. Indented under 所有实例
@@ -1160,26 +1143,37 @@ a:hover {
 /* The labels fade before they leave the flow rather than blinking out at the
    first frame of a 300ms fold. `allow-discrete` is what defers the display
    change to the end of the fade — a browser that does not know it simply falls
-   back to hiding them at once, which is what happened here before. */
-.sidebar__title,
-.sidebar__state,
-.sidebar__empty,
-.sidebar__kbd,
-.sidebar__entity-text,
-.sidebar__entity-hint,
-.sidebar__name {
+   back to hiding them at once, which is what happened here before.
+
+   Every selector here is a descendant of `.sidebar`, and that is not decoration:
+   the fold is written against class names, and a class name is reachable from
+   anywhere in the document. `.sidebar__name` had been borrowed by the directory
+   picker's rows, so folding the sidebar folded the labels out of a modal on the
+   other side of the screen and left a list of anonymous folder icons. Scoped, a
+   name borrowed elsewhere is only borrowed styling. */
+.sidebar :is(
+  .sidebar__title,
+  .sidebar__state,
+  .sidebar__empty,
+  .sidebar__kbd,
+  .sidebar__entity-text,
+  .sidebar__entity-hint,
+  .sidebar__name
+) {
   transition:
     opacity var(--dur-1) var(--ease),
     display var(--dur-1) allow-discrete;
 }
 
-.app[data-rail='on'] .sidebar__title,
-.app[data-rail='on'] .sidebar__state,
-.app[data-rail='on'] .sidebar__empty,
-.app[data-rail='on'] .sidebar__kbd,
-.app[data-rail='on'] .sidebar__entity-text,
-.app[data-rail='on'] .sidebar__entity-hint,
-.app[data-rail='on'] .sidebar__name {
+.app[data-rail='on'] .sidebar :is(
+  .sidebar__title,
+  .sidebar__state,
+  .sidebar__empty,
+  .sidebar__kbd,
+  .sidebar__entity-text,
+  .sidebar__entity-hint,
+  .sidebar__name
+) {
   opacity: 0;
   display: none;
 }
@@ -1302,7 +1296,26 @@ a:hover {
     transform var(--dur-1) var(--ease);
 }
 
-.topbar__toggle:hover,
+/* An anchor when it goes somewhere, so ⌘-click opens the parent page in a
+   second tab the way every other navigation in the panel does. */
+.topbar__toggle {
+  text-decoration: none;
+}
+
+/* The top of the trail: the slot is held so the strip does not reflow between
+   pages, but there is nothing above 概览 to go to. */
+.topbar__toggle--idle {
+  color: var(--text-faint);
+  opacity: 0.35;
+  cursor: default;
+}
+
+.topbar__toggle--idle:hover {
+  background: none;
+  border-color: transparent;
+}
+
+.topbar__toggle:not(.topbar__toggle--idle):hover,
 .topbar__search:hover {
   background: var(--surface-2);
   border-color: var(--border);
@@ -2231,7 +2244,12 @@ a:hover {
 }
 
 /* A section, once opened, stays mounted behind whatever replaced it. Only one
-   is ever not hidden, so they all claim the same box. */
+   is ever not hidden — apart from the tenth of a second a switch takes, when
+   the outgoing one is still on top of it — so they all claim the same box. */
+.instance {
+  position: relative;
+}
+
 .instance__pane {
   flex: 1;
   min-height: 0;
@@ -2250,6 +2268,41 @@ a:hover {
    driven by the switch rather than by a mount. */
 .instance__pane--entering {
   animation: rise var(--dur-3) var(--ease) backwards;
+}
+
+/* And the half that was missing: the section you just left, held over the one
+   arriving for the length of its exit.
+   Lifted out of the flow rather than left in it — two panes in one flex column
+   would stack, and the new page would start halfway down the window and slide
+   up as the old one went. Over the top, so what the reader sees is one page
+   dissolving into another in the same frame, which is what a switch between two
+   views of the same server is. Nothing in here is reachable: it is a picture of
+   a page whose state has already moved on. */
+.instance__pane--leaving {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+  /* The panel's one exit shape, the same one a dialog leaves on: down a few
+     pixels, back a hair, gone.
+     Short, and on --ease rather than the accelerating curve an exit normally
+     takes — the same call scopeMorph makes for the same reason. Both pages
+     occupy the same box, so every millisecond the old one is still legible is
+     a millisecond of two pages printed over each other; --ease-in spends its
+     first third barely moving, which is exactly the third that has to be over
+     before the new page arrives. */
+  animation: pop-out var(--dur-1) var(--ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The blanket override collapses the animation to nothing, which leaves this
+     pane parked on top of the new one for the duration — invisible, but there.
+     Take it out of the layout instead: a reader who asked for no motion gets
+     the switch they would have got before any of this existed. */
+  .instance__pane--leaving {
+    display: none;
+  }
 }
 
 .instance__pane--scroll {
@@ -3346,15 +3399,17 @@ details[open]::details-content {
 /* ------------------------------------------------------------------ charts
 
    Series colours are not the brand's. A chart's job is to keep CPU apart from
-   memory, and two hues stepped off one terracotta cannot do that — so each
-   mode gets its own pair, stepped for the surface it is drawn on and put
-   through the palette validator against that surface:
+   memory — and now the two directions of network traffic apart from both — and
+   hues stepped off one terracotta cannot do that. So each mode gets its own
+   set, stepped for the surface it is drawn on and put through the palette
+   validator against that surface, every pair against every other pair:
 
-     light (#ffffff)  CVD ΔE 21.7, both ≥ 3:1
-     dark  (#231917)  CVD ΔE 19.6, both ≥ 3:1
+     light (#ffffff)  worst CVD ΔE 9.3 (deutan), worst normal ΔE 20.8, all ≥ 3:1
+     dark  (#231917)  worst CVD ΔE 8.1 (deutan), worst normal ΔE 20.2, all ≥ 3:1
 
-   Swapping either colour, or moving the card surface under them, means
-   re-running it. The status trio is separate and never used as a series. */
+   Swapping any of them, adding a fifth, or moving the card surface under them
+   means re-running it — the worst pair is rarely the one you changed. The
+   status trio is separate and never used as a series. */
 
 :root {
   --chart-surface: var(--surface-1);
@@ -3362,6 +3417,8 @@ details[open]::details-content {
   --chart-reference: #c3aca6;
   --series-cpu: #2a6ad6;
   --series-memory: #1b8a5f;
+  --series-net-down: #b3399c;
+  --series-net-up: #c25b12;
   --status-ok: var(--ok);
   --status-warning: var(--caution);
   --status-critical: var(--error);
@@ -3372,6 +3429,8 @@ details[open]::details-content {
   --chart-reference: #6b5b57;
   --series-cpu: #3987e5;
   --series-memory: #199e70;
+  --series-net-down: #c95fae;
+  --series-net-up: #cf7a24;
 }
 
 .chart {
@@ -3469,6 +3528,20 @@ details[open]::details-content {
   margin: 0;
   color: var(--text-dim);
   font-size: 12px;
+}
+
+/* A second chart under the first inside one card — the two directions of
+   network traffic. Quieter than the card's own title, because the card is the
+   subject and these two are its halves. */
+.chart-head--stacked {
+  margin-top: 4px;
+}
+
+.chart-head__title {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .chart-note {
@@ -5207,6 +5280,14 @@ button.rows__name:hover strong {
 
 .picker__row:hover {
   background: var(--surface-2);
+}
+
+/* A row's own label, rather than the sidebar's — which is what it used to
+   borrow, and which the rail folds away wherever it finds it. */
+.picker__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .picker__row--plain {

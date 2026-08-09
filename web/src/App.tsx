@@ -29,11 +29,14 @@ import {
   LIBRARY_VIEWS,
   SETTINGS_SECTIONS,
   defaultView,
+  navKeyOf,
+  parentOf,
   pathOf,
   routeFromLocation,
   scopeOf,
 } from './routes'
 import type { InstanceSection, LibrarySection, LibraryView, Route, StateFilter } from './routes'
+import { captureScope } from './scopeMorph'
 import type { InstanceStatus, User } from './types'
 import { mergeState } from './types'
 import { useCores } from './useCores'
@@ -139,6 +142,25 @@ function crumbsFor(
       return [{ label: '面板设置' }, { label: labelOf(SETTINGS_SECTIONS, route.section) }]
     default:
       return [{ label: '概览' }]
+  }
+}
+
+/** What the back button says it goes to. The trail already names every step;
+ *  this is the one step that has to fit in a tooltip. */
+function labelOfRoute(route: Route, instances: InstanceStatus[]): string {
+  switch (route.kind) {
+    case 'instances':
+      return '所有实例'
+    case 'instance':
+      return instances.find((item) => item.id === route.id)?.name ?? '实例'
+    case 'library':
+      return labelOf(LIBRARY_SECTIONS, route.section)
+    case 'host':
+      return '主机'
+    case 'settings':
+      return '面板设置'
+    default:
+      return '概览'
   }
 }
 
@@ -350,6 +372,21 @@ export default function App() {
   }))
   const scope = scopeOf(route)
 
+  // One step up the trail, for the top bar's back button. When that step leaves
+  // the scope it is exactly the movement 返回上级 in the sidebar makes, so it
+  // is captured the same way and the header shrinks back into the row it came
+  // from — the button being somewhere else does not make it a different act.
+  const parent = parentOf(route)
+  const goBack = parent
+    ? () => {
+        if (scopeOf(parent) !== scope) {
+          const key = navKeyOf(route)
+          if (key) captureScope(key)
+        }
+        navigate(parent)
+      }
+    : null
+
   return (
     <div
       className="app"
@@ -366,6 +403,9 @@ export default function App() {
       <Sidebar
         route={route}
         scope={scope}
+        compact={compact}
+        railed={!compact && railed}
+        onToggleRail={() => setRailed((on) => !on)}
         navigate={navigate}
         follow={follow}
         instances={instances}
@@ -392,10 +432,12 @@ export default function App() {
           crumbs={crumbs}
           user={user}
           compact={compact}
-          railed={railed}
           navOpen={navOpen}
-          onToggleNav={() => (compact ? setNavOpen((open) => !open) : setRailed((on) => !on))}
+          onToggleNav={() => setNavOpen((open) => !open)}
           toggleRef={navToggle}
+          onBack={goBack}
+          backHref={parent ? pathOf(parent) : null}
+          backLabel={parent ? labelOfRoute(parent, instances) : null}
           onOpenPalette={() => setPaletteOpen(true)}
           onChangePassword={() => setShowPassword(true)}
           onSignOut={() => void signOut()}

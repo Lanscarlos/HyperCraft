@@ -46,6 +46,7 @@ type systemResponse struct {
 	IntervalSeconds float64              `json:"intervalSeconds"`
 	Host            metrics.HostInfo     `json:"host"`
 	Disk            metrics.DiskUsage    `json:"disk"`
+	Net             metrics.NetUsage     `json:"net"`
 	Samples         []metrics.HostSample `json:"samples"`
 	Panel           panelUsage           `json:"panel"`
 	Instances       instanceCounts       `json:"instances"`
@@ -89,6 +90,7 @@ func (s *Server) handleSystem(w http.ResponseWriter, _ *http.Request) {
 		resp.IntervalSeconds = s.metrics.Interval().Seconds()
 		resp.Host = s.metrics.Info()
 		resp.Disk = s.metrics.Disk()
+		resp.Net = s.metrics.Net()
 		resp.Samples = s.metrics.HostSeries()
 	}
 	writeJSON(w, http.StatusOK, resp)

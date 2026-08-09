@@ -1,11 +1,11 @@
 /**
  * Where the app is, as a value.
  *
- * The panel has three navigation scopes rather than one flat list — the panel
- * itself, one server, and the machine underneath — and which one you are in is
- * a property of the route, not of a separate piece of state. Deriving it here
- * is what lets the sidebar swap wholesale instead of growing a third level of
- * nesting under 实例.
+ * The panel has a handful of navigation scopes rather than one flat list — the
+ * panel itself, one server, one shelf of the library, the machine underneath —
+ * and which one you are in is a property of the route, not of a separate piece
+ * of state. Deriving it here is what lets the sidebar swap wholesale instead of
+ * growing a third level of nesting under 实例.
  *
  * Every route is a real path, so ⌘-click, reload and a pasted link all work.
  * Filters that scope a list live in the query string for the same reason.
@@ -24,7 +24,7 @@ export type InstanceSection =
 export type LibrarySection = 'cores' | 'java' | 'plugins'
 
 /**
- * The second level inside one library section.
+ * The pages inside one library section.
  *
  * Each of the three used to be a single page that stacked everything it could
  * do into one scroll: what you already have, the catalogue to download from,
@@ -32,7 +32,7 @@ export type LibrarySection = 'cores' | 'java' | 'plugins'
  * three different frequencies — you look at the shelf weekly, download monthly
  * and choose a mirror once — and the first of them, the one you actually came
  * for, was the one you had to scroll past the others to read. They are pages of
- * their own now, under the entry they belong to.
+ * their own now, and opening a section opens *them* (see Scope).
  */
 export type LibraryView = 'stock' | 'download' | 'installed' | 'install' | 'source' | 'list'
 
@@ -61,8 +61,15 @@ export type Route =
  * already has one, and it was the only place in here where the way to a page
  * depended on which page you were already on — every other destination is
  * reachable from the sidebar, and now so are these.
+ *
+ * The three library shelves followed, and they are the reason the list is not
+ * "three scopes and one exception": their pages used to hang off the parent row
+ * as an indented strip, which meant the panel had two ways of showing a second
+ * level — a strip for these, a whole scope for everything else — and the strip
+ * was the one that arrived without any movement to say it had. One shape, one
+ * animation, one way out.
  */
-export type Scope = 'global' | 'instance' | 'host' | 'settings'
+export type Scope = 'global' | 'instance' | 'library' | 'host' | 'settings'
 
 export const INSTANCE_SECTIONS: { id: InstanceSection; label: string }[] = [
   { id: 'console', label: '控制台' },
@@ -123,9 +130,70 @@ function pick<T extends string>(values: { id: T }[], value: string, fallback: T)
 
 export function scopeOf(route: Route): Scope {
   if (route.kind === 'instance') return 'instance'
+  if (route.kind === 'library') return 'library'
   if (route.kind === 'host') return 'host'
   if (route.kind === 'settings') return 'settings'
   return 'global'
+}
+
+/**
+ * Pairs a row with the scope header it becomes, across the two sidebars.
+ *
+ * Shared rather than spelled out at each end: the row, the header it flies to,
+ * and the two ways back out (the sidebar's 返回上级 and the top bar's) all have
+ * to agree on the string or the animation silently does nothing.
+ */
+export function navKeyOf(route: Route): string | null {
+  switch (route.kind) {
+    case 'instance':
+      return `instance:${route.id}`
+    case 'library':
+      return `library:${route.section}`
+    case 'host':
+      return 'host'
+    case 'settings':
+      return 'settings'
+    default:
+      return null
+  }
+}
+
+/**
+ * One step up, as the trail in the top bar reads it.
+ *
+ * Every scope has a first page that stands for the whole thing — the console,
+ * the shelf, 监控 — so going up from anywhere inside one lands there first and
+ * leaves the scope on the next press. Two presses out of a file listing rather
+ * than one, deliberately: the alternative is a button that sometimes moves you
+ * one page and sometimes throws away the whole context you were in, with
+ * nothing on screen saying which it will be this time.
+ */
+export function parentOf(route: Route): Route | null {
+  switch (route.kind) {
+    case 'instances':
+      return { kind: 'overview' }
+    case 'instance':
+      return route.section === 'console'
+        ? { kind: 'instances', query: '', state: 'all' }
+        : { kind: 'instance', id: route.id, section: 'console' }
+    case 'library': {
+      const home = defaultView(route.section)
+      if (route.pluginId) return { kind: 'library', section: route.section, view: 'list' }
+      return route.view === home
+        ? { kind: 'overview' }
+        : { kind: 'library', section: route.section, view: home }
+    }
+    case 'host':
+      return route.section === 'metrics'
+        ? { kind: 'overview' }
+        : { kind: 'host', section: 'metrics' }
+    case 'settings':
+      return route.section === 'devices'
+        ? { kind: 'overview' }
+        : { kind: 'settings', section: 'devices' }
+    default:
+      return null
+  }
 }
 
 export function routeFromLocation(): Route {
