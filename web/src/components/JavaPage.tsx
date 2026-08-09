@@ -4,6 +4,12 @@ import { formatBytes, formatDate } from '../format'
 import type { JavaInstallJob, JavaRuntime, JavaSource, SystemJava } from '../types'
 import type { JavaController } from '../useJava'
 import { Page } from './Page'
+import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
+
+/** Named because the page renders it before its data arrives as well as after,
+ *  and the two have to be the same string or the page moves when it loads. */
+const JAVA_LEAD =
+  '不同版本的服务端要不同的 Java：1.16 要 8，1.17 要 17，1.20.5 起要 21，Paper 26 要 25。这里装的 Java 归面板所有，不动系统里的 Java；装好之后在实例的「启动设置」里选一个即可。'
 
 /** Which Java a Minecraft version needs, shown on the version being picked. */
 const VERSION_HINTS: Record<number, string> = {
@@ -71,8 +77,36 @@ export function JavaPage({
   }
 
   if (!overview) {
+    // The heading and the lead are constants, not data — showing them for real
+    // straight away means the page opens with its own name on it, and the only
+    // thing that arrives later is what was actually being fetched. Replacing
+    // the lead with 正在读取… and then swapping in three lines of copy moved
+    // everything below it down the moment the request came back.
     return (
-      <Page wide title="Java 运行时" lead="正在读取…" />
+      <Page wide title="Java 环境" lead={JAVA_LEAD}>
+        <SkeletonScreen inPage label="正在读取已装的 Java…">
+          <SkeletonPanel title={false}>
+            <div className="chart-head">
+              <Skeleton w="64px" h={15} />
+              <Skeleton w="180px" h={12} />
+            </div>
+            {/* 已安装 is a grid of runtime cards, and how many there are is
+                exactly what is being fetched — so this is one card's worth,
+                the commonest case on a machine that has been set up. */}
+            <div className="asset-grid">
+              <Skeleton w="100%" h={196} />
+            </div>
+          </SkeletonPanel>
+          <SkeletonPanel title={false}>
+            <div className="chart-head">
+              <Skeleton w="96px" h={15} />
+              <Skeleton w="220px" h={12} />
+            </div>
+            <Skeleton w="100%" h={34} />
+            <Skeleton w="60%" h={34} />
+          </SkeletonPanel>
+        </SkeletonScreen>
+      </Page>
     )
   }
 
@@ -90,8 +124,8 @@ export function JavaPage({
   return (
     <Page
       wide
-      title="Java 运行时"
-      lead="不同版本的服务端要不同的 Java：1.16 要 8，1.17 要 17，1.20.5 起要 21，Paper 26 要 25。这里装的运行时归面板所有，不动系统里的 Java；装好之后在实例的「启动设置」里选一个即可。"
+      title="Java 环境"
+      lead={JAVA_LEAD}
       aside={
         <p className="meta-chips">
           {overview.platform.os && (
@@ -116,7 +150,7 @@ export function JavaPage({
           <p className="chart-head__meta">
             {runtimes.length > 0
               ? `面板管理 ${runtimes.length} 个，共 ${formatBytes(totalSize)}`
-              : '面板还没有装过运行时'}
+              : '面板还没有装过 Java'}
           </p>
         </div>
 
@@ -152,7 +186,7 @@ export function JavaPage({
         {majors.length === 0 ? (
           <p className="muted">
             没能从 Adoptium 取到可安装的版本列表 —— 通常是这台机器连不上外网。
-            已装的运行时不受影响，仍然可以正常启动服务器。
+            已装的 Java 不受影响，仍然可以正常启动服务器。
           </p>
         ) : (
           <>

@@ -545,6 +545,15 @@ export function isLive(state: InstanceState): boolean {
  * they happen, while an HTTP response carries a snapshot taken when the
  * request arrived. Without this guard a slow `POST /start` reply lands after
  * the socket's "running" event and drags the UI back to "starting".
+ *
+ * Returns `current` itself when the merge changed nothing, and that identity is
+ * load-bearing rather than a micro-optimisation. The instance list is polled
+ * every five seconds whether or not anything is happening, and a fresh object
+ * per instance per poll is a new array, which is new props for every page under
+ * it — so an idle panel re-rendered the dashboard's charts, the file listing
+ * and the console's surroundings twelve times a minute, forever. Handing back
+ * the same object lets React stop at the top: `setInstances` with an unchanged
+ * array bails out of the render entirely.
  */
 export function mergeState(
   current: InstanceStatus,
@@ -552,7 +561,7 @@ export function mergeState(
 ): InstanceStatus {
   const merged = { ...current, ...incoming }
   if ((incoming.rev ?? 0) < current.rev) {
-    return {
+    return same(current, {
       ...merged,
       rev: current.rev,
       state: current.state,
@@ -560,9 +569,39 @@ export function mergeState(
       startedAt: current.startedAt,
       exitCode: current.exitCode,
       message: current.message,
-    }
+    })
   }
-  return merged
+  return same(current, merged)
+}
+
+/**
+ * `next` unless it is field-for-field what `current` already was.
+ *
+ * One level deep, which is what InstanceStatus is apart from its three string
+ * arrays, compared element-wise below. Anything nested added later needs a case
+ * here or it will compare by reference and always look changed; the cost of
+ * getting that wrong is a re-render, not a stale screen, since a value that
+ * differs is always kept.
+ *
+ * Compares the union of both key sets, and an absent key reads the same as one
+ * explicitly set to undefined — which is not pedantry: the guard above always
+ * writes exitCode and message, so a stopped server that never had either ends
+ * up with the keys present and undefined. Counting keys instead would call that
+ * a change and make the stale-response path — the one case that by definition
+ * changes nothing — the one that always re-renders.
+ */
+function same(current: InstanceStatus, next: InstanceStatus): InstanceStatus {
+  const keys = new Set([...Object.keys(current), ...Object.keys(next)])
+  for (const key of keys as Set<keyof InstanceStatus>) {
+    const a = current[key]
+    const b = next[key]
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length !== b.length || a.some((item, index) => item !== b[index])) return next
+      continue
+    }
+    if (a !== b) return next
+  }
+  return current
 }
 
 // ---------------------------------------------------------------- metrics
