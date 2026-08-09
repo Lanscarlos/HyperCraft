@@ -370,6 +370,33 @@ a:hover {
 /* The sidebar has three widths — full, folded to icons, and off-canvas — and
    the grid only ever reads this one value, so switching between them is a
    variable and not a second layout. */
+/* Off screen until it is focused, then it is the first thing on it. Skipping
+   the sidebar is the difference between one Tab and thirty for anyone driving
+   the panel from the keyboard. */
+.skip {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 90;
+  padding: 8px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  text-decoration: none;
+  transform: translateY(-200%);
+  transition: transform var(--dur) var(--ease);
+}
+
+.skip:focus-visible {
+  transform: none;
+}
+
+.main:focus-visible {
+  outline: none;
+}
+
 .app {
   --sidebar-w: 264px;
   display: grid;
@@ -411,6 +438,8 @@ a:hover {
   padding: 6px 6px 12px;
   cursor: pointer;
   border-bottom: 1px solid var(--border);
+  color: inherit;
+  text-decoration: none;
 }
 
 /* The one saturated mark in the whole shell, so the eye has somewhere to
@@ -462,6 +491,9 @@ a:hover {
   border-bottom: 1px solid var(--border);
 }
 
+/* Anchors, not buttons: every one of these is a real path, so ⌘-click opens a
+   server in a second tab and right-click copies its link. They are painted as
+   rows, so the underline and link colour an anchor comes with are cleared. */
 .sidebar__link,
 .sidebar__item {
   position: relative;
@@ -471,6 +503,7 @@ a:hover {
   color: var(--text-dim);
   cursor: pointer;
   text-align: left;
+  text-decoration: none;
   font-family: inherit;
   font-size: 14px;
   transition:
@@ -824,6 +857,7 @@ a:hover {
   cursor: pointer;
   font-family: inherit;
   font-size: inherit;
+  text-decoration: none;
 }
 
 .crumbs__link:hover {
@@ -1583,6 +1617,27 @@ a:hover {
 
 .tabs::-webkit-scrollbar {
   display: none;
+}
+
+/* The scrollbar is hidden, so without this a strip cut off at the edge is
+   indistinguishable from a strip with fewer tabs. The fade is applied only to
+   the edge actually cut off, which the component measures. */
+.tabs[data-edge='end'] {
+  mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent);
+}
+
+.tabs[data-edge='start'] {
+  mask-image: linear-gradient(90deg, transparent, #000 30px);
+}
+
+.tabs[data-edge='both'] {
+  mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 30px,
+    #000 calc(100% - 30px),
+    transparent
+  );
 }
 
 .tabs__tab {

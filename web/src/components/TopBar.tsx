@@ -1,4 +1,4 @@
-import type { RefObject } from 'react'
+import type { MouseEventHandler, RefObject } from 'react'
 
 import type { InstanceState, User } from '../types'
 import { Icon } from './Icon'
@@ -8,7 +8,9 @@ import { ThemeToggle } from './ThemeToggle'
 /** One step of the trail. The last one is where you are and never links. */
 export interface Crumb {
   label: string
-  onClick?: () => void
+  /** Set together with onClick: the step is a real link to a real path. */
+  href?: string
+  onClick?: MouseEventHandler<HTMLAnchorElement>
   /** Shown as a dot before the label, for the crumb that names an instance. */
   state?: InstanceState
 }
@@ -83,10 +85,10 @@ export function TopBar({
                 </span>
               )}
               {crumb.state && <span className={`status__dot status__dot--${crumb.state}`} />}
-              {crumb.onClick && !last ? (
-                <button className="crumbs__link" onClick={crumb.onClick}>
+              {crumb.href && !last ? (
+                <a className="crumbs__link" href={crumb.href} onClick={crumb.onClick}>
                   {crumb.label}
-                </button>
+                </a>
               ) : (
                 <span className="crumbs__here" aria-current={last ? 'page' : undefined}>
                   {crumb.label}

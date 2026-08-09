@@ -4,6 +4,7 @@ import { updateLabel } from '../useUpdate'
 import type { UpdateController } from '../useUpdate'
 import { DevicesPage } from './DevicesPage'
 import { Page } from './Page'
+import { Tabs } from './Tabs'
 import { PluginSourceSettings } from './PluginSourceSettings'
 import { TerminalSettings } from './TerminalSettings'
 import { UpdatePanel } from './UpdatePanel'
@@ -59,25 +60,28 @@ export function SettingsPage({
 }: Props) {
   return (
     <div className="settings-page">
-      <nav className="tabs">
-        {SETTINGS_SECTIONS.map((entry) => (
-          <button
-            key={entry.id}
-            className={`tabs__tab${section === entry.id ? ' tabs__tab--active' : ''}`}
-            onClick={() => onSection(entry.id)}
-          >
-            {entry.label}
-            {entry.id === 'terminal' && terminal.status?.enabled && (
+      <Tabs
+        items={SETTINGS_SECTIONS.map((entry) => ({
+          ...entry,
+          badge:
+            entry.id === 'terminal' && terminal.status?.enabled ? (
               <span className="badge">已开启</span>
-            )}
-            {entry.id === 'update' && updateLabel(update.status) && (
+            ) : entry.id === 'update' && updateLabel(update.status) ? (
               <span className="badge badge--update">{updateLabel(update.status)}</span>
-            )}
-          </button>
-        ))}
-      </nav>
+            ) : undefined,
+        }))}
+        active={section}
+        onSelect={onSection}
+        label="设置分区"
+        idPrefix="settings"
+      />
 
-      <div className="settings-page__body">
+      <div
+        className="settings-page__body"
+        id={`settings-panel-${section}`}
+        role="tabpanel"
+        aria-labelledby={`settings-tab-${section}`}
+      >
         {section === 'terminal' && (
           <TerminalSettings terminal={terminal} onOpenTerminal={onOpenTerminal} />
         )}

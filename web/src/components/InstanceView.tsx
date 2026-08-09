@@ -12,6 +12,7 @@ import { LaunchSettings } from './LaunchSettings'
 import { Menu } from './Menu'
 import { PropertiesEditor } from './PropertiesEditor'
 import { ResourcePanel } from './ResourcePanel'
+import { Tabs } from './Tabs'
 
 type Tab = 'console' | 'files' | 'plugins' | 'resources' | 'launch' | 'properties'
 
@@ -135,17 +136,13 @@ export function InstanceView({
         <div className="instance__message">{instance.message}</div>
       )}
 
-      <nav className="tabs">
-        {TABS.map((entry) => (
-          <button
-            key={entry.id}
-            className={`tabs__tab${tab === entry.id ? ' tabs__tab--active' : ''}`}
-            onClick={() => setTab(entry.id)}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </nav>
+      <Tabs
+        items={TABS}
+        active={tab}
+        onSelect={setTab}
+        label={`${instance.name} 的页面`}
+        idPrefix="instance"
+      />
 
       <div className="instance__body">
         {/* The console stays mounted so its websocket and scrollback survive a
@@ -156,6 +153,9 @@ export function InstanceView({
           hidden={tab !== 'console'}
           className="instance__pane instance__pane--split"
           data-side={side ? 'on' : 'off'}
+          id="instance-panel-console"
+          role="tabpanel"
+          aria-labelledby="instance-tab-console"
         >
           <Console
             instanceId={instance.id}
@@ -181,22 +181,42 @@ export function InstanceView({
           )}
         </div>
         {tab === 'files' && (
-          <div className="instance__pane instance__pane--scroll">
+          <div
+            className="instance__pane instance__pane--scroll"
+            id="instance-panel-files"
+            role="tabpanel"
+            aria-labelledby="instance-tab-files"
+          >
             <FileManager instance={instance} />
           </div>
         )}
         {tab === 'plugins' && (
-          <div className="instance__pane instance__pane--scroll">
+          <div
+            className="instance__pane instance__pane--scroll"
+            id="instance-panel-plugins"
+            role="tabpanel"
+            aria-labelledby="instance-tab-plugins"
+          >
             <InstancePlugins instance={instance} onOpenLibrary={onOpenPlugins} />
           </div>
         )}
         {tab === 'resources' && (
-          <div className="instance__pane instance__pane--scroll">
+          <div
+            className="instance__pane instance__pane--scroll"
+            id="instance-panel-resources"
+            role="tabpanel"
+            aria-labelledby="instance-tab-resources"
+          >
             <ResourcePanel instance={instance} />
           </div>
         )}
         {tab === 'launch' && (
-          <div className="instance__pane instance__pane--scroll">
+          <div
+            className="instance__pane instance__pane--scroll"
+            id="instance-panel-launch"
+            role="tabpanel"
+            aria-labelledby="instance-tab-launch"
+          >
             <LaunchSettings
               instance={instance}
               cores={cores}
@@ -207,7 +227,12 @@ export function InstanceView({
           </div>
         )}
         {tab === 'properties' && (
-          <div className="instance__pane instance__pane--scroll">
+          <div
+            className="instance__pane instance__pane--scroll"
+            id="instance-panel-properties"
+            role="tabpanel"
+            aria-labelledby="instance-tab-properties"
+          >
             <PropertiesEditor instance={instance} />
           </div>
         )}
