@@ -2,11 +2,20 @@ package api
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/lanscarlos/hypercraft/internal/auth"
 )
+
+// errDerivationBusy reports that every password-derivation slot was taken for
+// as long as the caller was willing to wait. It is not a failed login and must
+// never be charged as one.
+var errDerivationBusy = errors.New("no derivation slot available")
 
 // principal is whoever is behind the current request. Exactly one of the two
 // credential kinds is set: a browser authenticates with a session cookie, a
@@ -35,6 +44,49 @@ func (s *Server) credential() auth.Credential {
 	return s.panel.Credential
 }
 
+// beginCredentialCheck throttles a public endpoint that is about to verify the
+// panel password, returning the key any failure should be charged to.
+//
+// It runs before the request body is read: refusing a throttled caller should
+// cost the panel as close to nothing as possible, and the check itself is one
+// map lookup.
+func (s *Server) beginCredentialCheck(w http.ResponseWriter, r *http.Request) (string, bool) {
+	key := s.clientAddr(r)
+	retry, ok := s.loginLimit.allow(key)
+	if ok {
+		return key, true
+	}
+
+	seconds := max(1, int(math.Ceil(retry.Seconds())))
+	w.Header().Set("Retry-After", strconv.Itoa(seconds))
+	// Debug rather than Warn: this fires for every refused request, so a flood
+	// would bury everything else. The bounded stream of "failed login"
+	// warnings — bounded precisely because of this limiter — is what tells an
+	// operator that someone is trying.
+	s.log.Debug("credential check throttled", "client", key, "remote", r.RemoteAddr)
+	writeError(w, http.StatusTooManyRequests, fmt.Sprintf("尝试过于频繁，请 %d 秒后再试", seconds))
+	return "", false
+}
+
+// verifyCredential checks a username and password with only a few derivations
+// running at once, so an unauthenticated flood cannot take the machine's CPU
+// away from the Minecraft servers sharing it.
+func (s *Server) verifyCredential(ctx context.Context, username, password string) error {
+	if !s.kdf.enter(ctx) {
+		return errDerivationBusy
+	}
+	defer s.kdf.leave()
+	return s.credential().Verify(username, password)
+}
+
+// writeBusy refuses a request that could not get a derivation slot. 503 rather
+// than 429, because nothing is wrong with this caller: the panel is simply out
+// of the CPU it is prepared to spend on password checks.
+func writeBusy(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "1")
+	writeError(w, http.StatusServiceUnavailable, "服务器繁忙，请稍后再试")
+}
+
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status":  "ok",
@@ -57,17 +109,30 @@ type userResponse struct {
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	key, ok := s.beginCredentialCheck(w, r)
+	if !ok {
+		return
+	}
+
 	var req loginRequest
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "malformed request body")
 		return
 	}
 
-	if err := s.credential().Verify(req.Username, req.Password); err != nil {
-		s.log.Warn("failed login", "username", req.Username, "remote", r.RemoteAddr)
+	switch err := s.verifyCredential(r.Context(), req.Username, req.Password); {
+	case errors.Is(err, errDerivationBusy):
+		writeBusy(w)
+		return
+	case err != nil:
+		s.loginLimit.penalise(key)
+		s.log.Warn("failed login", "username", req.Username, "remote", r.RemoteAddr, "client", key)
 		writeError(w, http.StatusUnauthorized, "用户名或密码错误")
 		return
 	}
+	// Signing in correctly clears the address's history: a run of typos
+	// followed by the right password is an operator, not an attack.
+	s.loginLimit.reset(key)
 
 	sess, err := s.sessions.Create(req.Username)
 	if err != nil {
@@ -75,6 +140,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.setSessionCookie(w, r, sess)
+	// A successful sign-in is the one event that proves the panel's credential
+	// was used, and it was the only one going unrecorded — every failed guess
+	// was logged while the guess that worked left no trace. It also answers
+	// "which address actually reaches this panel", which is not obvious once
+	// there is an accelerator or a reverse proxy in front: remote is the peer,
+	// client is who the panel believes is behind it.
+	s.log.Info("signed in", "username", sess.Username, "remote", r.RemoteAddr, "client", key)
 	writeJSON(w, http.StatusOK, userResponse{Username: sess.Username, Version: s.version})
 }
 
@@ -204,17 +276,32 @@ type deviceResponse struct {
 // credential itself, so someone who has borrowed a browser session cannot
 // quietly turn it into permanent access.
 func (s *Server) handleCreateDevice(w http.ResponseWriter, r *http.Request) {
+	// Throttled on the same budget as login, and deliberately so: this
+	// endpoint is public, checks the same password, and mints a credential
+	// that outlives every session. Giving it a separate allowance would leave
+	// an attacker locked out of one door and free to knock on the other.
+	key, ok := s.beginCredentialCheck(w, r)
+	if !ok {
+		return
+	}
+
 	var req createDeviceRequest
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "malformed request body")
 		return
 	}
 
-	if err := s.credential().Verify(req.Username, req.Password); err != nil {
-		s.log.Warn("failed device pairing", "username", req.Username, "remote", r.RemoteAddr)
+	switch err := s.verifyCredential(r.Context(), req.Username, req.Password); {
+	case errors.Is(err, errDerivationBusy):
+		writeBusy(w)
+		return
+	case err != nil:
+		s.loginLimit.penalise(key)
+		s.log.Warn("failed device pairing", "username", req.Username, "remote", r.RemoteAddr, "client", key)
 		writeError(w, http.StatusUnauthorized, "用户名或密码错误")
 		return
 	}
+	s.loginLimit.reset(key)
 
 	dev, token, err := s.devices.Issue(req.Name)
 	if err != nil {

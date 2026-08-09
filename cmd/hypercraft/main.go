@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -65,6 +66,8 @@ func run() error {
 		dataDir       = flag.String("data", envOr("HYPERCRAFT_DATA", "./data"), "directory for panel state and server files")
 		listen        = flag.String("listen", envOr("HYPERCRAFT_LISTEN", ""), "address to bind, e.g. 0.0.0.0:19190 (overrides the stored setting)")
 		username      = flag.String("username", envOr("HYPERCRAFT_USERNAME", "admin"), "operator username, used when creating the first credential")
+		tlsCert       = flag.String("tls-cert", envOr("HYPERCRAFT_TLS_CERT", ""), "PEM certificate chain; serves HTTPS when given with -tls-key")
+		tlsKey        = flag.String("tls-key", envOr("HYPERCRAFT_TLS_KEY", ""), "PEM private key for -tls-cert")
 		resetPassword = flag.Bool("reset-password", false, "generate a new random password, print it, and exit")
 		logLevel      = flag.String("log-level", envOr("HYPERCRAFT_LOG_LEVEL", "info"), "debug, info, warn or error")
 		showVersion   = flag.Bool("version", false, "print the version and exit")
@@ -230,9 +233,21 @@ func run() error {
 		InstancePlugins: instancePlugins,
 	})
 
+	// The panel can terminate TLS itself when handed a certificate. That does
+	// not replace a reverse proxy — one is still the better answer when you
+	// have a domain and want automatic renewal — but it covers the cases a
+	// proxy does not: a certificate the operator already holds, an internal CA,
+	// or a machine that is only ever reached by IP and so can never be issued
+	// a public certificate at all.
+	tlsConfig, err := loadTLS(*tlsCert, *tlsKey)
+	if err != nil {
+		return err
+	}
+
 	httpServer := &http.Server{
 		Addr:              panel.Listen,
 		Handler:           server.Handler(),
+		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 15 * time.Second,
 		// No WriteTimeout: the console websocket is a long-lived response and
 		// a write deadline would sever it. Per-frame deadlines guard it instead.
@@ -264,8 +279,19 @@ func run() error {
 
 	serverErr := make(chan error, 1)
 	go func() {
-		logger.Info("listening", "addr", panel.Listen, "url", "http://"+panel.Listen)
-		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		scheme := "http"
+		if tlsConfig != nil {
+			scheme = "https"
+		}
+		logger.Info("listening", "addr", panel.Listen, "url", scheme+"://"+panel.Listen, "tls", tlsConfig != nil)
+
+		// The certificate is already parsed into TLSConfig, so the paths are
+		// passed empty here rather than read a second time.
+		serve := httpServer.ListenAndServe
+		if tlsConfig != nil {
+			serve = func() error { return httpServer.ListenAndServeTLS("", "") }
+		}
+		if err := serve(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 			return
 		}
@@ -311,6 +337,32 @@ func run() error {
 
 	logger.Info("bye")
 	return nil
+}
+
+// loadTLS builds the server's TLS configuration, or returns nil to keep
+// serving plain HTTP.
+//
+// The certificate is parsed here rather than left to ListenAndServeTLS so a
+// wrong path fails immediately, naming the file, instead of after the panel has
+// claimed the port and started the servers.
+func loadTLS(certFile, keyFile string) (*tls.Config, error) {
+	switch {
+	case certFile == "" && keyFile == "":
+		return nil, nil
+	case certFile == "" || keyFile == "":
+		return nil, errors.New("-tls-cert and -tls-key have to be given together")
+	}
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("load TLS certificate: %w", err)
+	}
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		// TLS 1.2 is the floor. Everything that could reach this panel speaks
+		// it, and the versions below it have been broken for years.
+		MinVersion: tls.VersionTLS12,
+	}, nil
 }
 
 func resetOperatorPassword(st *store.Store, panel config.Panel, username string) error {
@@ -369,6 +421,7 @@ func gcSessions(ctx context.Context, sessions *auth.SessionStore, server *api.Se
 			return
 		case <-ticker.C:
 			sessions.GC()
+			server.SweepRateLimits()
 			flush()
 		}
 	}
