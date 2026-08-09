@@ -573,3 +573,27 @@ while true; do sleep 1; done
 		}
 	}
 }
+
+// The grace period for draining a terminal belongs to the server's *exit*, not
+// to its lifetime. Starting that clock at launch — which an earlier version of
+// reap did — hangs up on a perfectly healthy server a few seconds in, and the
+// only symptom is that the console silently stops accepting input.
+func TestTerminalSurvivesLongerThanTheDrainGrace(t *testing.T) {
+	inst := newTestInstance(t, wellBehavedServer)
+	inst.drainGrace = 150 * time.Millisecond
+	if err := inst.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitForState(t, inst, StateRunning)
+
+	// Comfortably past the grace period, with the server still up.
+	time.Sleep(10 * inst.drainGrace)
+
+	if got := inst.State(); got != StateRunning {
+		t.Fatalf("server left %q after the drain grace elapsed", got)
+	}
+	if err := inst.SendInput([]byte("list\r")); err != nil {
+		t.Fatalf("terminal was closed under a running server: %v", err)
+	}
+	waitForLine(t, inst, "ran list")
+}

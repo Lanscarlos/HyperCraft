@@ -159,6 +159,13 @@ func (s *Server) handleConsoleSocket(w http.ResponseWriter, r *http.Request) {
 				}
 				continue
 			}
+			// The protocol this connection announced is the one it gets, even
+			// if the instance's config is switched underneath it: a terminal
+			// client handed a line event would draw text the byte stream is
+			// also about to deliver. The change lands on the next reconnect.
+			if att.TTY && ev.Type == instance.EventLine {
+				continue
+			}
 			out := outbound{Type: string(ev.Type), Line: ev.Line, State: ev.State}
 			if err := send(out); err != nil {
 				return

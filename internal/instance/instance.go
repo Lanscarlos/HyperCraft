@@ -49,11 +49,11 @@ const (
 	initialRows      = 32
 )
 
-// drainGrace bounds how long a terminal is drained after the server exits.
-// Normally the read fails the moment the last holder of the slave side is
-// gone; a grandchild that inherited the tty and outlived its parent is what
+// defaultDrainGrace bounds how long a terminal is drained after the server
+// exits. Normally the read fails the moment the last holder of the slave side
+// is gone; a grandchild that inherited the tty and outlived its parent is what
 // this is for.
-const drainGrace = 3 * time.Second
+const defaultDrainGrace = 3 * time.Second
 
 // readyPattern matches vanilla/Spigot/Paper's "server is up" line. Until we see
 // it the instance stays in "starting", which is what the UI greys the console
@@ -108,6 +108,10 @@ type Instance struct {
 	// mu. The terminal is sized to the smallest of them, so no viewer sees
 	// output wrapped for a window wider than their own.
 	viewports map[chan Event]viewport
+	// drainGrace is per instance rather than global so a test can shorten its
+	// own without reaching into a package variable that another instance's
+	// reaper is reading at the same time.
+	drainGrace time.Duration
 }
 
 // viewport is one attached console's window size, in character cells.
@@ -135,13 +139,14 @@ func New(cfg Config, logger *slog.Logger) (*Instance, error) {
 		return nil, err
 	}
 	return &Instance{
-		log:       logger.With("instance", cfg.ID, "name", cfg.Name),
-		cfg:       cfg,
-		state:     StateStopped,
-		ring:      newRing(scrollback),
-		broker:    newBroker(),
-		bytes:     newByteRing(terminalScrollbackBytes),
-		viewports: make(map[chan Event]viewport),
+		log:        logger.With("instance", cfg.ID, "name", cfg.Name),
+		cfg:        cfg,
+		state:      StateStopped,
+		ring:       newRing(scrollback),
+		broker:     newBroker(),
+		bytes:      newByteRing(terminalScrollbackBytes),
+		viewports:  make(map[chan Event]viewport),
+		drainGrace: defaultDrainGrace,
 	}, nil
 }
 
@@ -557,36 +562,41 @@ func (i *Instance) markReady() {
 	i.mu.Unlock()
 }
 
-// reap waits for the process to exit and decides what happens next.
+// reap waits for the process to exit, drains what it left behind, and decides
+// what happens next.
 func (i *Instance) reap(run *runningProc, pumps *sync.WaitGroup) {
-	// Drain the output before Wait, otherwise Wait closes the pipes from under
-	// the scanners and we lose the server's final words — usually the crash
-	// cause.
 	drained := make(chan struct{})
 	go func() {
 		pumps.Wait()
 		close(drained)
 	}()
 
+	var waitErr error
 	if run.pty != nil {
-		// A pseudo-terminal only reports end-of-file once nothing holds the
-		// slave side open. Usually that is the moment the server exits, but
-		// anything it forked and left behind inherited the tty too, and waiting
-		// on those forever would strand the instance in "stopping". Hang up
-		// instead, which is also what closing the master means.
+		// The order is the opposite of the pipe case below, and has to be:
+		// a pseudo-terminal only reports end-of-file once *nothing* holds the
+		// slave side open, so waiting on the drain first would mean waiting on
+		// anything the server forked and left behind. Wait does not close the
+		// terminal — creack handed the slave to the child and closed our copy
+		// at start — so the process can be reaped first and the terminal
+		// drained afterwards, on a clock that starts when it exits.
+		waitErr = run.cmd.Wait()
 		select {
 		case <-drained:
-		case <-time.After(drainGrace):
+		case <-time.After(i.drainGrace):
 			i.log.Debug("terminal still held open after exit, hanging up")
-			_ = run.pty.Close()
-			<-drained
 		}
+		// Hanging up is what ends the drain in the timeout case, and what frees
+		// the descriptor in every case.
 		_ = run.pty.Close()
-	} else {
 		<-drained
+	} else {
+		// Drain both pipes before Wait, otherwise Wait closes them from under
+		// the scanners and we lose the server's final words — usually the
+		// crash cause.
+		<-drained
+		waitErr = run.cmd.Wait()
 	}
-
-	waitErr := run.cmd.Wait()
 
 	exitCode := 0
 	if waitErr != nil {

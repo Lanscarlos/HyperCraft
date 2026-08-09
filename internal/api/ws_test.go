@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -135,6 +137,74 @@ func TestConsoleAnnouncesItsProtocol(t *testing.T) {
 }
 
 func boolPtr(v bool) *bool { return &v }
+
+// The whole terminal path, end to end: a real pseudo-terminal, real escape
+// sequences, and the binary frames that carry them to a browser. The unit tests
+// cover each half; this is the one that would catch them being wired together
+// wrongly — a JSON encode slipped into the output path, say, which would look
+// fine until the first multi-byte character.
+func TestTerminalConsoleStreamsBinaryFrames(t *testing.T) {
+	if !instance.TTYSupported() {
+		t.Skip("no pseudo-terminal on this platform")
+	}
+
+	env := newTestEnv(t)
+	env.login()
+
+	dir := t.TempDir()
+	script := filepath.Join(dir, "server.sh")
+	// Colour and a CJK line: between them they exercise the two things a JSON
+	// text frame would ruin.
+	body := "#!/bin/sh\n" +
+		`printf '\033[32m[12:00:01] [Server thread/INFO]: Done (0.1s)! 你好\033[m\n'` + "\n" +
+		"while IFS= read -r line; do :; done\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatalf("write fake server: %v", err)
+	}
+
+	resp := env.do(http.MethodPost, "/api/instances", instanceRequest{
+		Name:      "terminal",
+		Directory: dir,
+		Command:   []string{"/bin/sh", script},
+	})
+	var created instance.Status
+	decodeBody(t, resp, &created)
+
+	resp = env.do(http.MethodPost, "/api/instances/"+created.ID+"/start", nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("start: http %d", resp.StatusCode)
+	}
+	t.Cleanup(func() { _ = env.mgr.List()[0].Kill() })
+
+	conn := env.dialConsole(created.ID)
+	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+
+	var seen strings.Builder
+	for !strings.Contains(seen.String(), "你好") {
+		kind, data, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatalf("read frame: %v (so far: %q)", err, seen.String())
+		}
+		if kind == websocket.BinaryMessage {
+			seen.Write(data)
+			continue
+		}
+		var frame historyMessage
+		if err := json.Unmarshal(data, &frame); err == nil && frame.Type == "history" && !frame.TTY {
+			t.Fatal("a console with a terminal announced the line protocol")
+		}
+	}
+
+	if !strings.Contains(seen.String(), "\x1b[32m") {
+		t.Errorf("colour codes did not survive the trip: %q", seen.String())
+	}
+	// The line discipline turns every \n into \r\n on the way out, which is how
+	// a terminal emulator knows to return the cursor as well as advance it.
+	if !strings.Contains(seen.String(), "\r\n") {
+		t.Errorf("terminal line endings missing: %q", seen.String())
+	}
+}
 
 // Commands sent to a stopped server must come back as an error on the socket,
 // not silently vanish or tear the connection down.
