@@ -155,7 +155,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
         </div>
       )}
 
-      <section className="panel">
+      <section className="panel panel--form">
         <h3 className="panel__title">常用设置</h3>
         <p className="panel__path">{data.path}</p>
 

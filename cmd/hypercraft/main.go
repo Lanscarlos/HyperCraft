@@ -190,10 +190,38 @@ func run() error {
 	var newBinary atomic.Pointer[string]
 
 	updater := selfupdate.NewService(updateRepo, version, panel.Mirror(), selfupdate.ParseChannel(panel.Channel()), selfupdate.Hooks{
-		// Recorded before the swap so the servers this update is about to stop
-		// come back on the other side, whether or not they auto-start.
-		BeforeInstall:  func() error { return st.SaveResume(manager.RunningIDs()) },
-		InstallAborted: func() { _, _ = st.TakeResume() },
+		// The first half of an update, running beside the download: empty the
+		// machine so the swap at the end has no live child processes under it.
+		// The list is recorded before anything is stopped, so the servers come
+		// back on the other side whether or not they auto-start.
+		StopServers: func(_ context.Context, report func(selfupdate.Shutdown)) error {
+			if err := st.SaveResume(manager.RunningIDs()); err != nil {
+				return err
+			}
+			manager.StopAll(shutdownGrace, func(progress instance.Stopping) {
+				report(selfupdate.Shutdown{
+					Total:   progress.Total,
+					Stopped: progress.Stopped,
+					Pending: progress.Pending,
+				})
+			})
+			return nil
+		},
+		// The update is not happening, so the servers it stopped go back up and
+		// the resume list — which describes a restart that will not come — is
+		// consumed here rather than left for the next real one.
+		ServersAborted: func() {
+			resume, err := st.TakeResume()
+			if err != nil {
+				logger.Warn("could not read the resume list after an abandoned update", "err", err)
+				return
+			}
+			if len(resume) == 0 {
+				return
+			}
+			logger.Info("update abandoned, starting the servers it stopped", "count", len(resume))
+			manager.StartEach(resume)
+		},
 		TriggerRestart: func(binary string) {
 			newBinary.Store(&binary)
 			cancel()

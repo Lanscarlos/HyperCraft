@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { formatBytes, formatDate } from '../format'
+import type { LibraryView } from '../routes'
 import type { JavaInstallJob, JavaRuntime, JavaSource, SystemJava } from '../types'
 import type { JavaController } from '../useJava'
 import { Page } from './Page'
@@ -10,6 +11,20 @@ import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
  *  and the two have to be the same string or the page moves when it loads. */
 const JAVA_LEAD =
   '不同版本的服务端要不同的 Java：1.16 要 8，1.17 要 17，1.20.5 起要 21，Paper 26 要 25。这里装的 Java 归面板所有，不动系统里的 Java；装好之后在实例的「启动设置」里选一个即可。'
+
+/** The heading each of the three pages carries. */
+const TITLES: Partial<Record<LibraryView, string>> = {
+  installed: 'Java 环境',
+  install: '安装新版本',
+  source: '下载源',
+}
+
+const LEADS: Partial<Record<LibraryView, string>> = {
+  installed: JAVA_LEAD,
+  install: '从 Eclipse Temurin 装一个新的大版本。下载走服务器自己的网络，关掉网页也会继续。',
+  source:
+    '装的都是同一个 Eclipse Temurin 构建 —— 版本信息和校验和始终来自 Adoptium 官方，镜像只负责传那几十兆的压缩包，对不上的一律不装。',
+}
 
 /** Which Java a Minecraft version needs, shown on the version being picked. */
 const VERSION_HINTS: Record<number, string> = {
@@ -37,12 +52,21 @@ const IMAGE_TYPES: { value: 'jre' | 'jdk'; label: string; note: string }[] = [
  * shared — one download serves every server that needs that version, and
  * deleting one is a decision about all of them. Instances only pick from what
  * is here, in their 「启动设置」.
+ *
+ * Three pages under one entry — what is installed, what can be installed, and
+ * where it is fetched from — but one component: the version list and the
+ * chosen mirror are the same decision seen from two sides, and the source page
+ * would have nothing to hand the install page if they were split apart.
  */
 export function JavaPage({
   java,
+  view,
+  onOpenView,
   onOpenCores,
 }: {
   java: JavaController
+  view: LibraryView
+  onOpenView: (view: LibraryView) => void
   onOpenCores: () => void
 }) {
   const { overview, majors, sources, job, installing, busy } = java
@@ -83,7 +107,7 @@ export function JavaPage({
     // the lead with 正在读取… and then swapping in three lines of copy moved
     // everything below it down the moment the request came back.
     return (
-      <Page wide title="Java 环境" lead={JAVA_LEAD}>
+      <Page wide title={TITLES[view] ?? 'Java 环境'} lead={JAVA_LEAD}>
         <SkeletonScreen inPage label="正在读取已装的 Java…">
           <SkeletonPanel title={false}>
             <div className="chart-head">
@@ -121,11 +145,13 @@ export function JavaPage({
   )
   const hiddenMajors = majors.length - visibleMajors.length
 
+  const sourceName = sources.find((entry) => entry.id === source)?.name ?? '自动选择'
+
   return (
     <Page
       wide
-      title="Java 环境"
-      lead={JAVA_LEAD}
+      title={TITLES[view] ?? 'Java 环境'}
+      lead={LEADS[view] ?? JAVA_LEAD}
       aside={
         <p className="meta-chips">
           {overview.platform.os && (
@@ -144,6 +170,13 @@ export function JavaPage({
         <div className="alert alert--error">{overview.platform.warning}</div>
       )}
 
+      {/* An install keeps running after you navigate away, so it is reported
+          on whichever of these pages you happen to be looking at. */}
+      {view !== 'install' && job && (job.state === 'downloading' || job.state === 'extracting') && (
+        <InstallStatus job={job} sources={sources} />
+      )}
+
+      {view === 'installed' && (
       <section className="panel">
         <div className="chart-head">
           <h2 className="panel__title">已安装</h2>
@@ -157,7 +190,12 @@ export function JavaPage({
         {runtimes.length === 0 && !overview.system ? (
           <div className="welcome__empty">
             <p>这台机器上还没有任何 Java，服务端起不来。</p>
-            <p className="muted">在下面挑一个版本装上，几十秒的事，全程不动系统环境。</p>
+            <p className="muted">
+              <button className="link" type="button" onClick={() => onOpenView('install')}>
+                挑一个版本装上
+              </button>
+              ，几十秒的事，全程不动系统环境。
+            </p>
           </div>
         ) : (
           <div className="asset-grid">
@@ -173,13 +211,10 @@ export function JavaPage({
           </div>
         )}
       </section>
+      )}
 
+      {view === 'install' && (
       <section className="panel">
-        <div className="chart-head">
-          <h2 className="panel__title">安装新版本</h2>
-          <p className="chart-head__meta">下载走服务器自己的网络，关掉网页也会继续</p>
-        </div>
-
         {job && <InstallStatus job={job} sources={sources} />}
         {java.error && <div className="alert alert--error">{java.error}</div>}
 
@@ -248,32 +283,13 @@ export function JavaPage({
             </div>
 
             {sources.length > 0 && (
-              <div className="field">
-                <span>下载源</span>
-                <div className="choice-grid choice-grid--wide">
-                  {sources.map((entry) => (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      className={`choice${entry.id === source ? ' choice--active' : ''}`}
-                      aria-pressed={entry.id === source}
-                      disabled={installing}
-                      onClick={() => setSource(entry.id)}
-                    >
-                      <span className="choice__label">
-                        {entry.name}
-                        {entry.default && <span className="badge">推荐</span>}
-                      </span>
-                      <span className="choice__note">{entry.note}</span>
-                    </button>
-                  ))}
-                </div>
-                <small>
-                  装的都是同一个 Eclipse Temurin 构建 —— 版本信息和校验和始终来自 Adoptium
-                  官方，镜像只负责传那几十兆的压缩包，对不上的一律不装。选的源没有这个版本
-                  （镜像同步有延迟）会自动换下一个，下次安装默认还用这次选的。
-                </small>
-              </div>
+              <p className="chart-note">
+                下载源：{sourceName} ——{' '}
+                <button className="link" type="button" onClick={() => onOpenView('source')}>
+                  换一个
+                </button>
+                。国内机器直连 Adoptium 慢的话，换个教育网镜像通常快得多。
+              </p>
             )}
 
             <div className="actions">
@@ -302,15 +318,95 @@ export function JavaPage({
           </>
         )}
       </section>
+      )}
+
+      {view === 'source' && (
+        <SourcePicker
+          sources={sources}
+          current={source}
+          busy={installing}
+          onPick={setSource}
+          onDone={() => onOpenView('install')}
+        />
+      )}
+
+      {view === 'installed' && (
+        <p className="chart-note">
+          服务端 jar 本身不在这里 —— 那在
+          <button className="link" onClick={onOpenCores}>
+            服务端核心
+          </button>
+          。每个核心版本对 Java 的最低要求也标在那一页上。
+        </p>
+      )}
+    </Page>
+  )
+}
+
+/**
+ * Where the archive is fetched from.
+ *
+ * Its own page rather than a field in the install form: it is chosen once, on
+ * the day the panel is set up or the day a mirror stops working, and the
+ * install form is where you go weekly. The choice is remembered by the panel
+ * itself — it describes the server's route out, not this browser's — so it is
+ * the same on a phone as on the laptop that set it.
+ */
+function SourcePicker({
+  sources,
+  current,
+  busy,
+  onPick,
+  onDone,
+}: {
+  sources: JavaSource[]
+  current: string | null
+  busy: boolean
+  onPick: (id: string) => void
+  onDone: () => void
+}) {
+  if (sources.length === 0) {
+    return (
+      <div className="alert">
+        没能取到可用的下载源列表 —— 通常是这台机器连不上外网。已装的 Java 不受影响。
+      </div>
+    )
+  }
+
+  return (
+    <section className="panel">
+      <p className="chart-note">只影响下载速度：装的是同一个构建，校验和始终来自 Adoptium 官方。</p>
+
+      <div className="choice-grid choice-grid--wide">
+        {sources.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            className={`choice${entry.id === current ? ' choice--active' : ''}`}
+            aria-pressed={entry.id === current}
+            disabled={busy}
+            onClick={() => onPick(entry.id)}
+          >
+            <span className="choice__label">
+              {entry.name}
+              {entry.default && <span className="badge">推荐</span>}
+            </span>
+            <span className="choice__note">{entry.note}</span>
+          </button>
+        ))}
+      </div>
 
       <p className="chart-note">
-        服务端 jar 本身不在这里 —— 那在
-        <button className="link" onClick={onOpenCores}>
-          服务端核心
-        </button>
-        。每个核心版本对 Java 的最低要求也标在那一页上。
+        选的源没有某个版本（镜像同步有延迟）会自动换下一个，下次安装默认还用这次选的。
+        安装任务条上会写明这一次实际是从哪里下的。
       </p>
-    </Page>
+
+      <div className="actions">
+        <button className="btn btn--primary" type="button" onClick={onDone}>
+          去安装
+        </button>
+      </div>
+    </section>
   )
 }
 

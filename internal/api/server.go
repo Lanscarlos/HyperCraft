@@ -297,6 +297,7 @@ func (s *Server) routes() http.Handler {
 	// Directories on the host, for the instance directory picker. Read-only,
 	// and not confined to an instance — see handlers_hostfs.go.
 	protected.HandleFunc("GET /api/fs", s.handleBrowseHost)
+	protected.HandleFunc("GET /api/fs/inspect", s.handleInspectHost)
 
 	// Resource usage.
 	protected.HandleFunc("GET /api/instances/{id}/metrics", s.handleInstanceMetrics)

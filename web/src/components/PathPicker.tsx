@@ -159,6 +159,7 @@ export function DirectoryField({
   label = '服务器目录',
   hint,
   placeholder,
+  className,
 }: {
   value: string
   onChange: (path: string) => void
@@ -166,11 +167,14 @@ export function DirectoryField({
   label?: string
   hint?: React.ReactNode
   placeholder?: string
+  /** Extra classes for the field, e.g. `field--full` inside a column layout —
+   *  a path plus a browse button is the widest thing on any of these forms. */
+  className?: string
 }) {
   const [picking, setPicking] = useState(false)
 
   return (
-    <div className="field">
+    <div className={className ? `field ${className}` : 'field'}>
       <span>{label}</span>
       <div className="field__with-button">
         <input

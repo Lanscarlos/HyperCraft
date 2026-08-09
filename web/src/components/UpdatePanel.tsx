@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { UPDATE_CHANNELS, UPDATE_MIRRORS } from '../types'
-import type { UpdateChannel, UpdateStatus } from '../types'
+import type { UpdateChannel, UpdateShutdown, UpdateStatus } from '../types'
 import type { UpdateController } from '../useUpdate'
 import { Modal } from './Modal'
 
@@ -20,17 +20,18 @@ export function UpdatePanel({ update, runningNames }: Props) {
   if (!status) return null
 
   if (updating) {
+    const phase = restarting ? 'restarting' : status.phase
     return (
       <section className="update update--busy">
         <h2 className="update__title">正在更新面板</h2>
-        <UpdateProgress
-          phase={restarting ? 'restarting' : status.phase}
-          progress={status.progress}
-        />
+        <UpdateProgress phase={phase} progress={status.progress} />
+        <ShutdownProgress shutdown={status.shutdown} />
         <p className="update__note">
           {restarting
             ? '面板正在重启，页面会在它回来后自动刷新。服务器会随之恢复运行。'
-            : '正在下载并校验新版本，此时服务器仍在正常运行。'}
+            : phase === 'installing'
+              ? '服务器都停好了，正在替换二进制。'
+              : '第一步：一边下载校验新版本，一边优雅停止服务器。两件事都完成之后，才会替换二进制并重启。'}
         </p>
       </section>
     )
@@ -276,6 +277,7 @@ function MirrorPicker({
 function UpdateProgress({ phase, progress }: { phase: string; progress: number }) {
   const labels: Record<string, string> = {
     downloading: `下载中 ${progress}%`,
+    stopping: '下载完成，正在等服务器停好…',
     installing: '正在安装…',
     restarting: '正在重启面板…',
   }
@@ -287,6 +289,26 @@ function UpdateProgress({ phase, progress }: { phase: string; progress: number }
       <div className="progress__bar" style={{ width: `${width}%` }} />
       <span className="progress__label">{labels[phase] ?? '准备中…'}</span>
     </div>
+  )
+}
+
+/**
+ * The other half of step one.
+ *
+ * The download has a byte count and so gets the bar; the shutdown has a list of
+ * servers, and which one the update is still waiting on is the only question
+ * anyone asks while watching this — a world that takes two minutes to save is
+ * the difference between "it's working" and "it's stuck".
+ */
+function ShutdownProgress({ shutdown }: { shutdown?: UpdateShutdown }) {
+  if (!shutdown || shutdown.total === 0) return null
+  const pending = shutdown.pending ?? []
+
+  return (
+    <p className="update__note">
+      服务器 {shutdown.stopped}/{shutdown.total} 已停止
+      {pending.length > 0 ? ` · 正在等待 ${pending.join('、')} 存档退出` : ' · 都停好了'}
+    </p>
   )
 }
 
@@ -312,7 +334,9 @@ function ConfirmUpdateDialog({
           {downgrade ? '回到' : '更新到'} {version}
         </h2>
         <p className="modal__lead">
-          面板会先下载并校验新版本，成功后才停止服务器并重启自己。下载失败不会影响正在运行的服务器。
+          更新分两步：先<strong>一边下载校验新版本、一边优雅停止服务器</strong>，
+          等服务器全部正常停下之后，才替换二进制并重启面板。任何一步失败都不会替换文件，
+          停掉的服务器会被重新拉起来。
         </p>
 
         {prerelease && (
@@ -331,7 +355,7 @@ function ConfirmUpdateDialog({
         {runningNames.length > 0 ? (
           <>
             <p className="modal__lead">
-              下面 {runningNames.length} 个服务器会被<strong>优雅停止</strong>
+              下面 {runningNames.length} 个服务器会在下载开始的同时被<strong>优雅停止</strong>
               （执行 stop、等待存档），面板重启后自动恢复运行：
             </p>
             <ul className="update__list">

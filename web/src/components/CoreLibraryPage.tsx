@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api'
 import { formatBytes, formatDate } from '../format'
+import type { LibraryView } from '../routes'
 import type { CoreBuild, CoreDownloadJob, CoreProject, CoreVersion, ServerCore } from '../types'
 import type { CoreController } from '../useCores'
 import { Page } from './Page'
@@ -33,12 +34,21 @@ function isRecommended(channel: string): boolean {
  * stamped out of it, offline and instantly, instead of pulling the same 60 MB
  * again per server. Instances are handed their own copy, so deleting a core
  * here never touches a server that is already running one.
+ *
+ * The shelf and the catalogue are two pages now — see LIBRARY_VIEWS — but one
+ * component, because the catalogue is three chained fetches (projects, then
+ * versions, then the build) and stepping over to look at the shelf should not
+ * throw the answer away and ask again on the way back.
  */
 export function CoreLibraryPage({
   cores,
+  view,
+  onOpenView,
   onOpenJava,
 }: {
   cores: CoreController
+  view: LibraryView
+  onOpenView: (view: LibraryView) => void
   onOpenJava: () => void
 }) {
   const [projects, setProjects] = useState<CoreProject[]>([])
@@ -148,11 +158,17 @@ export function CoreLibraryPage({
   const stored = cores.cores
   const totalSize = stored.reduce((sum, core) => sum + core.size, 0)
 
+  const downloadView = view === 'download'
+
   return (
     <Page
       wide
-      title="服务端核心"
-      lead="面板下载的服务端 jar 都在这里存一份。创建实例时直接从这里挑一个复制过去，同一个核心开十个服也只下载一次；下载走服务器自己的网络，不经过你的浏览器，关掉网页也会继续。"
+      title={downloadView ? '下载核心' : '服务端核心'}
+      lead={
+        downloadView
+          ? '从上游直接拉一个构建下来。下载走服务器自己的网络，不经过你的浏览器，关掉网页也会继续。'
+          : '面板下载的服务端 jar 都在这里存一份。创建实例时直接从这里挑一个复制过去，同一个核心开十个服也只下载一次。'
+      }
       aside={
         <p className="meta-chips">
           <span>{stored.length > 0 ? `${stored.length} 个核心` : '核心库还是空的'}</span>
@@ -161,7 +177,12 @@ export function CoreLibraryPage({
         </p>
       }
     >
+      {/* A download keeps going after you navigate away, so its progress
+          follows you to the shelf rather than only living on the page that
+          started it. */}
+      {!downloadView && job && job.state === 'downloading' && <JobStatus job={job} />}
 
+      {!downloadView && (
       <section className="panel">
         <div className="chart-head">
           <h2 className="panel__title">核心库</h2>
@@ -172,8 +193,10 @@ export function CoreLibraryPage({
           <div className="welcome__empty">
             <p>核心库还是空的。</p>
             <p className="muted">
-              在下面下一个 Paper 或 Velocity，或者把自己的 jar（Forge、Fabric、模组整合包的服务端）
-              直接放进核心库目录。
+              <button className="link" type="button" onClick={() => onOpenView('download')}>
+                下一个 Paper 或 Velocity
+              </button>
+              ，或者把自己的 jar（Forge、Fabric、模组整合包的服务端）直接放进核心库目录。
             </p>
           </div>
         ) : (
@@ -189,12 +212,13 @@ export function CoreLibraryPage({
           </div>
         )}
       </section>
+      )}
 
       {/* The list of downloadable projects comes from upstream, so this card
           is the one thing on the page that waits on the network — and it used
           to simply not be there until it was, which reads as the page having
           finished a card short. */}
-      {loading && (
+      {downloadView && loading && (
         <SkeletonScreen inPage label="正在读取可下载的核心…">
           <SkeletonPanel title={false}>
             <div className="chart-head">
@@ -207,14 +231,18 @@ export function CoreLibraryPage({
         </SkeletonScreen>
       )}
 
-      {!loading && projects.length > 0 && (
+      {downloadView && !loading && projects.length === 0 && (
+        <div className="alert alert--error">
+          没能取到可下载的核心列表 —— 通常是这台机器连不上外网。已经下载过的核心不受影响，
+          在「核心库」里照常可用。
+        </div>
+      )}
+
+      {downloadView && !loading && projects.length > 0 && (
         <section className="panel">
-          <div className="chart-head">
-            <h2 className="panel__title">下载新核心</h2>
-            <p className="chart-head__meta">
-              下载完成后，新建实例时选它，或在实例的「实例设置 → 从核心库安装」里装上
-            </p>
-          </div>
+          <p className="chart-note">
+            下载完成后，新建实例时选它，或在实例的「实例设置 → 从核心库安装」里装上。
+          </p>
 
           {job && <JobStatus job={job} />}
           {cores.error && <div className="alert alert--error">{cores.error}</div>}

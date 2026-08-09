@@ -2,10 +2,11 @@ import { useLayoutEffect, useRef } from 'react'
 import type { MouseEvent, ReactNode, Ref } from 'react'
 
 import { DUR } from '../motion'
-import type { Route, Scope } from '../routes'
+import type { LibrarySection, Route, Scope } from '../routes'
 import {
   HOST_SECTIONS,
   INSTANCE_SECTIONS,
+  LIBRARY_VIEWS,
   SETTINGS_SECTIONS,
   pathOf,
   samePage,
@@ -204,21 +205,27 @@ function GlobalScope(props: Props) {
             {...props}
             icon="cores"
             label="服务端核心"
-            target={{ kind: 'library', section: 'cores' }}
+            target={{ kind: 'library', section: 'cores', view: 'stock' }}
+            active={route.kind === 'library' && route.section === 'cores'}
             badge={cores.downloading ? <span className="badge badge--update">下载中</span> : null}
           />
+          <LibraryViews {...props} section="cores" />
+
           <NavLink
             {...props}
             icon="java"
             label="Java 环境"
-            target={{ kind: 'library', section: 'java' }}
+            target={{ kind: 'library', section: 'java', view: 'installed' }}
+            active={route.kind === 'library' && route.section === 'java'}
             badge={java.installing ? <span className="badge badge--update">安装中</span> : null}
           />
+          <LibraryViews {...props} section="java" />
+
           <NavLink
             {...props}
             icon="plugins"
             label="插件库"
-            target={{ kind: 'library', section: 'plugins' }}
+            target={{ kind: 'library', section: 'plugins', view: 'list' }}
             active={route.kind === 'library' && route.section === 'plugins'}
             badge={
               plugins.downloading ? (
@@ -228,6 +235,7 @@ function GlobalScope(props: Props) {
               ) : null
             }
           />
+          <LibraryViews {...props} section="plugins" />
         </nav>
 
         <Group label="系统" />
@@ -256,6 +264,45 @@ function GlobalScope(props: Props) {
         <span className="sidebar__name">新建实例</span>
       </button>
     </>
+  )
+}
+
+/**
+ * The pages inside one library entry, shown only while you are in it.
+ *
+ * A second level in a sidebar that has spent a lot of effort staying one level
+ * deep needs a reason. This one: the three library entries each turned into a
+ * page with three jobs stacked in one scroll — the shelf, the catalogue, and
+ * the settings that govern downloading — and the shelf, which is what you came
+ * for, was underneath the other two. Splitting them needs somewhere to put the
+ * split, and a strip of tabs across the top of the page is the shape this panel
+ * already decided against for 面板设置.
+ *
+ * It expands rather than replaces, unlike an instance or the host: these are
+ * two or three short pages, not a scope you spend an afternoon in, and folding
+ * the rest of the panel away to show them would be a bigger movement than the
+ * thing it reveals.
+ */
+function LibraryViews({ route, follow, navigate, section }: Props & { section: LibrarySection }) {
+  if (route.kind !== 'library' || route.section !== section) return null
+
+  return (
+    <div className="sidebar__sub" role="group" aria-label={`${section} 子页面`}>
+      {LIBRARY_VIEWS[section].map((view) => {
+        const current = route.view === view.id
+        return (
+          <a
+            key={view.id}
+            className={`sidebar__sublink${current ? ' sidebar__sublink--active' : ''}`}
+            href={pathOf({ kind: 'library', section, view: view.id })}
+            onClick={follow(() => navigate({ kind: 'library', section, view: view.id }))}
+            aria-current={current ? 'page' : undefined}
+          >
+            {view.label}
+          </a>
+        )
+      })}
+    </div>
   )
 }
 
@@ -466,7 +513,6 @@ function SettingsScope(props: Props) {
 const SETTINGS_ICONS: Record<string, IconName> = {
   devices: 'devices',
   security: 'lock',
-  'plugin-source': 'plugins',
   update: 'update',
 }
 

@@ -492,6 +492,34 @@ export interface HostListing {
   shortcuts: HostShortcut[]
 }
 
+/** What a directory on the host looks like as a candidate for import. */
+export interface HostInspection {
+  path: string
+  exists: boolean
+  /** Set when the directory exists but could not be read, usually permissions. */
+  error?: string
+  /** The directory's own name, offered as the instance name. */
+  name: string
+  jars: JarInfo[]
+  /** The jar most likely to start this server; empty when there is none. */
+  jar?: string
+  properties?: {
+    motd?: string
+    port?: string
+    levelName?: string
+    maxPlayers?: string
+  }
+  eula: 'accepted' | 'declined' | 'missing'
+  /** Level directories found here — what makes this an existing server. */
+  worlds?: string[]
+  plugins: number
+  mods: number
+  /** The panel's verdict: something here says a server has run, or is meant to. */
+  server: boolean
+  /** Name of the instance already pointing at this directory, if any. */
+  takenBy?: string
+}
+
 export interface User {
   username: string
   version: string
@@ -698,9 +726,21 @@ export interface SystemInfo {
 export type UpdatePhase =
   | 'idle'
   | 'checking'
+  /** Step one: the release is downloading *and* the servers are stopping. */
   | 'downloading'
+  /** Step one with the download already finished — waiting on the last world
+   *  to save. */
+  | 'stopping'
   | 'installing'
   | 'restarting'
+
+/** How far the "stop every server" half of an update has got. */
+export interface UpdateShutdown {
+  total: number
+  stopped: number
+  /** Names of the servers still saving. */
+  pending?: string[]
+}
 
 export interface UpdateStatus {
   currentVersion: string
@@ -730,6 +770,8 @@ export interface UpdateStatus {
   /** True when installing the offered version moves backwards — the way back
    *  from a snapshot to the stable track. */
   downgrade: boolean
+  /** Present while an update is running: the servers it is stopping. */
+  shutdown?: UpdateShutdown
 }
 
 export type UpdateChannel = 'stable' | 'snapshot'
