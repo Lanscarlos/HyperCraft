@@ -9,6 +9,7 @@ import type { PluginController } from '../usePlugins'
 import { updateLabel } from '../useUpdate'
 import type { UpdateController } from '../useUpdate'
 import { HostOverview } from './HostOverview'
+import { Page } from './Page'
 
 interface Props {
   user: User
@@ -55,12 +56,11 @@ export function Dashboard({
   const crashed = instances.filter((item) => item.state === 'crashed')
 
   return (
-    <div className="page page--wide">
-      <h1>仪表盘</h1>
-      <p className="page__lead">
-        面板以后台守护进程的方式持有服务器进程。关掉浏览器、退出登录，甚至重启路由，
-        服务器都会照常运行 —— 只有停止面板本身才会（优雅地）关掉它们。
-      </p>
+    <Page
+      wide
+      title="仪表盘"
+      lead="面板以后台守护进程的方式持有服务器进程。关掉浏览器、退出登录，甚至重启路由，服务器都会照常运行 —— 只有停止面板本身才会（优雅地）关掉它们。"
+    >
 
       {notice && (
         <div className="alert alert--ok">
@@ -159,7 +159,7 @@ export function Dashboard({
       </section>
 
       <HostOverview />
-    </div>
+    </Page>
   )
 }
 

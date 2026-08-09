@@ -7,6 +7,7 @@ import '@xterm/xterm/css/xterm.css'
 import { api, terminalSocketURL } from '../api'
 import { onThemeChange, terminalTheme } from '../theme'
 import type { TerminalController } from '../useTerminal'
+import { Page } from './Page'
 
 /** Same stack the server console uses: server output and shell output are full
  *  of the same box drawing, CJK and emoji, and the browser only falls back
@@ -200,18 +201,19 @@ export function HostTerminal({ terminal, onOpenSettings }: Props) {
   const restart = useCallback(() => setAttempt((n) => n + 1), [])
 
   if (!status) {
-    return <div className="page">正在读取终端设置…</div>
+    return <Page>正在读取终端设置…</Page>
   }
 
   if (!available) {
     return (
-      <div className="page">
-        <h1>终端</h1>
-        <p className="page__lead">
-          {status.supported
+      <Page
+        title="终端"
+        lead={
+          status.supported
             ? '本机终端还没有开启。开启后可以在这里直接得到一个面板所在机器的 shell，不用另外 SSH 上来。'
-            : status.reason}
-        </p>
+            : status.reason
+        }
+      >
         {status.supported && (
           <div>
             <button className="btn btn--primary" onClick={onOpenSettings}>
@@ -219,7 +221,7 @@ export function HostTerminal({ terminal, onOpenSettings }: Props) {
             </button>
           </div>
         )}
-      </div>
+      </Page>
     )
   }
 

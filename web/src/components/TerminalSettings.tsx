@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import type { TerminalController } from '../useTerminal'
+import { Page } from './Page'
 
 interface Props {
   terminal: TerminalController
@@ -21,7 +22,7 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
   const { status, saving, error } = terminal
 
   if (!status) {
-    return <div className="page">正在读取终端设置…</div>
+    return <Page>正在读取终端设置…</Page>
   }
 
   const enable = async () => {
@@ -30,12 +31,10 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
   }
 
   return (
-    <div className="page">
-      <h1>终端</h1>
-      <p className="page__lead">
-        在面板里直接开一个本机 shell，装插件、看日志、改配置不用再单独 SSH 上来。
-        这里跑的就是面板所在的这台机器，权限和面板进程完全一样 —— 不是连到别的服务器。
-      </p>
+    <Page
+      title="终端"
+      lead="在面板里直接开一个本机 shell，装插件、看日志、改配置不用再单独 SSH 上来。这里跑的就是面板所在的这台机器，权限和面板进程完全一样 —— 不是连到别的服务器。"
+    >
 
       {error && <div className="alert alert--error">{error}</div>}
 
@@ -69,7 +68,7 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
                 都可以在这台机器上以 {status.user || '面板用户'} 的身份执行任意命令 ——
                 所以面板密码要当成 SSH 密码来管，别把面板裸奔在公网上。
               </div>
-              <div className="settings__actions">
+              <div className="actions">
                 <button className="btn btn--primary" onClick={onOpenTerminal}>
                   打开终端
                 </button>
@@ -95,7 +94,7 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
                 <br />
                 2. 面板没有直接暴露在公网，或者前面有 HTTPS 反代 + 访问控制。
               </div>
-              <div className="settings__actions">
+              <div className="actions">
                 <button className="btn btn--primary" disabled={saving} onClick={() => void enable()}>
                   {saving ? '保存中…' : '我明白，开启终端'}
                 </button>
@@ -109,7 +108,7 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
               <p className="update__note">
                 终端默认是关闭的，升级面板也不会把它打开。
               </p>
-              <div className="settings__actions">
+              <div className="actions">
                 <button className="btn btn--primary" onClick={() => setConfirming(true)}>
                   开启终端
                 </button>
@@ -118,6 +117,6 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
           )}
         </section>
       )}
-    </div>
+    </Page>
   )
 }

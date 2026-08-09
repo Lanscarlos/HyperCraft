@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { formatBytes, formatDate } from '../format'
 import type { JavaInstallJob, JavaRuntime, JavaSource, SystemJava } from '../types'
 import type { JavaController } from '../useJava'
+import { Page } from './Page'
 
 /** Which Java a Minecraft version needs, shown on the version being picked. */
 const VERSION_HINTS: Record<number, string> = {
@@ -71,10 +72,7 @@ export function JavaPage({
 
   if (!overview) {
     return (
-      <div className="page page--wide">
-        <h1>Java 运行时</h1>
-        <p className="page__lead">正在读取…</p>
-      </div>
+      <Page wide title="Java 运行时" lead="正在读取…" />
     )
   }
 
@@ -90,15 +88,11 @@ export function JavaPage({
   const hiddenMajors = majors.length - visibleMajors.length
 
   return (
-    <div className="page page--wide">
-      <header className="page__head">
-        <div>
-          <h1>Java 运行时</h1>
-          <p className="page__lead">
-            不同版本的服务端要不同的 Java：1.16 要 8，1.17 要 17，1.20.5 起要 21，Paper 26 要 25。
-            这里装的运行时归面板所有，不动系统里的 Java；装好之后在实例的「启动设置」里选一个即可。
-          </p>
-        </div>
+    <Page
+      wide
+      title="Java 运行时"
+      lead="不同版本的服务端要不同的 Java：1.16 要 8，1.17 要 17，1.20.5 起要 21，Paper 26 要 25。这里装的运行时归面板所有，不动系统里的 Java；装好之后在实例的「启动设置」里选一个即可。"
+      aside={
         <p className="meta-chips">
           {overview.platform.os && (
             <span>
@@ -109,7 +103,8 @@ export function JavaPage({
           {runtimes.length > 0 && <span>共 {formatBytes(totalSize)}</span>}
           <span>由 Eclipse Temurin 提供</span>
         </p>
-      </header>
+      }
+    >
 
       {overview.platform.warning && (
         <div className="alert alert--error">{overview.platform.warning}</div>
@@ -247,7 +242,7 @@ export function JavaPage({
               </div>
             )}
 
-            <div className="settings__actions">
+            <div className="actions">
               {installing ? (
                 <button
                   className="btn btn--danger"
@@ -281,7 +276,7 @@ export function JavaPage({
         </button>
         。每个核心版本对 Java 的最低要求也标在那一页上。
       </p>
-    </div>
+    </Page>
   )
 }
 

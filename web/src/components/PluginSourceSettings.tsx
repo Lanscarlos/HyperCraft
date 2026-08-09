@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import type { PluginController } from '../usePlugins'
+import { Page } from './Page'
 
 /**
  * Where plugins come from: the credential private repositories are read with,
@@ -16,12 +17,10 @@ export function PluginSourceSettings({ plugins }: { plugins: PluginController })
   const { library, busy } = plugins
 
   return (
-    <div className="page">
-      <h1>插件源</h1>
-      <p className="page__lead">
-        插件都来自 GitHub Release。这里管两件事：私有仓库要用的访问令牌，以及 jar 走哪个下载源 ——
-        两个都只影响下载，插件本身、版本和更新还是在侧栏的「插件库」里管。
-      </p>
+    <Page
+      title="插件源"
+      lead="插件都来自 GitHub Release。这里管两件事：私有仓库要用的访问令牌，以及 jar 走哪个下载源 —— 两个都只影响下载，插件本身、版本和更新还是在侧栏的「插件库」里管。"
+    >
 
       <GitHubTokenPanel
         configured={library?.tokenConfigured ?? false}
@@ -38,7 +37,7 @@ export function PluginSourceSettings({ plugins }: { plugins: PluginController })
       />
 
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
-    </div>
+    </Page>
   )
 }
 

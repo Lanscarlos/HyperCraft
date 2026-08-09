@@ -135,7 +135,7 @@ export function FileManager({ instance }: { instance: InstanceStatus }) {
   if (editor) {
     const dirty = editor.content !== editor.original
     return (
-      <div className="settings">
+      <div className="stack">
         <section className="panel">
           <div className="chart-head">
             <h3 className="panel__title">{editor.path}</h3>
@@ -150,7 +150,7 @@ export function FileManager({ instance }: { instance: InstanceStatus }) {
           />
           {error && <div className="alert alert--error">{error}</div>}
           {status && <div className="alert alert--ok">{status}</div>}
-          <div className="settings__actions">
+          <div className="actions">
             <button className="btn btn--primary" onClick={() => void saveEditor()} disabled={busy || !dirty}>
               保存
             </button>
@@ -165,7 +165,7 @@ export function FileManager({ instance }: { instance: InstanceStatus }) {
 
   return (
     <div
-      className={`settings${dragging ? ' settings--dropping' : ''}`}
+      className={`stack${dragging ? ' stack--dropping' : ''}`}
       onDragOver={(e) => {
         e.preventDefault()
         setDragging(true)

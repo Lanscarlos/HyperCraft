@@ -3,6 +3,8 @@ import type { TerminalController } from '../useTerminal'
 import { updateLabel } from '../useUpdate'
 import type { UpdateController } from '../useUpdate'
 import { DevicesPage } from './DevicesPage'
+import { Page } from './Page'
+import { Tabs } from './Tabs'
 import { PluginSourceSettings } from './PluginSourceSettings'
 import { TerminalSettings } from './TerminalSettings'
 import { UpdatePanel } from './UpdatePanel'
@@ -58,39 +60,40 @@ export function SettingsPage({
 }: Props) {
   return (
     <div className="settings-page">
-      <nav className="tabs">
-        {SETTINGS_SECTIONS.map((entry) => (
-          <button
-            key={entry.id}
-            className={`tabs__tab${section === entry.id ? ' tabs__tab--active' : ''}`}
-            onClick={() => onSection(entry.id)}
-          >
-            {entry.label}
-            {entry.id === 'terminal' && terminal.status?.enabled && (
+      <Tabs
+        items={SETTINGS_SECTIONS.map((entry) => ({
+          ...entry,
+          badge:
+            entry.id === 'terminal' && terminal.status?.enabled ? (
               <span className="badge">已开启</span>
-            )}
-            {entry.id === 'update' && updateLabel(update.status) && (
+            ) : entry.id === 'update' && updateLabel(update.status) ? (
               <span className="badge badge--update">{updateLabel(update.status)}</span>
-            )}
-          </button>
-        ))}
-      </nav>
+            ) : undefined,
+        }))}
+        active={section}
+        onSelect={onSection}
+        label="设置分区"
+        idPrefix="settings"
+      />
 
-      <div className="settings-page__body">
+      <div
+        className="settings-page__body"
+        id={`settings-panel-${section}`}
+        role="tabpanel"
+        aria-labelledby={`settings-tab-${section}`}
+      >
         {section === 'terminal' && (
           <TerminalSettings terminal={terminal} onOpenTerminal={onOpenTerminal} />
         )}
         {section === 'devices' && <DevicesPage />}
         {section === 'plugin-source' && <PluginSourceSettings plugins={plugins} />}
         {section === 'update' && (
-          <div className="page">
-            <h1>面板更新</h1>
-            <p className="page__lead">
-              面板可以自己下载并替换掉自己的二进制，然后重启 —— 更新前正在运行的服务器会先优雅停止，
-              升级完成后再自动拉起来。快照通道能提前拿到 main 上每个通过 CI 的构建。
-            </p>
+          <Page
+            title="面板更新"
+            lead="面板可以自己下载并替换掉自己的二进制，然后重启 —— 更新前正在运行的服务器会先优雅停止，升级完成后再自动拉起来。快照通道能提前拿到 main 上每个通过 CI 的构建。"
+          >
             <UpdatePanel update={update} runningNames={runningNames} />
-          </div>
+          </Page>
         )}
       </div>
     </div>

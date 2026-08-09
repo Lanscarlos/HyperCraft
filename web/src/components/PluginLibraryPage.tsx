@@ -4,6 +4,7 @@ import { formatBytes, formatDate } from '../format'
 import type { LibraryPlugin, PluginDownloadJob } from '../types'
 import { hasPluginUpdate } from '../types'
 import type { PluginController } from '../usePlugins'
+import { Page } from './Page'
 import { PluginDialog } from './PluginDialog'
 
 /**
@@ -53,23 +54,19 @@ export function PluginLibraryPage({
   }, [job?.state, job?.tag, plugins])
 
   return (
-    <div className="page page--wide">
-      <header className="page__head">
-        <div>
-          <h1>插件库</h1>
-          <p className="page__lead">
-            插件在这里统一管理：添加下载源、拉取版本、检查更新。实例那边只负责「用哪个插件、用哪个版本、
-            要不要停用」，不能自己下载 —— 这样同一个插件全站只有一份来源，版本回滚时也永远还找得到旧包。
-            下载走服务器自己的网络，关掉网页也会继续。
-          </p>
-        </div>
+    <Page
+      wide
+      title="插件库"
+      lead="插件在这里统一管理：添加下载源、拉取版本、检查更新。实例那边只负责「用哪个插件、用哪个版本、要不要停用」，不能自己下载 —— 这样同一个插件全站只有一份来源，版本回滚时也永远还找得到旧包。下载走服务器自己的网络，关掉网页也会继续。"
+      aside={
         <p className="meta-chips">
           <span>{tracked.length > 0 ? `${tracked.length} 个插件` : '插件库还是空的'}</span>
           {versionCount > 0 && <span>{versionCount} 个版本</span>}
           {totalSize > 0 && <span>共 {formatBytes(totalSize)}</span>}
           {library?.root && <span title={library.root}>存放于 {library.root}</span>}
         </p>
-      </header>
+      }
+    >
 
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
       {job && <JobStatus job={job} onCancel={() => void plugins.cancel()} busy={busy} />}
@@ -144,7 +141,7 @@ export function PluginLibraryPage({
           }}
         />
       )}
-    </div>
+    </Page>
   )
 }
 
