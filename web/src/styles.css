@@ -3336,6 +3336,21 @@ input.input-slim:disabled {
   color: var(--caution-ink);
 }
 
+.badge--danger {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 36%, transparent);
+  color: var(--danger-ink);
+}
+
+/*
+ * Badges normally sit after a run of text, so they carry a left margin. In the
+ * auth log they are the first thing in the cell and that margin would knock the
+ * column out of line with its header.
+ */
+.auth-events .badge {
+  margin-left: 0;
+}
+
 /* --------------------------------------------------- settings & dashboard */
 
 /* The settings shell owns the scroll, so switching sections does not leave the

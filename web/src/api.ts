@@ -1,4 +1,5 @@
 import type {
+  AuthEvent,
   ConsoleLine,
   CoreBuild,
   CoreDownloadJob,
@@ -95,6 +96,8 @@ export const api = {
   // The UI can only list and unpair.
   deleteDevice: (id: string) =>
     request<void>('DELETE', `/api/auth/devices/${id}`),
+
+  listAuthEvents: () => request<AuthEvent[]>('GET', '/api/auth/events'),
 
   listInstances: () => request<InstanceStatus[]>('GET', '/api/instances'),
   getInstance: (id: string) =>

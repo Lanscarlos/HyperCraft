@@ -64,6 +64,10 @@ func (s *Server) beginCredentialCheck(w http.ResponseWriter, r *http.Request) (s
 	// warnings — bounded precisely because of this limiter — is what tells an
 	// operator that someone is trying.
 	s.log.Debug("credential check throttled", "client", key, "remote", r.RemoteAddr)
+	// The in-memory view does keep these: repeats collapse into one row, so a
+	// flood costs a single line there while telling the operator the thing the
+	// suppressed log lines would have.
+	s.recordAuth(r, eventThrottled, "", "")
 	writeError(w, http.StatusTooManyRequests, fmt.Sprintf("尝试过于频繁，请 %d 秒后再试", seconds))
 	return "", false
 }
@@ -106,6 +110,13 @@ type userResponse struct {
 	// token, and is absent for a browser session. It gives an app somewhere to
 	// show which pairing it is running under.
 	Device string `json:"device,omitempty"`
+	// Client and Remote are the two addresses this very request arrived on:
+	// who the panel believes you are, and the peer it actually spoke to. They
+	// are the same until a trusted proxy is configured, and telling them apart
+	// is the whole question behind "what address does my panel see?" — which
+	// otherwise has no answer short of reading journald.
+	Client string `json:"client"`
+	Remote string `json:"remote"`
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -127,6 +138,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		s.loginLimit.penalise(key)
 		s.log.Warn("failed login", "username", req.Username, "remote", r.RemoteAddr, "client", key)
+		s.recordAuth(r, eventSignInFailed, req.Username, "")
 		writeError(w, http.StatusUnauthorized, "用户名或密码错误")
 		return
 	}
@@ -147,7 +159,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// there is an accelerator or a reverse proxy in front: remote is the peer,
 	// client is who the panel believes is behind it.
 	s.log.Info("signed in", "username", sess.Username, "remote", r.RemoteAddr, "client", key)
-	writeJSON(w, http.StatusOK, userResponse{Username: sess.Username, Version: s.version})
+	s.recordAuth(r, eventSignIn, sess.Username, "")
+	writeJSON(w, http.StatusOK, userResponse{
+		Username: sess.Username,
+		Version:  s.version,
+		Client:   key,
+		Remote:   peerHost(r),
+	})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -164,6 +182,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			s.log.Info("device signed out", "device", who.device.Name, "id", who.device.ID)
+			s.recordAuth(r, eventUnpaired, who.username, who.device.Name)
 		}
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -182,11 +201,23 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "not signed in")
 		return
 	}
-	resp := userResponse{Username: who.username, Version: s.version}
+	resp := userResponse{
+		Username: who.username,
+		Version:  s.version,
+		Client:   s.clientAddr(r),
+		Remote:   peerHost(r),
+	}
 	if who.device != nil {
 		resp.Device = who.device.Name
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleAuthEvents serves the in-memory credential trail. It is behind
+// requireAuth like everything else under /api: the addresses in it are exactly
+// what someone probing the panel would like to know about the panel's traffic.
+func (s *Server) handleAuthEvents(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, s.authLog.list())
 }
 
 type changePasswordRequest struct {
@@ -234,6 +265,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	s.clearSessionCookie(w, r)
 	s.log.Info("panel password changed", "username", who.username, "devicesUnpaired", unpaired)
+	s.recordAuth(r, eventPasswordChanged, who.username, fmt.Sprintf("解除了 %d 台设备", unpaired))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -298,6 +330,7 @@ func (s *Server) handleCreateDevice(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		s.loginLimit.penalise(key)
 		s.log.Warn("failed device pairing", "username", req.Username, "remote", r.RemoteAddr, "client", key)
+		s.recordAuth(r, eventPairFailed, req.Username, "")
 		writeError(w, http.StatusUnauthorized, "用户名或密码错误")
 		return
 	}
@@ -325,6 +358,7 @@ func (s *Server) handleCreateDevice(w http.ResponseWriter, r *http.Request) {
 			"device", dev.Name, "remote", r.RemoteAddr)
 	}
 	s.log.Info("device paired", "device", dev.Name, "id", dev.ID)
+	s.recordAuth(r, eventPaired, req.Username, dev.Name)
 
 	writeJSON(w, http.StatusCreated, createDeviceResponse{
 		ID:        dev.ID,
@@ -365,6 +399,8 @@ func (s *Server) handleDeleteDevice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.log.Info("device unpaired", "device", dev.Name, "id", dev.ID)
+	who, _ := principalFrom(r.Context())
+	s.recordAuth(r, eventUnpaired, who.username, dev.Name)
 	w.WriteHeader(http.StatusNoContent)
 }
 

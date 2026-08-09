@@ -58,6 +58,10 @@ type Server struct {
 	// both are expensive; see ratelimit.go.
 	loginLimit *rateLimiter
 	kdf        *kdfGate
+	// authLog is the in-memory view of recent credential events behind
+	// GET /api/auth/events. The slog lines remain the system of record; see
+	// authlog.go.
+	authLog *authLog
 	// trustedProxies decides whether X-Forwarded-For is believed when working
 	// out which client a request belongs to. See config.Panel.TrustedProxies.
 	trustedProxies []netip.Prefix
@@ -134,6 +138,7 @@ func NewServer(opts Options) *Server {
 
 		loginLimit:     newRateLimiter(loginBurst, loginRefill),
 		kdf:            newKDFGate(defaultKDFSlots(), kdfWait),
+		authLog:        newAuthLog(),
 		trustedProxies: trusted,
 
 		metrics:  opts.Metrics,
@@ -208,6 +213,7 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("POST /api/auth/password", s.handleChangePassword)
 	protected.HandleFunc("GET /api/auth/devices", s.handleListDevices)
 	protected.HandleFunc("DELETE /api/auth/devices/{id}", s.handleDeleteDevice)
+	protected.HandleFunc("GET /api/auth/events", s.handleAuthEvents)
 
 	protected.HandleFunc("GET /api/instances", s.handleListInstances)
 	protected.HandleFunc("POST /api/instances", s.handleCreateInstance)
