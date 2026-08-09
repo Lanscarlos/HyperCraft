@@ -62,7 +62,7 @@ func main() {
 func run() error {
 	var (
 		dataDir       = flag.String("data", envOr("HYPERCRAFT_DATA", "./data"), "directory for panel state and server files")
-		listen        = flag.String("listen", envOr("HYPERCRAFT_LISTEN", ""), "address to bind, e.g. 127.0.0.1:8080 (overrides the stored setting)")
+		listen        = flag.String("listen", envOr("HYPERCRAFT_LISTEN", ""), "address to bind, e.g. 0.0.0.0:19190 (overrides the stored setting)")
 		username      = flag.String("username", envOr("HYPERCRAFT_USERNAME", "admin"), "operator username, used when creating the first credential")
 		resetPassword = flag.Bool("reset-password", false, "generate a new random password, print it, and exit")
 		logLevel      = flag.String("log-level", envOr("HYPERCRAFT_LOG_LEVEL", "info"), "debug, info, warn or error")

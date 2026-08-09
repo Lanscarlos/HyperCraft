@@ -8,10 +8,13 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/auth"
 )
 
-// DefaultListen is the panel's bind address. It is loopback-only on purpose:
-// the panel can run arbitrary console commands, so exposing it to the internet
-// should be a conscious act (a reverse proxy with TLS, or an explicit --listen).
-const DefaultListen = "127.0.0.1:8080"
+// DefaultListen is the panel's bind address. It binds every interface so the
+// panel is reachable from outside the host without extra configuration. That
+// convenience has a price: the panel can run arbitrary console commands and
+// speaks plain HTTP, so a publicly reachable instance should sit behind a
+// reverse proxy with TLS. Operators who want the old loopback-only behaviour
+// can pass --listen 127.0.0.1:19190.
+const DefaultListen = "0.0.0.0:19190"
 
 // DefaultMaxUploadMB caps a single uploaded file. Modpack server jars and
 // world archives run to hundreds of megabytes, so a conservative limit would

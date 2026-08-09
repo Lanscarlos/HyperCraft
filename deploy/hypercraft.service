@@ -8,7 +8,7 @@ Type=simple
 User=minecraft
 Group=minecraft
 WorkingDirectory=/opt/hypercraft
-ExecStart=/opt/hypercraft/hypercraft -data /opt/hypercraft/data -listen 127.0.0.1:8080
+ExecStart=/opt/hypercraft/hypercraft -data /opt/hypercraft/data -listen 0.0.0.0:19190
 
 # The panel is the parent of every Minecraft process. On stop it sends each one
 # the graceful stop command and waits for the world to save, so this timeout has

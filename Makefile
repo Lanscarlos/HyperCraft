@@ -31,7 +31,7 @@ build-go:
 run: build
 	./$(BINARY) -data ./data
 
-## backend on :8080 + Vite dev server on :5173 with hot reload
+## backend on :19190 + Vite dev server on :5173 with hot reload
 dev:
 	@echo "run in two terminals:"
 	@echo "  go run ./cmd/hypercraft -data ./data"
