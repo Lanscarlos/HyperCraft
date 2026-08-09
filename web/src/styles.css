@@ -253,6 +253,18 @@ body,
   margin: 0;
 }
 
+/* The shell is exactly one viewport tall and scrolls inside itself, so on a
+   phone it has to be the *visible* viewport: with 100% the browser measures
+   from the tall state and the bottom of the console sits under the collapsed
+   address bar. `dvh` is the one unit that tracks it. */
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+  }
+}
+
 body {
   /* Two very wide, very faint washes: enough to keep a full-screen panel from
      reading as a flat sheet, faint enough that no text sits on a gradient it
@@ -348,10 +360,18 @@ a:hover {
   color: var(--text-dim);
 }
 
+/* The sidebar has three widths — full, folded to icons, and off-canvas — and
+   the grid only ever reads this one value, so switching between them is a
+   variable and not a second layout. */
 .app {
+  --sidebar-w: 264px;
   display: grid;
-  grid-template-columns: 264px 1fr;
+  grid-template-columns: var(--sidebar-w) 1fr;
   height: 100%;
+}
+
+.app[data-rail='on'] {
+  --sidebar-w: 60px;
 }
 
 .sidebar {
@@ -363,6 +383,17 @@ a:hover {
      a container, and the main pane keeps the lighter surface. */
   background: var(--surface-1);
   border-right: 1px solid var(--border);
+  min-height: 0;
+  /* Focused programmatically when it opens as a drawer; that must not paint a
+     ring around the whole panel. */
+  outline: none;
+}
+
+/* The column beside the sidebar: one fixed strip on top, the page under it. */
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   min-height: 0;
 }
 
@@ -547,31 +578,305 @@ a:hover {
   font-size: 11px;
 }
 
-.sidebar__footer {
+/* The initial of an instance's name. Hidden until the sidebar is a rail, where
+   it is the only thing telling six servers apart. */
+.sidebar__initial {
+  display: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sidebar__link .icon {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.sidebar__link--active .icon {
+  color: var(--accent);
+}
+
+/* ------------------------------------------------------------------- rail
+
+   Folded, the sidebar is icons and nothing else. Everything that carries text
+   is switched off in one place rather than each row being rebuilt, so a row
+   added later folds correctly without knowing this section exists. */
+
+.app[data-rail='on'] .sidebar {
+  padding: 14px 8px;
+  align-items: stretch;
+}
+
+.app[data-rail='on'] .sidebar__title,
+.app[data-rail='on'] .sidebar__section,
+.app[data-rail='on'] .sidebar__state,
+.app[data-rail='on'] .sidebar__empty,
+.app[data-rail='on'] .sidebar__name {
+  display: none;
+}
+
+.app[data-rail='on'] .sidebar__brand {
+  justify-content: center;
+  padding: 6px 0 12px;
+}
+
+.app[data-rail='on'] .sidebar__link,
+.app[data-rail='on'] .sidebar__item,
+.app[data-rail='on'] .sidebar__new {
+  display: grid;
+  place-items: center;
+  gap: 0;
+  padding: 9px 0;
+}
+
+/* The dot rides the corner of the initial instead of sitting in a column of
+   its own, so state survives the fold. */
+.app[data-rail='on'] .sidebar__item {
+  position: relative;
+  grid-template-columns: none;
+}
+
+.app[data-rail='on'] .sidebar__initial {
+  display: grid;
+}
+
+.app[data-rail='on'] .sidebar__item .status__dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  /* Ringed in the sidebar's own colour so it reads as a badge on the corner of
+     the initial rather than a dot floating above it. */
+  box-shadow: 0 0 0 2px var(--surface-1);
+}
+
+/* A count or a "下载中" has no room, but the fact that *something* is waiting
+   still has to survive; the badge keeps its colour and loses its text. */
+.app[data-rail='on'] .sidebar__link .badge {
+  position: absolute;
+  top: 5px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 0;
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------- top bar
+
+   One strip that never scrolls, because every page below it does. It carries
+   where you are on the left and who you are on the right; both used to be
+   findable only in the sidebar, which is the half of the screen a phone
+   hides. */
+
+.topbar {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 6px 2px;
-  border-top: 1px solid var(--border);
-  color: var(--text-dim);
-  font-size: 12px;
+  flex: none;
+  height: 52px;
+  padding: 0 16px 0 10px;
+  padding-right: max(16px, env(safe-area-inset-right));
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
+  background-image: linear-gradient(180deg, var(--sheen), transparent);
 }
 
-.sidebar__footer > span {
-  flex: 1;
+.topbar__toggle {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.topbar__toggle:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* The trail. It wraps to nothing — a long instance name is truncated rather
+   than allowed to push the account controls off the strip. */
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+.crumbs__step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.crumbs__sep {
+  color: var(--text-faint);
+}
+
+.crumbs__link,
+.crumbs__here {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Light / dark / 跟随系统, cycled in place. It lives beside the username
-   rather than in 设置 because it is a per-person, per-device preference and
-   the one setting you change without meaning to open a settings page. */
+.crumbs__link {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.crumbs__link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.crumbs__here {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------- account menu */
+
+.usermenu {
+  position: relative;
+}
+
+.usermenu__button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 180px;
+  padding: 4px 8px 4px 4px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.usermenu__button:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.usermenu__avatar {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.usermenu__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usermenu__sheet {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  animation: rise 120ms var(--ease) both;
+}
+
+.usermenu__sheet button {
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.usermenu__sheet button:hover {
+  background: var(--surface-2);
+}
+
+/* ------------------------------------------------------------------ scrim
+
+   Only ever painted under an open drawer. It is display:none everywhere else,
+   so on a desktop it is not in the way of a single click. */
+.scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: var(--scrim);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms var(--ease);
+}
+
+/* Light / dark / 跟随系统, cycled in place. It sits in the top bar rather
+   than in 设置 because it is a per-person, per-device preference and the one
+   setting you change without meaning to open a settings page. */
 .theme-toggle {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  /* Same box as the nav toggle at the other end of the strip, so the two
+     icon buttons on the bar read as one size. */
+  width: 32px;
+  height: 32px;
   flex: none;
   padding: 0;
   background: none;
@@ -580,7 +885,7 @@ a:hover {
   color: var(--text-dim);
   cursor: pointer;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
   transition:
     background var(--dur) var(--ease),
@@ -597,9 +902,12 @@ a:hover {
 .main {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-width: 0;
   min-height: 0;
-  padding: 20px 24px;
+  padding: 16px 24px 20px;
+  padding-right: max(24px, env(safe-area-inset-right));
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
   gap: 12px;
   overflow: hidden;
 }
@@ -3130,28 +3438,77 @@ input.input-slim:disabled {
 
 @media (max-width: 900px) {
   .app {
-    grid-template-columns: 224px 1fr;
+    --sidebar-w: 224px;
   }
 
   .main {
-    padding: 16px;
+    padding: 14px 16px 16px;
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
   }
 }
 
+/* Under this width the sidebar stops being a column and becomes a drawer: it
+   leaves the grid entirely, slides in over the page, and the top bar's button
+   is what brings it back. The old layout kept it on screen as a horizontal
+   band, which cost close to half the viewport before you saw a single log
+   line. */
 @media (max-width: 720px) {
   .app {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
   }
 
   .sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    max-height: 45vh;
+    position: fixed;
+    z-index: 60;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(84vw, 300px);
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+    box-shadow: var(--shadow-lg);
+    transform: translateX(-101%);
+    /* Off-canvas is not "somewhere further left": nothing in it is reachable
+       by tab until it is open. Visibility flips only once the slide is over,
+       so closing still animates. */
+    visibility: hidden;
+    transition:
+      transform 200ms var(--ease),
+      visibility 0s linear 200ms;
+  }
+
+  .app[data-nav='open'] .sidebar {
+    transform: none;
+    visibility: visible;
+    transition:
+      transform 200ms var(--ease),
+      visibility 0s;
+  }
+
+  .scrim {
+    display: block;
+  }
+
+  .app[data-nav='open'] .scrim {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .topbar {
+    padding-left: max(8px, env(safe-area-inset-left));
+  }
+
+  /* On a phone the username is the least useful thing on the strip; the
+     avatar still opens the same menu. */
+  .usermenu__name {
+    display: none;
   }
 
   .main {
-    padding: 14px 14px 20px;
+    padding: 12px 14px 16px;
+    padding-right: max(14px, env(safe-area-inset-right));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
   }
 
   .field-row {
