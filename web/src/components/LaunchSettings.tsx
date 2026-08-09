@@ -242,8 +242,8 @@ export function LaunchSettings({
           )}
           <small>
             {runtimes.length > 0
-              ? '面板装的 Java 在这里直接选；「设置 → Java 运行时」可以再装别的版本。'
-              : '「设置 → Java 运行时」可以一键装一个，装完这里就能选。'}
+              ? '面板装的 Java 在这里直接选；左侧「Java 运行时」可以再装别的版本。'
+              : '左侧「Java 运行时」可以一键装一个，装完这里就能选。'}
           </small>
         </label>
 

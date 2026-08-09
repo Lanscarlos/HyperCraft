@@ -14,7 +14,9 @@ interface Props {
   instances: InstanceStatus[]
   onSelect: (id: string) => void
   onCreate: () => void
-  onOpenSettings: (section: 'java' | 'cores' | 'update') => void
+  onOpenJava: () => void
+  onOpenCores: () => void
+  onOpenUpdate: () => void
   onChanged: (instance: InstanceStatus) => void
   update: UpdateController
   java: JavaController
@@ -27,15 +29,17 @@ interface Props {
  * It answers the three questions an operator opens the panel with — is
  * everything up, is the machine coping, and is anything waiting on me — and
  * links out to whichever page owns the answer. The shared assets it counts
- * (Java runtimes, server cores, the panel binary) are managed under 设置; this
- * only reports on them.
+ * (Java runtimes, server cores, the panel binary) are managed on their own
+ * pages; this only reports on them.
  */
 export function Dashboard({
   user,
   instances,
   onSelect,
   onCreate,
-  onOpenSettings,
+  onOpenJava,
+  onOpenCores,
+  onOpenUpdate,
   onChanged,
   update,
   java,
@@ -56,7 +60,7 @@ export function Dashboard({
       {notice && (
         <div className="alert alert--ok">
           {notice}：{update.status?.latestVersion}（当前 {update.status?.currentVersion}）。
-          <button className="link" onClick={() => onOpenSettings('update')}>
+          <button className="link" onClick={onOpenUpdate}>
             {update.status?.downgrade ? '去装回正式版' : '去更新'}
           </button>
         </div>
@@ -82,7 +86,7 @@ export function Dashboard({
           label="Java 运行时"
           value={java.installing ? '安装中' : String(java.overview?.runtimes.length ?? 0)}
           detail={javaDetail(java)}
-          onClick={() => onOpenSettings('java')}
+          onClick={onOpenJava}
         />
         <Stat
           label="服务端核心"
@@ -94,13 +98,13 @@ export function Dashboard({
                 ? '可直接复制到新实例'
                 : '还没下载过核心'
           }
-          onClick={() => onOpenSettings('cores')}
+          onClick={onOpenCores}
         />
         <Stat
           label="面板版本"
           value={user.version}
           detail={notice ? `${notice} ${update.status?.latestVersion}` : '已是最新'}
-          onClick={() => onOpenSettings('update')}
+          onClick={onOpenUpdate}
         />
       </div>
 

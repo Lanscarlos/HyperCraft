@@ -88,7 +88,7 @@ export function InstanceCorePicker({ instance, cores, onApplied, onOpenLibrary }
 
       {available.length === 0 ? (
         <p className="chart-note">
-          核心库还是空的。去「设置 → 服务端核心」下载一个 Paper 或 Velocity，下载后在这里就能选；
+          核心库还是空的。去左侧「服务端核心」下载一个 Paper 或 Velocity，下载后在这里就能选；
           也可以自己把 jar 传到实例目录，在下面的「服务端 jar」里填文件名。
         </p>
       ) : (
