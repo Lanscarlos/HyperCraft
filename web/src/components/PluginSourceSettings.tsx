@@ -19,7 +19,7 @@ export function PluginSourceSettings({ plugins }: { plugins: PluginController })
   return (
     <Page
       title="插件源"
-      lead="插件都来自 GitHub Release。这里管两件事：私有仓库要用的访问令牌，以及 jar 走哪个下载源 —— 两个都只影响下载，插件本身、版本和更新还是在侧栏的「插件库」里管。"
+      lead="插件都来自 GitHub Release。这里管两件事：私有仓库要用的访问令牌，以及 jar 走哪个下载源 —— 两个都只影响下载，插件本身、版本和更新在「资源库 → 插件 / 模组」里管，装到某台服上则在那台服的「已装插件」页。"
     >
 
       <GitHubTokenPanel

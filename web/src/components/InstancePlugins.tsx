@@ -4,16 +4,20 @@ import { api } from '../api'
 import { formatBytes, formatDate } from '../format'
 import type { InstancePlugin, InstanceStatus, LibraryPlugin } from '../types'
 import { isLive } from '../types'
+import type { PluginController, PluginInput } from '../usePlugins'
+import { PluginDialog } from './PluginDialog'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
 /**
  * One instance's plugins.
  *
- * Deliberately not a second plugin manager: everything here either takes a
- * copy of something the panel already downloaded, changes which version this
- * server holds, or switches one off. Adding a plugin, defining where it comes
- * from and deleting versions all live in the panel-wide library — see
- * PluginLibraryPage for why that split is the whole design.
+ * The whole install path is here, on purpose. The panel-wide library exists
+ * for the operations view — shared cache, one download for five servers, bulk
+ * update checks — but nobody ever decides to install a plugin *in the
+ * abstract*: the thought occurs while looking at one server. Sending them to a
+ * global page to have it would be sending them away from the only place the
+ * decision makes sense. So this page can add a source, fetch a release and
+ * install it without leaving the instance; the library keeps the inventory.
  *
  * Jars the panel did not install are listed anyway, and identified from what
  * they say about themselves — pretending they are not there is how a server
@@ -23,9 +27,12 @@ import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleto
  */
 export function InstancePlugins({
   instance,
+  plugins,
   onOpenLibrary,
 }: {
   instance: InstanceStatus
+  /** The panel-wide library, so a new source can be added from right here. */
+  plugins: PluginController
   onOpenLibrary: () => void
 }) {
   const [entries, setEntries] = useState<InstancePlugin[]>([])
@@ -34,6 +41,7 @@ export function InstancePlugins({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [changed, setChanged] = useState(false)
+  const [adding, setAdding] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -76,6 +84,29 @@ export function InstancePlugins({
   const available = library.filter(
     (item) => item.versions.length > 0 && !installedIDs.has(item.id),
   )
+  // Added as a source but never fetched. They get their own list with a
+  // one-click "download the newest and install it" rather than being hidden,
+  // because that is the state a plugin is in for the thirty seconds right
+  // after it was added from this very page.
+  const pending = library.filter(
+    (item) => item.versions.length === 0 && !installedIDs.has(item.id),
+  )
+
+  /** Add a source, then bring the instance listing back in step with it. */
+  const addSource = async (input: PluginInput): Promise<boolean> => {
+    const ok = await plugins.add(input)
+    if (!ok) return false
+    setAdding(false)
+    await refresh()
+    return true
+  }
+
+  /** Fetch a release into the library and put it in this server in one go. */
+  const fetchAndInstall = (item: LibraryPlugin, tag: string) =>
+    act(async () => {
+      await plugins.download(item.id, tag)
+      await api.installInstancePlugin(instance.id, item.id, tag)
+    }, '下载或安装失败')
 
   if (loading) {
     return (
@@ -100,7 +131,17 @@ export function InstancePlugins({
 
   return (
     <div className="stack">
+      {adding && (
+        <PluginDialog
+          item={null}
+          busy={plugins.busy}
+          onCancel={() => setAdding(false)}
+          onSubmit={addSource}
+        />
+      )}
+
       {error && <div className="alert alert--error">{error}</div>}
+      {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
       {changed && isLive(instance.state) && (
         <div className="alert alert--warn">
           插件的增删和启停都要重启服务器才会生效 —— 正在运行的这个进程已经把当前的插件加载进内存了。
@@ -118,7 +159,7 @@ export function InstancePlugins({
         {installed.length === 0 ? (
           <div className="welcome__empty">
             <p>这个实例还没从插件库装过插件。</p>
-            <p className="muted">在下面挑一个装上，或者先去插件库添加。</p>
+            <p className="muted">在下面的「安装插件」里挑一个装上，或者直接添加一个新的。</p>
           </div>
         ) : (
           <div className="device-list">
@@ -154,21 +195,50 @@ export function InstancePlugins({
 
       <section className="panel">
         <div className="chart-head">
-          <h2 className="panel__title">从插件库添加</h2>
-          <button className="link" onClick={onOpenLibrary}>
-            管理插件库
-          </button>
+          <h2 className="panel__title">安装插件</h2>
+          <div className="chart-head__actions">
+            <button className="btn" onClick={() => setAdding(true)}>
+              + 添加新插件
+            </button>
+            <button className="link" onClick={onOpenLibrary}>
+              管理插件库
+            </button>
+          </div>
         </div>
 
-        {available.length === 0 ? (
+        {pending.length > 0 && (
+          <div className="device-list">
+            {pending.map((item) => (
+              <div className="device-row" key={item.id}>
+                <div className="device-row__main">
+                  <strong>{item.name}</strong>
+                  <span className="badge">还没下载</span>
+                  <span className="device-row__spacer" />
+                  <button
+                    className="btn btn--primary"
+                    disabled={busy || plugins.downloading || !item.latest}
+                    onClick={() =>
+                      item.latest && void fetchAndInstall(item, item.latest.tag)
+                    }
+                  >
+                    {item.latest ? `下载 ${item.latest.version} 并安装` : '还没查到版本'}
+                  </button>
+                </div>
+                <div className="device-row__meta">
+                  {item.source.repo}
+                  {item.checkError && ` · 检查更新失败：${item.checkError}`}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {available.length === 0 && pending.length === 0 ? (
           <p className="muted">
-            插件库里没有可以装的插件了 ——{' '}
-            <button className="link" onClick={onOpenLibrary}>
-              去插件库
-            </button>{' '}
-            添加一个，或者给已添加的插件下载一个版本。
+            插件库里没有可以装的插件了 —— 用上面的「添加新插件」填一个 GitHub 仓库，
+            面板会跟着它的 release 走。
           </p>
-        ) : (
+        ) : available.length === 0 ? null : (
           <div className="device-list">
             {available.map((item) => (
               <AvailableRow

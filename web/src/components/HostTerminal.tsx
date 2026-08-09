@@ -7,6 +7,7 @@ import '@xterm/xterm/css/xterm.css'
 import { api, terminalSocketURL } from '../api'
 import { onThemeChange, terminalTheme } from '../theme'
 import type { TerminalController } from '../useTerminal'
+import { Icon } from './Icon'
 import { Page } from './Page'
 
 /** Same stack the server console uses: server output and shell output are full
@@ -73,7 +74,7 @@ export function HostTerminal({ terminal, onOpenSettings }: Props) {
       macOptionIsMeta: true,
       // Read off the tokens, so the canvas matches what .hostterm__screen
       // paints behind it in either mode.
-      theme: terminalTheme(),
+      theme: terminalTheme('shell'),
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
@@ -143,7 +144,7 @@ export function HostTerminal({ terminal, onOpenSettings }: Props) {
               fresh.reason ||
                 (fresh.enabled
                   ? '连接终端失败，请重试'
-                  : '本机终端已被关闭，可在「设置 → 终端」中重新开启'),
+                  : '本机终端已被关闭，可在「主机 → 节点配置」中重新开启'),
             )
           })
           .catch(() => setNotice('连接终端失败，请重试'))
@@ -181,7 +182,7 @@ export function HostTerminal({ terminal, onOpenSettings }: Props) {
     // The canvas cannot inherit a token, so a mode switch has to be handed to
     // it; the live session and its scrollback are untouched.
     const unwatch = onThemeChange(() => {
-      term.options.theme = terminalTheme()
+      term.options.theme = terminalTheme('shell')
     })
 
     return () => {
@@ -207,17 +208,17 @@ export function HostTerminal({ terminal, onOpenSettings }: Props) {
   if (!available) {
     return (
       <Page
-        title="终端"
+        title="SSH 终端"
         lead={
           status.supported
-            ? '本机终端还没有开启。开启后可以在这里直接得到一个面板所在机器的 shell，不用另外 SSH 上来。'
+            ? '本机终端还没有开启。它跟游戏控制台不是一回事：那个受限于一个 Minecraft 进程，这个是整台机器的 shell，所以默认关着。'
             : status.reason
         }
       >
         {status.supported && (
           <div>
             <button className="btn btn--primary" onClick={onOpenSettings}>
-              去「设置 → 终端」开启
+              去「主机 → 节点配置」开启
             </button>
           </div>
         )}
@@ -227,11 +228,19 @@ export function HostTerminal({ terminal, onOpenSettings }: Props) {
 
   return (
     <div className="hostterm">
+      {/* The identity strip is permanent and it is the loudest thing on the
+          page. Everything below it is a root-adjacent shell on the machine
+          itself, and the failure this prevents is an operator typing a server
+          command — or worse, a shell command — into the wrong terminal because
+          the two looked alike. */}
       <div className="hostterm__bar">
         <div className="hostterm__where">
-          <strong>{status.shell}</strong>
+          <Icon name="lock" />
+          <strong>
+            {status.user || 'unknown'}@{window.location.hostname}
+          </strong>
           <span>
-            {status.user}@本机 · {status.cwd}
+            {status.shell} · {status.cwd}
           </span>
         </div>
         <div className="hostterm__actions">

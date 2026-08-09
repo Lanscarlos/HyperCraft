@@ -212,7 +212,7 @@ export function CoreLibraryPage({
           <div className="chart-head">
             <h2 className="panel__title">下载新核心</h2>
             <p className="chart-head__meta">
-              下载完成后，新建实例时选它，或在实例的「启动设置 → 从核心库安装」里装上
+              下载完成后，新建实例时选它，或在实例的「实例设置 → 从核心库安装」里装上
             </p>
           </div>
 

@@ -25,6 +25,9 @@ interface Props {
   navOpen: boolean
   onToggleNav: () => void
   toggleRef: RefObject<HTMLButtonElement>
+  /** ⌘K. On a drawer layout the sidebar's own search button is off screen, so
+   *  this is the only one left — which is exactly when it is needed most. */
+  onOpenPalette: () => void
   onChangePassword: () => void
   onSignOut: () => void
 }
@@ -46,6 +49,7 @@ export function TopBar({
   navOpen,
   onToggleNav,
   toggleRef,
+  onOpenPalette,
   onChangePassword,
   onSignOut,
 }: Props) {
@@ -100,6 +104,14 @@ export function TopBar({
       </nav>
 
       <div className="topbar__right">
+        <button
+          className="topbar__search"
+          onClick={onOpenPalette}
+          title="搜索与跳转（⌘K / Ctrl+K）"
+          aria-label="搜索与跳转"
+        >
+          <Icon name="search" />
+        </button>
         <ThemeToggle />
         <UserMenu user={user} onChangePassword={onChangePassword} onSignOut={onSignOut} />
       </div>

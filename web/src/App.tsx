@@ -1,28 +1,43 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
 
+import { collectAlerts } from './alerts'
 import { ApiError, api } from './api'
 import { ChangePasswordDialog } from './components/ChangePasswordDialog'
+import { CommandPalette } from './components/CommandPalette'
 import { CoreLibraryPage } from './components/CoreLibraryPage'
 import { Dashboard } from './components/Dashboard'
-import { Icon } from './components/Icon'
+import { HostPage } from './components/HostPage'
+import { HostTerminal } from './components/HostTerminal'
+import { InstanceList } from './components/InstanceList'
 import { InstanceView } from './components/InstanceView'
 import { JavaPage } from './components/JavaPage'
 import { Login } from './components/Login'
-import { HostTerminal } from './components/HostTerminal'
 import { NewInstanceDialog } from './components/NewInstanceDialog'
 import { PluginDetailPage } from './components/PluginDetailPage'
 import { PluginLibraryPage } from './components/PluginLibraryPage'
-import { SETTINGS_SECTIONS, SettingsPage, isSettingsSection } from './components/SettingsPage'
-import type { SettingsSection } from './components/SettingsPage'
+import { SettingsPage } from './components/SettingsPage'
+import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
 import type { Crumb } from './components/TopBar'
-import type { InstanceState, InstanceStatus, User } from './types'
-import { STATE_LABELS, isLive, mergeState } from './types'
+import {
+  HOST_SECTIONS,
+  INSTANCE_SECTIONS,
+  LIBRARY_SECTIONS,
+  SETTINGS_SECTIONS,
+  pathOf,
+  routeFromLocation,
+  scopeOf,
+} from './routes'
+import type { InstanceSection, Route, SettingsSection, StateFilter } from './routes'
+import type { InstanceStatus, User } from './types'
+import { mergeState } from './types'
 import { useCores } from './useCores'
 import { useJava } from './useJava'
 import { useMediaQuery } from './useMediaQuery'
 import { usePlugins } from './usePlugins'
+import { useRecents } from './useRecents'
+import { useSystem } from './useSystem'
 import { useTerminal } from './useTerminal'
 import { updateLabel, useUpdate } from './useUpdate'
 
@@ -31,107 +46,15 @@ import { updateLabel, useUpdate } from './useUpdate'
 const POLL_INTERVAL_MS = 5000
 
 /** Below this the sidebar cannot sit beside the content without taking a third
- *  of it, so it becomes a drawer. Kept in step with the same breakpoint in
- *  styles.css — CSS decides how it looks, this decides what the button does. */
-const DRAWER_QUERY = '(max-width: 720px)'
+ *  of it, so it becomes a drawer. A phone matters more here than in most back
+ *  offices — the person who owns the server reads the alert away from a desk —
+ *  so the breakpoint is generous. Kept in step with styles.css: CSS decides how
+ *  it looks, this decides what the button does. */
+const DRAWER_QUERY = '(max-width: 1024px)'
 
 /** Whether the desktop sidebar is folded to icons. A per-device preference,
  *  like the theme, so it lives next to it in localStorage. */
 const RAIL_KEY = 'hypercraft.sidebar'
-
-/** Below this many servers the list is short enough to read, and a search box
- *  over four rows is furniture. */
-const FILTER_FROM = 6
-
-/** Sidebar order. A crashed server is the one thing in the list that is asking
- *  for something, so it goes first even though it is not running; after that
- *  the live ones, and the deliberately-stopped ones last. Within a group the
- *  order is whatever the API gave, which is creation order — stable, so a
- *  server does not move under the pointer while you are aiming at it. */
-const STATE_RANK: Record<InstanceState, number> = {
-  crashed: 0,
-  running: 1,
-  starting: 2,
-  stopping: 3,
-  stopped: 4,
-}
-
-function forSidebar(
-  instances: InstanceStatus[],
-  query: string,
-  liveOnly: boolean,
-): InstanceStatus[] {
-  const needle = query.trim().toLowerCase()
-  const kept = instances.filter((item) => {
-    if (liveOnly && !isLive(item.state)) return false
-    return needle === '' || item.name.toLowerCase().includes(needle)
-  })
-  return kept
-    .map((item, index) => ({ item, index }))
-    .sort((a, b) => STATE_RANK[a.item.state] - STATE_RANK[b.item.state] || a.index - b.index)
-    .map((entry) => entry.item)
-}
-
-/** Where the app is. Panel-wide pages sit beside the per-instance view; the
- *  URL is the only place it is stored, so deep links and reloads work. */
-type Route =
-  | { kind: 'dashboard' }
-  | { kind: 'java' }
-  | { kind: 'cores' }
-  // The plugin library is a list; one plugin's own page hangs off it, so a
-  // link to a plugin survives a reload the same way an instance link does.
-  | { kind: 'plugins'; id?: string }
-  | { kind: 'settings'; section: SettingsSection }
-  | { kind: 'terminal' }
-  | { kind: 'instance'; id: string }
-
-function startsWith(path: string, prefix: string): boolean {
-  return path === prefix || path.startsWith(`${prefix}/`)
-}
-
-function routeFromPath(): Route {
-  const path = window.location.pathname
-  const instance = path.match(/^\/i\/([^/]+)/)
-  if (instance) return { kind: 'instance', id: instance[1] }
-
-  if (startsWith(path, '/terminal')) return { kind: 'terminal' }
-  if (startsWith(path, '/java')) return { kind: 'java' }
-  if (startsWith(path, '/cores')) return { kind: 'cores' }
-  const plugin = path.match(/^\/plugins\/([^/]+)/)
-  if (plugin) return { kind: 'plugins', id: plugin[1] }
-  if (startsWith(path, '/plugins')) return { kind: 'plugins' }
-
-  const settings = path.match(/^\/settings(?:\/([^/]+))?/)
-  if (settings) {
-    const section = settings[1] ?? ''
-    // Both used to be settings sections. Old bookmarks and links from an
-    // earlier release still point at them, so they land on the pages that
-    // replaced them rather than on a default tab.
-    if (section === 'java') return { kind: 'java' }
-    if (section === 'cores') return { kind: 'cores' }
-    return { kind: 'settings', section: isSettingsSection(section) ? section : 'terminal' }
-  }
-  return { kind: 'dashboard' }
-}
-
-function pathOf(route: Route): string {
-  switch (route.kind) {
-    case 'instance':
-      return `/i/${route.id}`
-    case 'settings':
-      return `/settings/${route.section}`
-    case 'terminal':
-      return '/terminal'
-    case 'java':
-      return '/java'
-    case 'cores':
-      return '/cores'
-    case 'plugins':
-      return route.id ? `/plugins/${route.id}` : '/plugins'
-    default:
-      return '/'
-  }
-}
 
 /**
  * Click handling for a link that navigates inside the panel.
@@ -150,6 +73,10 @@ function follow(go: () => void) {
   }
 }
 
+function labelOf<T extends string>(list: { id: T; label: string }[], id: T): string {
+  return list.find((entry) => entry.id === id)?.label ?? ''
+}
+
 /**
  * Where you are, as the top bar says it.
  *
@@ -165,29 +92,43 @@ function crumbsFor(
   link: (route: Route) => Pick<Crumb, 'href' | 'onClick'>,
 ): Crumb[] {
   switch (route.kind) {
-    case 'java':
-      return [{ label: 'Java 环境' }]
-    case 'cores':
-      return [{ label: '服务端核心' }]
-    case 'plugins':
-      return pluginName
-        ? [{ label: '插件库', ...link({ kind: 'plugins' }) }, { label: pluginName }]
-        : [{ label: '插件库' }]
-    case 'settings': {
-      const section = SETTINGS_SECTIONS.find((entry) => entry.id === route.section)
-      return [{ label: '设置' }, { label: section?.label ?? '设置' }]
+    case 'instances':
+      return [{ label: '概览', ...link({ kind: 'overview' }) }, { label: '所有实例' }]
+    case 'instance': {
+      const section = labelOf(INSTANCE_SECTIONS, route.section)
+      return [
+        { label: '所有实例', ...link({ kind: 'instances', query: '', state: 'all' }) },
+        selected
+          ? {
+              label: selected.name,
+              state: selected.state,
+              ...link({ kind: 'instance', id: route.id, section: 'console' }),
+            }
+          : { label: '实例' },
+        { label: section },
+      ]
     }
-    case 'terminal':
-      return [{ label: '终端' }]
-    case 'instance':
-      return selected
-        ? [
-            { label: '仪表盘', ...link({ kind: 'dashboard' }) },
-            { label: selected.name, state: selected.state },
-          ]
-        : [{ label: '仪表盘', ...link({ kind: 'dashboard' }) }, { label: '实例' }]
+    case 'library': {
+      const section = labelOf(LIBRARY_SECTIONS, route.section)
+      const base: Crumb[] = [{ label: '资源库' }]
+      if (pluginName) {
+        return [
+          ...base,
+          { label: section, ...link({ kind: 'library', section: route.section }) },
+          { label: pluginName },
+        ]
+      }
+      return [...base, { label: section }]
+    }
+    case 'host':
+      return [
+        { label: '主机', ...link({ kind: 'host', section: 'metrics' }) },
+        { label: labelOf(HOST_SECTIONS, route.section) },
+      ]
+    case 'settings':
+      return [{ label: '面板设置' }, { label: labelOf(SETTINGS_SECTIONS, route.section) }]
     default:
-      return [{ label: '仪表盘' }]
+      return [{ label: '概览' }]
   }
 }
 
@@ -195,29 +136,31 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [checkingSession, setCheckingSession] = useState(true)
   const [instances, setInstances] = useState<InstanceStatus[]>([])
-  const [route, setRoute] = useState<Route>(routeFromPath)
+  const [route, setRoute] = useState<Route>(routeFromLocation)
   const [showNew, setShowNew] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const compact = useMediaQuery(DRAWER_QUERY)
-  const [query, setQuery] = useState('')
-  const [liveOnly, setLiveOnly] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
   const [railed, setRailed] = useState(() => window.localStorage.getItem(RAIL_KEY) === 'rail')
   const sidebarRef = useRef<HTMLElement | null>(null)
   const navToggle = useRef<HTMLButtonElement | null>(null)
 
+  const signedIn = Boolean(user)
   // Polled at the app level rather than inside the pages that show them: all
-  // three are long-running daemon jobs that keep going after you navigate away,
+  // four are long-running daemon jobs that keep going after you navigate away,
   // and the sidebar says so while they do.
-  const update = useUpdate(Boolean(user))
-  const java = useJava(Boolean(user))
-  const cores = useCores(Boolean(user))
-  const plugins = usePlugins(Boolean(user))
-  // Not polled, unlike the three above: nothing turns the terminal on but a
-  // person clicking the switch, and that path already refreshes the status.
-  const terminal = useTerminal(Boolean(user))
+  const update = useUpdate(signedIn)
+  const java = useJava(signedIn)
+  const cores = useCores(signedIn)
+  const plugins = usePlugins(signedIn)
+  const system = useSystem(signedIn)
+  // Not polled, unlike the others: nothing turns the terminal on but a person
+  // clicking the switch, and that path already refreshes the status.
+  const terminal = useTerminal(signedIn)
+  const { recents, remember } = useRecents()
 
   useEffect(() => {
     api
@@ -228,14 +171,16 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const onPop = () => setRoute(routeFromPath())
+    const onPop = () => setRoute(routeFromLocation())
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
-  const navigate = useCallback((next: Route) => {
+  const navigate = useCallback((next: Route, replace = false) => {
     setRoute(next)
-    window.history.pushState(null, '', pathOf(next))
+    const path = pathOf(next)
+    if (replace) window.history.replaceState(null, '', path)
+    else window.history.pushState(null, '', path)
     // A drawer covers what you just navigated to, so picking something is also
     // how you dismiss it. On a rail there is nothing to dismiss.
     setNavOpen(false)
@@ -252,7 +197,23 @@ export default function App() {
   }, [compact])
 
   useEffect(() => {
+    if (route.kind === 'instance') remember(route.id)
+  }, [route, remember])
+
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const typing =
+        target?.isContentEditable ||
+        (target != null && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        // Deliberately works while typing: ⌘K from the console command line is
+        // exactly when you want to be somewhere else.
+        event.preventDefault()
+        setPaletteOpen((open) => !open)
+        return
+      }
       if (event.key === 'Escape') {
         setNavOpen(false)
         return
@@ -260,9 +221,7 @@ export default function App() {
       if (event.key !== '[' || event.metaKey || event.ctrlKey || event.altKey) return
       // The console command line and the host terminal are both real text
       // inputs where '[' is a character, not a shortcut.
-      const target = event.target as HTMLElement | null
-      if (target?.isContentEditable) return
-      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
+      if (typing) return
       event.preventDefault()
       setRailed((value) => !value)
     }
@@ -279,22 +238,9 @@ export default function App() {
     wasOpen.current = navOpen
   }, [navOpen])
 
-  const select = useCallback(
-    (id: string | null) => navigate(id ? { kind: 'instance', id } : { kind: 'dashboard' }),
-    [navigate],
-  )
-
-  const openSettings = useCallback(
-    (section: SettingsSection) => navigate({ kind: 'settings', section }),
-    [navigate],
-  )
-
-  const openTerminal = useCallback(() => navigate({ kind: 'terminal' }), [navigate])
-  const openJava = useCallback(() => navigate({ kind: 'java' }), [navigate])
-  const openCores = useCallback(() => navigate({ kind: 'cores' }), [navigate])
-  const openPlugins = useCallback(() => navigate({ kind: 'plugins' }), [navigate])
-  const openPlugin = useCallback(
-    (id: string) => navigate({ kind: 'plugins', id }),
+  const openInstance = useCallback(
+    (id: string, section: InstanceSection = 'console') =>
+      navigate({ kind: 'instance', id, section }),
     [navigate],
   )
 
@@ -340,6 +286,17 @@ export default function App() {
     )
   }, [])
 
+  const alerts = useMemo(
+    () =>
+      collectAlerts({
+        instances,
+        system: system.info,
+        update: update.status,
+        pluginUpdates: plugins.updates,
+      }),
+    [instances, system.info, update.status, plugins.updates],
+  )
+
   const signOut = async () => {
     try {
       await api.logout()
@@ -361,21 +318,21 @@ export default function App() {
   // Matches the backend's State.Running(), which is what decides the list of
   // servers recorded for resume — so the update dialog promises exactly what
   // will happen.
-  const runningNames = instances.filter((item) => isLive(item.state)).map((item) => item.name)
+  const runningNames = instances
+    .filter((item) => item.state === 'running' || item.state === 'starting')
+    .map((item) => item.name)
   // A plugin id from the URL that no longer exists (deleted, or a stale
   // bookmark) falls back to the list rather than to an error page.
   const openedPlugin =
-    route.kind === 'plugins' && route.id
-      ? (plugins.plugins.find((item) => item.id === route.id) ?? null)
+    route.kind === 'library' && route.section === 'plugins' && route.pluginId
+      ? (plugins.plugins.find((item) => item.id === route.pluginId) ?? null)
       : null
   const updateNotice = updateLabel(update.status)
   const crumbs = crumbsFor(route, selected, openedPlugin?.name, (target) => ({
     href: pathOf(target),
     onClick: follow(() => navigate(target)),
   }))
-  const shown = forSidebar(instances, query, liveOnly)
-  // Opening 设置 from the rail keeps whichever section you were last on.
-  const settingsSection: SettingsSection = route.kind === 'settings' ? route.section : 'terminal'
+  const scope = scopeOf(route)
 
   return (
     <div
@@ -384,181 +341,31 @@ export default function App() {
       data-rail={!compact && railed ? 'on' : undefined}
     >
       {/* First thing in the tab order, visible only once it has focus: the
-          sidebar is thirty-odd stops on a keyboard, and the content is behind
+          sidebar is a dozen-odd stops on a keyboard, and the content is behind
           all of them. */}
       <a className="skip" href="#main">
         跳到主内容
       </a>
 
-      <aside className="sidebar" id="sidebar" ref={sidebarRef} tabIndex={-1}>
-        <a
-          className="sidebar__brand"
-          href={pathOf({ kind: 'dashboard' })}
-          onClick={follow(() => navigate({ kind: 'dashboard' }))}
-        >
-          <span className="sidebar__logo">⛏</span>
-          <div className="sidebar__title">
-            <strong>HyperCraft</strong>
-            <small>
-              {user.version}
-              {updateNotice && (
-                <span className="badge badge--update" title={`可更新到 ${update.status?.latestVersion}`}>
-                  {updateNotice}
-                </span>
-              )}
-            </small>
-          </div>
-        </a>
-
-        <nav className="sidebar__nav">
-          <a
-            className={`sidebar__link${route.kind === 'dashboard' ? ' sidebar__link--active' : ''}`}
-            href={pathOf({ kind: 'dashboard' })}
-            onClick={follow(() => navigate({ kind: 'dashboard' }))}
-            title="仪表盘"
-            aria-current={route.kind === 'dashboard' ? 'page' : undefined}
-          >
-            <Icon name="dashboard" />
-            <span className="sidebar__name">仪表盘</span>
-          </a>
-          {/* The two shared-asset pages sit at the top level rather than under
-              设置: installing a runtime and downloading a core are routine
-              errands, and both run as daemon jobs whose progress belongs
-              somewhere always visible. */}
-          <a
-            className={`sidebar__link${route.kind === 'java' ? ' sidebar__link--active' : ''}`}
-            href={pathOf({ kind: 'java' })}
-            onClick={follow(openJava)}
-            title="Java 环境"
-            aria-current={route.kind === 'java' ? 'page' : undefined}
-          >
-            <Icon name="java" />
-            <span className="sidebar__name">Java 环境</span>
-            {java.installing && <span className="badge badge--update">安装中</span>}
-          </a>
-          <a
-            className={`sidebar__link${route.kind === 'cores' ? ' sidebar__link--active' : ''}`}
-            href={pathOf({ kind: 'cores' })}
-            onClick={follow(openCores)}
-            title="服务端核心"
-            aria-current={route.kind === 'cores' ? 'page' : undefined}
-          >
-            <Icon name="cores" />
-            <span className="sidebar__name">服务端核心</span>
-            {cores.downloading && <span className="badge badge--update">下载中</span>}
-          </a>
-          <a
-            className={`sidebar__link${route.kind === 'plugins' ? ' sidebar__link--active' : ''}`}
-            href={pathOf({ kind: 'plugins' })}
-            onClick={follow(openPlugins)}
-            title="插件库"
-            aria-current={route.kind === 'plugins' ? 'page' : undefined}
-          >
-            <Icon name="plugins" />
-            <span className="sidebar__name">插件库</span>
-            {plugins.downloading ? (
-              <span className="badge badge--update">下载中</span>
-            ) : (
-              plugins.updates > 0 && <span className="badge badge--update">{plugins.updates}</span>
-            )}
-          </a>
-          {/* Only shown once the operator has switched it on; there is nothing
-              useful behind this entry otherwise, and an always-visible shell
-              icon invites clicking on something you did not ask for. */}
-          {terminal.status?.enabled && terminal.status.supported && (
-            <a
-              className={`sidebar__link${route.kind === 'terminal' ? ' sidebar__link--active' : ''}`}
-              href={pathOf({ kind: 'terminal' })}
-              onClick={follow(openTerminal)}
-              title="终端"
-              aria-current={route.kind === 'terminal' ? 'page' : undefined}
-            >
-              <Icon name="terminal" />
-              <span className="sidebar__name">终端</span>
-            </a>
-          )}
-          <a
-            className={`sidebar__link${route.kind === 'settings' ? ' sidebar__link--active' : ''}`}
-            href={pathOf({ kind: 'settings', section: settingsSection })}
-            onClick={follow(() => openSettings(settingsSection))}
-            title="设置"
-            aria-current={route.kind === 'settings' ? 'page' : undefined}
-          >
-            <Icon name="settings" />
-            <span className="sidebar__name">设置</span>
-            {updateNotice && <span className="badge badge--update">1</span>}
-          </a>
-        </nav>
-
-        <button
-          className="btn btn--primary sidebar__new"
-          onClick={() => setShowNew(true)}
-          title="新建实例"
-        >
-          <span aria-hidden="true">+</span>
-          <span className="sidebar__name">新建实例</span>
-        </button>
-
-        <div className="sidebar__section">
-          <span>实例</span>
-          {instances.length > 0 && (
-            <span className="sidebar__count">
-              {runningNames.length}/{instances.length}
-            </span>
-          )}
-        </div>
-
-        {/* Appears only once the list is long enough to need it. Four servers
-            are read at a glance; twenty are searched. */}
-        {instances.length >= FILTER_FROM && (
-          <div className="sidebar__filter">
-            <input
-              className="sidebar__search"
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索"
-              aria-label="搜索实例"
-            />
-            <button
-              className={`sidebar__only${liveOnly ? ' sidebar__only--on' : ''}`}
-              onClick={() => setLiveOnly((value) => !value)}
-              aria-pressed={liveOnly}
-              title="只看运行中的实例"
-            >
-              运行中
-            </button>
-          </div>
-        )}
-
-        <nav className="sidebar__list">
-          {instances.length === 0 && (
-            <p className="sidebar__empty">还没有实例，先新建一个吧。</p>
-          )}
-          {instances.length > 0 && shown.length === 0 && (
-            <p className="sidebar__empty">没有符合条件的实例。</p>
-          )}
-          {shown.map((item) => (
-            <a
-              key={item.id}
-              className={`sidebar__item${item.id === selectedId ? ' sidebar__item--active' : ''}`}
-              href={pathOf({ kind: 'instance', id: item.id })}
-              onClick={follow(() => select(item.id))}
-              title={`${item.name} · ${STATE_LABELS[item.state]}`}
-              aria-current={item.id === selectedId ? 'page' : undefined}
-            >
-              {/* The initial only shows on the rail, where a column of identical
-                  dots would be no way to tell six servers apart. */}
-              <span className="sidebar__initial" aria-hidden="true">
-                {item.name.slice(0, 1)}
-              </span>
-              <span className={`status__dot status__dot--${item.state}`} />
-              <span className="sidebar__name">{item.name}</span>
-              <span className="sidebar__state">{STATE_LABELS[item.state]}</span>
-            </a>
-          ))}
-        </nav>
-      </aside>
+      <Sidebar
+        route={route}
+        scope={scope}
+        navigate={navigate}
+        follow={follow}
+        instances={instances}
+        recents={recents}
+        user={user}
+        system={system.info}
+        updateNotice={updateNotice}
+        alertCount={alerts.length}
+        java={java}
+        cores={cores}
+        plugins={plugins}
+        terminal={terminal}
+        onCreate={() => setShowNew(true)}
+        onOpenPalette={() => setPaletteOpen(true)}
+        sidebarRef={sidebarRef}
+      />
 
       {/* Only ever visible under an open drawer; it is what makes "tap the page
           to dismiss" work, and it stops clicks reaching what it covers. */}
@@ -573,6 +380,7 @@ export default function App() {
           navOpen={navOpen}
           onToggleNav={() => (compact ? setNavOpen((open) => !open) : setRailed((on) => !on))}
           toggleRef={navToggle}
+          onOpenPalette={() => setPaletteOpen(true)}
           onChangePassword={() => setShowPassword(true)}
           onSignOut={() => void signOut()}
         />
@@ -583,66 +391,115 @@ export default function App() {
           {route.kind === 'settings' ? (
             <SettingsPage
               section={route.section}
-              onSection={openSettings}
-              terminal={terminal}
+              onSection={(section: SettingsSection) => navigate({ kind: 'settings', section })}
               update={update}
               plugins={plugins}
-              onOpenTerminal={openTerminal}
               runningNames={runningNames}
             />
-          ) : route.kind === 'java' ? (
-            <JavaPage java={java} onOpenCores={openCores} />
-          ) : route.kind === 'cores' ? (
-            <CoreLibraryPage cores={cores} onOpenJava={openJava} />
-          ) : route.kind === 'plugins' ? (
-            openedPlugin ? (
+          ) : route.kind === 'host' ? (
+            route.section === 'terminal' ? (
+              <HostTerminal
+                terminal={terminal}
+                onOpenSettings={() => navigate({ kind: 'host', section: 'config' })}
+              />
+            ) : (
+              <HostPage
+                section={route.section}
+                system={system}
+                instances={instances}
+                terminal={terminal}
+                onNavigate={navigate}
+              />
+            )
+          ) : route.kind === 'library' ? (
+            route.section === 'java' ? (
+              <JavaPage java={java} onOpenCores={() => navigate({ kind: 'library', section: 'cores' })} />
+            ) : route.section === 'cores' ? (
+              <CoreLibraryPage
+                cores={cores}
+                onOpenJava={() => navigate({ kind: 'library', section: 'java' })}
+              />
+            ) : openedPlugin ? (
               <PluginDetailPage
                 key={openedPlugin.id}
                 item={openedPlugin}
                 plugins={plugins}
-                onBack={openPlugins}
+                onBack={() => navigate({ kind: 'library', section: 'plugins' })}
               />
             ) : (
               <PluginLibraryPage
                 plugins={plugins}
-                onOpenPlugin={openPlugin}
-                onOpenSettings={() => openSettings('plugin-source')}
+                onOpenPlugin={(id) => navigate({ kind: 'library', section: 'plugins', pluginId: id })}
+                onOpenSettings={() => navigate({ kind: 'settings', section: 'plugin-source' })}
               />
             )
-          ) : route.kind === 'terminal' ? (
-            <HostTerminal terminal={terminal} onOpenSettings={() => openSettings('terminal')} />
-          ) : selected ? (
-            <InstanceView
-              key={selected.id}
-              instance={selected}
-              cores={cores}
+          ) : route.kind === 'instances' ? (
+            <InstanceList
+              instances={instances}
+              query={route.query}
+              state={route.state}
+              onFilter={(next: { query: string; state: StateFilter }) =>
+                // Replaces rather than pushes: typing five characters into the
+                // search box must not put five entries in the back stack.
+                navigate({ kind: 'instances', ...next }, true)
+              }
+              onNavigate={navigate}
+              onCreate={() => setShowNew(true)}
               onChanged={applyInstance}
-              onDeleted={() => {
-                select(null)
-                void refresh()
-              }}
-              onOpenLibrary={openCores}
-              onOpenPlugins={openPlugins}
             />
+          ) : route.kind === 'instance' ? (
+            selected ? (
+              <InstanceView
+                key={selected.id}
+                instance={selected}
+                section={route.section}
+                cores={cores}
+                plugins={plugins}
+                onChanged={applyInstance}
+                onDeleted={() => {
+                  navigate({ kind: 'instances', query: '', state: 'all' })
+                  void refresh()
+                }}
+                onOpenSection={(section) => openInstance(route.id, section)}
+                onOpenCoreLibrary={() => navigate({ kind: 'library', section: 'cores' })}
+                onOpenPluginLibrary={() => navigate({ kind: 'library', section: 'plugins' })}
+              />
+            ) : (
+              <div className="alert">
+                找不到这个实例，它可能已经被删除了。
+                <button
+                  className="link"
+                  onClick={() => navigate({ kind: 'instances', query: '', state: 'all' })}
+                >
+                  回到实例列表
+                </button>
+              </div>
+            )
           ) : (
             <Dashboard
-              user={user}
               instances={instances}
-              onSelect={select}
+              system={system.info}
+              alerts={alerts}
+              onSelect={openInstance}
               onCreate={() => setShowNew(true)}
-              onOpenJava={openJava}
-              onOpenCores={openCores}
-              onOpenPlugins={openPlugins}
-              onOpenUpdate={() => openSettings('update')}
+              onNavigate={navigate}
               onChanged={applyInstance}
-              update={update}
-              java={java}
-              cores={cores}
-              plugins={plugins}
             />
           )}
         </main>
       </div>
+
+      {paletteOpen && (
+        <CommandPalette
+          instances={instances}
+          onClose={() => setPaletteOpen(false)}
+          onNavigate={navigate}
+          onCreate={() => {
+            setPaletteOpen(false)
+            setShowNew(true)
+          }}
+        />
+      )}
 
       {showNew && (
         <NewInstanceDialog
@@ -651,11 +508,11 @@ export default function App() {
           onCreated={(created) => {
             setShowNew(false)
             setInstances((prev) => [...prev, created])
-            select(created.id)
+            openInstance(created.id)
           }}
           onOpenLibrary={() => {
             setShowNew(false)
-            openCores()
+            navigate({ kind: 'library', section: 'cores' })
           }}
         />
       )}

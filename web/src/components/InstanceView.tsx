@@ -1,324 +1,142 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 
-import { api } from '../api'
-import type { InstanceStatus, StateInfo } from '../types'
-import { STATE_LABELS, isLive, mergeState } from '../types'
+import type { InstanceSection } from '../routes'
+import type { InstanceStatus } from '../types'
 import type { CoreController } from '../useCores'
-import { Console } from './Console'
-import { ConsoleStatus } from './ConsoleStatus'
+import type { PluginController } from '../usePlugins'
 import { FileManager } from './FileManager'
+import { InstanceCockpit } from './InstanceCockpit'
 import { InstancePlugins } from './InstancePlugins'
 import { LaunchSettings } from './LaunchSettings'
-import { Menu } from './Menu'
 import { PropertiesEditor } from './PropertiesEditor'
 import { ResourcePanel } from './ResourcePanel'
-import { Tabs } from './Tabs'
-
-type Tab = 'console' | 'files' | 'plugins' | 'resources' | 'launch' | 'properties'
-
-type PowerAction = 'start' | 'stop' | 'restart' | 'kill'
-
-/** Whether the console keeps its status strip. Per-device, like the sidebar. */
-const SIDE_KEY = 'hypercraft.console-side'
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'console', label: '控制台' },
-  { id: 'files', label: '文件' },
-  { id: 'plugins', label: '插件' },
-  { id: 'resources', label: '资源' },
-  { id: 'launch', label: '启动设置' },
-  { id: 'properties', label: '服务器配置' },
-]
 
 interface Props {
   instance: InstanceStatus
+  section: InstanceSection
   cores: CoreController
+  /** The panel-wide plugin library, so 已装插件 can add a source itself. */
+  plugins: PluginController
   onChanged: (instance: InstanceStatus) => void
   onDeleted: () => void
-  onOpenLibrary: () => void
-  onOpenPlugins: () => void
+  onOpenSection: (section: InstanceSection) => void
+  /** The panel-wide core library, for "download another one". */
+  onOpenCoreLibrary: () => void
+  /** The panel-wide plugin library. */
+  onOpenPluginLibrary: () => void
 }
 
+/**
+ * One server, with its sidebar's section on screen.
+ *
+ * Sections used to be tabs inside this component; they are sidebar entries now
+ * (see Sidebar), which is what makes the console a page rather than a tab and
+ * keeps every part of one server at the same depth. What has not changed is
+ * that a section, once opened, stays mounted behind whatever replaced it: 文件
+ * and 监控 are two clicks apart and are exactly the pair you bounce between
+ * while a server starts, and paying the fetch twice — plus losing the scroll
+ * position and any open editor — was the whole cost of the old teardown.
+ *
+ * Lazily, though: mounting all six up front would fire six requests for panels
+ * most sessions never open.
+ */
 export function InstanceView({
   instance,
+  section,
   cores,
+  plugins,
   onChanged,
   onDeleted,
-  onOpenLibrary,
-  onOpenPlugins,
+  onOpenSection,
+  onOpenCoreLibrary,
+  onOpenPluginLibrary,
 }: Props) {
-  const [tab, setTab] = useState<Tab>('console')
-  const [busy, setBusy] = useState(false)
-  // Which power request is out, as opposed to merely that one is: it takes the
-  // daemon about a second to spawn a JVM and report back, and for that second
-  // 启动 was indistinguishable from 启动 on a server that is already running.
-  const [pending, setPending] = useState<PowerAction | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [side, setSide] = useState(() => window.localStorage.getItem(SIDE_KEY) !== 'off')
-
-  // Which tabs have been opened at least once, this visit.
-  //
-  // A tab used to be mounted only while it was selected, so 文件 → 控制台 →
-  // 文件 threw the listing away and fetched it again, and 资源 refetched a
-  // minute of samples and redrew both charts from nothing. Both are two clicks
-  // apart, both are things you go back and forth between while a server starts,
-  // and the second visit was as slow as the first — with the scroll position
-  // and any open editor gone besides.
-  //
-  // So a tab mounts lazily and then stays: the first visit pays for the fetch,
-  // every later one is a style change. Lazily, because mounting all six up
-  // front would fire six requests for panels most sessions never open — 6× the
-  // work to make a second visit free is the wrong trade the other way.
-  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>(['console']))
-
-  const openTab = useCallback((next: Tab) => {
-    setTab(next)
-    setVisited((prev) => (prev.has(next) ? prev : new Set(prev).add(next)))
-  }, [])
-
-  useEffect(() => {
-    window.localStorage.setItem(SIDE_KEY, side ? 'on' : 'off')
-  }, [side])
-
-  // A different server is a different set of files, plugins and samples, so
-  // nothing carries over — the visit history resets with the tab.
-  useEffect(() => {
-    setTab('console')
-    setVisited(new Set<Tab>(['console']))
-  }, [instance.id])
-
-  // The console websocket is the fastest source of state changes, so state
-  // pushed from it updates the header without waiting for the list poll.
-  const applyState = useCallback(
-    (state: StateInfo) => onChanged(mergeState(instance, state)),
-    [instance, onChanged],
+  const [visited, setVisited] = useState<Set<InstanceSection>>(
+    () => new Set<InstanceSection>([section]),
   )
 
-  const power = async (action: PowerAction) => {
-    if (action === 'kill') {
-      const ok = window.confirm(
-        '强制结束会直接杀掉进程，不会保存世界，可能丢失最近的存档数据。确定继续吗？',
-      )
-      if (!ok) return
-    }
-    setBusy(true)
-    setPending(action)
-    setError(null)
-    try {
-      onChanged(await api.power(instance.id, action))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '操作失败')
-    } finally {
-      setBusy(false)
-      setPending(null)
-    }
-  }
+  useEffect(() => {
+    setVisited((prev) => (prev.has(section) ? prev : new Set(prev).add(section)))
+  }, [section])
 
-  const live = isLive(instance.state)
+  // Switching servers is a remount — App keys this component on the instance
+  // id — so nothing carries over and there is no reset to do here. There used
+  // to be one, and on mount it raced the effect above and threw away the very
+  // section the URL had asked for: a reload of /i/<id>/plugins rendered an
+  // empty pane.
 
   return (
     <div className="instance">
-      <header className="instance__header">
-        <div className="instance__identity">
-          <h2>{instance.name}</h2>
-          <StatusBadge instance={instance} />
-        </div>
+      {/* The console is never torn down: its websocket and scrollback are the
+          one thing in the panel that is expensive to lose. */}
+      <Pane id="console" active={section === 'console'}>
+        <InstanceCockpit
+          instance={instance}
+          active={section === 'console'}
+          onChanged={onChanged}
+          onOpenSection={onOpenSection}
+        />
+      </Pane>
 
-        {/* Only the two you reach for daily are buttons. 重启 and 强制结束 sit
-            behind the ⋯: a kill button the same size as 启动, one row from the
-            pointer that just started the server, is how a world gets lost to a
-            misclick. */}
-        <div className="instance__actions">
-          {/* aria-busy only on the button that was actually pressed: marking
-              both would say two requests are out when one is. */}
-          <button
-            className="btn btn--primary"
-            onClick={() => power('start')}
-            disabled={busy || live}
-            aria-busy={pending === 'start' || undefined}
-          >
-            启动
-          </button>
-          <button
-            className="btn"
-            onClick={() => power('stop')}
-            disabled={busy || !live}
-            aria-busy={pending === 'stop' || undefined}
-          >
-            停止
-          </button>
-          <Menu
-            className="btn btn--icon"
-            title="更多操作"
-            ariaLabel="更多操作"
-            items={[
-              { label: '重启', onSelect: () => void power('restart'), disabled: busy },
-              {
-                label: '强制结束',
-                onSelect: () => void power('kill'),
-                disabled: busy || !live,
-                danger: true,
-              },
-            ]}
-          >
-            ⋯
-          </Menu>
-        </div>
-      </header>
-
-      {error && <div className="alert alert--error">{error}</div>}
-      {instance.message && !error && (
-        <div className="instance__message">{instance.message}</div>
+      {visited.has('metrics') && (
+        <Pane id="metrics" active={section === 'metrics'} scroll>
+          <ResourcePanel instance={instance} active={section === 'metrics'} />
+        </Pane>
       )}
-
-      <Tabs
-        items={TABS}
-        active={tab}
-        onSelect={openTab}
-        label={`${instance.name} 的页面`}
-        idPrefix="instance"
-      />
-
-      <div className="instance__body">
-        {/* The console stays mounted so its websocket and scrollback survive a
-            trip to the settings tabs. On a wide screen it shares the pane with
-            a strip of live numbers; below that width the strip is not rendered
-            at all and 资源 is where the same figures live. */}
-        <div
-          hidden={tab !== 'console'}
-          className="instance__pane instance__pane--split"
-          data-side={side ? 'on' : 'off'}
-          id="instance-panel-console"
-          role="tabpanel"
-          aria-labelledby="instance-tab-console"
-        >
-          <Console
-            instanceId={instance.id}
-            state={instance.state}
-            onState={applyState}
+      {visited.has('files') && (
+        <Pane id="files" active={section === 'files'} scroll>
+          <FileManager instance={instance} />
+        </Pane>
+      )}
+      {visited.has('plugins') && (
+        <Pane id="plugins" active={section === 'plugins'} scroll>
+          <InstancePlugins
+            instance={instance}
+            plugins={plugins}
+            onOpenLibrary={onOpenPluginLibrary}
           />
-          {side ? (
-            <ConsoleStatus
-              instance={instance}
-              active={tab === 'console'}
-              onOpenResources={() => openTab('resources')}
-              onCollapse={() => setSide(false)}
-            />
-          ) : (
-            <button
-              className="console-side__peek"
-              onClick={() => setSide(true)}
-              title="展开运行状态"
-              aria-label="展开运行状态"
-            >
-              ‹
-            </button>
-          )}
-        </div>
-        {/* The five below follow the console's pattern now: mounted once and
-            then hidden rather than torn down, so going back to one is instant
-            and finds it where you left it. `hidden` is what stops a background
-            pane from being tabbed into or read out. */}
-        {visited.has('files') && (
-          <div
-            hidden={tab !== 'files'}
-            className="instance__pane instance__pane--scroll"
-            id="instance-panel-files"
-            role="tabpanel"
-            aria-labelledby="instance-tab-files"
-          >
-            <FileManager instance={instance} />
-          </div>
-        )}
-        {visited.has('plugins') && (
-          <div
-            hidden={tab !== 'plugins'}
-            className="instance__pane instance__pane--scroll"
-            id="instance-panel-plugins"
-            role="tabpanel"
-            aria-labelledby="instance-tab-plugins"
-          >
-            <InstancePlugins instance={instance} onOpenLibrary={onOpenPlugins} />
-          </div>
-        )}
-        {visited.has('resources') && (
-          <div
-            hidden={tab !== 'resources'}
-            className="instance__pane instance__pane--scroll"
-            id="instance-panel-resources"
-            role="tabpanel"
-            aria-labelledby="instance-tab-resources"
-          >
-            <ResourcePanel instance={instance} active={tab === 'resources'} />
-          </div>
-        )}
-        {visited.has('launch') && (
-          <div
-            hidden={tab !== 'launch'}
-            className="instance__pane instance__pane--scroll"
-            id="instance-panel-launch"
-            role="tabpanel"
-            aria-labelledby="instance-tab-launch"
-          >
-            <LaunchSettings
-              instance={instance}
-              cores={cores}
-              onSaved={onChanged}
-              onDeleted={onDeleted}
-              onOpenLibrary={onOpenLibrary}
-            />
-          </div>
-        )}
-        {visited.has('properties') && (
-          <div
-            hidden={tab !== 'properties'}
-            className="instance__pane instance__pane--scroll"
-            id="instance-panel-properties"
-            role="tabpanel"
-            aria-labelledby="instance-tab-properties"
-          >
-            <PropertiesEditor instance={instance} />
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function StatusBadge({ instance }: { instance: InstanceStatus }) {
-  const uptime = useUptime(instance.startedAt, isLive(instance.state))
-
-  return (
-    <div className="status">
-      <span className={`status__dot status__dot--${instance.state}`} />
-      <span className="status__label">{STATE_LABELS[instance.state]}</span>
-      {instance.pid ? <span className="status__meta">PID {instance.pid}</span> : null}
-      {uptime && <span className="status__meta">已运行 {uptime}</span>}
-      {instance.state === 'crashed' && instance.exitCode != null && (
-        <span className="status__meta">退出码 {instance.exitCode}</span>
+        </Pane>
+      )}
+      {visited.has('properties') && (
+        <Pane id="properties" active={section === 'properties'} scroll>
+          <PropertiesEditor instance={instance} />
+        </Pane>
+      )}
+      {visited.has('settings') && (
+        <Pane id="settings" active={section === 'settings'} scroll>
+          <LaunchSettings
+            instance={instance}
+            cores={cores}
+            onSaved={onChanged}
+            onDeleted={onDeleted}
+            onOpenLibrary={onOpenCoreLibrary}
+          />
+        </Pane>
       )}
     </div>
   )
 }
 
-/** Ticks once a second while the server is up. */
-function useUptime(startedAt: string | undefined, live: boolean): string | null {
-  const [now, setNow] = useState(() => Date.now())
-
-  useEffect(() => {
-    if (!live || !startedAt) return
-    const timer = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(timer)
-  }, [live, startedAt])
-
-  if (!live || !startedAt) return null
-
-  const seconds = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000))
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const secs = seconds % 60
-
-  if (hours > 0) return `${hours} 小时 ${minutes} 分`
-  if (minutes > 0) return `${minutes} 分 ${secs} 秒`
-  return `${secs} 秒`
+/** `hidden` rather than unmounted — and `hidden` specifically, because it is
+ *  what keeps a background pane out of the tab order and off a screen reader. */
+function Pane({
+  id,
+  active,
+  scroll,
+  children,
+}: {
+  id: string
+  active: boolean
+  scroll?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      hidden={!active}
+      className={`instance__pane${scroll ? ' instance__pane--scroll' : ''}`}
+      id={`instance-panel-${id}`}
+    >
+      {children}
+    </div>
+  )
 }

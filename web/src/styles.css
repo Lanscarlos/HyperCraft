@@ -132,6 +132,18 @@
   --term-bright-blue: #adc9fb;
   --term-edge: #4a3c38;
 
+  /* The host shell gets a canvas of its own, and not for decoration: a shell
+     on the whole machine and a Minecraft console are different risk levels,
+     and the only thing stopping an operator typing `rm -rf` into the wrong one
+     is that the two do not look alike. Cool slate against the panel's
+     terracotta — no other surface in the panel is this colour. */
+  --shell-bg: #101820;
+  --shell-fg: #cfd8e3;
+  --shell-cursor: #6fb3d2;
+  --shell-selection: #24455c;
+  --shell-edge: #2b3b4a;
+  --shell-accent: #6fb3d2;
+
   --radius-sm: 6px;
   --radius: 9px;
   --radius-lg: 14px;
@@ -238,6 +250,14 @@
   --term-blue: #8ab4f8;
   --term-bright-blue: #adc9fb;
   --term-edge: var(--outline-variant);
+
+  /* Same job in dark mode: cool where everything else is warm. */
+  --shell-bg: #0b1219;
+  --shell-fg: #c3cedb;
+  --shell-cursor: #6fb3d2;
+  --shell-selection: #1d3a4e;
+  --shell-edge: #23313d;
+  --shell-accent: #7cc0de;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.42);
   --shadow: 0 2px 4px rgba(0, 0, 0, 0.34), 0 8px 24px -12px rgba(0, 0, 0, 0.7);
@@ -398,14 +418,14 @@ a:hover {
 }
 
 .app {
-  --sidebar-w: 264px;
+  --sidebar-w: 240px;
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
   height: 100%;
 }
 
 .app[data-rail='on'] {
-  --sidebar-w: 60px;
+  --sidebar-w: 64px;
 }
 
 .sidebar {
@@ -482,20 +502,53 @@ a:hover {
   width: 100%;
 }
 
-/* Panel-wide pages, above the per-instance list they are not part of. */
+/* The sidebar's one scrolling region. Everything above it (brand, search, the
+   scope header) and below it (新建实例) is pinned, so there is exactly one
+   scrollbar in this column and one in the content area — never a third. */
+.sidebar__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -2px;
+  padding: 0 2px;
+}
+
 .sidebar__nav {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
+}
+
+/* A rule under the last group in a scope, for the entries that are not more
+   of the same. The shell is the only one so far. */
+.sidebar__nav--fenced {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* Group headings. They are what lets a whole category be hidden from a
+   sub-user in one check instead of six. */
+.sidebar__group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 8px 4px;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* Anchors, not buttons: every one of these is a real path, so ⌘-click opens a
    server in a second tab and right-click copies its link. They are painted as
    rows, so the underline and link colour an anchor comes with are cleared. */
-.sidebar__link,
-.sidebar__item {
+.sidebar__link {
   position: relative;
   background: none;
   border: 1px solid transparent;
@@ -514,8 +567,7 @@ a:hover {
 
 /* The active row is marked twice — a tinted surface and a bar on the rail —
    so it still reads as selected in a screenshot without colour. */
-.sidebar__link::before,
-.sidebar__item::before {
+.sidebar__link::before {
   content: '';
   position: absolute;
   left: -12px;
@@ -528,8 +580,7 @@ a:hover {
   transition: height var(--dur) var(--ease);
 }
 
-.sidebar__link--active::before,
-.sidebar__item--active::before {
+.sidebar__link--active::before {
   height: 18px;
 }
 
@@ -537,17 +588,15 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 9px 10px;
 }
 
-.sidebar__link:hover,
-.sidebar__item:hover {
+.sidebar__link:hover {
   background: var(--surface-2);
   color: var(--text);
 }
 
-.sidebar__link--active,
-.sidebar__item--active {
+.sidebar__link--active {
   background: linear-gradient(90deg, var(--accent-soft), transparent);
   border-color: var(--border-accent);
   color: var(--text);
@@ -557,18 +606,24 @@ a:hover {
   margin-left: auto;
 }
 
-/* Heading over the instance list, so the two navs do not run together. */
-.sidebar__section {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 2px 8px;
-  color: var(--text-faint);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+/* One of the handful of servers with a permanent seat. Indented under 所有实例
+   so the group reads as a list and not as five more top-level destinations. */
+.sidebar__link--instance {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 9px;
+  padding-left: 20px;
+}
+
+/* The shell. Padlocked, and painted in the panel's warning ink rather than its
+   accent, because a row that looks like 监控 is a row that gets clicked like
+   监控 — and this one is a shell on the whole machine. */
+.sidebar__link--shell .icon {
+  color: var(--caution);
+}
+
+.sidebar__link--shell:hover {
+  background: var(--caution-soft);
 }
 
 .sidebar__count {
@@ -576,72 +631,147 @@ a:hover {
   letter-spacing: 0;
 }
 
-/* Search and a running-only switch over the instance list. */
-.sidebar__filter {
+/* --- the fixed top of an inner scope ---------------------------------- */
+
+.sidebar__scope {
   display: flex;
+  flex-direction: column;
   gap: 6px;
-  padding: 0 2px 2px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
 }
 
-.sidebar__search {
-  flex: 1;
-  min-width: 0;
-  padding: 5px 9px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 12px;
-}
-
-.sidebar__search::placeholder {
-  color: var(--text-faint);
-}
-
-.sidebar__search:focus-visible {
-  border-color: var(--border-accent);
-  box-shadow: var(--ring);
-  outline: none;
-}
-
-.sidebar__only {
-  flex: none;
-  padding: 5px 9px;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+.sidebar__back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius);
   color: var(--text-dim);
-  cursor: pointer;
-  font-family: inherit;
   font-size: 12px;
-  white-space: nowrap;
+  text-decoration: none;
   transition:
     background var(--dur) var(--ease),
-    border-color var(--dur) var(--ease),
     color var(--dur) var(--ease);
 }
 
-.sidebar__only:hover {
+.sidebar__back:hover {
   background: var(--surface-2);
   color: var(--text);
 }
 
-.sidebar__only--on {
-  background: var(--accent-soft);
-  border-color: var(--border-accent);
-  color: var(--accent);
+.sidebar__back .icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
 }
 
-.sidebar__list {
+/* Which server — or which machine — you are inside. It is the one thing an
+   inner scope owes the reader on every screen, so it is pinned above the
+   scroll rather than sitting in the list. */
+.sidebar__entity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+}
+
+.sidebar__entity--switch {
+  cursor: pointer;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.sidebar__entity--switch:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+.sidebar__entity-dot {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  color: var(--text-faint);
+}
+
+.sidebar__entity-text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-  margin: 0 -2px;
-  padding: 0 2px;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.sidebar__entity-text strong {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__entity-text small {
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__entity-hint {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+/* --- the ⌘K button ---------------------------------------------------- */
+
+.sidebar__search-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-faint);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  transition:
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.sidebar__search-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-dim);
+}
+
+.sidebar__search-btn .icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+
+.sidebar__kbd {
+  margin-left: auto;
+  padding: 1px 5px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-faint);
+  font-family: inherit;
+  font-size: 10px;
 }
 
 .sidebar__empty {
@@ -651,15 +781,6 @@ a:hover {
   margin: 0;
 }
 
-.sidebar__item {
-  display: grid;
-  grid-template-columns: 10px 1fr auto;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 10px;
-}
-
-.sidebar__item--active .sidebar__name,
 .sidebar__link--active .sidebar__name {
   font-weight: 600;
 }
@@ -711,21 +832,44 @@ a:hover {
 }
 
 .app[data-rail='on'] .sidebar__title,
-.app[data-rail='on'] .sidebar__section,
-.app[data-rail='on'] .sidebar__filter,
+.app[data-rail='on'] .sidebar__group,
 .app[data-rail='on'] .sidebar__state,
 .app[data-rail='on'] .sidebar__empty,
+.app[data-rail='on'] .sidebar__kbd,
+.app[data-rail='on'] .sidebar__entity-text,
+.app[data-rail='on'] .sidebar__entity-hint,
 .app[data-rail='on'] .sidebar__name {
   display: none;
 }
 
-.app[data-rail='on'] .sidebar__brand {
+/* A group heading folds to the rule that was under it, so the categories are
+   still separable when their names are gone. */
+.app[data-rail='on'] .sidebar__group {
+  display: block;
+  height: 0;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.app[data-rail='on'] .sidebar__brand,
+.app[data-rail='on'] .sidebar__back,
+.app[data-rail='on'] .sidebar__entity {
   justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.app[data-rail='on'] .sidebar__brand {
   padding: 6px 0 12px;
 }
 
+.app[data-rail='on'] .sidebar__search-btn {
+  justify-content: center;
+  padding: 8px 0;
+}
+
 .app[data-rail='on'] .sidebar__link,
-.app[data-rail='on'] .sidebar__item,
 .app[data-rail='on'] .sidebar__new {
   display: grid;
   place-items: center;
@@ -735,7 +879,7 @@ a:hover {
 
 /* The dot rides the corner of the initial instead of sitting in a column of
    its own, so state survives the fold. */
-.app[data-rail='on'] .sidebar__item {
+.app[data-rail='on'] .sidebar__link--instance {
   position: relative;
   grid-template-columns: none;
 }
@@ -744,7 +888,7 @@ a:hover {
   display: grid;
 }
 
-.app[data-rail='on'] .sidebar__item .status__dot {
+.app[data-rail='on'] .sidebar__link--instance .status__dot {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -807,10 +951,31 @@ a:hover {
     border-color var(--dur) var(--ease);
 }
 
-.topbar__toggle:hover {
+.topbar__toggle:hover,
+.topbar__search:hover {
   background: var(--surface-2);
   border-color: var(--border);
   color: var(--text);
+}
+
+/* ⌘K, for the layouts where the sidebar's own search button is behind a
+   drawer — and for anyone who reaches for a magnifier before a shortcut. */
+.topbar__search {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
 }
 
 .topbar__right {
@@ -1636,35 +1801,8 @@ a:hover {
 .instance {
   display: flex;
   flex-direction: column;
-  gap: 14px;
   min-height: 0;
   flex: 1;
-}
-
-.instance__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.instance__identity {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.instance__identity h2 {
-  margin: 0;
-  font-size: 21px;
-}
-
-.instance__actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
 }
 
 .instance__message {
@@ -1673,12 +1811,8 @@ a:hover {
   font-family: var(--font-mono);
 }
 
-.instance__body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-}
-
+/* A section, once opened, stays mounted behind whatever replaced it. Only one
+   is ever not hidden, so they all claim the same box. */
 .instance__pane {
   flex: 1;
   min-height: 0;
@@ -1694,93 +1828,321 @@ a:hover {
   overflow-y: auto;
 }
 
-/* ------------------------------------------------- console status strip
+/* ------------------------------------------------------------- cockpit
 
-   Under 1400px the strip is not rendered at all: taking 300px off a console
-   that is already narrow to show two numbers is a bad trade, and 资源 has the
-   same figures with their history. Above it, the log stops growing wider than
-   it needs to be and the space goes to something worth reading. */
+   The instance home page. Identity and power on top, three numbers under it,
+   then the log — which gets everything that is left, because a console that
+   has to be scrolled to is a console that gets replaced by an SSH session. */
 
-.console-side,
-.console-side__peek {
-  display: none;
-}
-
-@media (min-width: 1400px) {
-  .instance__pane--split {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 300px;
-    gap: 14px;
-  }
-
-  .instance__pane--split[data-side='off'] {
-    grid-template-columns: minmax(0, 1fr) 28px;
-  }
-
-  .console-side {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    min-height: 0;
-    overflow-y: auto;
-    padding: 14px;
-    background: var(--surface-1);
-    background-image: linear-gradient(180deg, var(--sheen), transparent 96px);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-sm);
-  }
-
-  /* Collapsed, it is a full-height sliver you can hit without aiming. */
-  .console-side__peek {
-    display: block;
-    padding: 0;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text-faint);
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 14px;
-    transition:
-      background var(--dur) var(--ease),
-      color var(--dur) var(--ease);
-  }
-
-  .console-side__peek:hover {
-    background: var(--surface-3);
-    color: var(--text);
-  }
-}
-
-.console-side__head {
+.cockpit {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  flex: 1;
 }
 
-.console-side__idle {
+.cockpit__bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.cockpit__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cockpit__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cockpit__title h1 {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: -0.01em;
+}
+
+/* The facts that identify this server rather than measure it: which core,
+   which Java, how long, and the address to hand to a player. */
+.cockpit__facts {
+  display: flex;
+  align-items: center;
+  gap: 6px 14px;
+  flex-wrap: wrap;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.cockpit__facts > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+.cockpit__address {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.cockpit__address:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+.cockpit__address code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.cockpit__address span {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+/* Status as a filled chip rather than a word: it is the one thing on this bar
+   that is read at a glance from across a desk. */
+.pill {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--surface-3);
+  color: var(--text-dim);
+}
+
+.pill--running {
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+}
+
+.pill--starting,
+.pill--stopping {
+  background: var(--caution-soft);
+  color: var(--caution-ink);
+}
+
+.pill--crashed {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+
+/* --- the metric strip ------------------------------------------------- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+}
+
+.tile--link {
+  cursor: pointer;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.tile--link:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.tile__label {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.tile__value {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.tile__detail {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+/* The last few minutes, inside the tile. A steady 60% and a spike caught at
+   60% on its way past 100 are the same number and completely different
+   problems; the line is what tells them apart. */
+.spark {
+  display: block;
+  width: 100%;
+  height: 26px;
+  margin: 2px 0;
+  overflow: visible;
+}
+
+.spark--empty {
+  height: 26px;
+}
+
+/* --- console beside the quick panel ----------------------------------- */
+
+.cockpit__split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The right-hand column only appears when taking 280px off the log still
+   leaves a usable log. Below that the console gets the whole pane. */
+@media (min-width: 1280px) {
+  .cockpit__split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 12px;
+  }
+}
+
+.quick {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+  background: var(--surface-1);
+  background-image: linear-gradient(180deg, var(--sheen), transparent 96px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+@media (min-width: 1280px) {
+  .quick {
+    display: flex;
+  }
+}
+
+.quick__idle {
   margin: 0;
   color: var(--text-dim);
   font-size: 13px;
 }
 
-.console-side__meta {
+.quick__list {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  margin: 0;
-  color: var(--text-faint);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
+  gap: 6px;
 }
 
-.console-side__note {
-  margin: auto 0 0;
+/* Each one names the command it sends. A button that fires something into a
+   server console without saying what is a button people stop pressing. */
+.quick__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.quick__item:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+.quick__item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.quick__item strong {
+  font-size: 13px;
+}
+
+.quick__item code {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.quick__item small {
   color: var(--text-faint);
   font-size: 11px;
-  line-height: 1.6;
+}
+
+.quick__note {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.quick__links {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+
+/* ---------------------------------------------------------- power buttons
+
+   A stopped server has one thing you can do to it and a running one has two,
+   so that is what is on screen. 强制结束 is never one of them — it lives in
+   the ⋯ menu, one deliberate extra step away from the pointer that just
+   pressed 启动. */
+
+.power {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.power__spacer {
+  display: block;
+  width: 32px;
 }
 
 .tabs {
@@ -1870,7 +2232,11 @@ a:hover {
   flex-direction: column;
   gap: 8px;
   flex: 1;
+  /* Both zeros matter: it is a grid item beside the quick panel, and a grid
+     item's default min size is its content — a long log line would push the
+     panel off the screen instead of scrolling. */
   min-height: 0;
+  min-width: 0;
 }
 
 .console__screen {
@@ -2337,8 +2703,7 @@ a:hover {
   max-width: 50%;
 }
 
-.meta-chips > span,
-.host__meta > span {
+.meta-chips > span {
   /* Capped so one long value — a data directory nested six levels deep —
      cannot push the rest of the facts off the row. */
   max-width: min(100%, 360px);
@@ -2676,54 +3041,6 @@ a:hover {
 }
 
 /* ------------------------------------------------------------------ meters */
-
-.host {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  padding: 20px;
-  margin-bottom: 24px;
-  background: var(--surface-1);
-  background-image: linear-gradient(180deg, var(--sheen), transparent 120px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
-}
-
-.host__head h2 {
-  margin: 0 0 5px;
-  font-size: 16px;
-}
-
-.host__meta {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin: 0;
-  color: var(--text-dim);
-  font-size: 12px;
-}
-
-/* Each fact gets its own chip (styled with .meta-chips, up in the pages
-   section), so hostname, platform and core count stay separable at a glance
-   instead of running into one grey line. */
-
-.host__chart {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-
-.meters {
-  display: grid;
-  /* Capped rather than 1fr: stretched across a wide screen the label and its
-     value drift so far apart they stop reading as one tile. */
-  grid-template-columns: repeat(auto-fit, minmax(200px, 260px));
-  gap: 24px;
-  justify-content: start;
-}
 
 .meter {
   display: flex;
@@ -3582,76 +3899,633 @@ input.input-slim:disabled {
   margin-bottom: 0;
 }
 
-/* Numbers worth seeing without clicking anything. Capped rather than 1fr for
-   the same reason the meters are: stretched wide, a label and its value stop
-   reading as one tile. */
-.stats {
+/* ------------------------------------------------------- overview summary
+
+   Four numbers, and only numbers that would change what the reader does next.
+   Machine diagnostics (network, per-core CPU, IO wait) are deliberately a
+   floor down on the host pages: they answer "why", and a home page's job is
+   "whether". */
+
+.summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(168px, 260px));
-  gap: 12px;
-  margin-bottom: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
 }
 
-.stat {
+.summary__cell {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 15px 16px;
+  gap: 3px;
+  padding: 13px 16px;
   background: var(--surface-1);
   background-image: linear-gradient(180deg, var(--sheen), transparent 70px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  text-align: left;
-  font-family: inherit;
   color: inherit;
+  font-family: inherit;
+  text-align: left;
   overflow: hidden;
+}
+
+.summary__cell--link {
+  cursor: pointer;
   transition:
     border-color var(--dur) var(--ease),
     transform var(--dur) var(--ease),
     box-shadow var(--dur) var(--ease);
 }
 
-/* Clickable tiles grow an accent edge on hover; the plain ones never do, so
-   hovering tells you which tiles go somewhere. */
-.stat--link {
-  cursor: pointer;
-}
-
-.stat--link::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 2px;
-  background: var(--accent);
-  opacity: 0;
-  transition: opacity var(--dur) var(--ease);
-}
-
-.stat--link:hover {
+.summary__cell--link:hover {
   border-color: var(--border-strong);
   transform: translateY(-2px);
   box-shadow: var(--shadow);
 }
 
-.stat--link:hover::before {
-  opacity: 1;
+/* Severity rides the left edge rather than the whole tile: a red block for
+   "disk is filling" would outshout an actual crash three tiles over. */
+.summary__cell--warn::before,
+.summary__cell--error::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--caution);
 }
 
-.stat__label {
+.summary__cell--error::before {
+  background: var(--danger);
+}
+
+.summary__label {
   color: var(--text-dim);
   font-size: 12px;
 }
 
-.stat__value {
+.summary__value {
   font-size: 23px;
   font-weight: 650;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
-.stat__detail {
+.summary__detail {
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- the alert block --------------------------------------------------
+
+   Rendered only when there is something in it. A permanent "一切正常" panel
+   trains the eye to skip exactly the place warnings appear. */
+
+.alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alerts .alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0;
+}
+
+.alert__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.alert__body span {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.badge--alert {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+
+.chart-head__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* --- instance cards ---------------------------------------------------- */
+
+.card__state {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.card--crashed {
+  border-color: var(--danger);
+}
+
+.card__live {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.card__bar {
+  height: 5px;
+  background: var(--surface-4);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  box-shadow: var(--inset);
+}
+
+.card__bar-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--status-ok);
+  transition: width 0.4s ease;
+}
+
+.card__bar-fill[data-hot='on'] {
+  background: var(--status-critical);
+}
+
+.card__figures {
+  display: flex;
+  gap: 4px 12px;
+  flex-wrap: wrap;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.card__figures--down {
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.card__figures > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.card__why {
+  color: var(--text-faint);
+}
+
+.card__why--bad {
+  color: var(--danger-hover);
+}
+
+/* ------------------------------------------------------------- filter bar
+
+   One row above the content it scopes, in the same place on every list page,
+   and every value in it lives in the URL — so a filtered list survives a
+   reload and can be pasted to someone else. */
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.filters__search {
+  flex: 0 1 260px;
+  min-width: 160px;
+  padding: 7px 11px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.filters__search:focus-visible {
+  border-color: var(--border-accent);
+  box-shadow: var(--ring);
+  outline: none;
+}
+
+.filters__chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filters__count {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----------------------------------------------------------------- rows
+
+   A table that becomes cards. Rows are 48px on a desktop — this is a back
+   office, where the same row is scanned twenty times a day and density beats
+   air — and stack into a card below the drawer breakpoint, where five columns
+   would each be forty pixels wide. */
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+.rows__head,
+.rows__row {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 1.2fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rows__head {
+  min-height: 36px;
+  background: var(--surface-2);
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.rows__row:last-child {
+  border-bottom: none;
+}
+
+.rows__row:hover {
+  background: var(--surface-2);
+}
+
+.rows__name {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 6px 0;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.rows__name strong {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rows__name small {
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rows__path {
+  font-family: var(--font-mono);
+}
+
+button.rows__name:hover strong {
+  color: var(--accent-hover);
+}
+
+.rows__cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rows__cell--num {
+  font-variant-numeric: tabular-nums;
+}
+
+.rows__cell--end {
+  justify-content: flex-end;
+}
+
+.rows__cell small {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.rows__empty {
+  margin: 0;
+  padding: 22px 14px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+.rows__error {
+  grid-column: 1 / -1;
+  padding-bottom: 8px;
+  color: var(--danger-hover);
+  font-size: 11px;
+}
+
+/* A share of the machine, as a bar narrow enough to sit in a table cell. */
+.share {
+  display: block;
+  flex: 1;
+  max-width: 90px;
+  height: 5px;
+  background: var(--surface-4);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.share__fill {
+  display: block;
+  height: 100%;
+  background: var(--border-strong);
+  border-radius: var(--radius-pill);
+}
+
+.share__fill--live {
+  background: var(--status-ok);
+}
+
+/* ------------------------------------------------------- allocation bar
+
+   Two layers in one track: the pale one is what has been promised away (the
+   sum of the running servers' -Xmx) and the solid one is what is actually in
+   use. Over-allocation is the failure this is here to make visible — the
+   kernel resolves it by killing a running server, and a single percentage
+   hides it completely until that happens. */
+
+.alloc {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alloc__track {
+  position: relative;
+  height: 14px;
+  background: var(--surface-4);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  box-shadow: var(--inset);
+}
+
+.alloc__committed,
+.alloc__used {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  transition: width 0.4s ease;
+}
+
+.alloc__committed {
+  background: var(--accent-soft);
+  border: 1px solid var(--border-accent);
+}
+
+.alloc__used {
+  background: var(--status-ok);
+}
+
+/* Where the physical memory runs out, drawn only when allocation passes it. */
+.alloc__limit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--danger);
+}
+
+.alloc__legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.alloc__key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alloc__key::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--surface-4);
+}
+
+.alloc__key--used::before {
+  background: var(--status-ok);
+}
+
+.alloc__key--committed::before {
+  background: var(--accent-soft);
+  border: 1px solid var(--border-accent);
+}
+
+/* A short definition list of facts, two or three across. */
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 20px;
+  margin: 0;
+}
+
+.figures > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.figures dt {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.figures dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.figures dd small {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+/* ------------------------------------------------------- command palette
+
+   The sidebar deliberately shows a handful of servers, which only works if
+   there is a fast way to the other twenty-five. This is it, and because the
+   pages are in the same list it doubles as the way to reach 磁盘 without
+   first remembering which group it was filed under. */
+
+.palette {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: start center;
+  padding: 12vh 16px 16px;
+}
+
+.palette__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  backdrop-filter: blur(4px);
+}
+
+.palette__box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: 66vh;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: fade 140ms var(--ease) both;
+}
+
+.palette__field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.palette__field .icon {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.palette__field input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  outline: none;
+}
+
+.palette__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.palette__group {
+  padding: 8px 8px 4px;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.palette__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+}
+
+/* Keyboard and pointer share one highlight, so ↓↓↵ and a click can never
+   disagree about which row is about to open. */
+.palette__item[data-active='true'] {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.palette__bullet {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+
+.palette__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette__hint {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.palette__empty {
+  margin: 0;
+  padding: 22px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+.palette__foot {
+  display: flex;
+  gap: 14px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
   color: var(--text-faint);
   font-size: 11px;
 }
@@ -3704,7 +4578,9 @@ input.input-slim:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 12px;
+  /* Pushed to the bottom so a running card and a stopped one — which carry
+     different numbers of lines — still line their buttons up across the grid. */
+  margin-top: auto;
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }
@@ -3816,30 +4692,63 @@ input.input-slim:disabled {
   padding: 4px 2px 16px;
 }
 
+/* The identity strip. It is painted in the shell's own cool palette rather
+   than the panel's warm one, and it never scrolls away: two terminals that
+   look alike are two terminals you will eventually type into the wrong one
+   of, and one of them is the whole machine. */
 .hostterm__bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+  padding: 9px 13px;
+  background: var(--shell-bg);
+  border: 1px solid var(--shell-edge);
+  border-radius: var(--radius);
+  color: var(--shell-fg);
 }
 
 .hostterm__where {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
   min-width: 0;
+}
+
+.hostterm__where .icon {
+  align-self: center;
+  color: var(--shell-accent);
 }
 
 .hostterm__where strong {
   font-family: var(--font-mono);
   font-size: 14px;
+  color: var(--shell-accent);
 }
 
 .hostterm__where span {
-  color: var(--text-faint);
+  color: color-mix(in srgb, var(--shell-fg) 62%, transparent);
+  font-family: var(--font-mono);
   font-size: 11px;
   overflow-wrap: anywhere;
+}
+
+.hostterm__bar .hostterm__phase {
+  color: color-mix(in srgb, var(--shell-fg) 70%, transparent);
+}
+
+.hostterm__bar .btn {
+  background: transparent;
+  border-color: var(--shell-edge);
+  color: var(--shell-fg);
+}
+
+.hostterm__bar .btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--shell-fg) 10%, transparent);
+  border-color: var(--shell-accent);
+  color: var(--shell-fg);
 }
 
 .hostterm__actions {
@@ -3895,8 +4804,10 @@ input.input-slim:disabled {
   padding: 10px 4px 10px 12px;
   /* Flat, not a gradient: the terminal canvas paints its own opaque
      background on top, so anything but a single colour shows a seam. */
-  background: var(--term-bg);
-  border: 1px solid var(--term-edge);
+  background: var(--shell-bg);
+  border: 1px solid var(--shell-edge);
+  /* Squared off at the top so the identity strip and the canvas read as one
+     object; the server console is rounded all round. */
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -3908,7 +4819,7 @@ input.input-slim:disabled {
 
 /* ------------------------------------------------------------- responsive */
 
-@media (max-width: 900px) {
+@media (max-width: 1240px) {
   .app {
     --sidebar-w: 224px;
   }
@@ -3922,10 +4833,13 @@ input.input-slim:disabled {
 
 /* Under this width the sidebar stops being a column and becomes a drawer: it
    leaves the grid entirely, slides in over the page, and the top bar's button
-   is what brings it back. The old layout kept it on screen as a horizontal
-   band, which cost close to half the viewport before you saw a single log
-   line. */
-@media (max-width: 720px) {
+   is what brings it back.
+
+   The breakpoint is 1024 rather than the 720 a back office would normally
+   take, because this back office is opened from a phone more than most: the
+   person who owns the server gets the alert while they are out, and what they
+   need on that screen is status, power, console and nothing else. */
+@media (max-width: 1024px) {
   .app {
     grid-template-columns: 1fr;
   }
@@ -3991,13 +4905,55 @@ input.input-slim:disabled {
     margin-left: 0;
   }
 
-  .instance__actions .btn,
+  .power .btn,
   .modal__actions .btn {
     flex: 1;
   }
 
-  .stats {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  .summary {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+
+  /* Five columns at forty pixels each is not a table. Each row becomes a card
+     that stacks its cells, which is also what makes the row's own buttons
+     reachable with a thumb. */
+  .rows__head {
+    display: none;
+  }
+
+  .rows__row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 12px 14px;
+  }
+
+  .rows__cell--end {
+    justify-content: flex-start;
+  }
+
+  /* The metric strip scrolls sideways instead of stacking into four rows that
+     push the console off the screen. */
+  .tiles {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    margin: 0 -14px;
+    padding: 0 14px 4px;
+  }
+
+  .tiles > .tile {
+    flex: 0 0 190px;
+    scroll-snap-align: start;
+  }
+
+  .cockpit__bar {
+    align-items: stretch;
+  }
+
+  .cockpit__facts > span {
+    max-width: 100%;
   }
 
   /* Stacked rather than side by side, so the chips get the whole width. */
@@ -4012,10 +4968,6 @@ input.input-slim:disabled {
     grid-template-columns: 1fr;
   }
 
-  .meters {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
 }
 
 /* Everything above animates only as decoration; none of it carries meaning,

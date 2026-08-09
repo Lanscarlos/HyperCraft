@@ -87,15 +87,21 @@ export function watchSystem(): void {
  * xterm paints to a canvas and cannot see CSS, so the values have to be handed
  * over as strings — but they are still read off :root rather than duplicated
  * here, which is what keeps the terminal from drifting when a token moves.
+ *
+ * Two palettes, because there are two terminals and they carry very different
+ * authority: `server` is a Minecraft console, `shell` is a prompt on the whole
+ * machine. They are told apart by colour before they are read, which is the
+ * point — the failure mode is typing into the wrong one.
  */
-export function terminalTheme() {
+export function terminalTheme(kind: 'server' | 'shell' = 'server') {
   const styles = getComputedStyle(document.documentElement)
   const token = (name: string) => styles.getPropertyValue(name).trim()
+  const prefix = kind === 'shell' ? '--shell' : '--term'
   return {
-    background: token('--term-bg'),
-    foreground: token('--term-fg'),
-    cursor: token('--term-cursor'),
-    selectionBackground: token('--term-selection'),
+    background: token(`${prefix}-bg`),
+    foreground: token(`${prefix}-fg`),
+    cursor: token(`${prefix}-cursor`),
+    selectionBackground: token(`${prefix}-selection`),
     // Minecraft's log colours map onto the ANSI 16, and ANSI assumes a dark
     // canvas — which is why the terminal keeps one in both modes. Black would
     // otherwise be invisible, so it is lifted to a legible grey.

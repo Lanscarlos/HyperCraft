@@ -75,7 +75,7 @@ export function PluginLibraryPage({
         <div className="alert alert--warn">
           有插件来自私有仓库，但面板还没有 GitHub 访问令牌 —— 这些插件既检查不到更新也下载不了。
           <button className="link" onClick={onOpenSettings}>
-            去「设置 → 插件源」填一个
+            去「面板设置 → 插件源」填一个
           </button>
         </div>
       )}
@@ -108,7 +108,7 @@ export function PluginLibraryPage({
               添加一个插件的 GitHub 仓库（比如 <code>EssentialsX/Essentials</code>，或者直接粘贴仓库地址），
               面板就会从它的 Release 里拉取 jar。自己写的插件发在私有仓库里也可以，先在
               <button className="link" onClick={onOpenSettings}>
-                设置 → 插件源
+                面板设置 → 插件源
               </button>
               填个访问令牌就行。
             </p>

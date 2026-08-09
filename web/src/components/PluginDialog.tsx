@@ -40,7 +40,7 @@ export function PluginDialog({
       <form className="modal__card" onSubmit={(event) => void submit(event)}>
         <h2 className="modal__title">{item ? `编辑「${item.name}」` : '添加插件'}</h2>
         <p className="modal__lead">
-          目前只支持 GitHub Release。私有仓库也可以 —— 在「设置 → 插件源」里填好访问令牌就行，
+          目前只支持 GitHub Release。私有仓库也可以 —— 在「面板设置 → 插件源」里填好访问令牌就行，
           下载源也在那里选。
         </p>
 

@@ -157,7 +157,7 @@ export function NewInstanceDialog({ cores, onCreated, onCancel, onOpenLibrary }:
             <small>
               {existing.jars.length > 0
                 ? `目录下找到 ${existing.jars.length} 个 jar，点输入框可以直接选。`
-                : '创建后也可以在「启动设置 → 从核心库安装」里装一个，或者自己把 jar 传进去。'}
+                : '创建后也可以在「实例设置 → 从核心库安装」里装一个，或者自己把 jar 传进去。'}
             </small>
           </label>
         )}

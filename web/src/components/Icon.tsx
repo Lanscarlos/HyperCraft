@@ -1,9 +1,9 @@
 /**
  * The panel's icon set, inline rather than a font or a sprite.
  *
- * There are nine of them and they are only ever painted in `currentColor`, so a
- * dependency — or a second network request — would buy nothing. They exist for
- * the collapsed sidebar: a 56px rail has no room for a label, and a row of
+ * There are a couple of dozen and they are only ever painted in `currentColor`,
+ * so a dependency — or a second network request — would buy nothing. They exist
+ * for the collapsed sidebar: a 60px rail has no room for a label, and a row of
  * identical dots is not navigation.
  */
 import type { ReactElement } from 'react'
@@ -18,6 +18,15 @@ export type IconName =
   | 'menu'
   | 'collapse'
   | 'expand'
+  | 'instances'
+  | 'host'
+  | 'files'
+  | 'properties'
+  | 'chart'
+  | 'disk'
+  | 'lock'
+  | 'search'
+  | 'back'
 
 const PATHS: Record<IconName, ReactElement> = {
   dashboard: (
@@ -66,6 +75,59 @@ const PATHS: Record<IconName, ReactElement> = {
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
   collapse: <path d="m14 6-6 6 6 6" />,
   expand: <path d="m10 6 6 6-6 6" />,
+  // Stacked rack units: several servers, as opposed to the one you are in.
+  instances: (
+    <>
+      <rect x="3.5" y="4" width="17" height="6" rx="2" />
+      <rect x="3.5" y="14" width="17" height="6" rx="2" />
+      <path d="M7 7h.01M7 17h.01" />
+    </>
+  ),
+  // One box with a pedestal: the machine everything else runs on.
+  host: (
+    <>
+      <rect x="3.5" y="3.5" width="17" height="12" rx="2" />
+      <path d="M8 19.5h8M12 15.5v4" />
+    </>
+  ),
+  files: (
+    <>
+      <path d="M4 6.5A2 2 0 0 1 6 4.5h3.4l1.8 2.2H18a2 2 0 0 1 2 2v8.8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6.5Z" />
+    </>
+  ),
+  // A form: the key/value editor behind server.properties.
+  properties: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <path d="M7.5 9h4M7.5 13h4M15 9h1.5M15 13h1.5M7.5 17h9" />
+    </>
+  ),
+  chart: (
+    <>
+      <path d="M4 19.5V4.5M4 19.5h16" />
+      <path d="m7 15 3.5-4.5 3 3L20 7" />
+    </>
+  ),
+  disk: (
+    <>
+      <ellipse cx="12" cy="6.5" rx="7.5" ry="3" />
+      <path d="M4.5 6.5v11c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-11" />
+      <path d="M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect x="4.5" y="10.5" width="15" height="9.5" rx="2" />
+      <path d="M8 10.5V7.75a4 4 0 0 1 8 0v2.75" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="10.5" cy="10.5" r="6" />
+      <path d="m15 15 4.5 4.5" />
+    </>
+  ),
+  back: <path d="M20 12H4.5m0 0L10 6.5M4.5 12 10 17.5" />,
 }
 
 export function Icon({ name, className }: { name: IconName; className?: string }) {

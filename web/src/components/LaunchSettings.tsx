@@ -247,8 +247,8 @@ export function LaunchSettings({
           )}
           <small>
             {runtimes.length > 0
-              ? '面板装的 Java 在这里直接选；左侧「Java 环境」可以再装别的版本。'
-              : '左侧「Java 环境」可以一键装一个，装完这里就能选。'}
+              ? '面板装的 Java 在这里直接选；「资源库 → Java 环境」可以再装别的版本。'
+              : '「资源库 → Java 环境」可以一键装一个，装完这里就能选。'}
           </small>
         </label>
 

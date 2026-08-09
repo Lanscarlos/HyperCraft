@@ -561,6 +561,31 @@ export function isLive(state: InstanceState): boolean {
 }
 
 /**
+ * Listing order, everywhere a list of servers appears.
+ *
+ * A crashed server is the one entry that is asking for something, so it goes
+ * first even though it is not running; after it the live ones, and the
+ * deliberately-stopped ones last. Alphabetical would bury the fire in the
+ * middle of the list, which is the one thing the list must not do.
+ */
+export const STATE_RANK: Record<InstanceState, number> = {
+  crashed: 0,
+  running: 1,
+  starting: 2,
+  stopping: 3,
+  stopped: 4,
+}
+
+/** Sorts by urgency, keeping the API's order — creation order — within a group
+ *  so a row never moves under the pointer aiming at it. */
+export function byUrgency(instances: InstanceStatus[]): InstanceStatus[] {
+  return instances
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => STATE_RANK[a.item.state] - STATE_RANK[b.item.state] || a.index - b.index)
+    .map((entry) => entry.item)
+}
+
+/**
  * Folds an update into what we already have about an instance.
  *
  * Config always takes the newest value, but live state only ever moves

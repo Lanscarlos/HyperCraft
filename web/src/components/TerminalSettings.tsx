@@ -1,7 +1,6 @@
 import { useState } from 'react'
 
 import type { TerminalController } from '../useTerminal'
-import { Page } from './Page'
 
 interface Props {
   terminal: TerminalController
@@ -16,13 +15,18 @@ interface Props {
  * it, a stolen password means someone can restart your Minecraft servers; with
  * it, they have the account the panel runs as. The confirmation step exists for
  * that reason and not to be tidy.
+ *
+ * It is a section rather than a page: enabling a shell is a property of the
+ * *machine*, so it lives under 节点配置 alongside the machine's other facts,
+ * not in the panel-wide settings where an operator would go looking for their
+ * password.
  */
 export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
   const [confirming, setConfirming] = useState(false)
   const { status, saving, error } = terminal
 
   if (!status) {
-    return <Page>正在读取终端设置…</Page>
+    return <section className="panel">正在读取终端设置…</section>
   }
 
   const enable = async () => {
@@ -31,10 +35,14 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
   }
 
   return (
-    <Page
-      title="终端"
-      lead="在面板里直接开一个本机 shell，装插件、看日志、改配置不用再单独 SSH 上来。这里跑的就是面板所在的这台机器，权限和面板进程完全一样 —— 不是连到别的服务器。"
-    >
+    <>
+      <div className="stack">
+        <h2 className="panel__title">SSH 终端</h2>
+        <p className="page__lead">
+          在面板里直接开一个本机 shell。它跑在面板所在的这台机器上，权限和面板进程完全一样 ——
+          和游戏控制台不是一个量级的东西：后者最多影响一个 Minecraft 进程，前者是整机。
+        </p>
+      </div>
 
       {error && <div className="alert alert--error">{error}</div>}
 
@@ -117,6 +125,6 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
           )}
         </section>
       )}
-    </Page>
+    </>
   )
 }
