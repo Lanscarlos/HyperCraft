@@ -151,16 +151,13 @@ func (i *Installer) checkNotInstalled(release Release) error {
 func (i *Installer) run(ctx context.Context, job *Job, release Release) {
 	id := installID(release)
 	staging := filepath.Join(i.store.Root(), ".installing-"+id)
-	_ = os.RemoveAll(staging)
 
-	archive, err := i.download(ctx, job, release)
+	// A staging directory left by an earlier attempt has to go before this one
+	// starts: unpacking on top of it would leave the previous run's files mixed
+	// into the new runtime, and flatten() would not recognise the layout.
+	err := os.RemoveAll(staging)
 	if err == nil {
-		defer func() {
-			archive.Close()
-			_ = os.Remove(archive.Name())
-		}()
-		i.setState(job, JobExtracting)
-		err = i.unpack(ctx, staging, release, archive)
+		err = i.fetchAndUnpack(ctx, job, staging, release)
 	}
 
 	switch {
@@ -176,6 +173,22 @@ func (i *Installer) run(ctx context.Context, job *Job, release Release) {
 		i.finish(job, JobFailed, err)
 		i.log.Warn("java install failed", "runtime", id, "err", err)
 	}
+}
+
+// fetchAndUnpack downloads the archive and unpacks it, deleting the temporary
+// download either way.
+func (i *Installer) fetchAndUnpack(ctx context.Context, job *Job, staging string, release Release) error {
+	archive, err := i.download(ctx, job, release)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		archive.Close()
+		_ = os.Remove(archive.Name())
+	}()
+
+	i.setState(job, JobExtracting)
+	return i.unpack(ctx, staging, release, archive)
 }
 
 // download streams the archive to a temp file and verifies it. Nothing is
@@ -244,6 +257,35 @@ func (i *Installer) unpack(ctx context.Context, staging string, release Release,
 	if err := os.MkdirAll(staging, 0o755); err != nil {
 		return err
 	}
+	if err := extractInto(ctx, staging, release, archive); err != nil {
+		return err
+	}
+	if findJava(staging) == "" {
+		return fmt.Errorf("%w: 解压后没找到 bin/%s", ErrBadArchive, javaBinary())
+	}
+
+	final := filepath.Join(i.store.Root(), installID(release))
+	if err := renameInstall(ctx, staging, final); err != nil {
+		if isLocked(err) {
+			// The one failure an operator can actually do something about.
+			return fmt.Errorf("%w：解压好的文件被别的程序占着，"+
+				"多半是杀毒软件正在扫描，或者有资源管理器窗口开在 data\\java 里；"+
+				"关掉之后重新安装即可", err)
+		}
+		return err
+	}
+	return nil
+}
+
+// extractInto unpacks the archive into staging, and — importantly — closes the
+// os.Root handle on staging before it returns.
+//
+// Windows will not rename a directory anything still has open, and Go opens the
+// Root without FILE_SHARE_DELETE, so a handle that outlives the extraction turns
+// the move into place into a sharing violation every single time. On Unix the
+// rename would have gone through regardless, which is why this only ever showed
+// up on Windows.
+func extractInto(ctx context.Context, staging string, release Release, archive *os.File) error {
 	root, err := os.OpenRoot(staging)
 	if err != nil {
 		return err
@@ -255,17 +297,34 @@ func (i *Installer) unpack(ctx context.Context, staging string, release Release,
 	}
 	// JDK archives wrap everything in one directory named after the build.
 	// Dropping it keeps the installed path predictable: <id>/bin/java.
-	if err := flatten(root); err != nil {
-		return err
-	}
-	if findJava(staging) == "" {
-		return fmt.Errorf("%w: 解压后没找到 bin/%s", ErrBadArchive, javaBinary())
-	}
+	return flatten(root)
+}
 
-	final := filepath.Join(i.store.Root(), installID(release))
-	if err := os.Rename(staging, final); err != nil {
-		return err
+// renameInstall moves the staged runtime into place, retrying for a few seconds
+// while the directory is locked.
+//
+// Our own handles are shut by now, but on Windows an on-access virus scanner
+// routinely still holds a file it watched us write — 25k of them just landed —
+// and one such file makes the whole directory unrenameable until it lets go.
+// That is a transient condition and worth waiting out; anything else is
+// returned to the operator immediately.
+func renameInstall(ctx context.Context, from, to string) error {
+	const (
+		attempts = 12
+		backoff  = 250 * time.Millisecond
+	)
+	for attempt := range attempts {
+		err := os.Rename(from, to)
+		if err == nil || !isLocked(err) || attempt == attempts-1 {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
 	}
+	// Unreachable: the loop always returns on its last attempt.
 	return nil
 }
 
