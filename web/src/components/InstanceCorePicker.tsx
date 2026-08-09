@@ -80,7 +80,7 @@ export function InstanceCorePicker({ instance, cores, onApplied, onOpenLibrary }
   return (
     <section className="panel">
       <div className="chart-head">
-        <h3 className="panel__title">服务端核心</h3>
+        <h3 className="panel__title">从核心库安装</h3>
         <button className="link" type="button" onClick={onOpenLibrary}>
           管理核心库
         </button>
@@ -94,7 +94,8 @@ export function InstanceCorePicker({ instance, cores, onApplied, onOpenLibrary }
       ) : (
         <>
           <p className="chart-note">
-            从核心库复制一份到实例目录。核心只下载一次，开多少个服就复制多少份。
+            从核心库挑一个复制到本实例目录 —— 新服装核心、老服换版本或者修一个坏掉的 jar，都走这里。
+            核心只在核心库下载一次，开多少个服就复制多少份。
           </p>
 
           <label className="field">

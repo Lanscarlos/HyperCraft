@@ -264,7 +264,7 @@ export function LaunchSettings({
           <small>
             {jars.length > 0
               ? `上面这个目录下找到 ${jars.length} 个 jar 文件，点输入框可以直接选`
-              : '目录下暂时没有 jar 文件，从上面的核心库复制一个，或自己传一个'}
+              : '目录下暂时没有 jar 文件，从上面装一个核心，或自己传一个'}
           </small>
         </label>
 
