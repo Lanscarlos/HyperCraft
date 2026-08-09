@@ -320,7 +320,7 @@ func TestServiceRestartsTheInstalledBinaryNotTheBackup(t *testing.T) {
 
 	var restartedWith string
 	var beforeInstallRan bool
-	svc := NewService("owner/repo", "v1.0.0", Hooks{
+	svc := NewService("owner/repo", "v1.0.0", "", Hooks{
 		BeforeInstall:  func() error { beforeInstallRan = true; return nil },
 		TriggerRestart: func(binary string) { restartedWith = binary },
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -362,7 +362,7 @@ func TestServiceAbortsCleanlyWhenPreparationFails(t *testing.T) {
 	f.corruptSum = true
 
 	var restarted, aborted bool
-	svc := NewService("owner/repo", "v1.0.0", Hooks{
+	svc := NewService("owner/repo", "v1.0.0", "", Hooks{
 		BeforeInstall:  func() error { return nil },
 		InstallAborted: func() { aborted = true },
 		TriggerRestart: func(string) { restarted = true },

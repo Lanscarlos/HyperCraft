@@ -352,7 +352,29 @@ export interface UpdateStatus {
   ineligibleWhy?: string
   /** Set when the last update attempt failed. */
   error?: string
+  /** Download proxy prefix; empty means downloads go straight to GitHub. */
+  mirror: string
 }
+
+/** Known GitHub download proxies. The panel accepts any prefix, these are just
+ *  the ones offered without typing. */
+export const UPDATE_MIRRORS: { label: string; value: string; note: string }[] = [
+  {
+    label: 'ghfast.top（默认）',
+    value: 'https://ghfast.top/',
+    note: '国内访问 GitHub 下载较快',
+  },
+  {
+    label: 'gh-proxy.com',
+    value: 'https://gh-proxy.com/',
+    note: '备选，用法相同',
+  },
+  {
+    label: '直连 GitHub',
+    value: '',
+    note: '不经过任何第三方，海外服务器选这个',
+  },
+]
 
 // ----------------------------------------------------------------- files
 

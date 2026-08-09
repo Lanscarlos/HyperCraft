@@ -150,6 +150,8 @@ export const api = {
   updateStatus: () => request<UpdateStatus>('GET', '/api/update'),
   checkUpdate: () => request<UpdateStatus>('POST', '/api/update/check'),
   applyUpdate: () => request<UpdateStatus>('POST', '/api/update/apply'),
+  setUpdateMirror: (mirror: string) =>
+    request<UpdateStatus>('PUT', '/api/update/mirror', { mirror }),
 
   system: () => request<SystemInfo>('GET', '/api/system'),
   instanceMetrics: (id: string) =>

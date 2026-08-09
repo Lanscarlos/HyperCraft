@@ -33,6 +33,7 @@ type testEnv struct {
 	server *httptest.Server
 	client *http.Client
 	mgr    *instance.Manager
+	store  *store.Store
 	// fill stands in for the PaperMC API and its CDN; see handlers_downloads_test.go.
 	fill *fakeFill
 	// adoptium stands in for the Java download API; see handlers_java_test.go.
@@ -93,7 +94,7 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 	}
 	return &testEnv{
 		t: t, server: srv, client: &http.Client{Jar: jar},
-		mgr: mgr, fill: fill, adoptium: adoptium,
+		mgr: mgr, store: st, fill: fill, adoptium: adoptium,
 	}
 }
 

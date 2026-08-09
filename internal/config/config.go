@@ -18,20 +18,34 @@ const DefaultListen = "127.0.0.1:8080"
 // just make the file manager useless for the thing people upload most.
 const DefaultMaxUploadMB = 2048
 
+// DefaultUpdateMirror prefixes release downloads during a panel self-update.
+// GitHub's release CDN is slow to unusable from parts of Asia, which is where
+// most of this panel's operators are, so a proxy is the default rather than an
+// opt-in. It only ever carries the release archive: the checksums it is
+// verified against are fetched from GitHub itself, so a mirror cannot swap the
+// binary for one of its own. See internal/selfupdate.
+const DefaultUpdateMirror = "https://ghfast.top/"
+
 // Panel is the persisted panel configuration.
 type Panel struct {
-	Listen          string          `json:"listen"`
-	SessionTTLHours int             `json:"sessionTtlHours"`
-	MaxUploadMB     int             `json:"maxUploadMb"`
-	Credential      auth.Credential `json:"credential"`
+	Listen          string `json:"listen"`
+	SessionTTLHours int    `json:"sessionTtlHours"`
+	MaxUploadMB     int    `json:"maxUploadMb"`
+	// UpdateMirror is a pointer to tell "never configured" (nil, take the
+	// default) apart from "deliberately turned off" (empty string, go straight
+	// to GitHub). A plain string could not express the second.
+	UpdateMirror *string         `json:"updateMirror,omitempty"`
+	Credential   auth.Credential `json:"credential"`
 }
 
 // Defaults returns a config with everything but the credential filled in.
 func Defaults() Panel {
+	mirror := DefaultUpdateMirror
 	return Panel{
 		Listen:          DefaultListen,
 		SessionTTLHours: 24 * 7,
 		MaxUploadMB:     DefaultMaxUploadMB,
+		UpdateMirror:    &mirror,
 	}
 }
 
@@ -46,6 +60,19 @@ func (p *Panel) ApplyDefaults() {
 	if p.MaxUploadMB <= 0 {
 		p.MaxUploadMB = DefaultMaxUploadMB
 	}
+	if p.UpdateMirror == nil {
+		mirror := DefaultUpdateMirror
+		p.UpdateMirror = &mirror
+	}
+}
+
+// Mirror is the configured update mirror, or "" for downloading straight from
+// GitHub.
+func (p Panel) Mirror() string {
+	if p.UpdateMirror == nil {
+		return DefaultUpdateMirror
+	}
+	return *p.UpdateMirror
 }
 
 // Paths resolves the on-disk layout below a data directory.

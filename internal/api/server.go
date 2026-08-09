@@ -172,6 +172,7 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("GET /api/update", s.handleUpdateStatus)
 	protected.HandleFunc("POST /api/update/check", s.handleUpdateCheck)
 	protected.HandleFunc("POST /api/update/apply", s.handleUpdateApply)
+	protected.HandleFunc("PUT /api/update/mirror", s.handleUpdateMirror)
 
 	api.Handle("/api/", s.requireAuth(s.requireCSRF(protected)))
 

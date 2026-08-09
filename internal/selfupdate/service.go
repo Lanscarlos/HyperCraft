@@ -65,6 +65,9 @@ type Status struct {
 	Eligible        bool       `json:"eligible"`
 	IneligibleWhy   string     `json:"ineligibleWhy,omitempty"`
 	Error           string     `json:"error,omitempty"`
+	// Mirror is the configured download proxy, "" when downloading straight
+	// from GitHub.
+	Mirror string `json:"mirror"`
 }
 
 // Service keeps the last check result and runs updates one at a time.
@@ -82,13 +85,27 @@ type Service struct {
 	lastErr   string
 }
 
-func NewService(repo, currentVersion string, hooks Hooks, log *slog.Logger) *Service {
+func NewService(repo, currentVersion, mirror string, hooks Hooks, log *slog.Logger) *Service {
+	up := New(repo, currentVersion)
+	up.SetMirror(mirror)
 	return &Service{
-		up:    New(repo, currentVersion),
+		up:    up,
 		log:   log,
 		hooks: hooks,
 		phase: PhaseIdle,
 	}
+}
+
+// SetMirror changes the download proxy. Refused mid-update so a run cannot
+// switch source between fetching the checksums and fetching the archive.
+func (s *Service) SetMirror(mirror string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.phase != PhaseIdle {
+		return ErrBusy
+	}
+	s.up.SetMirror(mirror)
+	return nil
 }
 
 // Run checks on startup and then on a timer until ctx is cancelled.
@@ -154,6 +171,7 @@ func (s *Service) statusLocked() Status {
 		Progress:       s.progress,
 		CheckError:     s.checkErr,
 		Error:          s.lastErr,
+		Mirror:         s.up.Mirror(),
 		Eligible:       true,
 	}
 	if !s.checkedAt.IsZero() {
@@ -234,6 +252,12 @@ func (s *Service) apply(ctx context.Context, rel *Release) error {
 	})
 	if err != nil {
 		return err
+	}
+	s.log.Info("release downloaded and verified", "from", staged.ArchiveURL())
+	if staged.ChecksumFromMirror() {
+		s.log.Warn("GitHub was unreachable for the checksums, so the mirror supplied them; "+
+			"this update's integrity rests on the mirror rather than on GitHub",
+			"mirror", s.up.Mirror())
 	}
 
 	s.mu.Lock()

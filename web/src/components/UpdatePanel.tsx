@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { UPDATE_MIRRORS } from '../types'
 import type { UpdateController } from '../useUpdate'
 
 interface Props {
@@ -91,6 +92,11 @@ export function UpdatePanel({ update, runningNames }: Props) {
         <p className="update__note">已经是最新版本。</p>
       )}
 
+      <MirrorPicker
+        mirror={status.mirror}
+        onChange={(next) => void update.setMirror(next)}
+      />
+
       {confirming && (
         <ConfirmUpdateDialog
           version={status.latestVersion ?? ''}
@@ -103,6 +109,83 @@ export function UpdatePanel({ update, runningNames }: Props) {
         />
       )}
     </section>
+  )
+}
+
+/** Chooses the proxy the release archive is downloaded through. GitHub's
+ *  release CDN is slow enough from parts of Asia that this is the difference
+ *  between a 20-second update and a failed one. */
+function MirrorPicker({
+  mirror,
+  onChange,
+}: {
+  mirror: string
+  onChange: (mirror: string) => void
+}) {
+  const known = UPDATE_MIRRORS.find((m) => m.value === mirror)
+  const [custom, setCustom] = useState(known ? '' : mirror)
+  const [editing, setEditing] = useState(!known)
+
+  const selection = editing ? 'custom' : mirror
+
+  return (
+    <details className="update__mirror">
+      <summary>
+        下载源：{known ? known.label : mirror || '直连 GitHub'}
+      </summary>
+
+      <div className="update__mirror-body">
+        {UPDATE_MIRRORS.map((option) => (
+          <label className="checkbox" key={option.value || 'direct'}>
+            <input
+              type="radio"
+              name="update-mirror"
+              checked={selection === option.value}
+              onChange={() => {
+                setEditing(false)
+                onChange(option.value)
+              }}
+            />
+            <span>
+              {option.label}
+              <small style={{ display: 'block' }}>{option.note}</small>
+            </span>
+          </label>
+        ))}
+
+        <label className="checkbox">
+          <input
+            type="radio"
+            name="update-mirror"
+            checked={selection === 'custom'}
+            onChange={() => setEditing(true)}
+          />
+          <span>自定义</span>
+        </label>
+
+        {editing && (
+          <div className="update__mirror-custom">
+            <input
+              value={custom}
+              onChange={(e) => setCustom(e.target.value)}
+              placeholder="https://example.com/"
+              aria-label="自定义镜像源"
+            />
+            <button className="btn" onClick={() => onChange(custom.trim())}>
+              保存
+            </button>
+          </div>
+        )}
+
+        <p className="update__note">
+          镜像只用来下载压缩包。校验用的 <code>SHA256SUMS.txt</code> 优先从 GitHub
+          直接取，所以镜像换不掉二进制 —— 它给的包对不上 GitHub 的哈希就会被拒绝。
+          只有 GitHub 完全连不上时才会退而从镜像取校验文件，那种情况下这一次更新等于
+          信任镜像，面板日志里会记一条警告。检查更新本身始终直连（这些镜像不代理
+          api.github.com）。
+        </p>
+      </div>
+    </details>
   )
 }
 

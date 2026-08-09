@@ -68,6 +68,15 @@ type Updater struct {
 	// apiBase points at GitHub; tests redirect it at an httptest server.
 	apiBase string
 
+	// mirror prefixes release download URLs, e.g. "https://ghfast.top/".
+	// Empty fetches from GitHub directly. See SetMirror for what it may carry.
+	mirror string
+
+	// downloadPrefix is the URL prefix a mirror is allowed to front. Tests
+	// point it at their own origin so the mirror/direct split can be observed
+	// with both sides actually reachable.
+	downloadPrefix string
+
 	// exePath overrides the binary Prepare stages next to and Commit replaces.
 	// Empty means "the running executable", which is what production wants and
 	// what a test must never be allowed to overwrite.
@@ -86,15 +95,70 @@ func (u *Updater) executable() (string, error) {
 // releases against the currently running version.
 func New(repo, currentVersion string) *Updater {
 	return &Updater{
-		repo:    repo,
-		current: currentVersion,
-		client:  &http.Client{Timeout: httpTimeout},
-		apiBase: "https://api.github.com",
+		repo:           repo,
+		current:        currentVersion,
+		client:         &http.Client{Timeout: httpTimeout},
+		apiBase:        "https://api.github.com",
+		downloadPrefix: "https://github.com/",
 	}
 }
 
 // CurrentVersion is the version of the running binary.
 func (u *Updater) CurrentVersion() string { return u.current }
+
+// SetMirror configures a proxy for release downloads, given as a prefix that a
+// GitHub URL is appended to — "https://ghfast.top/" turns
+// https://github.com/o/r/releases/download/v1/x.tar.gz into
+// https://ghfast.top/https://github.com/o/r/releases/download/v1/x.tar.gz.
+// Empty disables it.
+//
+// A mirror carries the release archive, which is the megabytes and therefore
+// the slow part. It does not get to decide what that archive should contain:
+// the checksums are fetched from GitHub first and only fall back to the mirror
+// if GitHub is unreachable, so serving a doctored binary requires breaking
+// GitHub's TLS too. Nor does it carry the update check — the mirrors people
+// use for this do not proxy api.github.com at all.
+func (u *Updater) SetMirror(prefix string) {
+	prefix = strings.TrimSpace(prefix)
+	if prefix != "" && !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+	u.mirror = prefix
+}
+
+// Mirror is the configured download proxy, or "" for direct downloads.
+func (u *Updater) Mirror() string { return u.mirror }
+
+// mirrored rewrites a GitHub download URL to go through the mirror, or returns
+// "" when no mirror applies. Only github.com URLs are rewritten: the proxies
+// are GitHub-specific, and prefixing anything else would just produce a 404.
+func (u *Updater) mirrored(raw string) string {
+	if u.mirror == "" || !strings.HasPrefix(raw, u.downloadPrefix) {
+		return ""
+	}
+	return u.mirror + raw
+}
+
+// bulkOrder is the URL preference for the release archive: mirror first,
+// because speed is the whole point, falling back to GitHub if it fails.
+func (u *Updater) bulkOrder(raw string) []string {
+	if m := u.mirrored(raw); m != "" {
+		return []string{m, raw}
+	}
+	return []string{raw}
+}
+
+// trustedOrder is the URL preference for the checksums: GitHub first, because
+// they are what stops a mirror substituting its own binary, and they are small
+// enough that fetching them slowly costs nothing. The mirror remains a fallback
+// so a blocked GitHub still leaves the panel updatable — with the mirror
+// trusted for that run, which the caller reports.
+func (u *Updater) trustedOrder(raw string) []string {
+	if m := u.mirrored(raw); m != "" {
+		return []string{raw, m}
+	}
+	return []string{raw}
+}
 
 // AssetName is the release archive this platform needs. It mirrors the naming
 // in the release workflow's packaging step.
@@ -177,7 +241,26 @@ func (rel *Release) HasAssetForPlatform() bool {
 type Staged struct {
 	path string // the staged binary
 	exe  string // the executable it will replace
+
+	// checksumFromMirror records that GitHub could not be reached for the
+	// checksums and the mirror supplied them instead. The binary still matched
+	// what it was told to expect, but both halves came from the same party, so
+	// this run trusted the mirror rather than merely using it for bandwidth.
+	checksumFromMirror bool
+
+	// archiveURL is where the archive actually came from, which is not always
+	// where it was asked for: a dead mirror falls back to GitHub. Logged so
+	// "the update was slow" can be answered without guessing.
+	archiveURL string
 }
+
+// ArchiveURL is the URL the release archive was fetched from.
+func (s *Staged) ArchiveURL() string { return s.archiveURL }
+
+// ChecksumFromMirror reports whether this update's integrity rests on the
+// mirror rather than on GitHub. Worth logging: it is the one case where a
+// mirror could have substituted a binary.
+func (s *Staged) ChecksumFromMirror() bool { return s.checksumFromMirror }
 
 // Prepare downloads the release archive for this platform, checks it against
 // the release's SHA256SUMS.txt, and unpacks the binary next to the running
@@ -193,7 +276,7 @@ func (u *Updater) Prepare(ctx context.Context, rel *Release, progress func(done,
 		return nil, fmt.Errorf("%w (looked for %s)", ErrNoAsset, name)
 	}
 
-	want, err := u.fetchChecksum(ctx, rel, name)
+	want, checksumFromMirror, err := u.fetchChecksum(ctx, rel, name)
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +300,7 @@ func (u *Updater) Prepare(ctx context.Context, rel *Release, progress func(done,
 		os.Remove(tmpName) // no-op once renamed away
 	}()
 
-	archive, err := u.downloadVerified(ctx, assetURL, want, progress)
+	archive, archiveURL, err := u.downloadVerified(ctx, u.bulkOrder(assetURL), want, progress)
 	if err != nil {
 		return nil, err
 	}
@@ -236,23 +319,30 @@ func (u *Updater) Prepare(ctx context.Context, rel *Release, progress func(done,
 		return nil, err
 	}
 
-	staged := &Staged{path: tmpName, exe: exe}
+	staged := &Staged{
+		path:               tmpName,
+		exe:                exe,
+		checksumFromMirror: checksumFromMirror,
+		archiveURL:         archiveURL,
+	}
 	tmpName = "" // hand ownership to the caller; skip the deferred Remove
 	return staged, nil
 }
 
 // fetchChecksum pulls SHA256SUMS.txt from the release and returns the digest
-// recorded for asset.
-func (u *Updater) fetchChecksum(ctx context.Context, rel *Release, asset string) (string, error) {
+// recorded for asset, along with whether it had to come from the mirror
+// because GitHub could not be reached.
+func (u *Updater) fetchChecksum(ctx context.Context, rel *Release, asset string) (sum string, fromMirror bool, err error) {
 	sumsURL, ok := rel.assets["SHA256SUMS.txt"]
 	if !ok {
-		return "", errors.New("release has no SHA256SUMS.txt, refusing to install an unverified binary")
+		return "", false, errors.New("release has no SHA256SUMS.txt, refusing to install an unverified binary")
 	}
-	body, err := u.get(ctx, sumsURL)
+	body, _, used, err := u.getFirst(ctx, u.trustedOrder(sumsURL))
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	defer body.Close()
+	fromMirror = used != sumsURL
 
 	scanner := bufio.NewScanner(io.LimitReader(body, maxChecksumBytes))
 	for scanner.Scan() {
@@ -262,27 +352,27 @@ func (u *Updater) fetchChecksum(ctx context.Context, rel *Release, asset string)
 			continue
 		}
 		if strings.TrimPrefix(fields[1], "*") == asset {
-			return strings.ToLower(fields[0]), nil
+			return strings.ToLower(fields[0]), fromMirror, nil
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("read checksums: %w", err)
+		return "", fromMirror, fmt.Errorf("read checksums: %w", err)
 	}
-	return "", fmt.Errorf("no checksum published for %s", asset)
+	return "", fromMirror, fmt.Errorf("no checksum published for %s", asset)
 }
 
 // downloadVerified streams the asset to a temp file, hashing as it goes, and
 // deletes it unless the digest matches.
-func (u *Updater) downloadVerified(ctx context.Context, url, want string, progress func(done, total int64)) (string, error) {
-	body, total, err := u.getWithLength(ctx, url)
+func (u *Updater) downloadVerified(ctx context.Context, urls []string, want string, progress func(done, total int64)) (path, from string, err error) {
+	body, total, from, err := u.getFirst(ctx, urls)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer body.Close()
 
 	tmp, err := os.CreateTemp("", "hypercraft-archive-*")
 	if err != nil {
-		return "", err
+		return "", from, err
 	}
 	tmpName := tmp.Name()
 	defer tmp.Close()
@@ -297,11 +387,11 @@ func (u *Updater) downloadVerified(ctx context.Context, url, want string, progre
 			done += int64(n)
 			if done > maxArchiveBytes {
 				os.Remove(tmpName)
-				return "", fmt.Errorf("release archive is larger than %d bytes", int64(maxArchiveBytes))
+				return "", from, fmt.Errorf("release archive is larger than %d bytes", int64(maxArchiveBytes))
 			}
 			if _, err := tmp.Write(buf[:n]); err != nil {
 				os.Remove(tmpName)
-				return "", err
+				return "", from, err
 			}
 			hash.Write(buf[:n])
 			if progress != nil {
@@ -313,24 +403,41 @@ func (u *Updater) downloadVerified(ctx context.Context, url, want string, progre
 		}
 		if readErr != nil {
 			os.Remove(tmpName)
-			return "", fmt.Errorf("download: %w", readErr)
+			return "", from, fmt.Errorf("download: %w", readErr)
 		}
 	}
 	if err := tmp.Sync(); err != nil {
 		os.Remove(tmpName)
-		return "", err
+		return "", from, err
 	}
 
 	if got := hex.EncodeToString(hash.Sum(nil)); got != want {
 		os.Remove(tmpName)
-		return "", fmt.Errorf("checksum mismatch: expected %s, got %s", want, got)
+		return "", from, fmt.Errorf("checksum mismatch: expected %s, got %s", want, got)
 	}
-	return tmpName, nil
+	return tmpName, from, nil
 }
 
-func (u *Updater) get(ctx context.Context, url string) (io.ReadCloser, error) {
-	body, _, err := u.getWithLength(ctx, url)
-	return body, err
+// getFirst tries each URL in order and returns the first that answers, along
+// with which one it was. Falling back like this is what makes a flaky mirror a
+// slowdown rather than an outage.
+func (u *Updater) getFirst(ctx context.Context, urls []string) (io.ReadCloser, int64, string, error) {
+	var firstErr error
+	for _, url := range urls {
+		body, length, err := u.getWithLength(ctx, url)
+		if err == nil {
+			return body, length, url, nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+		// A cancelled context will fail every remaining URL the same way;
+		// retrying just delays reporting it.
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	return nil, 0, "", firstErr
 }
 
 func (u *Updater) getWithLength(ctx context.Context, url string) (io.ReadCloser, int64, error) {

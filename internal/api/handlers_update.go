@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/lanscarlos/hypercraft/internal/selfupdate"
@@ -81,6 +83,73 @@ func (s *Server) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	writeJSON(w, http.StatusAccepted, s.updater.Status())
+}
+
+type mirrorRequest struct {
+	// Mirror is a URL prefix, or "" to download straight from GitHub.
+	Mirror string `json:"mirror"`
+}
+
+// handleUpdateMirror changes which proxy release downloads go through and
+// persists it, so the choice survives the restart an update performs.
+func (s *Server) handleUpdateMirror(w http.ResponseWriter, r *http.Request) {
+	if !s.updaterReady(w) {
+		return
+	}
+	var req mirrorRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+
+	mirror := strings.TrimSpace(req.Mirror)
+	if err := validateMirror(mirror); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if mirror != "" && !strings.HasSuffix(mirror, "/") {
+		mirror += "/"
+	}
+
+	if err := s.updater.SetMirror(mirror); err != nil {
+		writeError(w, http.StatusConflict, "更新正在进行中，无法修改镜像源")
+		return
+	}
+
+	s.panelMu.Lock()
+	panel := s.panel
+	panel.UpdateMirror = &mirror
+	s.panel = panel
+	s.panelMu.Unlock()
+
+	if err := s.store.SavePanel(panel); err != nil {
+		s.log.Error("could not persist the update mirror", "err", err)
+		writeError(w, http.StatusInternalServerError, "保存失败")
+		return
+	}
+	s.log.Info("update mirror changed", "mirror", mirror)
+	writeJSON(w, http.StatusOK, s.updater.Status())
+}
+
+// validateMirror rejects anything that is not an absolute http(s) prefix. The
+// operator already has full control of the panel, so this is not a privilege
+// boundary — it is there to turn a typo into a clear message instead of a
+// confusing download failure during an update.
+func validateMirror(mirror string) error {
+	if mirror == "" {
+		return nil
+	}
+	parsed, err := url.Parse(mirror)
+	if err != nil {
+		return errors.New("镜像源不是合法的 URL")
+	}
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
+		return errors.New("镜像源必须以 https:// 或 http:// 开头")
+	}
+	if parsed.Host == "" {
+		return errors.New("镜像源缺少主机名")
+	}
+	return nil
 }
 
 // updaterReady guards the endpoints against a Server built without an updater,

@@ -21,6 +21,7 @@ export interface UpdateController {
   checking: boolean
   check: () => Promise<void>
   apply: () => Promise<void>
+  setMirror: (mirror: string) => Promise<void>
 }
 
 /**
@@ -131,5 +132,14 @@ export function useUpdate(enabled: boolean): UpdateController {
     }
   }, [])
 
-  return { status, updating, restarting, error, checking, check, apply }
+  const setMirror = useCallback(async (mirror: string) => {
+    setError(null)
+    try {
+      setStatus(await api.setUpdateMirror(mirror))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存镜像源失败')
+    }
+  }, [])
+
+  return { status, updating, restarting, error, checking, check, apply, setMirror }
 }
