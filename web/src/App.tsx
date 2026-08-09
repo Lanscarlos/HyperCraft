@@ -11,6 +11,7 @@ import { HostTerminal } from './components/HostTerminal'
 import { NewInstanceDialog } from './components/NewInstanceDialog'
 import { SettingsPage, isSettingsSection } from './components/SettingsPage'
 import type { SettingsSection } from './components/SettingsPage'
+import { ThemeToggle } from './components/ThemeToggle'
 import type { InstanceStatus, User } from './types'
 import { STATE_LABELS, isLive, mergeState } from './types'
 import { useCores } from './useCores'
@@ -278,6 +279,7 @@ export default function App() {
         </nav>
 
         <div className="sidebar__footer">
+          <ThemeToggle />
           <span title={user.username}>{user.username}</span>
           <button className="link" onClick={() => setShowPassword(true)}>
             修改密码
