@@ -1,6 +1,7 @@
 package javaruntime
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -134,6 +135,138 @@ func TestInstallUnpacksAndRegistersRuntime(t *testing.T) {
 			t.Errorf("leftover in the runtimes directory: %s", entry.Name())
 		}
 	}
+}
+
+// TestExtractIntoClosesStagingHandle is the regression test for an install that
+// failed on Windows with "The process cannot access the file because it is
+// being used by another process": the os.Root handle on the staging directory
+// stayed open across the rename into place, and Windows will not move a
+// directory anything still holds.
+//
+// Linux renames it regardless, so the failure itself cannot be reproduced here
+// — what is pinned instead is the invariant it came from, that extraction hands
+// staging back with none of our handles left on it. The rename is the caller's
+// next statement, so nothing may outlive this function.
+func TestExtractIntoClosesStagingHandle(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("open handles are only enumerable through /proc/self/fd")
+	}
+	staging := filepath.Join(t.TempDir(), ".installing-temurin-21.0.1-12-jre")
+	if err := os.MkdirAll(staging, 0o755); err != nil {
+		t.Fatalf("create staging: %v", err)
+	}
+	release := Release{Version: "21.0.1+12", ImageType: ImageJRE, FileName: "jre.tar.gz"}
+
+	err := extractInto(context.Background(), staging, release, openArchive(t, buildTarGz(t, jdkEntriesForThisOS())))
+	if err != nil {
+		t.Fatalf("extractInto: %v", err)
+	}
+	if held := handlesUnder(t, staging); len(held) != 0 {
+		t.Errorf("staging is still held open by %v, which is a sharing violation on Windows", held)
+	}
+}
+
+// TestUnpackMovesRuntimeIntoPlace checks the other half: after extraction the
+// staged tree is renamed to its final ID, wrapper directory dropped.
+func TestUnpackMovesRuntimeIntoPlace(t *testing.T) {
+	root := t.TempDir()
+	staging := filepath.Join(root, ".installing-temurin-21.0.1-12-jre")
+	release := Release{Version: "21.0.1+12", ImageType: ImageJRE, FileName: "jre.tar.gz"}
+
+	installer := NewInstaller(nil, NewStore(root), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	err := installer.unpack(context.Background(), staging, release, openArchive(t, buildTarGz(t, jdkEntriesForThisOS())))
+	if err != nil {
+		t.Fatalf("unpack: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "temurin-21.0.1-12-jre", "bin", javaBinary())); err != nil {
+		t.Errorf("the staged runtime was not moved into place: %v", err)
+	}
+	if _, err := os.Stat(staging); !os.IsNotExist(err) {
+		t.Errorf("the staging directory outlived the install")
+	}
+}
+
+// TestInstallDiscardsStaleStagingDirectory covers the retry after a failure
+// like the one above: whatever the previous attempt left behind must not end up
+// mixed into the runtime this one installs.
+func TestInstallDiscardsStaleStagingDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fixture archive contains symlinks")
+	}
+	fake := newFakeAdoptium(t, buildTarGz(t, jdkEntries()))
+	installer, root := newTestInstaller(t, fake)
+
+	stale := filepath.Join(root, ".installing-temurin-21.0.1-12-jre")
+	if err := os.MkdirAll(filepath.Join(stale, "bin"), 0o755); err != nil {
+		t.Fatalf("stage leftovers: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stale, "bin", "leftover"), []byte("junk"), 0o644); err != nil {
+		t.Fatalf("stage leftovers: %v", err)
+	}
+
+	if _, err := installer.Start(21, ImageJRE); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if done := awaitInstall(t, installer); done.State != JobDone {
+		t.Fatalf("install failed: %s / %s", done.State, done.Error)
+	}
+	if _, err := os.Stat(filepath.Join(root, "temurin-21.0.1-12-jre", "bin", "leftover")); err == nil {
+		t.Errorf("the previous attempt's files were installed as part of the runtime")
+	}
+}
+
+// handlesUnder lists the paths inside dir this process still has open.
+func handlesUnder(t *testing.T, dir string) []string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatalf("resolve %s: %v", dir, err)
+	}
+	entries, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		t.Skipf("no /proc/self/fd: %v", err)
+	}
+
+	var held []string
+	for _, entry := range entries {
+		target, err := os.Readlink(filepath.Join("/proc/self/fd", entry.Name()))
+		if err != nil {
+			continue // Closed while we were reading the directory.
+		}
+		if target == resolved || strings.HasPrefix(target, resolved+string(os.PathSeparator)) {
+			held = append(held, target)
+		}
+	}
+	return held
+}
+
+// jdkEntriesForThisOS is the fixture archive with the launcher name this
+// platform looks for, and without the symlink Windows cannot create unprivileged.
+func jdkEntriesForThisOS() []tarEntry {
+	entries := jdkEntries()
+	entries = entries[:len(entries)-1]
+	for i := range entries {
+		if entries[i].name == "jdk-21.0.1+12-jre/bin/java" {
+			entries[i].name = "jdk-21.0.1+12-jre/bin/" + javaBinary()
+		}
+	}
+	return entries
+}
+
+// openArchive writes archive bytes to disk and hands back an open file, the
+// form unpack takes its input in.
+func openArchive(t *testing.T, data []byte) *os.File {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "jre.tar.gz")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write archive: %v", err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open archive: %v", err)
+	}
+	t.Cleanup(func() { file.Close() })
+	return file
 }
 
 func TestInstallRejectsCorruptArchive(t *testing.T) {
