@@ -288,8 +288,9 @@ Android 9 以上默认禁止明文 HTTP，所以客户端连非 HTTPS 的面板�
   不满意可以填个文件名通配（`EssentialsX-*.jar`）自己指定。预发布版默认不列，要的话勾一下。
 
   **私有仓库**：自己写的插件发在私有仓库里也能管。在插件库页面填一个 GitHub 访问令牌
-  （fine-grained 令牌给目标仓库 `Contents: Read-only`，classic 令牌勾 `repo`），添加插件时勾上
-  「私有仓库」，检查更新和下载就都带认证走 GitHub API。私有仓库的 jar 只能从 API 取，所以
+  （fine-grained 令牌给目标仓库 `Contents: Read-only`，classic 令牌勾 `repo`）就行 —— 仓库是不是
+  私有的面板会自己问 GitHub，检查更新和下载前各核一次，检查和下载都带认证走 API。
+  私有仓库的 jar 只能从 API 取，所以
   **不经过下载镜像** —— 镜像是第三方，没有你的令牌，也不该知道这个仓库存在。令牌只发给
   `api.github.com`，存在 `panel.json`（`0600`）里，接口只回答「配没配」和末尾四位，读不回原文。
   顺带一提，公开仓库配了令牌也有用：匿名 API 每小时 60 次会变成 5000 次。

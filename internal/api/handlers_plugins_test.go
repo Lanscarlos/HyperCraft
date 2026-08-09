@@ -51,6 +51,17 @@ func newFakeGitHub(t *testing.T) *fakeGitHub {
 		}
 		w.Write(gh.body)
 	})
+	mux.HandleFunc("GET /repos/{owner}/{name}", func(w http.ResponseWriter, r *http.Request) {
+		if r.PathValue("name") != "private" {
+			fmt.Fprint(w, `{"private":false}`)
+			return
+		}
+		if !authenticated(r) {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprint(w, `{"private":true}`)
+	})
 	mux.HandleFunc("GET /repos/{owner}/{name}/releases", func(w http.ResponseWriter, r *http.Request) {
 		if r.PathValue("name") == "missing" {
 			http.NotFound(w, r)
@@ -435,6 +446,51 @@ func TestPrivatePluginIsUnreachableUntilATokenIsConfigured(t *testing.T) {
 	}
 	if panel.GitHubToken != fakeGitHubToken {
 		t.Errorf("the token was not persisted: %q", panel.GitHubToken)
+	}
+}
+
+func TestPrivateRepositoryIsRecognisedWithoutBeingDeclared(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	stored := env.do(http.MethodPut, "/api/plugins/config/token", pluginTokenRequest{Token: fakeGitHubToken})
+	stored.Body.Close()
+
+	// No Private flag: the operator pasted a repository URL and pressed add,
+	// which is the whole of what they should have to know. Reading the releases
+	// works either way, so nothing would go wrong until the download asked the
+	// public host for a jar it will never serve.
+	var item plugin.Plugin
+	decodeBody(t, env.do(http.MethodPost, "/api/plugins", pluginRequest{Repo: "me/private"}), &item)
+	if !item.Source.Private {
+		t.Fatalf("the repository's visibility should have been detected: %+v", item.Source)
+	}
+
+	started := env.do(http.MethodPost, "/api/plugins/"+item.ID+"/download",
+		pluginDownloadRequest{Tag: "v1.0.0"})
+	started.Body.Close()
+	if started.StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", started.StatusCode)
+	}
+	if job := env.awaitPluginDownload(); job.State != plugin.JobDone {
+		t.Fatalf("download did not finish: %+v", job)
+	}
+}
+
+func TestPublicRepositoryIsNotMarkedPrivateByAConfiguredToken(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	stored := env.do(http.MethodPut, "/api/plugins/config/token", pluginTokenRequest{Token: fakeGitHubToken})
+	stored.Body.Close()
+
+	// Ticked by hand, and wrong: GitHub says this one is public, so it goes back
+	// to the download host — and to the mirror, which is the point of the flag.
+	var item plugin.Plugin
+	decodeBody(t, env.do(http.MethodPost, "/api/plugins",
+		pluginRequest{Repo: "o/public", Private: true}), &item)
+	if item.Source.Private {
+		t.Fatalf("a public repository should not stay marked private: %+v", item.Source)
 	}
 }
 

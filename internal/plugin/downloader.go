@@ -92,6 +92,42 @@ func (d *Downloader) Releases(ctx context.Context, id string) ([]Release, error)
 	return d.client.Releases(ctx, item.Source)
 }
 
+// syncVisibility asks GitHub whether a repository is private and records the
+// answer, returning the plugin as it stands afterwards.
+//
+// This runs before checks and downloads so the panel does not depend on the
+// operator having ticked the right box. Getting it wrong is not a cosmetic
+// mistake: a private repository fetched as if it were public asks the download
+// host for a jar it will never serve, which fails with a 404 that reads like
+// the release is gone, and it hands the plugin's name to the download mirror on
+// the way. Both are avoided by asking the one party that knows.
+//
+// It only asks when a token is configured — an anonymous panel gets the same
+// 404 for a private repository here as everywhere else, so the call could only
+// spend quota to learn nothing. A failure is not an error: the stored flag is
+// still the best answer available, and a visibility probe must never be the
+// reason an update check or a download does not happen.
+func (d *Downloader) syncVisibility(ctx context.Context, item Plugin) Plugin {
+	if item.Source.Kind != SourceGitHub || !d.client.Authenticated() {
+		return item
+	}
+	private, err := d.client.Visibility(ctx, item.Source.Repo)
+	if err != nil {
+		d.log.Debug("could not read repository visibility", "plugin", item.ID, "err", err)
+		return item
+	}
+	changed, err := d.library.SetPrivate(item.ID, private)
+	if err != nil {
+		d.log.Warn("could not record repository visibility", "plugin", item.ID, "err", err)
+		return item
+	}
+	if changed {
+		d.log.Info("repository visibility corrected", "plugin", item.ID, "private", private)
+	}
+	item.Source.Private = private
+	return item
+}
+
 // Check refreshes one plugin's newest release and records the result.
 //
 // The error is returned as well as stored: the operator who clicked "check"
@@ -102,6 +138,7 @@ func (d *Downloader) Check(ctx context.Context, id string) (Plugin, error) {
 	if err != nil {
 		return Plugin{}, err
 	}
+	item = d.syncVisibility(ctx, item)
 
 	latest, checkErr := d.client.Latest(ctx, item.Source)
 	var found *Release
@@ -180,6 +217,12 @@ func (d *Downloader) Start(pluginID, tag string) (Job, error) {
 	d.done = make(chan struct{})
 	job, done := d.job, d.done
 	d.mu.Unlock()
+
+	// Checked again here rather than trusted from the last check: this is the
+	// one moment where being wrong about it fails the operation, and a
+	// repository that was made private after it was added would otherwise keep
+	// failing until someone thought to press "check updates".
+	item = d.syncVisibility(ctx, item)
 
 	release, err := d.resolve(ctx, item, tag)
 	if err != nil {

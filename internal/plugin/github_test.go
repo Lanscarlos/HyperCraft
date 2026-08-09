@@ -348,6 +348,26 @@ func TestReleasesAuthenticatesAndKeepsThePrivateAssetURL(t *testing.T) {
 	}
 }
 
+func TestVisibilityReportsWhatGitHubSaysRatherThanWhatWasTicked(t *testing.T) {
+	client := githubStub(t, `{"private":true}`, http.StatusOK)
+	client.SetToken("ghp_secret")
+
+	private, err := client.Visibility(context.Background(), "https://github.com/me/mine")
+	if err != nil {
+		t.Fatalf("Visibility: %v", err)
+	}
+	if !private {
+		t.Error("the stub said private")
+	}
+
+	// Without a token GitHub answers about a private repository the same way it
+	// answers about one that does not exist, so there is no truth to be had.
+	blind := githubStub(t, "", http.StatusNotFound)
+	if _, err := blind.Visibility(context.Background(), "me/mine"); !errors.Is(err, ErrNeedsToken) {
+		t.Fatalf("expected ErrNeedsToken, got %v", err)
+	}
+}
+
 func TestReleasesSaysTheTokenIsTheProblemWhenOneIsConfigured(t *testing.T) {
 	client := githubStub(t, "", http.StatusNotFound)
 	client.SetToken("ghp_secret")

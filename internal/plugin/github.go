@@ -248,6 +248,11 @@ func (c *Client) SetToken(token string) {
 	c.token = strings.TrimSpace(token)
 }
 
+// Authenticated reports whether a token is configured, which is what decides
+// whether asking GitHub about a repository's visibility can tell the truth. The
+// token itself is deliberately not readable back out.
+func (c *Client) Authenticated() bool { return c.authToken() != "" }
+
 // authToken is read internally only. There is deliberately no exported getter:
 // nothing in the panel needs to show the token back, and a getter is how a
 // secret ends up in a JSON response by accident.
@@ -363,6 +368,32 @@ func (c *Client) Releases(ctx context.Context, src Source) ([]Release, error) {
 		return nil, fmt.Errorf("%w: %s publishes no release with a jar the panel can use", ErrNoRelease, src.Repo)
 	}
 	return out, nil
+}
+
+// Visibility reports whether a repository is private, which decides how its
+// jars have to be fetched: a public asset comes off the download host and may
+// go through the mirror, a private one exists only through the API.
+//
+// This is asked rather than left to the operator because the two answers are
+// not interchangeable and the difference is invisible from the release listing
+// — which lists a private repository's releases perfectly happily once a token
+// is in play, and then hands out download links that 404. Someone who pasted a
+// repository URL should not have to know that.
+//
+// Only useful with a token: without one, a private repository is a 404 here for
+// the same reason it is everywhere else.
+func (c *Client) Visibility(ctx context.Context, repo string) (bool, error) {
+	repo, err := ParseRepo(repo)
+	if err != nil {
+		return false, err
+	}
+	var info struct {
+		Private bool `json:"private"`
+	}
+	if err := c.getJSON(ctx, fmt.Sprintf("%s/repos/%s", c.apiBase, repo), &info); err != nil {
+		return false, err
+	}
+	return info.Private, nil
 }
 
 // Latest is the newest release this source offers.
