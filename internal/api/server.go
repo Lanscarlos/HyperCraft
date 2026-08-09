@@ -222,6 +222,10 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("GET /api/plugins", s.handlePluginLibrary)
 	protected.HandleFunc("POST /api/plugins", s.handleAddPlugin)
 	protected.HandleFunc("POST /api/plugins/check", s.handleCheckPlugins)
+	// Two segments deep on purpose: "PUT /api/plugins/{id}" already owns the
+	// single-segment shape, and a plugin an operator happened to name "token"
+	// would otherwise become the one plugin nobody can edit.
+	protected.HandleFunc("PUT /api/plugins/config/token", s.handlePluginToken)
 	protected.HandleFunc("POST /api/plugins/cancel", s.handleCancelPluginDownload)
 	protected.HandleFunc("PUT /api/plugins/{id}", s.handleUpdatePlugin)
 	protected.HandleFunc("DELETE /api/plugins/{id}", s.handleDeletePlugin)

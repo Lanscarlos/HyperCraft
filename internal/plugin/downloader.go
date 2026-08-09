@@ -243,7 +243,7 @@ func (d *Downloader) run(ctx context.Context, job *Job, item Plugin, release Rel
 	if err = os.MkdirAll(dir, 0o755); err == nil {
 		// A previous attempt may have died with the panel and left its part file.
 		_ = os.Remove(temp)
-		digest, err = d.transfer(ctx, job, temp, release.Asset)
+		digest, err = d.transfer(ctx, job, temp, item.Source, release.Asset)
 	}
 	if err == nil {
 		// Re-downloading a version the operator already has is the repair path
@@ -287,8 +287,8 @@ func (d *Downloader) run(ctx context.Context, job *Job, item Plugin, release Rel
 }
 
 // transfer streams one asset to disk and returns its SHA-256.
-func (d *Downloader) transfer(ctx context.Context, job *Job, temp string, asset Asset) (string, error) {
-	body, err := d.client.Fetch(ctx, asset)
+func (d *Downloader) transfer(ctx context.Context, job *Job, temp string, src Source, asset Asset) (string, error) {
+	body, err := d.client.Fetch(ctx, src, asset)
 	if err != nil {
 		return "", err
 	}

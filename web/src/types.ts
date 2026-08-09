@@ -291,6 +291,12 @@ export interface PluginSource {
   assetPattern?: string
   /** Include GitHub prereleases in the version list. */
   prerelease?: boolean
+  /**
+   * A repository only the panel's GitHub token can see. Its releases are read
+   * and downloaded through the API instead of the public download host, and
+   * never through the mirror.
+   */
+  private?: boolean
 }
 
 /** One release upstream offers, whether or not it has been downloaded. */
@@ -355,6 +361,10 @@ export interface PluginLibrary {
   root: string
   plugins: LibraryPlugin[]
   job: PluginDownloadJob | null
+  /** Whether the panel holds a GitHub access token. The token never travels. */
+  tokenConfigured: boolean
+  /** Last four characters of that token, enough to recognise which one it is. */
+  tokenHint?: string
 }
 
 /** One row of an instance's plugin list: the panel's record joined with disk. */

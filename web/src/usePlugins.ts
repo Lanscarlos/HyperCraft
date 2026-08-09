@@ -12,6 +12,7 @@ export interface PluginInput {
   repo: string
   assetPattern?: string
   prerelease?: boolean
+  private?: boolean
   targetDir?: string
   note?: string
 }
@@ -37,6 +38,8 @@ export interface PluginController {
   download: (id: string, tag: string) => Promise<void>
   cancel: () => Promise<void>
   removeVersion: (id: string, tag: string) => Promise<void>
+  /** Stores the GitHub token, or clears it with an empty string. */
+  setToken: (token: string) => Promise<boolean>
 }
 
 /**
@@ -167,6 +170,17 @@ export function usePlugins(enabled: boolean): PluginController {
     [act, refresh],
   )
 
+  const setToken = useCallback(
+    (token: string) =>
+      act(async () => {
+        // The response is the library as it looks with the new token, so the
+        // "已配置" line updates without a second round trip.
+        setLibrary(await api.setPluginToken(token))
+        return true
+      }, '保存访问令牌失败').catch(() => false),
+    [act],
+  )
+
   return {
     library,
     plugins,
@@ -185,5 +199,6 @@ export function usePlugins(enabled: boolean): PluginController {
     download,
     cancel,
     removeVersion,
+    setToken,
   }
 }

@@ -14,6 +14,11 @@ func (s *Server) writePluginError(w http.ResponseWriter, err error) {
 	case errors.Is(err, plugin.ErrInvalidRepo), errors.Is(err, plugin.ErrInvalidTarget),
 		errors.Is(err, plugin.ErrInvalidID):
 		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, plugin.ErrNeedsToken):
+		// Not a 404: the repository may well exist, and repeating the request
+		// unchanged will never work. What is missing is a credential the
+		// operator has to supply, so this is their request to fix.
+		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, plugin.ErrNotFound), errors.Is(err, plugin.ErrNotInstalled):
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, plugin.ErrExists), errors.Is(err, plugin.ErrBusy):
@@ -51,6 +56,14 @@ type pluginLibraryResponse struct {
 	Root    string       `json:"root"`
 	Plugins []pluginView `json:"plugins"`
 	Job     *plugin.Job  `json:"job"`
+	// TokenConfigured says whether the panel holds a GitHub access token, which
+	// is what private repositories and a higher API rate limit both need. The
+	// token itself never travels: the page only has to say whether one is there.
+	TokenConfigured bool `json:"tokenConfigured"`
+	// TokenHint is the last few characters of the stored token, so an operator
+	// looking at two accounts' tokens can tell which one this panel holds
+	// without being shown anything that could be replayed.
+	TokenHint string `json:"tokenHint,omitempty"`
 }
 
 // handlePluginLibrary answers everything the library page needs in one request.
@@ -71,9 +84,12 @@ func (s *Server) pluginLibrary() pluginLibraryResponse {
 	users := s.instancePlugins.UsedBy()
 
 	items := s.plugins.Library().List()
+	token := s.githubToken()
 	resp := pluginLibraryResponse{
-		Root:    s.plugins.Library().Root(),
-		Plugins: make([]pluginView, 0, len(items)),
+		Root:            s.plugins.Library().Root(),
+		Plugins:         make([]pluginView, 0, len(items)),
+		TokenConfigured: token != "",
+		TokenHint:       tokenHint(token),
 	}
 	for _, item := range items {
 		view := pluginView{Plugin: item, UsedBy: []string{}}
@@ -92,11 +108,99 @@ func (s *Server) pluginLibrary() pluginLibraryResponse {
 	return resp
 }
 
+// githubToken is the stored access token, read under the panel lock like every
+// other piece of panel config.
+func (s *Server) githubToken() string {
+	s.panelMu.RLock()
+	defer s.panelMu.RUnlock()
+	return s.panel.GitHubToken
+}
+
+// tokenHint is the tail of a token, enough to recognise one already stored and
+// not enough to be worth stealing. Short strings get nothing: a "hint" that
+// shows half a secret is not a hint.
+func tokenHint(token string) string {
+	if len(token) < 12 {
+		return ""
+	}
+	return token[len(token)-4:]
+}
+
+type pluginTokenRequest struct {
+	// Token is a GitHub personal access token, or "" to forget the one stored.
+	Token string `json:"token"`
+}
+
+// handlePluginToken stores the credential private repositories are read with.
+//
+// The token is write-only across this API: it goes in here and is never sent
+// back, so a panel session that is later hijacked cannot lift the operator's
+// GitHub account out of it. Replacing it is how a wrong one gets fixed.
+func (s *Server) handlePluginToken(w http.ResponseWriter, r *http.Request) {
+	if !s.pluginsAvailable(w) {
+		return
+	}
+
+	var req pluginTokenRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "malformed request body")
+		return
+	}
+	token := strings.TrimSpace(req.Token)
+	if err := validateGitHubToken(token); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// The client first, so a token pasted to fix a failing repository works on
+	// the retry that follows even if writing panel.json goes wrong.
+	s.plugins.Client().SetToken(token)
+
+	s.panelMu.Lock()
+	panel := s.panel
+	panel.GitHubToken = token
+	s.panel = panel
+	s.panelMu.Unlock()
+
+	if err := s.persistPanel(); err != nil {
+		s.log.Error("could not persist the GitHub token", "err", err)
+		writeError(w, http.StatusInternalServerError, "令牌已生效，但保存失败，重启面板后会丢失")
+		return
+	}
+	if token == "" {
+		s.log.Info("GitHub token cleared")
+	} else {
+		s.log.Info("GitHub token configured")
+	}
+	writeJSON(w, http.StatusOK, s.pluginLibrary())
+}
+
+// validateGitHubToken checks the shape of what was pasted, not whether GitHub
+// accepts it — that answer only exists at the next request, and the plugin card
+// is where it belongs. What is rejected here is what could not be a token at
+// all: whitespace or control characters inside it (a pasted line that brought a
+// newline along is trimmed before this), or a length no token has.
+func validateGitHubToken(token string) error {
+	if token == "" {
+		return nil
+	}
+	if len(token) > 512 {
+		return errors.New("这不像是一个访问令牌：太长了")
+	}
+	for _, r := range token {
+		if r <= ' ' || r == 0x7f {
+			return errors.New("访问令牌里不应该有空格或换行，请只粘贴令牌本身")
+		}
+	}
+	return nil
+}
+
 type pluginRequest struct {
 	Name         string `json:"name"`
 	Repo         string `json:"repo"`
 	AssetPattern string `json:"assetPattern"`
 	Prerelease   bool   `json:"prerelease"`
+	Private      bool   `json:"private"`
 	TargetDir    string `json:"targetDir"`
 	Note         string `json:"note"`
 }
@@ -107,6 +211,7 @@ func (req pluginRequest) source() plugin.Source {
 		Repo:         strings.TrimSpace(req.Repo),
 		AssetPattern: strings.TrimSpace(req.AssetPattern),
 		Prerelease:   req.Prerelease,
+		Private:      req.Private,
 	}
 }
 

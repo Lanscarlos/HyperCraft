@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -21,14 +22,51 @@ type fakeGitHub struct {
 	body   []byte
 }
 
+// fakeGitHubToken is what the stub accepts as a valid access token. A
+// repository called "private" behaves the way GitHub does about one: invisible
+// — a plain 404, not a 403 — until a request proves who is asking.
+const fakeGitHubToken = "ghp_stubtoken0000"
+
 func newFakeGitHub(t *testing.T) *fakeGitHub {
 	t.Helper()
 	gh := &fakeGitHub{body: []byte(strings.Repeat("plugin", 512))}
 
+	authenticated := func(r *http.Request) bool {
+		return r.Header.Get("Authorization") == "Bearer "+fakeGitHubToken
+	}
+
 	mux := http.NewServeMux()
+	// A private release publishes its assets through the API only, so this is
+	// the shape the panel has to cope with: no browser_download_url at all.
+	mux.HandleFunc("GET /repos/{owner}/{name}/releases/assets/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if !authenticated(r) {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("Accept") != "application/octet-stream" {
+			// What GitHub does here is answer with the asset's JSON, which the
+			// panel would happily write to disk and call a plugin.
+			w.WriteHeader(http.StatusNotAcceptable)
+			return
+		}
+		w.Write(gh.body)
+	})
 	mux.HandleFunc("GET /repos/{owner}/{name}/releases", func(w http.ResponseWriter, r *http.Request) {
 		if r.PathValue("name") == "missing" {
 			http.NotFound(w, r)
+			return
+		}
+		if r.PathValue("name") == "private" {
+			if !authenticated(r) {
+				http.NotFound(w, r)
+				return
+			}
+			fmt.Fprintf(w, `[
+				{"tag_name":"v1.0.0","name":"One","draft":false,"prerelease":false,
+				 "published_at":"2026-01-01T00:00:00Z",
+				 "assets":[{"name":"Mine-1.0.0.jar","size":%d,
+				            "url":"%s/repos/%s/%s/releases/assets/1"}]}
+			]`, len(gh.body), gh.URL(), r.PathValue("owner"), r.PathValue("name"))
 			return
 		}
 		fmt.Fprintf(w, `[
@@ -333,8 +371,102 @@ func TestPluginEndpointsReportUpstreamFailures(t *testing.T) {
 
 	releases := env.do(http.MethodGet, "/api/plugins/"+item.ID+"/releases", nil)
 	defer releases.Body.Close()
-	if releases.StatusCode != http.StatusBadGateway {
-		t.Fatalf("expected 502, got %d", releases.StatusCode)
+	// A repository nobody can see and one that does not exist are the same 404
+	// from GitHub, so the panel reports the one an operator can act on: the
+	// missing credential.
+	if releases.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", releases.StatusCode)
+	}
+}
+
+func TestPrivatePluginIsUnreachableUntilATokenIsConfigured(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	// Adding it is fine — the source is only a record, and nothing is fetched
+	// until a version is picked — but the check that runs with it cannot see a
+	// repository the panel has no credential for.
+	resp := env.do(http.MethodPost, "/api/plugins", pluginRequest{Repo: "me/private", Private: true})
+	if resp.StatusCode != http.StatusCreated {
+		defer resp.Body.Close()
+		t.Fatalf("expected 201, got %d", resp.StatusCode)
+	}
+	var item plugin.Plugin
+	decodeBody(t, resp, &item)
+	if item.CheckError == "" {
+		t.Fatal("the failed check should have been recorded")
+	}
+
+	blind := env.do(http.MethodGet, "/api/plugins/"+item.ID+"/releases", nil)
+	blind.Body.Close()
+	if blind.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 before a token is configured, got %d", blind.StatusCode)
+	}
+
+	var library pluginLibraryResponse
+	decodeBody(t, env.do(http.MethodPut, "/api/plugins/config/token",
+		pluginTokenRequest{Token: fakeGitHubToken}), &library)
+	if !library.TokenConfigured || library.TokenHint != fakeGitHubToken[len(fakeGitHubToken)-4:] {
+		t.Fatalf("the stored token should be reported, and only by its tail: %+v", library)
+	}
+
+	var releases []plugin.Release
+	decodeBody(t, env.do(http.MethodGet, "/api/plugins/"+item.ID+"/releases", nil), &releases)
+	if len(releases) != 1 || releases[0].Tag != "v1.0.0" {
+		t.Fatalf("unexpected releases: %+v", releases)
+	}
+
+	started := env.do(http.MethodPost, "/api/plugins/"+item.ID+"/download",
+		pluginDownloadRequest{Tag: "v1.0.0"})
+	started.Body.Close()
+	if started.StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", started.StatusCode)
+	}
+	job := env.awaitPluginDownload()
+	if job.State != plugin.JobDone {
+		t.Fatalf("private download did not finish: %+v", job)
+	}
+
+	// The token has to survive a restart, or every update would silently stop
+	// seeing the operator's own repositories.
+	panel, err := env.store.LoadPanel()
+	if err != nil {
+		t.Fatalf("LoadPanel: %v", err)
+	}
+	if panel.GitHubToken != fakeGitHubToken {
+		t.Errorf("the token was not persisted: %q", panel.GitHubToken)
+	}
+}
+
+func TestPluginTokenIsNeverReadBackOut(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	stored := env.do(http.MethodPut, "/api/plugins/config/token", pluginTokenRequest{Token: fakeGitHubToken})
+	stored.Body.Close()
+
+	resp := env.do(http.MethodGet, "/api/plugins", nil)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if strings.Contains(string(body), fakeGitHubToken) {
+		t.Fatalf("the library listing handed the token back: %s", body)
+	}
+
+	// Clearing it is how a token that leaked or expired is taken away.
+	var library pluginLibraryResponse
+	decodeBody(t, env.do(http.MethodPut, "/api/plugins/config/token", pluginTokenRequest{Token: ""}), &library)
+	if library.TokenConfigured {
+		t.Error("the token should have been cleared")
+	}
+
+	rejected := env.do(http.MethodPut, "/api/plugins/config/token",
+		pluginTokenRequest{Token: "ghp_with a space"})
+	rejected.Body.Close()
+	if rejected.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for a mangled token, got %d", rejected.StatusCode)
 	}
 }
 

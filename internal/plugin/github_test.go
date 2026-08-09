@@ -204,31 +204,161 @@ func TestReleasesSeparatesRateLimitsFromOtherFailures(t *testing.T) {
 		t.Errorf("GitHub's own explanation should be passed through: %v", err)
 	}
 
+	// A 404 cannot tell a typo from a repository the caller may not see, so it
+	// is reported as the one of the two that has a fix: configure a token.
 	missing := githubStub(t, "", http.StatusNotFound)
-	if _, err := missing.Releases(context.Background(), Source{Repo: "o/r"}); !errors.Is(err, ErrNoRelease) {
-		t.Fatalf("expected ErrNoRelease for a 404, got %v", err)
+	if _, err := missing.Releases(context.Background(), Source{Repo: "o/r"}); !errors.Is(err, ErrNeedsToken) {
+		t.Fatalf("expected ErrNeedsToken for a 404, got %v", err)
 	}
 }
 
 func TestMirrorOnlyRewritesGitHubDownloads(t *testing.T) {
 	client := NewClient("", "test")
 	client.SetMirror("https://ghfast.top")
+	public := Source{Repo: "o/r"}
 
-	order := client.downloadOrder("https://github.com/o/r/releases/download/v1/x.jar")
+	order, err := client.downloadOrder(public, Asset{URL: "https://github.com/o/r/releases/download/v1/x.jar"})
+	if err != nil {
+		t.Fatalf("downloadOrder: %v", err)
+	}
 	if len(order) != 2 ||
-		order[0] != "https://ghfast.top/https://github.com/o/r/releases/download/v1/x.jar" ||
-		order[1] != "https://github.com/o/r/releases/download/v1/x.jar" {
+		order[0].url != "https://ghfast.top/https://github.com/o/r/releases/download/v1/x.jar" ||
+		order[1].url != "https://github.com/o/r/releases/download/v1/x.jar" {
 		t.Fatalf("unexpected order: %v", order)
 	}
 	// A mirror that only fronts github.com would 404 on anything else, so the
 	// prefix is not applied to it.
-	if order := client.downloadOrder("https://example.com/x.jar"); len(order) != 1 {
+	if order, _ := client.downloadOrder(public, Asset{URL: "https://example.com/x.jar"}); len(order) != 1 {
 		t.Fatalf("a non-GitHub URL should not be mirrored: %v", order)
 	}
 
 	client.SetMirror("")
-	if order := client.downloadOrder("https://github.com/o/r/x.jar"); len(order) != 1 {
+	if order, _ := client.downloadOrder(public, Asset{URL: "https://github.com/o/r/x.jar"}); len(order) != 1 {
 		t.Fatalf("no mirror means one attempt: %v", order)
+	}
+}
+
+func TestPrivateDownloadsGoStraightToTheAPIWithNoMirror(t *testing.T) {
+	client := NewClient("", "test")
+	client.SetMirror("https://ghfast.top")
+	client.SetToken("ghp_secret")
+
+	private := Source{Repo: "me/mine", Private: true}
+	asset := Asset{
+		Name:   "Mine-1.0.jar",
+		URL:    "https://github.com/me/mine/releases/download/v1/Mine-1.0.jar",
+		APIURL: "https://api.github.com/repos/me/mine/releases/assets/7",
+	}
+
+	order, err := client.downloadOrder(private, asset)
+	if err != nil {
+		t.Fatalf("downloadOrder: %v", err)
+	}
+	// One route, and it is the API: the public link cannot serve a private
+	// asset, and the mirror must never be told this repository exists — it is a
+	// third party the operator hid the repository from.
+	if len(order) != 1 || order[0].url != asset.APIURL || !order[0].auth {
+		t.Fatalf("unexpected order: %+v", order)
+	}
+
+	client.SetToken("")
+	if _, err := client.downloadOrder(private, asset); !errors.Is(err, ErrNeedsToken) {
+		t.Fatalf("a private source without a token should be refused, got %v", err)
+	}
+}
+
+func TestTokenGoesToTheAPIAndNowhereElse(t *testing.T) {
+	var seen []string
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.URL.Path+" auth="+r.Header.Get("Authorization"))
+		if strings.HasPrefix(r.URL.Path, "/repos/") && strings.Contains(r.URL.Path, "/assets/") {
+			if r.Header.Get("Accept") != "application/octet-stream" {
+				// Without this header the API answers with the asset's JSON,
+				// which would be written to disk as if it were the jar.
+				w.WriteHeader(http.StatusNotAcceptable)
+				return
+			}
+			_, _ = w.Write([]byte("private jar"))
+			return
+		}
+		_, _ = w.Write([]byte("public jar"))
+	}))
+	defer origin.Close()
+
+	client := NewClient(origin.URL, "test")
+	client.SetToken("ghp_secret")
+
+	// A private asset: authenticated, and the bytes come back.
+	body, err := client.Fetch(context.Background(),
+		Source{Repo: "me/mine", Private: true},
+		Asset{Name: "Mine.jar", APIURL: origin.URL + "/repos/me/mine/releases/assets/7"})
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	_ = body.Close()
+
+	// A public asset from the same stub, which is not the API host as far as
+	// this client is concerned: the token stays behind.
+	body, err = client.Fetch(context.Background(),
+		Source{Repo: "o/r"}, Asset{Name: "Foo.jar", URL: origin.URL + "/public/Foo.jar"})
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	_ = body.Close()
+
+	if len(seen) != 2 {
+		t.Fatalf("expected two requests, got %v", seen)
+	}
+	if !strings.HasSuffix(seen[0], "auth=Bearer ghp_secret") {
+		t.Errorf("the private download should have been authenticated: %q", seen[0])
+	}
+	if !strings.HasSuffix(seen[1], "auth=") {
+		t.Errorf("a public download must not carry the token: %q", seen[1])
+	}
+}
+
+func TestReleasesAuthenticatesAndKeepsThePrivateAssetURL(t *testing.T) {
+	var authorization string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorization = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+		  {"tag_name":"v1.0.0","name":"One","draft":false,"prerelease":false,
+		   "published_at":"2026-01-01T00:00:00Z",
+		   "assets":[{"name":"Mine-1.0.jar","size":10,
+		              "url":"https://api.github.com/repos/me/mine/releases/assets/7"}]}
+		]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test")
+	client.SetToken("ghp_secret")
+
+	releases, err := client.Releases(context.Background(), Source{Repo: "me/mine", Private: true})
+	if err != nil {
+		t.Fatalf("Releases: %v", err)
+	}
+	if authorization != "Bearer ghp_secret" {
+		t.Errorf("metadata request was not authenticated: %q", authorization)
+	}
+	// A private release publishes no browser_download_url worth having; the
+	// asset is kept anyway, because the API link is what will fetch it.
+	if len(releases) != 1 || releases[0].Asset.APIURL != "https://api.github.com/repos/me/mine/releases/assets/7" {
+		t.Fatalf("unexpected release: %+v", releases)
+	}
+}
+
+func TestReleasesSaysTheTokenIsTheProblemWhenOneIsConfigured(t *testing.T) {
+	client := githubStub(t, "", http.StatusNotFound)
+	client.SetToken("ghp_secret")
+
+	_, err := client.Releases(context.Background(), Source{Repo: "me/mine", Private: true})
+	if !errors.Is(err, ErrNeedsToken) {
+		t.Fatalf("expected ErrNeedsToken, got %v", err)
+	}
+	// "Configure a token" is useless advice to someone who already did.
+	if !strings.Contains(err.Error(), "cannot read it") {
+		t.Errorf("the message should point at the token that is there: %v", err)
 	}
 }
 
@@ -259,13 +389,13 @@ func TestFetchFallsBackToGitHubWhenTheMirrorFails(t *testing.T) {
 	// downloadOrder only mirrors github.com URLs, so the fallback is exercised
 	// by pointing both attempts at the stub: the first path fails, the second
 	// is the real one.
-	body, err := client.Fetch(context.Background(), Asset{URL: origin.URL + "/ok.jar"})
+	body, err := client.Fetch(context.Background(), Source{Repo: "o/r"}, Asset{URL: origin.URL + "/ok.jar"})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
 	defer body.Close()
 
-	if _, err := client.Fetch(context.Background(), Asset{URL: origin.URL + "/broken.jar"}); !errors.Is(err, ErrUpstream) {
+	if _, err := client.Fetch(context.Background(), Source{Repo: "o/r"}, Asset{URL: origin.URL + "/broken.jar"}); !errors.Is(err, ErrUpstream) {
 		t.Fatalf("expected ErrUpstream, got %v", err)
 	}
 }
