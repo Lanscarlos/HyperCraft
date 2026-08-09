@@ -354,7 +354,36 @@ export interface UpdateStatus {
   error?: string
   /** Download proxy prefix; empty means downloads go straight to GitHub. */
   mirror: string
+  /** Which releases this panel is offered. */
+  channel: UpdateChannel
+  /** True when the running binary is a snapshot or rc rather than a release. */
+  currentIsSnapshot: boolean
+  /** True when the offered version is a snapshot or rc. */
+  latestIsPrerelease: boolean
+  /** True when installing the offered version moves backwards — the way back
+   *  from a snapshot to the stable track. */
+  downgrade: boolean
 }
+
+export type UpdateChannel = 'stable' | 'snapshot'
+
+/** The two release channels, as offered on the update page. */
+export const UPDATE_CHANNELS: {
+  label: string
+  value: UpdateChannel
+  note: string
+}[] = [
+  {
+    label: '正式版',
+    value: 'stable',
+    note: '只更新到正式发布的版本，生产环境用这个',
+  },
+  {
+    label: '快照',
+    value: 'snapshot',
+    note: 'main 分支每次通过 CI 的提交都会出一版，尝鲜用，可能有未完成的功能',
+  },
+]
 
 /** Known GitHub download proxies. The panel accepts any prefix, these are just
  *  the ones offered without typing. */

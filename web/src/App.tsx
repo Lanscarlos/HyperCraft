@@ -145,7 +145,11 @@ export default function App() {
               {user.version}
               {update.status?.updateAvailable && (
                 <span className="badge badge--update" title={`可更新到 ${update.status.latestVersion}`}>
-                  有新版本
+                  {update.status.downgrade
+                    ? '可回到正式版'
+                    : update.status.latestIsPrerelease
+                      ? '有新快照'
+                      : '有新版本'}
                 </span>
               )}
             </small>

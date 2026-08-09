@@ -164,7 +164,7 @@ func run() error {
 	// running image has been renamed aside and the OS would report the backup.
 	var newBinary atomic.Pointer[string]
 
-	updater := selfupdate.NewService(updateRepo, version, panel.Mirror(), selfupdate.Hooks{
+	updater := selfupdate.NewService(updateRepo, version, panel.Mirror(), selfupdate.ParseChannel(panel.Channel()), selfupdate.Hooks{
 		// Recorded before the swap so the servers this update is about to stop
 		// come back on the other side, whether or not they auto-start.
 		BeforeInstall:  func() error { return st.SaveResume(manager.RunningIDs()) },

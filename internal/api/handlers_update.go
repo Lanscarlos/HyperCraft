@@ -131,6 +131,50 @@ func (s *Server) handleUpdateMirror(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.updater.Status())
 }
 
+type channelRequest struct {
+	// Channel is "stable" or "snapshot".
+	Channel string `json:"channel"`
+}
+
+// handleUpdateChannel switches between release channels and persists the
+// choice. The cached check is dropped by the switch — it describes the channel
+// just left — so the caller is expected to follow this with a check.
+func (s *Server) handleUpdateChannel(w http.ResponseWriter, r *http.Request) {
+	if !s.updaterReady(w) {
+		return
+	}
+	var req channelRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+
+	channel := selfupdate.Channel(strings.TrimSpace(req.Channel))
+	if channel != selfupdate.ChannelStable && channel != selfupdate.ChannelSnapshot {
+		writeError(w, http.StatusBadRequest, "更新通道只能是 stable 或 snapshot")
+		return
+	}
+
+	if err := s.updater.SetChannel(channel); err != nil {
+		writeError(w, http.StatusConflict, "更新正在进行中，无法切换更新通道")
+		return
+	}
+
+	s.panelMu.Lock()
+	panel := s.panel
+	panel.UpdateChannel = string(channel)
+	s.panel = panel
+	s.panelMu.Unlock()
+
+	if err := s.store.SavePanel(panel); err != nil {
+		s.log.Error("could not persist the update channel", "err", err)
+		writeError(w, http.StatusInternalServerError, "保存失败")
+		return
+	}
+	s.log.Info("update channel changed", "channel", channel)
+	writeJSON(w, http.StatusOK, s.updater.Status())
+}
+
 // validateMirror rejects anything that is not an absolute http(s) prefix. The
 // operator already has full control of the panel, so this is not a privilege
 // boundary — it is there to turn a typo into a clear message instead of a

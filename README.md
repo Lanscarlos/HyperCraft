@@ -203,6 +203,13 @@ panel.example.com {
   下载默认走 `https://ghfast.top/` 镜像（国内直连 GitHub 的下载速度基本没法用），界面上可以
   换成别的或直连，镜像挂了自动回退直连。**镜像只搬压缩包**：校验用的 `SHA256SUMS.txt` 优先
   从 GitHub 直接取，所以镜像换不掉二进制——它给的包对不上 GitHub 的哈希就会被拒绝。
+
+  **更新通道**分「正式版」和「快照」，默认正式版。快照是 main 分支每个通过 CI 的提交自动出的
+  一版（`1.2.1-snapshot.431` 这种，标着 prerelease），想提前试新功能可以在更新页切过去，
+  更新流程和正式版完全一样。快照通道同时也看正式版——按版本号取最新的那个，所以
+  `1.2.1` 一发布就会自动从 `1.2.1-snapshot.*` 更新过去。切回正式版通道时，如果当前跑的快照
+  比最新正式版新，面板会提示装回最新正式版，那一步是往回装的，会明确说清楚。
+  生产环境请留在正式版通道：快照只保证过了 CI。
 - **一键下载服务端核心** —— 目前是 Paper 和 Velocity，数据来自 PaperMC 的 Fill API。选版本后
   面板自己去下（走服务器的网络，不经过你的浏览器），下载归守护进程管，关掉网页也会继续，
   重开页面能接上进度。落盘前校验 sha256 和体积，先写 `.part` 再改名 —— 失败、取消或断网都不会
@@ -277,7 +284,18 @@ go run ./cmd/hypercraft -data ./data     # 后端 :8080
 npm --prefix web run dev                 # 前端 :5173，API 自动代理到 8080
 
 make cross          # 交叉编译 linux/amd64, linux/arm64, windows, darwin/arm64
+make package VERSION=v1.2.0   # 交叉编译 + 打包出 release/ 里的压缩包和 SHA256SUMS.txt
 ```
+
+### 发布
+
+`make package` 是发布的唯一入口，正式版和快照都走它，所以本地打的包和 CI 打的完全一样。
+
+- **正式版**：把 CHANGELOG 顶上的「未发布」改成 `## [x.y.z] - 日期` 合进 main，
+  `.github/workflows/release.yml` 会打 tag 并发布。
+- **快照**：`.github/workflows/snapshot.yml` 挂在 CI 后面，main 上每个通过 CI 的提交都发一版
+  prerelease，版本号是下一个补丁版加 `-snapshot.<提交数>`。这个提交本身就是某个正式版时会跳过，
+  免得同一份代码有两个版本号。只保留最近 5 个，旧的连同 tag 一起删。
 
 ### 结构
 

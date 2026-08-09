@@ -16,6 +16,7 @@ import type {
   PropertiesResponse,
   PropertyEntry,
   SystemInfo,
+  UpdateChannel,
   UpdateStatus,
   User,
 } from './types'
@@ -152,6 +153,8 @@ export const api = {
   applyUpdate: () => request<UpdateStatus>('POST', '/api/update/apply'),
   setUpdateMirror: (mirror: string) =>
     request<UpdateStatus>('PUT', '/api/update/mirror', { mirror }),
+  setUpdateChannel: (channel: UpdateChannel) =>
+    request<UpdateStatus>('PUT', '/api/update/channel', { channel }),
 
   system: () => request<SystemInfo>('GET', '/api/system'),
   instanceMetrics: (id: string) =>
