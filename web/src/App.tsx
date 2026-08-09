@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { ApiError, api } from './api'
 import { ChangePasswordDialog } from './components/ChangePasswordDialog'
+import { CoreLibraryPage } from './components/CoreLibraryPage'
 import { Dashboard } from './components/Dashboard'
 import { InstanceView } from './components/InstanceView'
+import { JavaPage } from './components/JavaPage'
 import { Login } from './components/Login'
 import { HostTerminal } from './components/HostTerminal'
 import { NewInstanceDialog } from './components/NewInstanceDialog'
@@ -24,26 +26,34 @@ const POLL_INTERVAL_MS = 5000
  *  URL is the only place it is stored, so deep links and reloads work. */
 type Route =
   | { kind: 'dashboard' }
+  | { kind: 'java' }
+  | { kind: 'cores' }
   | { kind: 'settings'; section: SettingsSection }
   | { kind: 'terminal' }
   | { kind: 'instance'; id: string }
+
+function startsWith(path: string, prefix: string): boolean {
+  return path === prefix || path.startsWith(`${prefix}/`)
+}
 
 function routeFromPath(): Route {
   const path = window.location.pathname
   const instance = path.match(/^\/i\/([^/]+)/)
   if (instance) return { kind: 'instance', id: instance[1] }
 
-  if (path === '/terminal' || path.startsWith('/terminal/')) return { kind: 'terminal' }
+  if (startsWith(path, '/terminal')) return { kind: 'terminal' }
+  if (startsWith(path, '/java')) return { kind: 'java' }
+  if (startsWith(path, '/cores')) return { kind: 'cores' }
 
   const settings = path.match(/^\/settings(?:\/([^/]+))?/)
   if (settings) {
     const section = settings[1] ?? ''
-    return { kind: 'settings', section: isSettingsSection(section) ? section : 'java' }
-  }
-  // /java was the Java page's own URL before the settings section existed;
-  // bookmarks and the old release's links still point at it.
-  if (path === '/java' || path.startsWith('/java/')) {
-    return { kind: 'settings', section: 'java' }
+    // Both used to be settings sections. Old bookmarks and links from an
+    // earlier release still point at them, so they land on the pages that
+    // replaced them rather than on a default tab.
+    if (section === 'java') return { kind: 'java' }
+    if (section === 'cores') return { kind: 'cores' }
+    return { kind: 'settings', section: isSettingsSection(section) ? section : 'terminal' }
   }
   return { kind: 'dashboard' }
 }
@@ -56,6 +66,10 @@ function pathOf(route: Route): string {
       return `/settings/${route.section}`
     case 'terminal':
       return '/terminal'
+    case 'java':
+      return '/java'
+    case 'cores':
+      return '/cores'
     default:
       return '/'
   }
@@ -110,6 +124,8 @@ export default function App() {
   )
 
   const openTerminal = useCallback(() => navigate({ kind: 'terminal' }), [navigate])
+  const openJava = useCallback(() => navigate({ kind: 'java' }), [navigate])
+  const openCores = useCallback(() => navigate({ kind: 'cores' }), [navigate])
 
   const refresh = useCallback(async () => {
     try {
@@ -166,7 +182,6 @@ export default function App() {
   // servers recorded for resume — so the update dialog promises exactly what
   // will happen.
   const runningNames = instances.filter((item) => isLive(item.state)).map((item) => item.name)
-  const settingsBusy = java.installing || cores.downloading
   const updateNotice = updateLabel(update.status)
 
   return (
@@ -194,6 +209,24 @@ export default function App() {
           >
             <span className="sidebar__name">仪表盘</span>
           </button>
+          {/* The two shared-asset pages sit at the top level rather than under
+              设置: installing a runtime and downloading a core are routine
+              errands, and both run as daemon jobs whose progress belongs
+              somewhere always visible. */}
+          <button
+            className={`sidebar__link${route.kind === 'java' ? ' sidebar__link--active' : ''}`}
+            onClick={openJava}
+          >
+            <span className="sidebar__name">Java 运行时</span>
+            {java.installing && <span className="badge badge--update">安装中</span>}
+          </button>
+          <button
+            className={`sidebar__link${route.kind === 'cores' ? ' sidebar__link--active' : ''}`}
+            onClick={openCores}
+          >
+            <span className="sidebar__name">服务端核心</span>
+            {cores.downloading && <span className="badge badge--update">下载中</span>}
+          </button>
           {/* Only shown once the operator has switched it on; there is nothing
               useful behind this entry otherwise, and an always-visible shell
               icon invites clicking on something you did not ask for. */}
@@ -207,16 +240,10 @@ export default function App() {
           )}
           <button
             className={`sidebar__link${route.kind === 'settings' ? ' sidebar__link--active' : ''}`}
-            onClick={() => openSettings(route.kind === 'settings' ? route.section : 'java')}
+            onClick={() => openSettings(route.kind === 'settings' ? route.section : 'terminal')}
           >
             <span className="sidebar__name">设置</span>
-            {settingsBusy ? (
-              <span className="badge badge--update">
-                {java.installing ? '安装中' : '下载中'}
-              </span>
-            ) : (
-              updateNotice && <span className="badge badge--update">1</span>
-            )}
+            {updateNotice && <span className="badge badge--update">1</span>}
           </button>
         </nav>
 
@@ -268,13 +295,15 @@ export default function App() {
           <SettingsPage
             section={route.section}
             onSection={openSettings}
-            java={java}
-            cores={cores}
             terminal={terminal}
             update={update}
             onOpenTerminal={openTerminal}
             runningNames={runningNames}
           />
+        ) : route.kind === 'java' ? (
+          <JavaPage java={java} onOpenCores={openCores} />
+        ) : route.kind === 'cores' ? (
+          <CoreLibraryPage cores={cores} onOpenJava={openJava} />
         ) : route.kind === 'terminal' ? (
           <HostTerminal terminal={terminal} onOpenSettings={() => openSettings('terminal')} />
         ) : selected ? (
@@ -287,7 +316,7 @@ export default function App() {
               select(null)
               void refresh()
             }}
-            onOpenLibrary={() => openSettings('cores')}
+            onOpenLibrary={openCores}
           />
         ) : (
           <Dashboard
@@ -295,7 +324,9 @@ export default function App() {
             instances={instances}
             onSelect={select}
             onCreate={() => setShowNew(true)}
-            onOpenSettings={openSettings}
+            onOpenJava={openJava}
+            onOpenCores={openCores}
+            onOpenUpdate={() => openSettings('update')}
             onChanged={applyInstance}
             update={update}
             java={java}
@@ -315,7 +346,7 @@ export default function App() {
           }}
           onOpenLibrary={() => {
             setShowNew(false)
-            openSettings('cores')
+            openCores()
           }}
         />
       )}

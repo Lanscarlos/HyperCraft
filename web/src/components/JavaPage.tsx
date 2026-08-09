@@ -1,15 +1,25 @@
 import { useEffect, useState } from 'react'
 
-import { formatBytes } from '../format'
-import type { JavaInstallJob, JavaRuntime } from '../types'
+import { formatBytes, formatDate } from '../format'
+import type { JavaInstallJob, JavaRuntime, SystemJava } from '../types'
 import type { JavaController } from '../useJava'
 
-/** Which Java a Minecraft version needs, for the hint under the picker. */
-const VERSION_HINTS = [
-  { major: 8, servers: '1.8 – 1.16.5' },
-  { major: 17, servers: '1.17 – 1.20.4' },
-  { major: 21, servers: '1.20.5 及以上' },
-  { major: 25, servers: 'Paper 26 及以上' },
+/** Which Java a Minecraft version needs, shown on the version being picked. */
+const VERSION_HINTS: Record<number, string> = {
+  8: '1.8 – 1.16.5',
+  17: '1.17 – 1.20.4',
+  21: '1.20.5 及以上',
+  25: 'Paper 26 及以上',
+}
+
+/** What to say about a version nothing in the table covers. */
+function majorNote(major: number, lts: boolean): string {
+  return VERSION_HINTS[major] ?? (lts ? '长期支持版本' : '过渡版本，一般用不到')
+}
+
+const IMAGE_TYPES: { value: 'jre' | 'jdk'; label: string; note: string }[] = [
+  { value: 'jre', label: 'JRE', note: '跑服够用，体积更小' },
+  { value: 'jdk', label: 'JDK', note: '带编译器和调试工具' },
 ]
 
 /**
@@ -21,10 +31,17 @@ const VERSION_HINTS = [
  * deleting one is a decision about all of them. Instances only pick from what
  * is here, in their 「启动设置」.
  */
-export function JavaPage({ java }: { java: JavaController }) {
+export function JavaPage({
+  java,
+  onOpenCores,
+}: {
+  java: JavaController
+  onOpenCores: () => void
+}) {
   const { overview, majors, job, installing, busy } = java
   const [major, setMajor] = useState<number | null>(null)
   const [imageType, setImageType] = useState<'jre' | 'jdk'>('jre')
+  const [showAllMajors, setShowAllMajors] = useState(false)
 
   // Default to the newest LTS: it is what current Minecraft wants and what
   // upstream supports longest. Only until the operator picks something.
@@ -44,7 +61,7 @@ export function JavaPage({ java }: { java: JavaController }) {
 
   if (!overview) {
     return (
-      <div className="page">
+      <div className="page page--wide">
         <h1>Java 运行时</h1>
         <p className="page__lead">正在读取…</p>
       </div>
@@ -52,134 +69,282 @@ export function JavaPage({ java }: { java: JavaController }) {
   }
 
   const selected = majors.find((entry) => entry.major === major)
-  const hint = VERSION_HINTS.find((entry) => entry.major === major)
+  const runtimes = overview.runtimes
+  const totalSize = runtimes.reduce((sum, runtime) => sum + runtime.size, 0)
+  // Adoptium ships every major, but only the LTS ones (and whatever is already
+  // on disk, or picked) are worth putting in front of someone running a
+  // Minecraft server. The rest are one click away.
+  const visibleMajors = majors.filter(
+    (entry) => showAllMajors || entry.lts || entry.installed || entry.major === major,
+  )
+  const hiddenMajors = majors.length - visibleMajors.length
 
   return (
-    <div className="page">
-      <h1>Java 运行时</h1>
-      <p className="page__lead">
-        不同版本的服务端要不同的 Java：1.16 要 8，1.17 要 17，1.20.5 起要 21，Paper 26 要 25。
-        这里装的运行时归面板所有，不动系统里的 Java；装好之后在实例的「启动设置」里选一个即可。
-      </p>
+    <div className="page page--wide">
+      <header className="page__head">
+        <div>
+          <h1>Java 运行时</h1>
+          <p className="page__lead">
+            不同版本的服务端要不同的 Java：1.16 要 8，1.17 要 17，1.20.5 起要 21，Paper 26 要 25。
+            这里装的运行时归面板所有，不动系统里的 Java；装好之后在实例的「启动设置」里选一个即可。
+          </p>
+        </div>
+        <p className="meta-chips">
+          {overview.platform.os && (
+            <span>
+              {overview.platform.os}/{overview.platform.arch}
+            </span>
+          )}
+          <span>面板已装 {runtimes.length} 个</span>
+          {runtimes.length > 0 && <span>共 {formatBytes(totalSize)}</span>}
+          <span>由 Eclipse Temurin 提供</span>
+        </p>
+      </header>
+
+      {overview.platform.warning && (
+        <div className="alert alert--error">{overview.platform.warning}</div>
+      )}
 
       <section className="panel">
         <div className="chart-head">
-          <h3 className="panel__title">已安装</h3>
+          <h2 className="panel__title">已安装</h2>
           <p className="chart-head__meta">
-            {overview.platform.os && `${overview.platform.os}/${overview.platform.arch} · `}
-            由 Eclipse Temurin 提供
+            {runtimes.length > 0
+              ? `面板管理 ${runtimes.length} 个，共 ${formatBytes(totalSize)}`
+              : '面板还没有装过运行时'}
           </p>
         </div>
 
-        {overview.platform.warning && (
-          <div className="alert alert--error">{overview.platform.warning}</div>
+        {runtimes.length === 0 && !overview.system ? (
+          <div className="welcome__empty">
+            <p>这台机器上还没有任何 Java，服务端起不来。</p>
+            <p className="muted">在下面挑一个版本装上，几十秒的事，全程不动系统环境。</p>
+          </div>
+        ) : (
+          <div className="asset-grid">
+            {overview.system && <SystemCard system={overview.system} />}
+            {runtimes.map((runtime) => (
+              <RuntimeCard
+                key={runtime.id}
+                runtime={runtime}
+                busy={busy}
+                onRemove={() => void remove(runtime)}
+              />
+            ))}
+          </div>
         )}
-
-        <div className="java-list">
-          {overview.system && (
-            <div className="java-row">
-              <div className="java-row__main">
-                <strong>系统 Java {overview.system.major || '?'}</strong>
-                <span className="badge">来自 {overview.system.source}</span>
-              </div>
-              <div className="java-row__meta">
-                {overview.system.version} · <code>{overview.system.path}</code>
-              </div>
-            </div>
-          )}
-
-          {overview.runtimes.map((runtime) => (
-            <div className="java-row" key={runtime.id}>
-              <div className="java-row__main">
-                <strong>Java {runtime.major}</strong>
-                <span className="badge">{runtime.imageType.toUpperCase()}</span>
-                {runtime.live && <span className="badge">运行中</span>}
-                <span className="java-row__spacer" />
-                <button
-                  className="link link--danger"
-                  disabled={busy || runtime.live}
-                  title={runtime.live ? '有实例正在用它运行，先停服' : undefined}
-                  onClick={() => void remove(runtime)}
-                >
-                  删除
-                </button>
-              </div>
-              <div className="java-row__meta">
-                {runtime.version} · {formatBytes(runtime.size)} ·{' '}
-                {runtime.vendor || '未知发行方'}
-                {runtime.usedBy.length > 0 && <> · 使用中：{runtime.usedBy.join('、')}</>}
-              </div>
-              <div className="java-row__meta">
-                <code>{runtime.javaPath}</code>
-              </div>
-            </div>
-          ))}
-
-          {overview.runtimes.length === 0 && !overview.system && (
-            <p className="muted">这台机器上还没有 Java，下面装一个。</p>
-          )}
-        </div>
       </section>
 
       <section className="panel">
-        <h3 className="panel__title">安装新版本</h3>
+        <div className="chart-head">
+          <h2 className="panel__title">安装新版本</h2>
+          <p className="chart-head__meta">下载走服务器自己的网络，关掉网页也会继续</p>
+        </div>
 
         {job && <InstallStatus job={job} />}
         {java.error && <div className="alert alert--error">{java.error}</div>}
 
-        <div className="field-row">
-          <label className="field">
-            <span>安装版本</span>
-            <select
-              value={major ?? ''}
-              onChange={(e) => setMajor(Number(e.target.value))}
-              disabled={installing || majors.length === 0}
-            >
-              {majors.map((entry) => (
-                <option key={entry.major} value={entry.major}>
-                  Java {entry.major}
-                  {entry.lts ? ' · LTS' : ''}
-                  {entry.installed ? ' · 已安装' : ''}
-                </option>
-              ))}
-            </select>
-            <small>{hint ? `对应服务端版本：${hint.servers}` : ' '}</small>
-          </label>
+        {majors.length === 0 ? (
+          <p className="muted">
+            没能从 Adoptium 取到可安装的版本列表 —— 通常是这台机器连不上外网。
+            已装的运行时不受影响，仍然可以正常启动服务器。
+          </p>
+        ) : (
+          <>
+            <div className="field">
+              <div className="field__head">
+                <span>选择版本</span>
+                {(hiddenMajors > 0 || showAllMajors) && (
+                  <button
+                    className="link"
+                    type="button"
+                    onClick={() => setShowAllMajors((on) => !on)}
+                  >
+                    {showAllMajors ? '只看 LTS 版本' : `显示全部 ${majors.length} 个版本`}
+                  </button>
+                )}
+              </div>
+              <div className="choice-grid">
+                {visibleMajors.map((entry) => (
+                  <button
+                    key={entry.major}
+                    type="button"
+                    className={`choice${entry.major === major ? ' choice--active' : ''}`}
+                    aria-pressed={entry.major === major}
+                    disabled={installing}
+                    onClick={() => setMajor(entry.major)}
+                  >
+                    <span className="choice__value">{entry.major}</span>
+                    <span className="choice__label">
+                      Java {entry.major}
+                      {entry.lts && <span className="badge">LTS</span>}
+                      {entry.installed && <span className="badge badge--ok">已安装</span>}
+                    </span>
+                    <span className="choice__note">{majorNote(entry.major, entry.lts)}</span>
+                  </button>
+                ))}
+              </div>
+              <small>标注的是这个大版本对应的服务端版本区间，拿不准就选 LTS。</small>
+            </div>
 
-          <label className="field">
-            <span>类型</span>
-            <select
-              value={imageType}
-              onChange={(e) => setImageType(e.target.value as 'jre' | 'jdk')}
-              disabled={installing}
-            >
-              <option value="jre">JRE（跑服够用，体积更小）</option>
-              <option value="jdk">JDK（带编译器和调试工具）</option>
-            </select>
-            <small>拿不准就选 JRE。</small>
-          </label>
-        </div>
+            <div className="field">
+              <span>镜像类型</span>
+              <div className="segmented" role="group" aria-label="镜像类型">
+                {IMAGE_TYPES.map((entry) => (
+                  <button
+                    key={entry.value}
+                    type="button"
+                    className={`segmented__option${
+                      imageType === entry.value ? ' segmented__option--active' : ''
+                    }`}
+                    aria-pressed={imageType === entry.value}
+                    disabled={installing}
+                    onClick={() => setImageType(entry.value)}
+                  >
+                    <strong>{entry.label}</strong>
+                    <small>{entry.note}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        <div className="settings__actions">
-          {installing ? (
-            <button className="btn btn--danger" onClick={() => void java.cancel()} disabled={busy}>
-              取消安装
-            </button>
-          ) : (
-            <button
-              className="btn btn--primary"
-              onClick={() => major != null && void java.install(major, imageType)}
-              disabled={busy || major == null}
-            >
-              {selected?.installed ? '重新安装' : '安装'}
-            </button>
-          )}
-          <span className="file-toolbar__hint">
-            装到 <code>{overview.root}</code>，不会碰系统里的 Java。
-          </span>
-        </div>
+            <div className="settings__actions">
+              {installing ? (
+                <button
+                  className="btn btn--danger"
+                  onClick={() => void java.cancel()}
+                  disabled={busy}
+                >
+                  取消安装
+                </button>
+              ) : (
+                <button
+                  className="btn btn--primary"
+                  onClick={() => major != null && void java.install(major, imageType)}
+                  disabled={busy || major == null}
+                >
+                  {selected?.installed ? '重新安装' : '安装'} Java {major ?? ''}{' '}
+                  {imageType.toUpperCase()}
+                </button>
+              )}
+              <span className="file-toolbar__hint">
+                装到 <code>{overview.root}</code>，不会碰系统里的 Java。
+              </span>
+            </div>
+          </>
+        )}
       </section>
+
+      <p className="chart-note">
+        服务端 jar 本身不在这里 —— 那在
+        <button className="link" onClick={onOpenCores}>
+          服务端核心
+        </button>
+        。每个核心版本对 Java 的最低要求也标在那一页上。
+      </p>
     </div>
+  )
+}
+
+/** The machine's own Java. Listed because an instance can launch with it, but
+ *  it is not the panel's to delete. */
+function SystemCard({ system }: { system: SystemJava }) {
+  return (
+    <article className="asset asset--muted">
+      <div className="asset__head">
+        <span className="asset__tile">{system.major || '?'}</span>
+        <div className="asset__title">
+          <strong>系统 Java {system.major || '?'}</strong>
+          <span className="asset__sub">{system.vendor || '未知发行方'}</span>
+        </div>
+        <span className="badge">来自 {system.source}</span>
+      </div>
+
+      <dl className="asset__facts">
+        <div>
+          <dt>完整版本</dt>
+          <dd>{system.version}</dd>
+        </div>
+        <div>
+          <dt>归属</dt>
+          <dd>系统自带</dd>
+        </div>
+      </dl>
+
+      <p className="asset__path" title={system.path}>
+        <code>{system.path}</code>
+      </p>
+
+      <footer className="asset__actions">
+        <span className="muted">面板不管理它，也不会删除它。</span>
+      </footer>
+    </article>
+  )
+}
+
+function RuntimeCard({
+  runtime,
+  busy,
+  onRemove,
+}: {
+  runtime: JavaRuntime
+  busy: boolean
+  onRemove: () => void
+}) {
+  return (
+    <article className="asset">
+      <div className="asset__head">
+        <span className="asset__tile asset__tile--accent">{runtime.major}</span>
+        <div className="asset__title">
+          <strong>Java {runtime.major}</strong>
+          <span className="asset__sub">{runtime.vendor || '未知发行方'}</span>
+        </div>
+        <span className="badge">{runtime.imageType.toUpperCase()}</span>
+        {runtime.live && <span className="badge badge--live">运行中</span>}
+      </div>
+
+      <dl className="asset__facts">
+        <div>
+          <dt>完整版本</dt>
+          <dd>{runtime.version}</dd>
+        </div>
+        <div>
+          <dt>体积</dt>
+          <dd>{formatBytes(runtime.size)}</dd>
+        </div>
+        <div>
+          <dt>安装于</dt>
+          <dd>{formatDate(runtime.installedAt)}</dd>
+        </div>
+      </dl>
+
+      <p className="asset__path" title={runtime.javaPath}>
+        <code>{runtime.javaPath}</code>
+      </p>
+
+      <footer className="asset__actions">
+        {runtime.usedBy.length > 0 ? (
+          <span className="asset__users">
+            使用中：
+            {runtime.usedBy.map((name) => (
+              <span className="badge" key={name}>
+                {name}
+              </span>
+            ))}
+          </span>
+        ) : (
+          <span className="muted">暂时没有实例用它</span>
+        )}
+        <button
+          className="link link--danger"
+          disabled={busy || runtime.live}
+          title={runtime.live ? '有实例正在用它运行，先停服' : undefined}
+          onClick={onRemove}
+        >
+          删除
+        </button>
+      </footer>
+    </article>
   )
 }
 
@@ -204,7 +369,11 @@ function InstallStatus({ job }: { job: JavaInstallJob }) {
   }
 
   if (job.state === 'extracting') {
-    return <div className="alert alert--ok">正在解压 Java {job.major}（{job.version}）…</div>
+    return (
+      <div className="alert alert--ok">
+        正在解压 Java {job.major}（{job.version}）…
+      </div>
+    )
   }
 
   if (job.state === 'done') {

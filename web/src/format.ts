@@ -23,6 +23,20 @@ export function formatPercent(value: number, digits = 0): string {
   return `${value.toFixed(digits)}%`
 }
 
+/** Day and minute, for "installed at" / "added at" lines. Seconds would be
+ *  noise: nobody cares which second a 60 MB download finished on. */
+export function formatDate(iso: string): string {
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return ''
+  return at.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 export function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('zh-CN', {
     hour: '2-digit',

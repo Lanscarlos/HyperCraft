@@ -1,20 +1,20 @@
-import type { CoreController } from '../useCores'
-import type { JavaController } from '../useJava'
 import type { TerminalController } from '../useTerminal'
 import { updateLabel } from '../useUpdate'
 import type { UpdateController } from '../useUpdate'
-import { CoreLibraryPage } from './CoreLibraryPage'
 import { DevicesPage } from './DevicesPage'
-import { JavaPage } from './JavaPage'
 import { TerminalSettings } from './TerminalSettings'
 import { UpdatePanel } from './UpdatePanel'
 
 /** Which settings page is open. Part of the URL, so it survives a reload. */
-export type SettingsSection = 'java' | 'cores' | 'terminal' | 'devices' | 'update'
+export type SettingsSection = 'terminal' | 'devices' | 'update'
 
+/**
+ * Java runtimes and server cores used to live here too. They moved out to
+ * their own sidebar entries: both are things an operator goes to *do* something
+ * with — install a runtime, download a core — several times a week, which is a
+ * poor fit for a page you reach by first deciding to open 设置.
+ */
 export const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
-  { id: 'java', label: 'Java 运行时' },
-  { id: 'cores', label: '服务端核心' },
   { id: 'terminal', label: '终端' },
   { id: 'devices', label: '已配对设备' },
   { id: 'update', label: '面板更新' },
@@ -27,8 +27,6 @@ export function isSettingsSection(value: string): value is SettingsSection {
 interface Props {
   section: SettingsSection
   onSection: (section: SettingsSection) => void
-  java: JavaController
-  cores: CoreController
   terminal: TerminalController
   update: UpdateController
   /** Jumps to the terminal page once the operator has switched it on. */
@@ -38,18 +36,15 @@ interface Props {
 }
 
 /**
- * Everything that belongs to the panel rather than to one server.
+ * Panel-wide settings: the switches you flip once and then forget about.
  *
- * These are all shared assets — a Java runtime, a server core, the panel binary
- * itself — so they live together here instead of being scattered across the
- * overview and the per-instance tabs. An instance only ever picks from what
- * this page manages.
+ * What is left here after the asset pages moved out is deliberately the rare
+ * stuff — turning the host shell on, revoking a paired device, updating the
+ * binary — so nothing an operator needs weekly is buried behind it.
  */
 export function SettingsPage({
   section,
   onSection,
-  java,
-  cores,
   terminal,
   update,
   onOpenTerminal,
@@ -65,8 +60,6 @@ export function SettingsPage({
             onClick={() => onSection(entry.id)}
           >
             {entry.label}
-            {entry.id === 'java' && java.installing && <span className="badge">安装中</span>}
-            {entry.id === 'cores' && cores.downloading && <span className="badge">下载中</span>}
             {entry.id === 'terminal' && terminal.status?.enabled && (
               <span className="badge">已开启</span>
             )}
@@ -78,8 +71,6 @@ export function SettingsPage({
       </nav>
 
       <div className="settings-page__body">
-        {section === 'java' && <JavaPage java={java} />}
-        {section === 'cores' && <CoreLibraryPage cores={cores} />}
         {section === 'terminal' && (
           <TerminalSettings terminal={terminal} onOpenTerminal={onOpenTerminal} />
         )}

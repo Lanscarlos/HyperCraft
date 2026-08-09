@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api'
-import { formatBytes } from '../format'
+import { formatBytes, formatDate } from '../format'
 import type { CoreBuild, CoreDownloadJob, CoreProject, CoreVersion, ServerCore } from '../types'
 import type { CoreController } from '../useCores'
 
@@ -10,14 +10,6 @@ const SUPPORT_LABELS: Record<string, string> = {
   UNSUPPORTED: '已停止支持',
   DEPRECATED: '已弃用',
   UNKNOWN: '',
-}
-
-function versionLabel(version: CoreVersion): string {
-  const parts = [version.id]
-  if (version.javaMinimum > 0) parts.push(`Java ${version.javaMinimum}+`)
-  const support = SUPPORT_LABELS[version.support] ?? version.support
-  if (support) parts.push(support)
-  return parts.join(' · ')
 }
 
 /** The version most people want: newest, still supported, not a pre-release. */
@@ -40,13 +32,20 @@ function isRecommended(channel: string): boolean {
  * again per server. Instances are handed their own copy, so deleting a core
  * here never touches a server that is already running one.
  */
-export function CoreLibraryPage({ cores }: { cores: CoreController }) {
+export function CoreLibraryPage({
+  cores,
+  onOpenJava,
+}: {
+  cores: CoreController
+  onOpenJava: () => void
+}) {
   const [projects, setProjects] = useState<CoreProject[]>([])
   const [projectId, setProjectId] = useState('')
   const [versions, setVersions] = useState<CoreVersion[]>([])
   const [versionId, setVersionId] = useState('')
   const [build, setBuild] = useState<CoreBuild | null>(null)
   const [showUnstable, setShowUnstable] = useState(false)
+  const [filter, setFilter] = useState('')
   const [catalogueError, setCatalogueError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -75,6 +74,7 @@ export function CoreLibraryPage({ cores }: { cores: CoreController }) {
     setVersions([])
     setVersionId('')
     setBuild(null)
+    setFilter('')
     api
       .listCoreVersions(projectId)
       .then((list) => {
@@ -83,8 +83,9 @@ export function CoreLibraryPage({ cores }: { cores: CoreController }) {
         setVersionId(pickDefault(list))
         setCatalogueError(null)
       })
-      .catch((err) =>
-        live && setCatalogueError(err instanceof Error ? err.message : '获取版本列表失败'),
+      .catch(
+        (err) =>
+          live && setCatalogueError(err instanceof Error ? err.message : '获取版本列表失败'),
       )
     return () => {
       live = false
@@ -117,146 +118,220 @@ export function CoreLibraryPage({ cores }: { cores: CoreController }) {
       core.usedBy.length > 0
         ? `实例「${core.usedBy.join('、')}」正在用同名的 jar 启动，不过它们各自有一份副本，删掉库里的这个不影响它们。`
         : ''
-    if (!window.confirm(`确定要从核心库删除 ${core.fileName}（${formatBytes(core.size)}）吗？${inUse}`)) {
+    if (
+      !window.confirm(`确定要从核心库删除 ${core.fileName}（${formatBytes(core.size)}）吗？${inUse}`)
+    ) {
       return
     }
     await cores.remove(core.id)
   }
 
-  const visible = versions.filter((v) => showUnstable || v.stable)
+  // Two filters over one list: the stability switch is a decision about what is
+  // safe to run, the text box is only about finding a row in a list of 200.
+  // Whatever is selected always survives both — the download button names that
+  // version, so it has to stay on screen next to it.
+  const visible = useMemo(() => {
+    const needle = filter.trim().toLowerCase()
+    const matched = versions.filter(
+      (v) => (showUnstable || v.stable) && (!needle || v.id.toLowerCase().includes(needle)),
+    )
+    if (versionId && !matched.some((v) => v.id === versionId)) {
+      const picked = versions.find((v) => v.id === versionId)
+      if (picked) return [picked, ...matched]
+    }
+    return matched
+  }, [versions, showUnstable, filter, versionId])
+
   const selected = versions.find((v) => v.id === versionId)
   const stored = cores.cores
+  const totalSize = stored.reduce((sum, core) => sum + core.size, 0)
 
   return (
-    <div className="page">
-      <h1>服务端核心</h1>
-      <p className="page__lead">
-        面板下载的服务端 jar 都在这里存一份。创建实例时直接从这里挑一个复制过去，
-        同一个核心开十个服也只下载一次；下载走服务器自己的网络，不经过你的浏览器，
-        关掉网页也会继续。
-      </p>
+    <div className="page page--wide">
+      <header className="page__head">
+        <div>
+          <h1>服务端核心</h1>
+          <p className="page__lead">
+            面板下载的服务端 jar 都在这里存一份。创建实例时直接从这里挑一个复制过去，
+            同一个核心开十个服也只下载一次；下载走服务器自己的网络，不经过你的浏览器，
+            关掉网页也会继续。
+          </p>
+        </div>
+        <p className="meta-chips">
+          <span>{stored.length > 0 ? `${stored.length} 个核心` : '核心库还是空的'}</span>
+          {stored.length > 0 && <span>共 {formatBytes(totalSize)}</span>}
+          {library?.root && <span title={library.root}>存放于 {library.root}</span>}
+        </p>
+      </header>
 
       <section className="panel">
         <div className="chart-head">
-          <h3 className="panel__title">核心库</h3>
-          <p className="chart-head__meta">
-            {stored.length > 0 ? `${stored.length} 个核心` : '还是空的'}
-            {library?.root && ' · '}
-            {library?.root && <code>{library.root}</code>}
-          </p>
+          <h2 className="panel__title">核心库</h2>
+          <p className="chart-head__meta">把自己的 jar 丢进核心库目录，也会出现在这里</p>
         </div>
 
-        <div className="java-list">
-          {stored.map((core) => (
-            <div className="java-row" key={core.id}>
-              <div className="java-row__main">
-                <strong>{core.imported ? core.fileName : `${core.projectName} ${core.version}`}</strong>
-                {!core.imported && <span className="badge">构建 #{core.build}</span>}
-                {core.kind === 'proxy' && <span className="badge">代理端</span>}
-                {core.imported && <span className="badge">自行放入</span>}
-                {!core.imported && !isRecommended(core.channel) && (
-                  <span className="badge">{core.channel}</span>
-                )}
-                <span className="java-row__spacer" />
-                <button
-                  className="link link--danger"
-                  disabled={busy}
-                  onClick={() => void remove(core)}
-                >
-                  删除
-                </button>
-              </div>
-              <div className="java-row__meta">
-                {formatBytes(core.size)} · 加入于 {new Date(core.addedAt).toLocaleString()}
-                {core.usedBy.length > 0 && <> · 使用中：{core.usedBy.join('、')}</>}
-              </div>
-              <div className="java-row__meta">
-                <code>{core.fileName}</code>
-              </div>
-            </div>
-          ))}
-
-          {stored.length === 0 && (
+        {stored.length === 0 ? (
+          <div className="welcome__empty">
+            <p>核心库还是空的。</p>
             <p className="muted">
-              核心库还是空的。下面下一个，或者把自己的 jar（Forge、Fabric、模组整合包的服务端）
-              直接丢进 <code>{library?.root ?? 'data/cores'}</code>，它也会出现在这里。
+              在下面下一个 Paper 或 Velocity，或者把自己的 jar（Forge、Fabric、模组整合包的服务端）
+              直接放进核心库目录。
             </p>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="asset-grid">
+            {stored.map((core) => (
+              <CoreCard
+                key={core.id}
+                core={core}
+                busy={busy}
+                onRemove={() => void remove(core)}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       {!loading && projects.length > 0 && (
         <section className="panel">
-          <h3 className="panel__title">下载新核心</h3>
+          <div className="chart-head">
+            <h2 className="panel__title">下载新核心</h2>
+            <p className="chart-head__meta">下载完成后，新建实例或在「启动设置」里选它</p>
+          </div>
 
           {job && <JobStatus job={job} />}
           {cores.error && <div className="alert alert--error">{cores.error}</div>}
           {catalogueError && <div className="alert alert--error">{catalogueError}</div>}
 
-          <div className="field-row">
-            <label className="field">
-              <span>核心</span>
-              <select
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                disabled={downloading}
-              >
-                {projects.map((item) => (
-                  <option key={item.id} value={item.id}>
+          <div className="field">
+            <span>核心</span>
+            <div className="choice-grid choice-grid--wide">
+              {projects.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`choice${item.id === projectId ? ' choice--active' : ''}`}
+                  aria-pressed={item.id === projectId}
+                  disabled={downloading}
+                  onClick={() => setProjectId(item.id)}
+                >
+                  <span className="choice__label">
                     {item.name}
-                    {item.kind === 'proxy' ? '（代理端）' : ''}
-                  </option>
-                ))}
-              </select>
-              {project && <small>{project.description}</small>}
-            </label>
-
-            <label className="field">
-              <span>版本</span>
-              <select
-                value={versionId}
-                onChange={(e) => setVersionId(e.target.value)}
-                disabled={downloading || visible.length === 0}
-              >
-                {visible.map((version) => (
-                  <option key={version.id} value={version.id}>
-                    {versionLabel(version)}
-                  </option>
-                ))}
-              </select>
-              <small>
-                {build
-                  ? `将下载 ${build.fileName}（构建 #${build.build}，${formatBytes(build.size)}）`
-                  : versions.length === 0
-                    ? '正在获取版本列表…'
-                    : '正在确认最新构建…'}
-              </small>
-            </label>
+                    {item.kind === 'proxy' && <span className="badge">代理端</span>}
+                  </span>
+                  <span className="choice__note">{item.description}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              checked={showUnstable}
-              onChange={(e) => {
-                setShowUnstable(e.target.checked)
-                if (!e.target.checked && selected && !selected.stable) {
-                  setVersionId(pickDefault(versions))
-                }
-              }}
-              disabled={downloading}
-            />
-            <span>显示预览版和快照（-pre / -rc / SNAPSHOT）</span>
-          </label>
+          <div className="field">
+            <div className="field__head">
+              <span>版本</span>
+              <div className="field__tools">
+                <input
+                  className="input-slim"
+                  type="search"
+                  value={filter}
+                  placeholder="筛选版本，如 1.21"
+                  aria-label="筛选版本"
+                  onChange={(e) => setFilter(e.target.value)}
+                  disabled={downloading || versions.length === 0}
+                />
+                <label className="checkbox checkbox--inline">
+                  <input
+                    type="checkbox"
+                    checked={showUnstable}
+                    onChange={(e) => {
+                      setShowUnstable(e.target.checked)
+                      if (!e.target.checked && selected && !selected.stable) {
+                        setVersionId(pickDefault(versions))
+                      }
+                    }}
+                    disabled={downloading}
+                  />
+                  <span>显示预览版和快照</span>
+                </label>
+              </div>
+            </div>
+
+            {versions.length === 0 ? (
+              <p className="muted">正在获取版本列表…</p>
+            ) : visible.length === 0 ? (
+              <p className="muted">没有匹配的版本。</p>
+            ) : (
+              <div className="version-list">
+                {visible.map((version) => (
+                  <button
+                    key={version.id}
+                    type="button"
+                    className={`version${version.id === versionId ? ' version--active' : ''}${
+                      version.stable ? '' : ' version--unstable'
+                    }`}
+                    aria-pressed={version.id === versionId}
+                    disabled={downloading}
+                    title={SUPPORT_LABELS[version.support] || undefined}
+                    onClick={() => setVersionId(version.id)}
+                  >
+                    {version.id}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {selected && (
+              <small>
+                {[
+                  SUPPORT_LABELS[selected.support] ?? selected.support,
+                  selected.javaMinimum > 0 ? `需要 Java ${selected.javaMinimum}+` : '',
+                  selected.builds > 0 ? `${selected.builds} 个构建` : '',
+                  selected.stable ? '' : '预览版',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </small>
+            )}
+          </div>
+
+          {build ? (
+            <div className="build-summary">
+              <div className="build-summary__file">
+                <code>{build.fileName}</code>
+                <span className="badge">构建 #{build.build}</span>
+                {!isRecommended(build.channel) && (
+                  <span className="badge badge--warn">{build.channel}</span>
+                )}
+              </div>
+              <dl className="asset__facts">
+                <div>
+                  <dt>体积</dt>
+                  <dd>{formatBytes(build.size)}</dd>
+                </div>
+                <div>
+                  <dt>发布于</dt>
+                  <dd>{formatDate(build.time)}</dd>
+                </div>
+                <div>
+                  <dt>校验</dt>
+                  <dd title={build.sha256}>SHA-256 已提供</dd>
+                </div>
+              </dl>
+            </div>
+          ) : (
+            versionId && <p className="muted">正在确认最新构建…</p>
+          )}
 
           {selected && selected.javaMinimum > 0 && (
             <p className="chart-note">
               该版本至少需要 Java {selected.javaMinimum}，机器上的 Java 太旧会在启动时直接报错 ——
-              「Java 运行时」页面可以一键装一个。
+              <button className="link" onClick={onOpenJava}>
+                Java 运行时
+              </button>
+              页面可以一键装一个。
             </p>
           )}
           {build && !isRecommended(build.channel) && (
-            <div className="alert alert--error">
+            <div className="alert alert--warn">
               这是 {build.channel} 频道的构建，PaperMC 不建议用在正式服上。
             </div>
           )}
@@ -278,16 +353,85 @@ export function CoreLibraryPage({ cores }: { cores: CoreController }) {
                 onClick={() => projectId && versionId && void cores.download(projectId, versionId)}
                 disabled={busy || !versionId}
               >
-                下载到核心库
+                下载 {project?.name ?? ''} {versionId}
               </button>
             )}
-            <span className="file-toolbar__hint">
-              下载完成后，在实例的「启动设置」或新建实例时选它即可。
-            </span>
           </div>
         </section>
       )}
     </div>
+  )
+}
+
+function CoreCard({
+  core,
+  busy,
+  onRemove,
+}: {
+  core: ServerCore
+  busy: boolean
+  onRemove: () => void
+}) {
+  const title = core.imported ? core.fileName : `${core.projectName} ${core.version}`
+
+  return (
+    <article className="asset">
+      <div className="asset__head">
+        <span className="asset__tile asset__tile--accent">
+          {(core.projectName || core.fileName).slice(0, 1).toUpperCase()}
+        </span>
+        <div className="asset__title">
+          <strong title={title}>{title}</strong>
+          <span className="asset__sub">
+            {core.imported ? '自行放入的 jar' : core.projectName || '未知来源'}
+          </span>
+        </div>
+        {core.kind === 'proxy' && <span className="badge">代理端</span>}
+        {core.imported && <span className="badge">自行放入</span>}
+        {!core.imported && !isRecommended(core.channel) && (
+          <span className="badge badge--warn">{core.channel}</span>
+        )}
+      </div>
+
+      <dl className="asset__facts">
+        {!core.imported && (
+          <div>
+            <dt>构建</dt>
+            <dd>#{core.build}</dd>
+          </div>
+        )}
+        <div>
+          <dt>体积</dt>
+          <dd>{formatBytes(core.size)}</dd>
+        </div>
+        <div>
+          <dt>加入于</dt>
+          <dd>{formatDate(core.addedAt)}</dd>
+        </div>
+      </dl>
+
+      <p className="asset__path" title={core.fileName}>
+        <code>{core.fileName}</code>
+      </p>
+
+      <footer className="asset__actions">
+        {core.usedBy.length > 0 ? (
+          <span className="asset__users">
+            使用中：
+            {core.usedBy.map((name) => (
+              <span className="badge" key={name}>
+                {name}
+              </span>
+            ))}
+          </span>
+        ) : (
+          <span className="muted">暂时没有实例用它</span>
+        )}
+        <button className="link link--danger" disabled={busy} onClick={onRemove}>
+          删除
+        </button>
+      </footer>
+    </article>
   )
 }
 
