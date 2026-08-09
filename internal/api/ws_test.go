@@ -90,6 +90,52 @@ func TestConsoleHistoryAlwaysCarriesALinesArray(t *testing.T) {
 	}
 }
 
+// Which protocol a console speaks is settled by the opening frame and fixed
+// for the connection: a client that guessed would render escape sequences as
+// text, or text as escape sequences.
+func TestConsoleAnnouncesItsProtocol(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	for _, tc := range []struct {
+		name string
+		tty  *bool
+		want bool
+	}{
+		{name: "default", tty: nil, want: instance.TTYSupported()},
+		{name: "explicitly off", tty: boolPtr(false), want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := env.do(http.MethodPost, "/api/instances",
+				instanceRequest{Name: "proto-" + tc.name, TTY: tc.tty})
+			var created instance.Status
+			decodeBody(t, resp, &created)
+
+			conn := env.dialConsole(created.ID)
+			_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+
+			_, data, err := conn.ReadMessage()
+			if err != nil {
+				t.Fatalf("read history frame: %v", err)
+			}
+			var frame historyMessage
+			if err := json.Unmarshal(data, &frame); err != nil {
+				t.Fatalf("decode history frame: %v", err)
+			}
+			if frame.TTY != tc.want {
+				t.Errorf("history frame said tty=%v, want %v", frame.TTY, tc.want)
+			}
+			// The config has to come back too, or the settings page cannot show
+			// the operator what they chose.
+			if got := created.TTY; got == nil || *got != (tc.tty == nil || *tc.tty) {
+				t.Errorf("created instance reported tty=%v", got)
+			}
+		})
+	}
+}
+
+func boolPtr(v bool) *bool { return &v }
+
 // Commands sent to a stopped server must come back as an error on the socket,
 // not silently vanish or tear the connection down.
 func TestConsoleReportsCommandsToAStoppedServer(t *testing.T) {
