@@ -5,6 +5,7 @@ import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 
 import { api, terminalSocketURL } from '../api'
+import { onThemeChange, terminalTheme } from '../theme'
 import type { TerminalController } from '../useTerminal'
 
 /** Same stack the server console uses: server output and shell output are full
@@ -69,17 +70,9 @@ export function HostTerminal({ terminal, onOpenSettings }: Props) {
       scrollback: 5000,
       // macOS habits: Option as Meta is what makes Alt-b / Alt-f work in bash.
       macOptionIsMeta: true,
-      theme: {
-        // Matches --bg-input, the colour .hostterm__screen paints behind it.
-        background: '#0a0e15',
-        foreground: '#c9d1d9',
-        cursor: '#58a6ff',
-        selectionBackground: '#2f5580',
-        black: '#484f58',
-        brightBlack: '#6e7681',
-        blue: '#6ea8ff',
-        brightBlue: '#89b4ff',
-      },
+      // Read off the tokens, so the canvas matches what .hostterm__screen
+      // paints behind it in either mode.
+      theme: terminalTheme(),
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
@@ -184,7 +177,14 @@ export function HostTerminal({ terminal, onOpenSettings }: Props) {
     })
     observer.observe(hostRef.current!)
 
+    // The canvas cannot inherit a token, so a mode switch has to be handed to
+    // it; the live session and its scrollback are untouched.
+    const unwatch = onThemeChange(() => {
+      term.options.theme = terminalTheme()
+    })
+
     return () => {
+      unwatch()
       observer.disconnect()
       typed.dispose()
       typedBinary.dispose()

@@ -5,7 +5,7 @@ import { formatBytes, formatPercent } from '../format'
 import type { SystemInfo } from '../types'
 import { TimeSeriesChart, type Point } from './TimeSeriesChart'
 
-const HOST_CPU_COLOR = '#3987e5'
+const HOST_CPU_COLOR = 'var(--series-cpu)'
 const HOST_WINDOW_MS = 30 * 60_000
 
 /**
