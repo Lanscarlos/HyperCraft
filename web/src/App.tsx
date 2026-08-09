@@ -4,12 +4,14 @@ import { ApiError, api } from './api'
 import { ChangePasswordDialog } from './components/ChangePasswordDialog'
 import { HostOverview } from './components/HostOverview'
 import { InstanceView } from './components/InstanceView'
-import { JavaRuntimes } from './components/JavaRuntimes'
+import { JavaPage } from './components/JavaPage'
 import { Login } from './components/Login'
 import { NewInstanceDialog } from './components/NewInstanceDialog'
 import { UpdatePanel } from './components/UpdatePanel'
 import type { InstanceStatus, User } from './types'
 import { STATE_LABELS, isLive, mergeState } from './types'
+import { useJava } from './useJava'
+import type { JavaController } from './useJava'
 import { useUpdate } from './useUpdate'
 import type { UpdateController } from './useUpdate'
 
@@ -17,17 +19,34 @@ import type { UpdateController } from './useUpdate'
  *  this is only to keep the sidebar honest for servers you are not watching. */
 const POLL_INTERVAL_MS = 5000
 
-/** Reads the selected instance out of the URL so deep links and reloads work. */
-function instanceIdFromPath(): string | null {
-  const match = window.location.pathname.match(/^\/i\/([^/]+)/)
-  return match ? match[1] : null
+/** Where the app is. Panel-wide pages sit beside the per-instance view; the
+ *  URL is the only place it is stored, so deep links and reloads work. */
+type Route = { kind: 'overview' } | { kind: 'java' } | { kind: 'instance'; id: string }
+
+function routeFromPath(): Route {
+  const path = window.location.pathname
+  const instance = path.match(/^\/i\/([^/]+)/)
+  if (instance) return { kind: 'instance', id: instance[1] }
+  if (path === '/java' || path.startsWith('/java/')) return { kind: 'java' }
+  return { kind: 'overview' }
+}
+
+function pathOf(route: Route): string {
+  switch (route.kind) {
+    case 'instance':
+      return `/i/${route.id}`
+    case 'java':
+      return '/java'
+    default:
+      return '/'
+  }
 }
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [checkingSession, setCheckingSession] = useState(true)
   const [instances, setInstances] = useState<InstanceStatus[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(instanceIdFromPath)
+  const [route, setRoute] = useState<Route>(routeFromPath)
   const [showNew, setShowNew] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -35,6 +54,9 @@ export default function App() {
   // Polled at the app level rather than inside the overview page, so the "new
   // version" hint still appears while you are looking at an instance.
   const update = useUpdate(Boolean(user))
+  // Same reason: an install keeps running in the daemon after you navigate
+  // away from the Java page, and the sidebar says so while it does.
+  const java = useJava(Boolean(user))
 
   useEffect(() => {
     api
@@ -45,15 +67,20 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const onPop = () => setSelectedId(instanceIdFromPath())
+    const onPop = () => setRoute(routeFromPath())
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
-  const select = useCallback((id: string | null) => {
-    setSelectedId(id)
-    window.history.pushState(null, '', id ? `/i/${id}` : '/')
+  const navigate = useCallback((next: Route) => {
+    setRoute(next)
+    window.history.pushState(null, '', pathOf(next))
   }, [])
+
+  const select = useCallback(
+    (id: string | null) => navigate(id ? { kind: 'instance', id } : { kind: 'overview' }),
+    [navigate],
+  )
 
   const refresh = useCallback(async () => {
     try {
@@ -104,12 +131,13 @@ export default function App() {
     return <Login onSignedIn={setUser} />
   }
 
+  const selectedId = route.kind === 'instance' ? route.id : null
   const selected = instances.find((item) => item.id === selectedId) ?? null
 
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="sidebar__brand" onClick={() => select(null)}>
+        <div className="sidebar__brand" onClick={() => navigate({ kind: 'overview' })}>
           <span className="sidebar__logo">⛏</span>
           <div>
             <strong>HyperCraft</strong>
@@ -123,6 +151,30 @@ export default function App() {
             </small>
           </div>
         </div>
+
+        <nav className="sidebar__nav">
+          <button
+            className={`sidebar__link${route.kind === 'overview' ? ' sidebar__link--active' : ''}`}
+            onClick={() => navigate({ kind: 'overview' })}
+          >
+            <span className="sidebar__name">总览</span>
+          </button>
+          <button
+            className={`sidebar__link${route.kind === 'java' ? ' sidebar__link--active' : ''}`}
+            onClick={() => navigate({ kind: 'java' })}
+          >
+            <span className="sidebar__name">Java 运行时</span>
+            {java.installing ? (
+              <span className="badge badge--update">安装中</span>
+            ) : (
+              // Only once there is something to count: a "0" next to a feature
+              // you have not used yet reads as a warning it is not.
+              (java.overview?.runtimes.length ?? 0) > 0 && (
+                <span className="badge">{java.overview?.runtimes.length}</span>
+              )
+            )}
+          </button>
+        </nav>
 
         <button className="btn btn--primary sidebar__new" onClick={() => setShowNew(true)}>
           + 新建实例
@@ -159,7 +211,9 @@ export default function App() {
       <main className="main">
         {loadError && <div className="alert alert--error">{loadError}</div>}
 
-        {selected ? (
+        {route.kind === 'java' ? (
+          <JavaPage java={java} />
+        ) : selected ? (
           <InstanceView
             key={selected.id}
             instance={selected}
@@ -174,7 +228,9 @@ export default function App() {
             instances={instances}
             onSelect={select}
             onCreate={() => setShowNew(true)}
+            onOpenJava={() => navigate({ kind: 'java' })}
             update={update}
+            java={java}
           />
         )}
       </main>
@@ -207,12 +263,16 @@ function Welcome({
   instances,
   onSelect,
   onCreate,
+  onOpenJava,
   update,
+  java,
 }: {
   instances: InstanceStatus[]
   onSelect: (id: string) => void
   onCreate: () => void
+  onOpenJava: () => void
   update: UpdateController
+  java: JavaController
 }) {
   // isLive matches the backend's State.Running(), which is what decides the
   // list of servers recorded for resume — so the dialog promises exactly what
@@ -231,7 +291,12 @@ function Welcome({
 
       <HostOverview />
 
-      <JavaRuntimes />
+      <p className="welcome__hint">
+        {javaSummary(java)}
+        <button className="link" onClick={onOpenJava}>
+          去管理 Java 运行时
+        </button>
+      </p>
 
       {instances.length === 0 ? (
         <div className="welcome__empty">
@@ -258,4 +323,22 @@ function Welcome({
       )}
     </div>
   )
+}
+
+/** One line about Java for the overview, so the page that owns it is still
+ *  findable from here. */
+function javaSummary(java: JavaController): string {
+  if (java.installing) {
+    return `正在安装 Java ${java.job?.major ?? ''}…`
+  }
+  if (java.overview === null) {
+    return 'Java 运行时'
+  }
+  const installed = java.overview.runtimes.length
+  if (installed === 0) {
+    return java.overview.system
+      ? '面板还没装 Java，实例可以用系统自带的那个。'
+      : '这台机器上还没有 Java，服务端跑不起来。'
+  }
+  return `面板已装 ${installed} 个 Java 运行时。`
 }

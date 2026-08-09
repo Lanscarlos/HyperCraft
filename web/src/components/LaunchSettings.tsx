@@ -235,8 +235,8 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
           )}
           <small>
             {runtimes.length > 0
-              ? '面板装的 Java 在这里直接选；总览页可以再装别的版本。'
-              : '总览页的「Java 运行时」里可以一键装一个，装完这里就能选。'}
+              ? '面板装的 Java 在这里直接选；侧边栏的「Java 运行时」页面可以再装别的版本。'
+              : '侧边栏的「Java 运行时」页面可以一键装一个，装完这里就能选。'}
           </small>
         </label>
 

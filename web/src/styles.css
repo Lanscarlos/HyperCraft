@@ -103,6 +103,43 @@ a {
   width: 100%;
 }
 
+/* Panel-wide pages, above the per-instance list they are not part of. */
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.sidebar__link:hover {
+  background: #1a202c;
+}
+
+.sidebar__link--active {
+  background: #1a212c;
+  border-color: var(--border-strong);
+}
+
+.sidebar__link .badge {
+  margin-left: auto;
+}
+
 .sidebar__list {
   display: flex;
   flex-direction: column;
@@ -832,11 +869,22 @@ a {
   border-color: var(--accent);
 }
 
-/* --------------------------------------------------------------- welcome */
+/* ------------------------------------------------------- welcome & pages
 
-.welcome {
+   .page is the plain scrolling page shell every panel-wide view uses; the
+   overview is the same thing with cards under it. */
+
+.welcome,
+.page {
   overflow-y: auto;
   padding-bottom: 30px;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 780px;
 }
 
 .welcome h1 {
@@ -844,10 +892,29 @@ a {
   margin: 0 0 8px;
 }
 
+.page h1 {
+  font-size: 22px;
+  margin: 0;
+}
+
 .welcome__lead {
   color: var(--text-dim);
   max-width: 640px;
   margin: 0 0 24px;
+}
+
+.page__lead {
+  color: var(--text-dim);
+  max-width: 640px;
+  margin: -6px 0 0;
+}
+
+.welcome__hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 24px;
+  color: var(--text-dim);
 }
 
 .welcome__empty {
