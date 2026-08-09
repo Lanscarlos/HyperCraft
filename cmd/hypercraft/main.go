@@ -18,6 +18,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -26,12 +27,17 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
+	"github.com/lanscarlos/hypercraft/internal/selfupdate"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
 )
 
 // version is overridden at build time with -ldflags "-X main.version=...".
 var version = "dev"
+
+// updateRepo is where the panel looks for new releases. Updates are only ever
+// fetched from this repository.
+const updateRepo = "Lanscarlos/HyperCraft"
 
 // shutdownGrace is how long managed servers get to save and exit when the
 // panel is stopping. Minecraft can take a while to flush a large world.
@@ -137,12 +143,37 @@ func run() error {
 	)
 	defer downloads.Close()
 
+	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	// A second, manually cancellable layer: an in-panel update shuts the daemon
+	// down the same way a SIGTERM does, then execs the new binary.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Set to the newly installed binary when the shutdown below should hand
+	// over to it instead of exiting. Read only after every server has stopped.
+	// The path comes from the updater rather than os.Executable: by then the
+	// running image has been renamed aside and the OS would report the backup.
+	var newBinary atomic.Pointer[string]
+
+	updater := selfupdate.NewService(updateRepo, version, selfupdate.Hooks{
+		// Recorded before the swap so the servers this update is about to stop
+		// come back on the other side, whether or not they auto-start.
+		BeforeInstall:  func() error { return st.SaveResume(manager.RunningIDs()) },
+		InstallAborted: func() { _, _ = st.TakeResume() },
+		TriggerRestart: func(binary string) {
+			newBinary.Store(&binary)
+			cancel()
+		},
+	}, logger)
+
 	server := api.NewServer(api.Options{
 		Manager:  manager,
 		Store:    st,
 		Sessions: sessions,
 		Metrics:  collector,
 		Jars:     downloads,
+		Updater:  updater,
 		Panel:    panel,
 		Version:  version,
 		Logger:   logger,
@@ -157,10 +188,8 @@ func run() error {
 		IdleTimeout: 120 * time.Second,
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	go gcSessions(ctx, sessions)
+	go updater.Run(ctx)
 	go collector.Run(ctx, func() []metrics.Target {
 		instances := manager.List()
 		targets := make([]metrics.Target, 0, len(instances))
@@ -171,7 +200,16 @@ func run() error {
 		return targets
 	})
 
-	manager.StartAutoStart()
+	// Servers stopped by an update restart are listed here; the file is
+	// consumed on read, so a failed start is not retried on every boot.
+	resume, err := st.TakeResume()
+	if err != nil {
+		logger.Warn("could not read the resume list", "err", err)
+	}
+	if len(resume) > 0 {
+		logger.Info("resuming servers stopped by an update", "count", len(resume))
+	}
+	manager.StartAutoStart(resume)
 
 	serverErr := make(chan error, 1)
 	go func() {
@@ -205,6 +243,19 @@ func run() error {
 
 	logger.Info("stopping managed servers", "grace", shutdownGrace)
 	manager.Shutdown(shutdownGrace)
+
+	// Only now, with no child processes left, is it safe to replace this
+	// process image: exec keeps the PID but inherits nothing else.
+	if binary := newBinary.Load(); binary != nil {
+		logger.Info("restarting into the updated binary", "path", *binary)
+		if err := selfupdate.Restart(*binary); err != nil {
+			return fmt.Errorf("restart after update: %w", err)
+		}
+		// Reached on Windows only, where the replacement is a new process that
+		// is already running and this one just exits.
+		return nil
+	}
+
 	logger.Info("bye")
 	return nil
 }

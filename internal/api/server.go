@@ -17,6 +17,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
+	"github.com/lanscarlos/hypercraft/internal/selfupdate"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
 )
@@ -40,7 +41,10 @@ type Server struct {
 	metrics  *metrics.Collector
 	// jars fetches server cores from PaperMC. Optional: a nil downloader turns
 	// the feature off and leaves uploading a jar as the only way in.
-	jars    *serverjar.Downloader
+	jars *serverjar.Downloader
+	// updater installs new panel releases. Optional in the same way: nil turns
+	// in-panel updates off.
+	updater *selfupdate.Service
 	version string
 
 	panelMu sync.RWMutex
@@ -57,6 +61,7 @@ type Options struct {
 	Sessions *auth.SessionStore
 	Metrics  *metrics.Collector
 	Jars     *serverjar.Downloader
+	Updater  *selfupdate.Service
 	Panel    config.Panel
 	Version  string
 	Logger   *slog.Logger
@@ -70,6 +75,7 @@ func NewServer(opts Options) *Server {
 		sessions: opts.Sessions,
 		metrics:  opts.Metrics,
 		jars:     opts.Jars,
+		updater:  opts.Updater,
 		panel:    opts.Panel,
 		version:  opts.Version,
 		upgrader: websocket.Upgrader{
@@ -141,6 +147,11 @@ func (s *Server) routes() http.Handler {
 	// Resource usage.
 	protected.HandleFunc("GET /api/instances/{id}/metrics", s.handleInstanceMetrics)
 	protected.HandleFunc("GET /api/system", s.handleSystem)
+
+	// Panel self-update.
+	protected.HandleFunc("GET /api/update", s.handleUpdateStatus)
+	protected.HandleFunc("POST /api/update/check", s.handleUpdateCheck)
+	protected.HandleFunc("POST /api/update/apply", s.handleUpdateApply)
 
 	api.Handle("/api/", s.requireAuth(s.requireCSRF(protected)))
 

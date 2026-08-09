@@ -6,8 +6,11 @@ import { HostOverview } from './components/HostOverview'
 import { InstanceView } from './components/InstanceView'
 import { Login } from './components/Login'
 import { NewInstanceDialog } from './components/NewInstanceDialog'
+import { UpdatePanel } from './components/UpdatePanel'
 import type { InstanceStatus, User } from './types'
-import { STATE_LABELS, mergeState } from './types'
+import { STATE_LABELS, isLive, mergeState } from './types'
+import { useUpdate } from './useUpdate'
+import type { UpdateController } from './useUpdate'
 
 /** How often the instance list refreshes; the console pushes state instantly,
  *  this is only to keep the sidebar honest for servers you are not watching. */
@@ -27,6 +30,10 @@ export default function App() {
   const [showNew, setShowNew] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+
+  // Polled at the app level rather than inside the overview page, so the "new
+  // version" hint still appears while you are looking at an instance.
+  const update = useUpdate(Boolean(user))
 
   useEffect(() => {
     api
@@ -105,7 +112,14 @@ export default function App() {
           <span className="sidebar__logo">⛏</span>
           <div>
             <strong>HyperCraft</strong>
-            <small>{user.version}</small>
+            <small>
+              {user.version}
+              {update.status?.updateAvailable && (
+                <span className="badge badge--update" title={`可更新到 ${update.status.latestVersion}`}>
+                  有新版本
+                </span>
+              )}
+            </small>
           </div>
         </div>
 
@@ -159,6 +173,7 @@ export default function App() {
             instances={instances}
             onSelect={select}
             onCreate={() => setShowNew(true)}
+            update={update}
           />
         )}
       </main>
@@ -191,11 +206,18 @@ function Welcome({
   instances,
   onSelect,
   onCreate,
+  update,
 }: {
   instances: InstanceStatus[]
   onSelect: (id: string) => void
   onCreate: () => void
+  update: UpdateController
 }) {
+  // isLive matches the backend's State.Running(), which is what decides the
+  // list of servers recorded for resume — so the dialog promises exactly what
+  // will happen.
+  const runningNames = instances.filter((item) => isLive(item.state)).map((item) => item.name)
+
   return (
     <div className="welcome">
       <h1>服务器总览</h1>
@@ -203,6 +225,8 @@ function Welcome({
         面板以后台守护进程的方式持有服务器进程。关掉浏览器、退出登录，甚至重启路由，
         服务器都会照常运行 —— 只有停止面板本身才会（优雅地）关掉它们。
       </p>
+
+      <UpdatePanel update={update} runningNames={runningNames} />
 
       <HostOverview />
 

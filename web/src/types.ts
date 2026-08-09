@@ -238,6 +238,34 @@ export interface SystemInfo {
   instances: { total: number; running: number }
 }
 
+// --------------------------------------------------------------- updates
+
+export type UpdatePhase =
+  | 'idle'
+  | 'checking'
+  | 'downloading'
+  | 'installing'
+  | 'restarting'
+
+export interface UpdateStatus {
+  currentVersion: string
+  latestVersion?: string
+  updateAvailable: boolean
+  releaseUrl?: string
+  releaseNotes?: string
+  publishedAt?: string
+  checkedAt?: string
+  /** Set when the last check could not reach GitHub; the cached result stands. */
+  checkError?: string
+  phase: UpdatePhase
+  progress: number
+  /** False for dev builds and platforms the release has no binary for. */
+  eligible: boolean
+  ineligibleWhy?: string
+  /** Set when the last update attempt failed. */
+  error?: string
+}
+
 // ----------------------------------------------------------------- files
 
 export interface FileEntry {

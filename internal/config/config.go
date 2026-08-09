@@ -63,3 +63,8 @@ func (p Paths) InstancesFile() string { return filepath.Join(p.Root, "instances.
 
 // ServersRoot is the default parent directory for new instances.
 func (p Paths) ServersRoot() string { return filepath.Join(p.Root, "servers") }
+
+// ResumeFile records which servers were running when the panel restarted
+// itself to install an update, so they can be brought back afterwards. It is
+// written just before the restart and consumed on the next boot.
+func (p Paths) ResumeFile() string { return filepath.Join(p.Root, "resume.json") }

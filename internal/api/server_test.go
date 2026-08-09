@@ -36,7 +36,10 @@ type testEnv struct {
 	fill *fakeFill
 }
 
-func newTestEnv(t *testing.T) *testEnv {
+// newTestEnv builds a panel backed by a temporary data directory. Tests that
+// need a component the default wiring leaves out — the updater, say — pass an
+// option to fill it in.
+func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 	t.Helper()
 
 	paths := config.NewPaths(t.TempDir())
@@ -58,7 +61,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	mgr := instance.NewManager(st, paths.ServersRoot(), logger)
 	fill := newFakeFill(t)
 
-	srv := httptest.NewServer(NewServer(Options{
+	options := Options{
 		Manager:  mgr,
 		Store:    st,
 		Sessions: auth.NewSessionStore(time.Hour),
@@ -67,7 +70,12 @@ func newTestEnv(t *testing.T) *testEnv {
 		Panel:    panel,
 		Version:  "test",
 		Logger:   logger,
-	}).Handler())
+	}
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	srv := httptest.NewServer(NewServer(options).Handler())
 	t.Cleanup(srv.Close)
 
 	jar, err := cookiejar.New(nil)
