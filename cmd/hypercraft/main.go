@@ -29,6 +29,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
+	"github.com/lanscarlos/hypercraft/internal/plugin"
 	"github.com/lanscarlos/hypercraft/internal/selfupdate"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
@@ -158,6 +159,17 @@ func run() error {
 	)
 	defer javaInstaller.Close()
 
+	// Plugins are a panel-wide library too, and for a stronger reason than
+	// cores: a plugin has a version history that instances pin, so the panel
+	// keeps every release it downloaded and hands out copies. Downloads follow
+	// the panel's own update mirror, since they come off the same GitHub CDN.
+	pluginLibrary := plugin.NewLibrary(paths.PluginsRoot())
+	pluginClient := plugin.NewClient("", userAgent)
+	pluginClient.SetMirror(panel.Mirror())
+	pluginDownloads := plugin.NewDownloader(pluginClient, pluginLibrary, logger)
+	defer pluginDownloads.Close()
+	instancePlugins := plugin.NewInstances(pluginLibrary, paths.InstancePluginsFile())
+
 	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	// A second, manually cancellable layer: an in-panel update shuts the daemon
@@ -210,6 +222,9 @@ func run() error {
 		Panel:    panel,
 		Version:  version,
 		Logger:   logger,
+
+		Plugins:         pluginDownloads,
+		InstancePlugins: instancePlugins,
 	})
 
 	httpServer := &http.Server{
@@ -274,6 +289,7 @@ func run() error {
 	// and the servers deserve the whole shutdown budget.
 	downloads.Close()
 	javaInstaller.Close()
+	pluginDownloads.Close()
 
 	logger.Info("stopping managed servers", "grace", shutdownGrace)
 	manager.Shutdown(shutdownGrace)

@@ -6,15 +6,17 @@ import { STATE_LABELS, isLive, mergeState } from '../types'
 import type { CoreController } from '../useCores'
 import { Console } from './Console'
 import { FileManager } from './FileManager'
+import { InstancePlugins } from './InstancePlugins'
 import { LaunchSettings } from './LaunchSettings'
 import { PropertiesEditor } from './PropertiesEditor'
 import { ResourcePanel } from './ResourcePanel'
 
-type Tab = 'console' | 'files' | 'resources' | 'launch' | 'properties'
+type Tab = 'console' | 'files' | 'plugins' | 'resources' | 'launch' | 'properties'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'console', label: '控制台' },
   { id: 'files', label: '文件' },
+  { id: 'plugins', label: '插件' },
   { id: 'resources', label: '资源' },
   { id: 'launch', label: '启动设置' },
   { id: 'properties', label: '服务器配置' },
@@ -26,6 +28,7 @@ interface Props {
   onChanged: (instance: InstanceStatus) => void
   onDeleted: () => void
   onOpenLibrary: () => void
+  onOpenPlugins: () => void
 }
 
 export function InstanceView({
@@ -34,6 +37,7 @@ export function InstanceView({
   onChanged,
   onDeleted,
   onOpenLibrary,
+  onOpenPlugins,
 }: Props) {
   const [tab, setTab] = useState<Tab>('console')
   const [busy, setBusy] = useState(false)
@@ -140,6 +144,11 @@ export function InstanceView({
         {tab === 'files' && (
           <div className="instance__pane instance__pane--scroll">
             <FileManager instance={instance} />
+          </div>
+        )}
+        {tab === 'plugins' && (
+          <div className="instance__pane instance__pane--scroll">
+            <InstancePlugins instance={instance} onOpenLibrary={onOpenPlugins} />
           </div>
         )}
         {tab === 'resources' && (

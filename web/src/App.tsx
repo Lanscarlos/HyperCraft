@@ -9,6 +9,7 @@ import { JavaPage } from './components/JavaPage'
 import { Login } from './components/Login'
 import { HostTerminal } from './components/HostTerminal'
 import { NewInstanceDialog } from './components/NewInstanceDialog'
+import { PluginLibraryPage } from './components/PluginLibraryPage'
 import { SettingsPage, isSettingsSection } from './components/SettingsPage'
 import type { SettingsSection } from './components/SettingsPage'
 import { ThemeToggle } from './components/ThemeToggle'
@@ -16,6 +17,7 @@ import type { InstanceStatus, User } from './types'
 import { STATE_LABELS, isLive, mergeState } from './types'
 import { useCores } from './useCores'
 import { useJava } from './useJava'
+import { usePlugins } from './usePlugins'
 import { useTerminal } from './useTerminal'
 import { updateLabel, useUpdate } from './useUpdate'
 
@@ -29,6 +31,7 @@ type Route =
   | { kind: 'dashboard' }
   | { kind: 'java' }
   | { kind: 'cores' }
+  | { kind: 'plugins' }
   | { kind: 'settings'; section: SettingsSection }
   | { kind: 'terminal' }
   | { kind: 'instance'; id: string }
@@ -45,6 +48,7 @@ function routeFromPath(): Route {
   if (startsWith(path, '/terminal')) return { kind: 'terminal' }
   if (startsWith(path, '/java')) return { kind: 'java' }
   if (startsWith(path, '/cores')) return { kind: 'cores' }
+  if (startsWith(path, '/plugins')) return { kind: 'plugins' }
 
   const settings = path.match(/^\/settings(?:\/([^/]+))?/)
   if (settings) {
@@ -71,6 +75,8 @@ function pathOf(route: Route): string {
       return '/java'
     case 'cores':
       return '/cores'
+    case 'plugins':
+      return '/plugins'
     default:
       return '/'
   }
@@ -91,6 +97,7 @@ export default function App() {
   const update = useUpdate(Boolean(user))
   const java = useJava(Boolean(user))
   const cores = useCores(Boolean(user))
+  const plugins = usePlugins(Boolean(user))
   // Not polled, unlike the three above: nothing turns the terminal on but a
   // person clicking the switch, and that path already refreshes the status.
   const terminal = useTerminal(Boolean(user))
@@ -127,6 +134,7 @@ export default function App() {
   const openTerminal = useCallback(() => navigate({ kind: 'terminal' }), [navigate])
   const openJava = useCallback(() => navigate({ kind: 'java' }), [navigate])
   const openCores = useCallback(() => navigate({ kind: 'cores' }), [navigate])
+  const openPlugins = useCallback(() => navigate({ kind: 'plugins' }), [navigate])
 
   const refresh = useCallback(async () => {
     try {
@@ -228,6 +236,17 @@ export default function App() {
             <span className="sidebar__name">服务端核心</span>
             {cores.downloading && <span className="badge badge--update">下载中</span>}
           </button>
+          <button
+            className={`sidebar__link${route.kind === 'plugins' ? ' sidebar__link--active' : ''}`}
+            onClick={openPlugins}
+          >
+            <span className="sidebar__name">插件库</span>
+            {plugins.downloading ? (
+              <span className="badge badge--update">下载中</span>
+            ) : (
+              plugins.updates > 0 && <span className="badge badge--update">{plugins.updates}</span>
+            )}
+          </button>
           {/* Only shown once the operator has switched it on; there is nothing
               useful behind this entry otherwise, and an always-visible shell
               icon invites clicking on something you did not ask for. */}
@@ -306,6 +325,8 @@ export default function App() {
           <JavaPage java={java} onOpenCores={openCores} />
         ) : route.kind === 'cores' ? (
           <CoreLibraryPage cores={cores} onOpenJava={openJava} />
+        ) : route.kind === 'plugins' ? (
+          <PluginLibraryPage plugins={plugins} onOpenInstances={() => select(instances[0]?.id ?? null)} />
         ) : route.kind === 'terminal' ? (
           <HostTerminal terminal={terminal} onOpenSettings={() => openSettings('terminal')} />
         ) : selected ? (
@@ -319,6 +340,7 @@ export default function App() {
               void refresh()
             }}
             onOpenLibrary={openCores}
+            onOpenPlugins={openPlugins}
           />
         ) : (
           <Dashboard
@@ -328,11 +350,13 @@ export default function App() {
             onCreate={() => setShowNew(true)}
             onOpenJava={openJava}
             onOpenCores={openCores}
+            onOpenPlugins={openPlugins}
             onOpenUpdate={() => openSettings('update')}
             onChanged={applyInstance}
             update={update}
             java={java}
             cores={cores}
+            plugins={plugins}
           />
         )}
       </main>
