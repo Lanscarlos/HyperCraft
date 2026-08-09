@@ -2,7 +2,7 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [1.1.0] - 2026-08-09
 
 ### 新增
 
@@ -12,6 +12,10 @@
   先写 `.part` 再改名，失败或取消都不会留下半个 jar，也不会覆盖已有文件（要覆盖会先问
   一句）。可勾选「下载完成后设为启动 jar」，下的是 Velocity 时会一并清空 `--nogui`
   这类服务端参数。数据来自 PaperMC Fill v3 API（旧的 v2 已下线）。
+
+  版本下拉里标了每个版本的最低 Java 版本和官方支持状态 —— Paper 26.x 要 Java 25，
+  1.21.11 要 Java 21，这个不匹配时服务端的报错跟 Java 一个字都不沾边。预览版、
+  RC 和快照默认不显示。
 
 ## [1.0.0] - 2026-08-08
 
@@ -58,4 +62,5 @@
 
 构建需要 Go 1.25+ 与 Node 20+；运行只需要目标平台的二进制文件本身。
 
+[1.1.0]: https://github.com/Lanscarlos/HyperCraft/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Lanscarlos/HyperCraft/releases/tag/v1.0.0
