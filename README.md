@@ -28,19 +28,66 @@
 
 唯一会关掉服务器的，是**停止面板本身** —— 而且是优雅停止：给每个实例发 `stop`、等世界存盘、超时才升级到信号。所以面板应该用 systemd 之类的方式常驻，而不是在一个你随手会关掉的终端里跑。
 
-## 快速开始
+## 快速开始（全新的 Debian）
+
+发布产物是单文件二进制，前端已经嵌在里面，不需要 Go、Node 或者任何运行时依赖。部署就是三件事：解压、装 Java、交给 systemd。下面这套在一台什么都没装的 Debian 上从头到尾能跑通。
+
+### 1. 下载解压到 `/opt/hypercraft`
 
 ```bash
-git clone https://github.com/Lanscarlos/HyperCraft.git
-cd HyperCraft
-
-make deps      # 装前端依赖（只需一次）
-make build     # 构建前端 + 编译单二进制 ./hypercraft
-
-./hypercraft -data ./data
+sudo mkdir -p /opt/hypercraft
+cd /opt/hypercraft
+sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v1.1.0/hypercraft-1.1.0-linux-amd64.tar.gz
+sudo tar -xzf hypercraft-1.1.0-linux-amd64.tar.gz --strip-components=1
 ```
 
-首次启动会生成一个随机管理员密码并打印在终端上（**只显示这一次**）：
+包里是二进制、`hypercraft.service` 和几个文档文件。ARM 机器（`uname -m` 显示 `aarch64`）把 URL 里的
+`amd64` 换成 `arm64`。上面这个 URL 固定指向 v1.1.0，更新的版本见
+[Releases 页面](https://github.com/Lanscarlos/HyperCraft/releases/latest) —— 不过装好之后面板能自己升级，
+这个链接一般只用一次。
+
+想验下载完整性的话，同一个 release 里有 `SHA256SUMS.txt`：
+
+```bash
+sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v1.1.0/SHA256SUMS.txt
+sha256sum -c SHA256SUMS.txt --ignore-missing
+```
+
+### 2. 建一个专用用户
+
+```bash
+sudo useradd -r -s /usr/sbin/nologin minecraft
+sudo chown -R minecraft:minecraft /opt/hypercraft
+```
+
+`chown` 不能省：数据目录要写，面板内自动更新还要原地替换 `/opt/hypercraft/hypercraft` 并留一份
+`hypercraft.old`，运行用户对这个目录没有写权限的话更新会失败。
+
+### 3. 装 Java
+
+面板自己是静态二进制、零依赖，但它拉起来的服务端是 `java -jar`：
+
+```bash
+sudo apt install -y openjdk-21-jre-headless
+```
+
+版本要求比较硬 —— Paper 26.x 要 Java 25，1.21.11 要 Java 21，不匹配时服务端的报错跟 Java
+一个字都不沾边。Debian 13 官方源里有 21，Debian 12 要走 `bookworm-backports`，Java 25 目前得用
+[Adoptium](https://adoptium.net/installation/linux/) 的源。装多个版本共存没问题，「启动设置」里可以
+按实例指定 Java 路径。
+
+### 4. 交给 systemd
+
+面板是所有 Minecraft 进程的父进程，在 SSH 里直接跑，你一断线服务器就跟着停了，所以别跳过这步。
+
+```bash
+sudo cp /opt/hypercraft/hypercraft.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now hypercraft
+sudo journalctl -u hypercraft -f
+```
+
+首次启动生成的随机管理员密码就打印在这段日志里（**只显示这一次**）：
 
 ```
 ==========================================================
@@ -51,13 +98,31 @@ make build     # 构建前端 + 编译单二进制 ./hypercraft
 ==========================================================
 ```
 
-然后打开 http://127.0.0.1:8080 。忘记密码就 `./hypercraft -reset-password`。
+忘了就停掉面板再重置：
+
+```bash
+sudo systemctl stop hypercraft
+sudo -u minecraft /opt/hypercraft/hypercraft -data /opt/hypercraft/data -reset-password
+sudo systemctl start hypercraft
+```
+
+### 5. 打开面板
+
+默认只监听 `127.0.0.1:8080`，公网连不上是有意为之。想立刻看一眼，在**你自己的电脑上**开个 SSH 隧道，
+然后访问 http://127.0.0.1:8080 ：
+
+```bash
+ssh -L 8080:127.0.0.1:8080 you@your-server
+```
+
+要长期从外网访问，配反代加 TLS，见下面的[部署细节](#部署细节systemd-与反代)。别图快把 `-listen` 改成
+`0.0.0.0:8080` 裸奔 —— 那是个没有 TLS 的登录框，而且面板能在这台机器上执行任意控制台命令。
 
 ### 开新服的流程
 
 1. 侧栏「+ 新建实例」，填个名字（中文没问题，目录名会跟着走）。
 2. 「启动设置」→「下载服务端核心」，选 Paper（或 Velocity）和版本，点下载。
-   面板会直接把 jar 下到实例目录（默认在 `data/servers/<名字>/`），并设为启动 jar。
+   面板会直接把 jar 下到实例目录（默认在数据目录下的 `servers/<名字>/`），并设为启动 jar。
    想用别的核心就自己把 jar 丢进那个目录，一样能跑。
 3. 「启动设置」里调内存 —— jar 下拉会自动列出目录里的文件。
 4. 「服务器配置」里点「我已阅读并同意 EULA」，改改 MOTD、端口、难度。
@@ -91,21 +156,23 @@ data/
 
 `panel.json` 里的 `maxUploadMb` 控制单个上传文件的大小上限，默认 2048。
 
-## 部署（systemd）
+## 部署细节（systemd 与反代）
 
-`deploy/hypercraft.service` 是一份可用的示例，两个关键点：
+`deploy/hypercraft.service`（也在每个 Linux 压缩包里）是一份可用的示例，三个关键点：
 
 - **`TimeoutStopSec=300`** —— 面板停止时要等所有世界存盘完，默认的 90 秒对大世界不够。
 - **`KillMode=mixed`** —— 只给面板发信号，由它自己按顺序停子进程。否则 systemd 会直接 SIGTERM 掉 JVM，跳过优雅存盘。
+- **`ProtectSystem=full` + `ReadWritePaths=/opt/hypercraft`** —— 数据目录得在这个路径下面。想放别处（比如
+  单独挂的数据盘），或者某个实例目录指向了 `/opt/hypercraft` 外面，记得把那个路径加进 `ReadWritePaths`，
+  否则面板会遇到只读文件系统。
+
+防火墙只放行 Minecraft 端口，面板端口不要开：
 
 ```bash
-sudo cp hypercraft /opt/hypercraft/
-sudo cp deploy/hypercraft.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now hypercraft
-sudo journalctl -u hypercraft -f      # 首次启动的初始密码在这里
+sudo ufw allow 25565/tcp
 ```
 
-要从外网访问，用 Nginx/Caddy 反代并配上 TLS。WebSocket 需要透传 Upgrade 头：
+要从外网访问面板，用 Nginx/Caddy 反代并配上 TLS。WebSocket 需要透传 Upgrade 头：
 
 ```nginx
 location / {
@@ -116,6 +183,14 @@ location / {
     proxy_set_header Host       $host;
     proxy_set_header X-Forwarded-Proto $scheme;   # 让会话 Cookie 带上 Secure
     proxy_read_timeout 3600s;                     # 控制台是长连接
+}
+```
+
+Caddy 省事一些，这三行就够了，证书和上面那几个头它自己会处理：
+
+```caddyfile
+panel.example.com {
+    reverse_proxy 127.0.0.1:8080
 }
 ```
 
@@ -169,6 +244,22 @@ location / {
 ## 还没做的
 
 按我觉得的优先级排：玩家列表和白名单/OP 管理（现在只能手改 JSON）、自动备份、多用户和权限、定时任务（定时重启/广播）、更多可下载的核心（Fabric / Forge / 基岩版）、更长时间的监控历史（现在只在内存里存 1 小时，重启面板就没了）。
+
+## 从源码构建
+
+不想用发布的二进制，或者要改代码：
+
+```bash
+git clone https://github.com/Lanscarlos/HyperCraft.git
+cd HyperCraft
+
+make deps      # 装前端依赖（只需一次）
+make build     # 构建前端 + 编译单二进制 ./hypercraft
+
+./hypercraft -data ./data
+```
+
+同样是首次启动打印一次随机密码，然后开 http://127.0.0.1:8080 。
 
 ## 开发
 
@@ -229,9 +320,15 @@ tag，产物和发布说明都会覆盖掉，不用另开一个版本号。
 每个压缩包里是单文件二进制加 README、CHANGELOG、LICENSE，Linux 的还带一份
 `hypercraft.service`。`SHA256SUMS.txt` 单独传，用 `sha256sum -c` 校验。
 
+抬版本号的那个 PR 里，顺手把「快速开始」里的下载 URL 也改成新版本 —— 压缩包名带版本号，
+所以没法用 `releases/latest/download/` 那种永久链接，只能手动跟。把「下载解压」那一小节里出现的
+`1.1.0` 全换掉即可：两条 `wget`、一条 `tar`，加正文里提到的那一次。
+
 ## 依赖与环境要求
 
-需要 **Go 1.25+** 构建（文件管理器用到了 1.25 的 `os.Root.Rename` / `RemoveAll` 等；`GOTOOLCHAIN` 默认会自动下载，本机 Go 版本旧一些也不影响）。前端需要 Node 20+。
+只是部署的话，这一节可以跳过 —— 发布的二进制是 `CGO_ENABLED=0` 静态编译的，除了运行 Minecraft 服务端要的 Java，别的什么都不需要装。
+
+从源码构建需要 **Go 1.25+**（文件管理器用到了 1.25 的 `os.Root.Rename` / `RemoveAll` 等；`GOTOOLCHAIN` 默认会自动下载，本机 Go 版本旧一些也不影响）。前端需要 Node 20+。
 
 后端只有三个直接依赖：
 
