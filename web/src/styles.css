@@ -1714,6 +1714,39 @@ a:hover {
   font-size: 12px;
 }
 
+/* A terminal console types into the screen itself, so it has no input row to
+   carry the connection state; this thin strip takes its place. */
+.console__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.console__dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--state-stopped);
+}
+
+.console__dot--open {
+  background: var(--state-running);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-running) 20%, transparent);
+}
+
+.console__dot--connecting,
+.console__dot--reconnecting {
+  background: var(--state-starting);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
 /* Tab completion candidates, sitting just above the input like a shell's. */
 .console__hints {
   display: flex;

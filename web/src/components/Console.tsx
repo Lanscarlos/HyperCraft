@@ -16,8 +16,8 @@ interface ConsoleProps {
   onState: (state: StateInfo) => void
 }
 
-// SGR prefixes applied per stream. stdout is left untouched so the server's own
-// colour codes render as they would in a real terminal.
+// SGR prefixes applied per stream on a line console. stdout is left untouched
+// so the server's own colour codes render as they would in a real terminal.
 const STREAM_STYLE: Record<ConsoleLine['stream'], string> = {
   stdout: '',
   stderr: '\x1b[38;5;203m',
@@ -59,6 +59,16 @@ interface Suggestions {
   index: number
 }
 
+/**
+ * One server's console.
+ *
+ * It renders in one of two modes, decided by the server on connect and fixed
+ * for as long as the socket is open. A terminal console is exactly that — the
+ * keyboard goes straight to the server's own line editor, so completion and
+ * history are answered by the running server rather than guessed at here. A
+ * line console is the pipe-backed fallback, and keeps the panel's own input box
+ * because on the other side of a pipe there is nobody to answer a Tab.
+ */
 export function Console({ instanceId, state, onState }: ConsoleProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -70,6 +80,54 @@ export function Console({ instanceId, state, onState }: ConsoleProps) {
   const historyIndex = useRef<number | null>(null)
   const [players, setPlayers] = useState<string[]>([])
   const [suggestions, setSuggestions] = useState<Suggestions | null>(null)
+  const [ttyActive, setTtyActive] = useState<boolean | undefined>(undefined)
+
+  const onLines = useCallback((lines: ConsoleLine[]) => {
+    const term = termRef.current
+    if (!term) return
+    for (const line of lines) {
+      const style = STREAM_STYLE[line.stream]
+      term.write(style ? `${style}${line.text}\x1b[0m\r\n` : `${line.text}\r\n`)
+    }
+    // Scrollback replays on reconnect, so the roster rebuilds itself without
+    // the panel having to track players server-side.
+    setPlayers((current) =>
+      lines.reduce((names, line) => trackPlayers(names, line.text), current),
+    )
+  }, [])
+
+  const onBytes = useCallback((data: Uint8Array) => {
+    termRef.current?.write(data)
+  }, [])
+
+  // reset rather than clear: the previous session may have left the terminal in
+  // a mode of its own (an alternate screen, application keys), and only a reset
+  // puts those back too.
+  const onClear = useCallback(() => termRef.current?.reset(), [])
+
+  const handleState = useCallback(
+    (info: StateInfo) => {
+      setTtyActive(info.ttyActive)
+      onState(info)
+    },
+    [onState],
+  )
+
+  const viewport = useCallback(() => {
+    const term = termRef.current
+    return term ? { cols: term.cols, rows: term.rows } : null
+  }, [])
+
+  const handlers = useMemo(
+    () => ({ onLines, onBytes, onClear, onState: handleState, viewport }),
+    [onLines, onBytes, onClear, handleState, viewport],
+  )
+
+  // Held in a ref so the terminal can be created in an effect declared *before*
+  // useConsole's. Effects run in declaration order, and that order is what
+  // decides whether the socket handshake can carry a real window size or has to
+  // open blind and correct itself a frame later.
+  const sendResizeRef = useRef<(cols: number, rows: number) => void>(() => {})
 
   // Create the terminal once per mount; instance switches clear it below.
   useEffect(() => {
@@ -77,16 +135,18 @@ export function Console({ instanceId, state, onState }: ConsoleProps) {
       // Unicode 11 widths need the proposed API; without them CJK text and
       // emoji are measured as one cell and overlap whatever follows.
       allowProposedApi: true,
-      convertEol: true,
       cursorBlink: false,
+      // Both modes send \r\n of their own — the pseudo-terminal's line
+      // discipline adds it, and the line renderer writes it explicitly — so
+      // translating here would only double it up.
+      convertEol: false,
+      // Input is enabled once the server says this console has a terminal
+      // behind it; until then there is nowhere for a keystroke to go.
       disableStdin: true,
       fontFamily: CONSOLE_FONTS,
       fontSize: 13,
       lineHeight: 1.25,
       scrollback: 5000,
-      // Read off the tokens, so the canvas matches what .console__screen
-      // paints behind it in either mode. The console takes no input, so the
-      // cursor is hidden by giving it the background.
       theme: { ...terminalTheme(), cursor: 'transparent' },
     })
     const fit = new FitAddon()
@@ -105,19 +165,14 @@ export function Console({ instanceId, state, onState }: ConsoleProps) {
       try {
         fit.fit()
       } catch {
-        /* not visible right now */
+        return // not visible right now
       }
+      // Harmless on a line console, which the server sizes nothing from.
+      sendResizeRef.current(term.cols, term.rows)
     })
     observer.observe(hostRef.current!)
 
-    // The canvas cannot inherit a token, so a mode switch has to be handed to
-    // it; the scrollback is untouched, only the palette is swapped.
-    const unwatch = onThemeChange(() => {
-      term.options.theme = { ...terminalTheme(), cursor: 'transparent' }
-    })
-
     return () => {
-      unwatch()
       observer.disconnect()
       term.dispose()
       termRef.current = null
@@ -125,33 +180,58 @@ export function Console({ instanceId, state, onState }: ConsoleProps) {
     }
   }, [])
 
-  const onLines = useCallback((lines: ConsoleLine[]) => {
+  const { status, error, tty, send, sendBytes, sendResize } = useConsole(
+    instanceId,
+    handlers,
+  )
+  sendResizeRef.current = sendResize
+
+  // The canvas cannot inherit a token, so a mode switch has to be handed to it;
+  // the scrollback is untouched, only the palette is swapped. A terminal
+  // console shows a real cursor, because there is a real cursor to show.
+  useEffect(() => {
     const term = termRef.current
     if (!term) return
-    for (const line of lines) {
-      const style = STREAM_STYLE[line.stream]
-      term.write(style ? `${style}${line.text}\x1b[0m\r\n` : `${line.text}\r\n`)
+
+    const paint = () => {
+      const theme = terminalTheme()
+      term.options.theme = tty ? theme : { ...theme, cursor: 'transparent' }
     }
-    // Scrollback replays on reconnect, so the roster rebuilds itself without
-    // the panel having to track players server-side.
-    setPlayers((current) =>
-      lines.reduce((names, line) => trackPlayers(names, line.text), current),
-    )
-  }, [])
+    paint()
+    term.options.disableStdin = !tty
+    term.options.cursorBlink = Boolean(tty)
 
-  const onClear = useCallback(() => termRef.current?.clear(), [])
+    return onThemeChange(paint)
+  }, [tty])
 
-  const handlers = useMemo(
-    () => ({ onLines, onClear, onState }),
-    [onLines, onClear, onState],
-  )
-  const { status, error, send } = useConsole(instanceId, handlers)
+  // Keystrokes go to the server's own console. Only wired up in terminal mode:
+  // a pipe has no line editor listening, and turning keys into commands behind
+  // the operator's back would be worse than ignoring them.
+  useEffect(() => {
+    const term = termRef.current
+    if (!term || !tty) return
+
+    const encoder = new TextEncoder()
+    const typed = term.onData((data) => sendBytes(encoder.encode(data)))
+    // Binary events carry the bytes for keys xterm cannot express as a string.
+    const typedBinary = term.onBinary((data) => {
+      const bytes = new Uint8Array(data.length)
+      for (let i = 0; i < data.length; i++) bytes[i] = data.charCodeAt(i) & 255
+      sendBytes(bytes)
+    })
+
+    return () => {
+      typed.dispose()
+      typedBinary.dispose()
+    }
+  }, [tty, sendBytes])
 
   // Switching instances must not leave the previous server's output on screen.
   useEffect(() => {
     termRef.current?.reset()
     setPlayers([])
     setSuggestions(null)
+    setTtyActive(undefined)
   }, [instanceId])
 
   const canType = isLive(state) && status === 'open'
@@ -243,12 +323,31 @@ export function Console({ instanceId, state, onState }: ConsoleProps) {
   }
 
   const highlighted = suggestions?.candidates[suggestions.index]
+  // An instance configured for a terminal whose start could not get one. The
+  // console still works — the pipe output is drawn into it — but the server
+  // will not be offering completion, so say so rather than let it look broken.
+  const fellBackToPipes = tty === true && isLive(state) && ttyActive === false
 
   return (
     <div className="console">
       <div className="console__screen" ref={hostRef} />
 
       {error && <div className="console__error">{error}</div>}
+
+      {tty && (
+        <div className="console__status">
+          <span className={`console__dot console__dot--${status}`} />
+          <span>
+            {status === 'open'
+              ? fellBackToPipes
+                ? '已连接 · 本次启动没能拿到伪终端，已回落到管道，服务端不会提供补全'
+                : canType
+                  ? '已连接 · 直接在上面输入，Tab 补全由服务端回答'
+                  : '已连接 · 服务器未运行'
+              : CONNECTION_LABEL[status]}
+          </span>
+        </div>
+      )}
 
       {suggestions && (
         <div className="console__hints">
@@ -282,28 +381,30 @@ export function Console({ instanceId, state, onState }: ConsoleProps) {
         </div>
       )}
 
-      <form className="console__input" onSubmit={submit}>
-        <span className="console__prompt">&gt;</span>
-        <input
-          ref={inputRef}
-          value={command}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-          disabled={!canType}
-          spellCheck={false}
-          autoComplete="off"
-          placeholder={
-            canType
-              ? '输入服务器命令，回车发送（Tab 补全，↑↓ 翻历史）'
-              : status !== 'open'
-                ? `控制台${CONNECTION_LABEL[status]}`
-                : '服务器未运行'
-          }
-        />
-        <button type="submit" disabled={!canType || !command.trim()}>
-          发送
-        </button>
-      </form>
+      {tty === false && (
+        <form className="console__input" onSubmit={submit}>
+          <span className="console__prompt">&gt;</span>
+          <input
+            ref={inputRef}
+            value={command}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            disabled={!canType}
+            spellCheck={false}
+            autoComplete="off"
+            placeholder={
+              canType
+                ? '输入服务器命令，回车发送（Tab 补全，↑↓ 翻历史）'
+                : status !== 'open'
+                  ? `控制台${CONNECTION_LABEL[status]}`
+                  : '服务器未运行'
+            }
+          />
+          <button type="submit" disabled={!canType || !command.trim()}>
+            发送
+          </button>
+        </form>
+      )}
     </div>
   )
 }

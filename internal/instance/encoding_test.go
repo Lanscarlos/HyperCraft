@@ -118,13 +118,13 @@ func TestConfigRejectsAnUnknownEncoding(t *testing.T) {
 	}
 }
 
-// The two flags that put colour back are the whole reason the web console
+// The two flags that put colour back are the whole reason a *piped* web console
 // looks like cmd instead of a log file.
 func TestCommandLineForcesColourAndUTF8(t *testing.T) {
 	cfg := Config{Name: "n", Directory: "/srv/mc", Jar: "server.jar", JVMArgs: []string{"-XX:+UseG1GC"}}
 	cfg.applyDefaults()
 
-	_, args, err := cfg.commandLine()
+	_, args, err := cfg.commandLine(false)
 	if err != nil {
 		t.Fatalf("commandLine: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestColourAndEncodingFlagsCanBeTurnedOff(t *testing.T) {
 	cfg := Config{Name: "n", Directory: "/srv/mc", Jar: "server.jar", ForceColor: &off, Encoding: "gbk"}
 	cfg.applyDefaults()
 
-	_, args, err := cfg.commandLine()
+	_, args, err := cfg.commandLine(false)
 	if err != nil {
 		t.Fatalf("commandLine: %v", err)
 	}

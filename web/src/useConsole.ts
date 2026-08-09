@@ -6,18 +6,33 @@ import type { ConsoleLine, ConsoleMessage, StateInfo } from './types'
 export type ConnectionStatus = 'connecting' | 'open' | 'reconnecting'
 
 interface ConsoleHandlers {
-  /** Append lines to the terminal. */
+  /** Append lines to the terminal. Line consoles only. */
   onLines: (lines: ConsoleLine[]) => void
+  /** Write raw terminal output. TTY consoles only. */
+  onBytes: (data: Uint8Array) => void
   /** Wipe the terminal, used when a reconnect cannot be stitched onto what is
    *  already on screen. */
   onClear: () => void
   onState: (state: StateInfo) => void
+  /** The size of the terminal that will render this console, so the server can
+   *  wrap its very first line for the right window. Null before it is laid out,
+   *  and irrelevant to a line console. */
+  viewport: () => { cols: number; rows: number } | null
 }
 
 interface ConsoleController {
   status: ConnectionStatus
   error: string | null
+  /**
+   * Which protocol this console speaks, or null until the server has said.
+   * It is settled by the opening frame and does not change while connected.
+   */
+  tty: boolean | null
   send: (command: string) => boolean
+  /** Send keystrokes to a terminal console. */
+  sendBytes: (data: Uint8Array) => void
+  /** Tell the server how big the window is now. */
+  sendResize: (cols: number, rows: number) => void
 }
 
 const MAX_BACKOFF_MS = 10_000
@@ -27,7 +42,10 @@ const MAX_BACKOFF_MS = 10_000
  *
  * The socket is a view onto a server that is running regardless — so a dropped
  * connection is a UI problem to paper over, never a reason to touch the server.
- * On reconnect the panel replays only the lines newer than the last one shown.
+ * How a reconnect catches up depends on the protocol: a line console replays
+ * only what is newer than the last sequence number it rendered, while a
+ * terminal console has no such identity per byte and instead starts over from
+ * the scrollback the server replays.
  */
 export function useConsole(
   instanceId: string,
@@ -35,6 +53,7 @@ export function useConsole(
 ): ConsoleController {
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
   const [error, setError] = useState<string | null>(null)
+  const [tty, setTty] = useState<boolean | null>(null)
 
   const socketRef = useRef<WebSocket | null>(null)
   const lastSeqRef = useRef(0)
@@ -55,7 +74,13 @@ export function useConsole(
       if (disposed) return
       setStatus(attemptRef.current === 0 ? 'connecting' : 'reconnecting')
 
-      const socket = new WebSocket(consoleSocketURL(instanceId))
+      const socket = new WebSocket(
+        consoleSocketURL(instanceId, handlersRef.current.viewport()),
+      )
+      // Terminal output arrives as raw bytes so a multi-byte character
+      // straddling a read is never split by a JSON encode; xterm reassembles
+      // UTF-8 across writes.
+      socket.binaryType = 'arraybuffer'
       socketRef.current = socket
 
       socket.onopen = () => {
@@ -67,6 +92,11 @@ export function useConsole(
 
       socket.onmessage = (event) => {
         if (disposed) return
+        if (event.data instanceof ArrayBuffer) {
+          handlersRef.current.onBytes(new Uint8Array(event.data))
+          return
+        }
+
         let msg: ConsoleMessage
         try {
           msg = JSON.parse(event.data as string)
@@ -76,6 +106,15 @@ export function useConsole(
 
         switch (msg.type) {
           case 'history': {
+            setTty(msg.tty)
+            if (msg.tty) {
+              // The scrollback the server is about to replay is the whole
+              // screen, not a delta: anything already rendered would be drawn
+              // twice, and there is no sequence number to notice that with.
+              handlersRef.current.onClear()
+              handlersRef.current.onState(msg.state)
+              break
+            }
             // Defensive: an older panel build could omit an empty list.
             const lines = msg.lines ?? []
             const fresh = lines.filter((l) => l.seq > lastSeqRef.current)
@@ -155,5 +194,22 @@ export function useConsole(
     return true
   }, [])
 
-  return { status, error, send }
+  // Keystrokes are dropped rather than queued while the socket is down: by the
+  // time it comes back the server has moved on, and replaying half a command
+  // into its console is worse than losing it.
+  const sendBytes = useCallback((data: Uint8Array) => {
+    const socket = socketRef.current
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(data)
+    }
+  }, [])
+
+  const sendResize = useCallback((cols: number, rows: number) => {
+    const socket = socketRef.current
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: 'resize', cols, rows }))
+    }
+  }, [])
+
+  return { status, error, tty, send, sendBytes, sendResize }
 }

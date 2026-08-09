@@ -32,6 +32,10 @@ type EventType string
 const (
 	EventLine  EventType = "line"
 	EventState EventType = "state"
+	// EventOutput carries raw terminal bytes and is what a TTY-backed instance
+	// sends instead of EventLine. The two never mix on one connection: which
+	// of them a console speaks is fixed for the life of the socket.
+	EventOutput EventType = "output"
 )
 
 // Event is one message in the console stream.
@@ -39,6 +43,11 @@ type Event struct {
 	Type  EventType  `json:"type"`
 	Line  *Line      `json:"line,omitempty"`
 	State *StateInfo `json:"state,omitempty"`
+	// Data is terminal output. It never travels as JSON — splicing raw bytes
+	// into a JSON string would break the multi-byte characters and escape
+	// sequences it exists to carry — so the transport sends it as a binary
+	// frame instead.
+	Data []byte `json:"-"`
 }
 
 // ring is a fixed-capacity circular buffer of console lines. It is the
@@ -97,6 +106,66 @@ func (r *ring) lastSeq() uint64 {
 	return r.seq
 }
 
+// terminalScrollbackBytes is how much raw terminal output is retained for a
+// TTY-backed instance. It is what a browser opening the console sees before
+// anything new arrives, so it has to be enough to hold a startup log — but it
+// is also held per instance for as long as the panel runs, which is why it is
+// counted in bytes rather than in redraws.
+const terminalScrollbackBytes = 256 * 1024
+
+// byteRing is the scrollback of a terminal-backed console: raw bytes, escape
+// sequences and all, replayed verbatim into a fresh xterm.
+//
+// Chunks are dropped whole from the front, so a replay can begin in the middle
+// of an escape sequence. A terminal emulator discards the fragment and resyncs
+// on the next one, which costs at most a few characters at the very top of the
+// scrollback — the alternative, parsing the stream to find a safe cut point,
+// means emulating a terminal server-side to hand one to the client that
+// already is one.
+type byteRing struct {
+	mu     sync.Mutex
+	chunks [][]byte
+	size   int
+	limit  int
+}
+
+func newByteRing(limit int) *byteRing {
+	if limit <= 0 {
+		limit = terminalScrollbackBytes
+	}
+	return &byteRing{limit: limit}
+}
+
+// append takes ownership of chunk, which must not be written to afterwards.
+// Callers hand over a freshly decoded buffer, so there is nothing to copy.
+func (r *byteRing) append(chunk []byte) {
+	if len(chunk) == 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.chunks = append(r.chunks, chunk)
+	r.size += len(chunk)
+	for r.size > r.limit && len(r.chunks) > 1 {
+		r.size -= len(r.chunks[0])
+		r.chunks[0] = nil
+		r.chunks = r.chunks[1:]
+	}
+}
+
+// snapshot returns the retained output as one buffer, oldest first.
+func (r *byteRing) snapshot() []byte {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	out := make([]byte, 0, r.size)
+	for _, chunk := range r.chunks {
+		out = append(out, chunk...)
+	}
+	return out
+}
+
 // broker fans console events out to every connected client.
 //
 // Subscribers are dropped rather than blocked when they fall behind: a stalled
@@ -114,11 +183,18 @@ func newBroker() *broker {
 
 const subscriberBuffer = 512
 
-func (b *broker) subscribe() chan Event {
+// attach registers a subscriber, running snapshot (if given) under the same
+// lock publishing takes. That is what lets a caller capture the scrollback and
+// join the stream as one atomic step, with no window for output to fall into
+// both or neither.
+func (b *broker) attach(snapshot func()) chan Event {
 	ch := make(chan Event, subscriberBuffer)
 	b.mu.Lock()
+	defer b.mu.Unlock()
+	if snapshot != nil {
+		snapshot()
+	}
 	b.subs[ch] = struct{}{}
-	b.mu.Unlock()
 	return ch
 }
 
@@ -132,8 +208,16 @@ func (b *broker) unsubscribe(ch chan Event) {
 }
 
 func (b *broker) publish(ev Event) {
+	b.publishFunc(func() Event { return ev })
+}
+
+// publishFunc builds the event under the broker's lock and fans it out. The
+// builder is where a caller records into its own scrollback, so that appending
+// and publishing cannot be observed separately by an attaching subscriber.
+func (b *broker) publishFunc(build func() Event) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	ev := build()
 	for ch := range b.subs {
 		select {
 		case ch <- ev:
