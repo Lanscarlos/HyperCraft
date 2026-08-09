@@ -84,12 +84,13 @@ export function Console({ instanceId, state, onState }: ConsoleProps) {
       lineHeight: 1.25,
       scrollback: 5000,
       theme: {
-        background: '#0d1117',
+        // Matches --bg-input, which is what .console__screen paints behind it.
+        background: '#0a0e15',
         foreground: '#c9d1d9',
-        cursor: '#0d1117',
+        cursor: '#0a0e15',
         selectionBackground: '#2f5580',
         // Minecraft's log colours map onto the ANSI 16. The defaults are too
-        // dark against #0d1117 — black in particular would be invisible.
+        // dark against that background — black would be invisible.
         black: '#484f58',
         brightBlack: '#6e7681',
         blue: '#6ea8ff',

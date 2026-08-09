@@ -46,7 +46,7 @@ export function Dashboard({
   const crashed = instances.filter((item) => item.state === 'crashed')
 
   return (
-    <div className="page">
+    <div className="page page--wide">
       <h1>仪表盘</h1>
       <p className="page__lead">
         面板以后台守护进程的方式持有服务器进程。关掉浏览器、退出登录，甚至重启路由，

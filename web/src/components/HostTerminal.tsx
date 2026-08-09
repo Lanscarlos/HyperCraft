@@ -70,7 +70,8 @@ export function HostTerminal({ terminal, onOpenSettings }: Props) {
       // macOS habits: Option as Meta is what makes Alt-b / Alt-f work in bash.
       macOptionIsMeta: true,
       theme: {
-        background: '#0d1117',
+        // Matches --bg-input, the colour .hostterm__screen paints behind it.
+        background: '#0a0e15',
         foreground: '#c9d1d9',
         cursor: '#58a6ff',
         selectionBackground: '#2f5580',
