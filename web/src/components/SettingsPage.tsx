@@ -6,11 +6,17 @@ import { DevicesPage } from './DevicesPage'
 import { Page } from './Page'
 import { Tabs } from './Tabs'
 import { PluginSourceSettings } from './PluginSourceSettings'
+import { SecurityPage } from './SecurityPage'
 import { TerminalSettings } from './TerminalSettings'
 import { UpdatePanel } from './UpdatePanel'
 
 /** Which settings page is open. Part of the URL, so it survives a reload. */
-export type SettingsSection = 'terminal' | 'devices' | 'plugin-source' | 'update'
+export type SettingsSection =
+  | 'terminal'
+  | 'devices'
+  | 'security'
+  | 'plugin-source'
+  | 'update'
 
 /**
  * Java runtimes and server cores used to live here too. They moved out to
@@ -21,6 +27,7 @@ export type SettingsSection = 'terminal' | 'devices' | 'plugin-source' | 'update
 export const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: 'terminal', label: '终端' },
   { id: 'devices', label: '已配对设备' },
+  { id: 'security', label: '登录记录' },
   { id: 'plugin-source', label: '插件源' },
   { id: 'update', label: '面板更新' },
 ]
@@ -86,6 +93,7 @@ export function SettingsPage({
           <TerminalSettings terminal={terminal} onOpenTerminal={onOpenTerminal} />
         )}
         {section === 'devices' && <DevicesPage />}
+        {section === 'security' && <SecurityPage />}
         {section === 'plugin-source' && <PluginSourceSettings plugins={plugins} />}
         {section === 'update' && (
           <Page

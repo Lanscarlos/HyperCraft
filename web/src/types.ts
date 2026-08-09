@@ -474,6 +474,14 @@ export interface User {
   version: string
   /** Name of the paired client, set only when a device token authenticated. */
   device?: string
+  /**
+   * The two addresses this request arrived on: who the panel believes you are,
+   * and the peer it actually spoke to. Identical unless trustedProxies is
+   * configured, and the difference is the whole point behind "what address does
+   * my panel actually see?".
+   */
+  client: string
+  remote: string
 }
 
 /**
@@ -488,6 +496,33 @@ export interface Device {
   lastUsed?: string
   /** True for the device making the request; always false in the browser. */
   current: boolean
+}
+
+/** What happened to the panel's credentials. Mirrors internal/api/authlog.go. */
+export type AuthEventKind =
+  | 'signin'
+  | 'signin-failed'
+  | 'throttled'
+  | 'paired'
+  | 'pair-failed'
+  | 'unpaired'
+  | 'password-changed'
+
+/**
+ * One credential event, as kept in the panel's memory. The list is cleared by a
+ * restart on purpose — the panel's own log is the durable record.
+ */
+export interface AuthEvent {
+  at: string
+  kind: AuthEventKind
+  /** Unverified on a failure: it is whatever the caller typed. */
+  username?: string
+  client: string
+  remote: string
+  /** Names the device, for pairing events. */
+  detail?: string
+  /** How many times this exact event repeated in a row. */
+  count: number
 }
 
 export const STATE_LABELS: Record<InstanceState, string> = {
