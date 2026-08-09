@@ -115,13 +115,6 @@ func (s *Server) handleUpdateMirror(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "更新正在进行中，无法修改镜像源")
 		return
 	}
-	// Plugin downloads come off the same GitHub release CDN, so they follow the
-	// same proxy: an operator who has said once that their line to GitHub is
-	// bad should not have to say it again per feature.
-	if s.plugins != nil {
-		s.plugins.Client().SetMirror(mirror)
-	}
-
 	s.panelMu.Lock()
 	panel := s.panel
 	panel.UpdateMirror = &mirror

@@ -14,9 +14,11 @@ import { isLive } from '../types'
  * from and deleting versions all live in the panel-wide library — see
  * PluginLibraryPage for why that split is the whole design.
  *
- * Jars the panel did not install are listed anyway, and can be switched off,
- * because pretending they are not there is how a server ends up with a plugin
- * nobody can account for.
+ * Jars the panel did not install are listed anyway, and identified from what
+ * they say about themselves — pretending they are not there is how a server
+ * ends up with a plugin nobody can account for, and listing them by file name
+ * alone barely improves on that. One that turns out to be a copy of something
+ * in the library can be adopted, after which it is an ordinary managed plugin.
  */
 export function InstancePlugins({
   instance,
@@ -169,7 +171,7 @@ export function InstancePlugins({
           <div className="chart-head">
             <h2 className="panel__title">自行放入的 jar</h2>
             <p className="chart-head__meta">
-              不是从插件库装的，面板不知道它的版本和来源，只能开关和删除
+              不是从插件库装的。面板会读 jar 自己的描述文件认出它是什么，但没有来源，也跟不了更新
             </p>
           </div>
           <div className="device-list">
@@ -177,8 +179,25 @@ export function InstancePlugins({
               <div className="device-row" key={entry.key}>
                 <div className="device-row__main">
                   <strong>{entry.name}</strong>
+                  {entry.version && <span className="badge">{entry.version}</span>}
+                  {entry.jar?.platform && <span className="badge">{entry.jar.platform}</span>}
                   {!entry.enabled && <span className="badge badge--warn">已停用</span>}
                   <span className="device-row__spacer" />
+                  {entry.adoptable && (
+                    <button
+                      className="link"
+                      disabled={busy}
+                      title={`按内容校验，这就是插件库里的 ${entry.adoptable.name} ${entry.adoptable.version}`}
+                      onClick={() =>
+                        void act(
+                          () => api.adoptInstancePlugin(instance.id, entry.key),
+                          '接管失败',
+                        )
+                      }
+                    >
+                      接管
+                    </button>
+                  )}
                   <button
                     className="link"
                     disabled={busy}
@@ -205,6 +224,15 @@ export function InstancePlugins({
                 <div className="device-row__meta">
                   {entry.dir}/{entry.fileName} · {formatBytes(entry.size)}
                   {entry.modified && ` · 修改于 ${formatDate(entry.modified)}`}
+                  {entry.jar?.authors?.length ? ` · 作者 ${entry.jar.authors.join('、')}` : ''}
+                  {entry.jar?.apiVersion && ` · api-version ${entry.jar.apiVersion}`}
+                  {!entry.jar && ' · 读不出插件描述文件，只能按文件名认'}
+                  {entry.adoptable && (
+                    <span className="device-row__hint">
+                      和插件库里的 {entry.adoptable.name} {entry.adoptable.version} 完全一致（按
+                      SHA-256 校验），接管之后就能像其它插件一样换版本、跟更新。
+                    </span>
+                  )}
                 </div>
               </div>
             ))}

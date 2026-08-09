@@ -199,10 +199,14 @@ type Client struct {
 	http      *http.Client
 	apiBase   string
 	userAgent string
-	// mirror prefixes asset download URLs, on the same terms as the panel's
-	// self-updater: it carries the bytes, never the metadata, because the
-	// proxies people use for this do not front api.github.com at all.
-	mirror string
+	// mirror is the chosen download proxy, by id or as a custom prefix. It
+	// carries the bytes and never the metadata, because the proxies people use
+	// for this do not front api.github.com at all. See mirrors.go.
+	//
+	// Guarded for the same reason the token is: the settings page can change it
+	// while a check is in flight.
+	mirrorMu sync.RWMutex
+	mirror   string
 	// token authenticates API requests. Panel-wide rather than per plugin: it
 	// is the operator's own GitHub account either way, and a token per
 	// repository would be a secret to rotate per repository.
@@ -224,19 +228,30 @@ func NewClient(apiBase, userAgent string) *Client {
 	}
 }
 
-// SetMirror configures the download proxy, given as a prefix a GitHub URL is
-// appended to. It follows the panel's own update mirror so an operator who has
-// already said "my line to GitHub is bad" is not asked again per feature.
-func (c *Client) SetMirror(prefix string) {
-	prefix = strings.TrimSpace(prefix)
-	if prefix != "" && !strings.HasSuffix(prefix, "/") {
-		prefix += "/"
+// SetMirror chooses which proxy plugin downloads go through: a mirror id from
+// mirrors.go, a custom "https://…/" prefix, or "" for the automatic order.
+// Anything unrecognised leaves the client on automatic rather than silently
+// downloading direct, which on the hosts this feature exists for is the failure
+// case, not the safe one.
+func (c *Client) SetMirror(id string) {
+	resolved, err := ResolveMirror(id)
+	if err != nil {
+		resolved = MirrorAuto
 	}
-	c.mirror = prefix
+	c.mirrorMu.Lock()
+	defer c.mirrorMu.Unlock()
+	c.mirror = resolved
 }
 
-// Mirror is the configured download proxy, or "" for direct downloads.
-func (c *Client) Mirror() string { return c.mirror }
+// Mirror is the configured download mirror's id.
+func (c *Client) Mirror() string {
+	c.mirrorMu.RLock()
+	defer c.mirrorMu.RUnlock()
+	if c.mirror == "" {
+		return MirrorAuto
+	}
+	return c.mirror
+}
 
 // SetToken stores the GitHub access token, or "" to go back to anonymous
 // requests. It takes effect on the next request rather than needing a restart:
@@ -262,10 +277,13 @@ func (c *Client) authToken() string {
 	return c.token
 }
 
-// attempt is one place to try fetching an asset from, and whether the panel's
-// token may be sent there.
+// attempt is one place to try fetching an asset from.
 type attempt struct {
 	url string
+	// mirror names where this attempt goes, for the job to report afterwards:
+	// with the automatic order in play, "it downloaded" and "it downloaded from
+	// the one you would have picked" are different facts.
+	mirror string
 	// auth carries the token and asks the API for raw bytes. It is only ever
 	// set for a URL on this client's own API host — see downloadOrder.
 	auth bool
@@ -273,18 +291,26 @@ type attempt struct {
 
 // downloadOrder is where to fetch an asset from, most preferred first.
 //
-// A public asset goes through the mirror before GitHub: speed is the entire
-// point of having one, and the direct link follows so a mirror that is down or
-// has not synced a release published minutes ago does not turn into a failed
-// install. A private one has exactly one route — the API, authenticated — and
-// no fallback: the public link cannot serve it, and a mirror must not be told
-// about it.
+// A public asset walks the chosen mirror order and ends at GitHub itself, so a
+// proxy that is down or blocked costs a retry rather than the install. A
+// private one has exactly one route — the API, authenticated — and no fallback:
+// the public link cannot serve it, and a mirror must not be told about it.
 func (c *Client) downloadOrder(src Source, asset Asset) ([]attempt, error) {
 	if !src.Private {
-		if c.mirror == "" || !strings.HasPrefix(asset.URL, "https://github.com/") {
-			return []attempt{{url: asset.URL}}, nil
+		if asset.URL == "" {
+			return nil, fmt.Errorf("%w: %s has no public download link", ErrNoAsset, asset.Name)
 		}
-		return []attempt{{url: c.mirror + asset.URL}, {url: asset.URL}}, nil
+		chosen := c.Mirror()
+		prefixes := mirrorOrder(chosen, asset.URL)
+		out := make([]attempt, 0, len(prefixes))
+		for _, prefix := range prefixes {
+			id := MirrorDirect
+			if prefix != "" {
+				id = mirrorID(chosen, prefix)
+			}
+			out = append(out, attempt{url: prefix + asset.URL, mirror: id})
+		}
+		return out, nil
 	}
 
 	if c.authToken() == "" {
@@ -296,7 +322,8 @@ func (c *Client) downloadOrder(src Source, asset Asset) ([]attempt, error) {
 		return nil, fmt.Errorf("%w: %s has no API download URL, so it cannot be fetched privately",
 			ErrNoAsset, asset.Name)
 	}
-	return []attempt{{url: asset.APIURL, auth: true}}, nil
+	// "direct" is the honest name here: a private download never sees a proxy.
+	return []attempt{{url: asset.APIURL, mirror: MirrorDirect, auth: true}}, nil
 }
 
 // isAPIURL reports whether a URL belongs to the API host this client talks to.
@@ -405,36 +432,38 @@ func (c *Client) Latest(ctx context.Context, src Source) (Release, error) {
 	return releases[0], nil
 }
 
-// Fetch opens an asset for download: through the mirror before GitHub for a
-// public release, through the authenticated API for a private one.
-func (c *Client) Fetch(ctx context.Context, src Source, asset Asset) (io.ReadCloser, error) {
+// Fetch opens an asset for download: down the mirror order for a public
+// release, through the authenticated API for a private one. It also returns
+// which mirror answered, so a job can say where the bytes came from rather than
+// leaving the automatic order a black box.
+func (c *Client) Fetch(ctx context.Context, src Source, asset Asset) (io.ReadCloser, string, error) {
 	order, err := c.downloadOrder(src, asset)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	var lastErr error
 	for _, next := range order {
 		body, err := c.open(ctx, next)
 		if err == nil {
-			return body, nil
+			return body, next.mirror, nil
 		}
 		// A cancelled job must not march down the fallback list pretending the
 		// mirror was at fault.
 		if ctx.Err() != nil {
-			return nil, err
+			return nil, "", err
 		}
 		lastErr = err
 	}
 	if !src.Private && c.authToken() != "" {
-		// The release listing was readable but the public download link was not.
-		// With a token in play the likely cause is a private repository whose
-		// source was never marked private, and that is a one-checkbox fix the
-		// bare transport error would never suggest.
-		return nil, fmt.Errorf("%w — if %s is private, mark its source as private so the jar is fetched through the API",
+		// The release listing was readable but no download link was. With a
+		// token in play the likely cause is a private repository the visibility
+		// check could not reach, and that is worth naming: the bare transport
+		// error reads like the release is gone.
+		return nil, "", fmt.Errorf("%w — if %s is private, check that the token can read it",
 			lastErr, src.Repo)
 	}
-	return nil, lastErr
+	return nil, "", lastErr
 }
 
 func (c *Client) open(ctx context.Context, next attempt) (io.ReadCloser, error) {

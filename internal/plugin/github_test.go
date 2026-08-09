@@ -212,29 +212,92 @@ func TestReleasesSeparatesRateLimitsFromOtherFailures(t *testing.T) {
 	}
 }
 
-func TestMirrorOnlyRewritesGitHubDownloads(t *testing.T) {
+func TestMirrorOrderEndsAtGitHubWhicheverWasChosen(t *testing.T) {
 	client := NewClient("", "test")
-	client.SetMirror("https://ghfast.top")
 	public := Source{Repo: "o/r"}
+	asset := Asset{URL: "https://github.com/o/r/releases/download/v1/x.jar"}
 
-	order, err := client.downloadOrder(public, Asset{URL: "https://github.com/o/r/releases/download/v1/x.jar"})
+	// A named mirror is tried first and GitHub second: a proxy that is down or
+	// blocked should cost a retry, not the install.
+	client.SetMirror("ghproxy")
+	order, err := client.downloadOrder(public, asset)
 	if err != nil {
 		t.Fatalf("downloadOrder: %v", err)
 	}
 	if len(order) != 2 ||
-		order[0].url != "https://ghfast.top/https://github.com/o/r/releases/download/v1/x.jar" ||
-		order[1].url != "https://github.com/o/r/releases/download/v1/x.jar" {
-		t.Fatalf("unexpected order: %v", order)
-	}
-	// A mirror that only fronts github.com would 404 on anything else, so the
-	// prefix is not applied to it.
-	if order, _ := client.downloadOrder(public, Asset{URL: "https://example.com/x.jar"}); len(order) != 1 {
-		t.Fatalf("a non-GitHub URL should not be mirrored: %v", order)
+		order[0].url != "https://gh-proxy.com/"+asset.URL || order[0].mirror != "ghproxy" ||
+		order[1].url != asset.URL || order[1].mirror != MirrorDirect {
+		t.Fatalf("unexpected order: %+v", order)
 	}
 
+	// The default walks every proxy and then GitHub, each attempt named so the
+	// finished job can say which one actually served the jar.
 	client.SetMirror("")
-	if order, _ := client.downloadOrder(public, Asset{URL: "https://github.com/o/r/x.jar"}); len(order) != 1 {
-		t.Fatalf("no mirror means one attempt: %v", order)
+	order, _ = client.downloadOrder(public, asset)
+	if len(order) != len(mirrors) || order[0].mirror != "ghfast" ||
+		order[len(order)-1].mirror != MirrorDirect {
+		t.Fatalf("unexpected automatic order: %+v", order)
+	}
+
+	// Direct means direct — no third party, not even as a fallback.
+	client.SetMirror(MirrorDirect)
+	if order, _ := client.downloadOrder(public, asset); len(order) != 1 || order[0].url != asset.URL {
+		t.Fatalf("unexpected direct order: %+v", order)
+	}
+
+	// These proxies front github.com and nothing else, so a prefix on anything
+	// else could only produce a 404.
+	client.SetMirror("ghfast")
+	if order, _ := client.downloadOrder(public, Asset{URL: "https://example.com/x.jar"}); len(order) != 1 {
+		t.Fatalf("a non-GitHub URL should not be proxied: %+v", order)
+	}
+}
+
+func TestResolveMirrorTakesIDsAndCustomPrefixesOnly(t *testing.T) {
+	for input, want := range map[string]string{
+		"":                     MirrorAuto,
+		MirrorAuto:             MirrorAuto,
+		"ghfast":               "ghfast",
+		MirrorDirect:           MirrorDirect,
+		"https://my.proxy":     "https://my.proxy/",
+		"https://my.proxy/":    "https://my.proxy/",
+		"  https://my.proxy/ ": "https://my.proxy/",
+	} {
+		got, err := ResolveMirror(input)
+		if err != nil {
+			t.Errorf("ResolveMirror(%q): %v", input, err)
+			continue
+		}
+		if got != want {
+			t.Errorf("ResolveMirror(%q) = %q, want %q", input, got, want)
+		}
+	}
+
+	// Refused rather than quietly defaulted: downloading through somewhere
+	// other than what was asked for is the surprise this setting removes.
+	if _, err := ResolveMirror("ghfast.top"); !errors.Is(err, ErrUnknownMirror) {
+		t.Errorf("a bare host is not a mirror id or a prefix: %v", err)
+	}
+}
+
+func TestFetchReportsWhichMirrorServedTheJar(t *testing.T) {
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("jar bytes"))
+	}))
+	defer origin.Close()
+
+	client := NewClient("", "test")
+	body, mirror, err := client.Fetch(context.Background(),
+		Source{Repo: "o/r"}, Asset{URL: origin.URL + "/x.jar"})
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	defer body.Close()
+
+	// Not a github.com link, so no proxy could serve it — and the job should say
+	// so rather than reporting whichever mirror happens to be configured.
+	if mirror != MirrorDirect {
+		t.Fatalf("mirror is %q, want %q", mirror, MirrorDirect)
 	}
 }
 
@@ -289,7 +352,7 @@ func TestTokenGoesToTheAPIAndNowhereElse(t *testing.T) {
 	client.SetToken("ghp_secret")
 
 	// A private asset: authenticated, and the bytes come back.
-	body, err := client.Fetch(context.Background(),
+	body, _, err := client.Fetch(context.Background(),
 		Source{Repo: "me/mine", Private: true},
 		Asset{Name: "Mine.jar", APIURL: origin.URL + "/repos/me/mine/releases/assets/7"})
 	if err != nil {
@@ -299,7 +362,7 @@ func TestTokenGoesToTheAPIAndNowhereElse(t *testing.T) {
 
 	// A public asset from the same stub, which is not the API host as far as
 	// this client is concerned: the token stays behind.
-	body, err = client.Fetch(context.Background(),
+	body, _, err = client.Fetch(context.Background(),
 		Source{Repo: "o/r"}, Asset{Name: "Foo.jar", URL: origin.URL + "/public/Foo.jar"})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
@@ -409,13 +472,13 @@ func TestFetchFallsBackToGitHubWhenTheMirrorFails(t *testing.T) {
 	// downloadOrder only mirrors github.com URLs, so the fallback is exercised
 	// by pointing both attempts at the stub: the first path fails, the second
 	// is the real one.
-	body, err := client.Fetch(context.Background(), Source{Repo: "o/r"}, Asset{URL: origin.URL + "/ok.jar"})
+	body, _, err := client.Fetch(context.Background(), Source{Repo: "o/r"}, Asset{URL: origin.URL + "/ok.jar"})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
 	defer body.Close()
 
-	if _, err := client.Fetch(context.Background(), Source{Repo: "o/r"}, Asset{URL: origin.URL + "/broken.jar"}); !errors.Is(err, ErrUpstream) {
+	if _, _, err := client.Fetch(context.Background(), Source{Repo: "o/r"}, Asset{URL: origin.URL + "/broken.jar"}); !errors.Is(err, ErrUpstream) {
 		t.Fatalf("expected ErrUpstream, got %v", err)
 	}
 }

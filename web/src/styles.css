@@ -2318,6 +2318,13 @@ a:hover {
   overflow-wrap: anywhere;
 }
 
+/* A sentence rather than a fact — "this jar is the library's own download" —
+   so it gets its own line instead of trailing the dot-separated metadata. */
+.device-row__hint {
+  display: block;
+  margin-top: 3px;
+}
+
 /* ------------------------------------------------------------------ assets
 
    Java runtimes and server cores are the same kind of thing — one downloaded
@@ -3191,6 +3198,120 @@ input.input-slim:disabled {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* --------------------------------------------------------------- plugin list
+
+   The library page is a list, not a grid of cards: what an operator does here
+   is scan down twenty plugins looking for the ones that need attention, and a
+   row puts name, held version, upstream version and users on one line where
+   they can be compared. Everything you can do *to* a plugin is on its own page,
+   so a row needs no controls beyond "open" and the one action worth taking from
+   the list — downloading an update it just told you about. */
+
+.plugin-rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.plugin-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.plugin-row:last-child {
+  border-bottom: none;
+}
+
+.plugin-row:hover {
+  background: var(--surface-2);
+}
+
+/* The name is the target: the whole left half is one button, so opening a
+   plugin does not require finding a small link at the end of the row. */
+.plugin-row__main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 2 1 220px;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plugin-row__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.plugin-row__title strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-row__title small,
+.plugin-row__facts small {
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-row__facts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 180px;
+  min-width: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.plugin-row__users {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1 1 140px;
+  min-width: 0;
+  font-size: 11px;
+}
+
+.plugin-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Below this the four columns stop fitting side by side, and a row that wraps
+   mid-column reads worse than one that stacks. */
+@media (max-width: 900px) {
+  .plugin-row {
+    flex-wrap: wrap;
+  }
+
+  .plugin-row__main {
+    flex: 1 1 100%;
   }
 }
 

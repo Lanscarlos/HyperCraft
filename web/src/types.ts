@@ -349,12 +349,24 @@ export interface PluginDownloadJob {
   tag: string
   version: string
   fileName: string
+  /** Which mirror actually served the bytes — with 自动 on, not obvious. */
+  mirror?: string
   total: number
   downloaded: number
   state: PluginDownloadState
   error?: string
   startedAt: string
   finishedAt?: string
+}
+
+/** A proxy plugin jars can be downloaded through. Mirrors internal/plugin. */
+export interface PluginMirror {
+  id: string
+  name: string
+  note: string
+  /** The URL a GitHub link is appended to; absent for a direct download. */
+  prefix?: string
+  default?: boolean
 }
 
 export interface PluginLibrary {
@@ -365,6 +377,29 @@ export interface PluginLibrary {
   tokenConfigured: boolean
   /** Last four characters of that token, enough to recognise which one it is. */
   tokenHint?: string
+  /** Download proxies to choose between, automatic first. */
+  mirrors: PluginMirror[]
+  /** The chosen mirror's id, or a custom URL prefix. */
+  mirror: string
+}
+
+/** What a plugin jar says about itself, read from its own descriptor file. */
+export interface PluginJarInfo {
+  name?: string
+  version?: string
+  authors?: string[]
+  /** Which server the descriptor was written for: bukkit, paper, velocity… */
+  platform?: string
+  /** The game version the plugin declares support for, when it declares one. */
+  apiVersion?: string
+}
+
+/** A library version an unmanaged jar was recognised as, by SHA-256. */
+export interface AdoptablePlugin {
+  pluginId: string
+  name: string
+  tag: string
+  version: string
 }
 
 /** One row of an instance's plugin list: the panel's record joined with disk. */
@@ -385,6 +420,10 @@ export interface InstancePlugin {
   tag?: string
   version?: string
   installedAt?: string
+  /** Read from the jar for rows the panel did not install. */
+  jar?: PluginJarInfo
+  /** Set when this jar is byte-for-byte a version the library holds. */
+  adoptable?: AdoptablePlugin
 }
 
 export interface InstancePluginList {

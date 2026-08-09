@@ -1,31 +1,36 @@
 import { useEffect, useState } from 'react'
 
-import { api } from '../api'
 import { formatBytes, formatDate } from '../format'
-import type { LibraryPlugin, PluginDownloadJob, PluginRelease } from '../types'
+import type { LibraryPlugin, PluginDownloadJob } from '../types'
 import { hasPluginUpdate } from '../types'
-import type { PluginController, PluginInput } from '../usePlugins'
+import type { PluginController } from '../usePlugins'
+import { PluginDialog } from './PluginDialog'
 
 /**
- * Panel-wide plugin management: where a plugin comes from, which versions the
- * panel holds, and what is worth updating.
+ * Panel-wide plugin management: what the panel tracks, and what needs attention.
  *
- * Everything about a plugin is decided here and nowhere else. An instance may
- * take a copy, swap which version it holds, or switch one off — it cannot add
- * a plugin, define a download source or delete a version. That is the whole
- * point of the split: a panel where each server manages its own downloads ends
- * up with six subtly different copies of the same plugin and nobody able to
- * say which is which, and the version an operator most wants to roll back to
- * is always the one that was overwritten in place.
+ * This page is a list and nothing more. Everything you can *do* to one plugin —
+ * pick a version, read the release notes, roll back, edit the source — lives on
+ * its own page, because those are decisions made about one plugin at a time and
+ * they do not fit in a tile that has to sit beside nineteen others. What belongs
+ * here is the comparison: which of them have updates, which are unused, how much
+ * disk the whole shelf is taking.
+ *
+ * The split with instances is deliberate too: an instance may take a copy, swap
+ * which version it holds, or switch one off — it cannot add a plugin, define a
+ * download source or delete a version. A panel where each server manages its own
+ * downloads ends up with six subtly different copies of the same plugin and
+ * nobody able to say which is which.
  */
 export function PluginLibraryPage({
   plugins,
-  onOpenInstances,
+  onOpenPlugin,
+  onOpenSettings,
 }: {
   plugins: PluginController
-  onOpenInstances: () => void
+  onOpenPlugin: (id: string) => void
+  onOpenSettings: () => void
 }) {
-  const [editing, setEditing] = useState<LibraryPlugin | null>(null)
   const [adding, setAdding] = useState(false)
 
   const { library, job, downloading, busy } = plugins
@@ -35,7 +40,7 @@ export function PluginLibraryPage({
     0,
   )
   const versionCount = tracked.reduce((sum, item) => sum + item.versions.length, 0)
-  // Worth saying out loud rather than leaving as a per-card check failure: a
+  // Worth saying out loud rather than leaving as a per-row check failure: a
   // private plugin with no token can neither check nor download, and the reason
   // is one setting away.
   const privateWithoutToken =
@@ -46,17 +51,6 @@ export function PluginLibraryPage({
     if (job?.state !== 'done') return
     void plugins.refresh()
   }, [job?.state, job?.tag, plugins])
-
-  const remove = async (item: LibraryPlugin) => {
-    const inUse =
-      item.usedBy.length > 0
-        ? `实例「${item.usedBy.join('、')}」正在用它，不过它们各自有一份副本，删掉库里的不影响已经装上的。`
-        : ''
-    if (!window.confirm(`确定要把「${item.name}」和它的 ${item.versions.length} 个版本从插件库删除吗？${inUse}`)) {
-      return
-    }
-    await plugins.remove(item.id)
-  }
 
   return (
     <div className="page page--wide">
@@ -82,7 +76,10 @@ export function PluginLibraryPage({
 
       {privateWithoutToken && (
         <div className="alert alert--warn">
-          有插件来自私有仓库，但面板还没有 GitHub 访问令牌 —— 在下面填一个，否则这些插件既检查不到更新也下载不了。
+          有插件来自私有仓库，但面板还没有 GitHub 访问令牌 —— 这些插件既检查不到更新也下载不了。
+          <button className="link" onClick={onOpenSettings}>
+            去「设置 → 插件源」填一个
+          </button>
         </div>
       )}
 
@@ -90,6 +87,9 @@ export function PluginLibraryPage({
         <div className="chart-head">
           <h2 className="panel__title">已跟踪的插件</h2>
           <div className="field__tools">
+            <button className="btn" type="button" onClick={onOpenSettings}>
+              插件源设置
+            </button>
             <button
               className="btn"
               type="button"
@@ -109,53 +109,37 @@ export function PluginLibraryPage({
             <p>插件库还是空的。</p>
             <p className="muted">
               添加一个插件的 GitHub 仓库（比如 <code>EssentialsX/Essentials</code>，或者直接粘贴仓库地址），
-              面板就会从它的 Release 里拉取 jar。装到服务器上是在实例的「插件」标签里做的 ——
-              <button className="link" onClick={onOpenInstances}>
-                去实例
+              面板就会从它的 Release 里拉取 jar。自己写的插件发在私有仓库里也可以，先在
+              <button className="link" onClick={onOpenSettings}>
+                设置 → 插件源
               </button>
-              。
+              填个访问令牌就行。
             </p>
           </div>
         ) : (
-          <div className="asset-grid">
+          <div className="plugin-rows">
             {tracked.map((item) => (
-              <PluginCard
+              <PluginRow
                 key={item.id}
                 item={item}
                 busy={busy}
                 downloading={downloading}
-                onCheck={() => void plugins.check(item.id)}
-                onDownload={(tag) => void plugins.download(item.id, tag)}
-                onRemoveVersion={(tag) => void plugins.removeVersion(item.id, tag)}
-                onEdit={() => setEditing(item)}
-                onRemove={() => void remove(item)}
+                onOpen={() => onOpenPlugin(item.id)}
+                onUpdate={() => void plugins.download(item.id, item.latest?.tag ?? '')}
               />
             ))}
           </div>
         )}
       </section>
 
-      <GitHubTokenPanel
-        configured={library?.tokenConfigured ?? false}
-        hint={library?.tokenHint}
-        busy={busy}
-        onSave={(token) => plugins.setToken(token)}
-      />
-
-      {(adding || editing) && (
+      {adding && (
         <PluginDialog
-          item={editing}
+          item={null}
           busy={busy}
-          onCancel={() => {
-            setAdding(false)
-            setEditing(null)
-          }}
+          onCancel={() => setAdding(false)}
           onSubmit={async (input) => {
-            const ok = editing ? await plugins.edit(editing.id, input) : await plugins.add(input)
-            if (ok) {
-              setAdding(false)
-              setEditing(null)
-            }
+            const ok = await plugins.add(input)
+            if (ok) setAdding(false)
             return ok
           }}
         />
@@ -164,375 +148,75 @@ export function PluginLibraryPage({
   )
 }
 
-/**
- * The credential private repositories are read with.
- *
- * It is write-only on purpose: the panel will say whether it holds a token and
- * show its last four characters, and that is all — a token that can be read
- * back out of a page is a token that leaks with the page. Getting a wrong one
- * right again is done by pasting a new one over it, not by editing it in place.
- */
-function GitHubTokenPanel({
-  configured,
-  hint,
-  busy,
-  onSave,
-}: {
-  configured: boolean
-  hint?: string
-  busy: boolean
-  onSave: (token: string) => Promise<boolean>
-}) {
-  const [token, setToken] = useState('')
-
-  const save = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (!token.trim()) return
-    if (await onSave(token.trim())) setToken('')
-  }
-
-  return (
-    <section className="panel">
-      <div className="chart-head">
-        <h2 className="panel__title">GitHub 访问令牌</h2>
-        {configured && <span className="badge badge--ok">已配置{hint && ` ···${hint}`}</span>}
-      </div>
-      <p className="chart-note">
-        自己写的插件发在私有仓库里时，面板得先能证明「我是你」才看得见它 —— 填一个令牌就行，
-        剩下的不用管：哪个仓库是私有的由面板自己问 GitHub，检查更新和下载会自动走带认证的 API。
-        顺带一提，就算全是公开仓库，配了令牌也值：匿名调用每小时只有 60 次，插件一多就不够用。
-      </p>
-      <form onSubmit={(event) => void save(event)}>
-        <label className="field">
-          <span>令牌</span>
-          <input
-            type="password"
-            value={token}
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={configured ? '粘贴新令牌以替换现有的' : 'github_pat_… 或 ghp_…'}
-            onChange={(e) => setToken(e.target.value)}
-          />
-          <small>
-            在 GitHub 的 Settings → Developer settings → Personal access tokens 里生成。
-            fine-grained 令牌只要给目标仓库的 <code>Contents: Read-only</code> 权限；
-            classic 令牌勾 <code>repo</code>。令牌存在面板自己的 panel.json 里（0600），
-            只发给 api.github.com，不会经过下载镜像。
-          </small>
-        </label>
-        <div className="field__tools">
-          <button className="btn btn--primary" type="submit" disabled={busy || !token.trim()}>
-            {configured ? '替换令牌' : '保存令牌'}
-          </button>
-          {configured && (
-            <button
-              className="btn"
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                if (window.confirm('清除后，私有仓库的插件将无法检查更新或下载。确定吗？')) {
-                  void onSave('')
-                }
-              }}
-            >
-              清除
-            </button>
-          )}
-        </div>
-      </form>
-    </section>
-  )
-}
-
-function PluginCard({
+/** One line of the list: enough to decide whether this plugin needs opening. */
+function PluginRow({
   item,
   busy,
   downloading,
-  onCheck,
-  onDownload,
-  onRemoveVersion,
-  onEdit,
-  onRemove,
+  onOpen,
+  onUpdate,
 }: {
   item: LibraryPlugin
   busy: boolean
   downloading: boolean
-  onCheck: () => void
-  onDownload: (tag: string) => void
-  onRemoveVersion: (tag: string) => void
-  onEdit: () => void
-  onRemove: () => void
+  onOpen: () => void
+  onUpdate: () => void
 }) {
-  const [releases, setReleases] = useState<PluginRelease[] | null>(null)
-  const [loadingReleases, setLoadingReleases] = useState(false)
-  const [releaseError, setReleaseError] = useState<string | null>(null)
-
   const updatable = hasPluginUpdate(item)
-  const held = new Set(item.versions.map((version) => version.tag))
-
-  const loadReleases = async () => {
-    if (releases || loadingReleases) return
-    setLoadingReleases(true)
-    setReleaseError(null)
-    try {
-      setReleases(await api.pluginReleases(item.id))
-    } catch (err) {
-      setReleaseError(err instanceof Error ? err.message : '获取版本列表失败')
-    } finally {
-      setLoadingReleases(false)
-    }
-  }
+  const newest = item.versions[0]
 
   return (
-    <article className="asset">
-      <div className="asset__head">
+    <article className="plugin-row">
+      <button className="plugin-row__main" onClick={onOpen} title={`打开「${item.name}」`}>
         <span className="asset__tile asset__tile--accent">{item.name.slice(0, 1).toUpperCase()}</span>
-        <div className="asset__title">
-          <strong title={item.name}>{item.name}</strong>
-          <span className="asset__sub" title={item.source.repo}>
-            {item.source.repo}
-          </span>
-        </div>
-        {updatable && <span className="badge badge--update">有更新</span>}
-        {item.source.private && <span className="badge">私有</span>}
-        {item.targetDir !== 'plugins' && <span className="badge">{item.targetDir}/</span>}
-      </div>
-
-      {item.note && <p className="asset__path">{item.note}</p>}
-
-      <dl className="asset__facts">
-        <div>
-          <dt>已下载</dt>
-          <dd>{item.versions.length} 个版本</dd>
-        </div>
-        <div>
-          <dt>最新</dt>
-          <dd>{item.latest ? item.latest.version : '未知'}</dd>
-        </div>
-        <div>
-          <dt>检查于</dt>
-          <dd>{item.checkedAt ? formatDate(item.checkedAt) : '从未'}</dd>
-        </div>
-      </dl>
-
-      {item.checkError && <div className="alert alert--warn">检查更新失败：{item.checkError}</div>}
-
-      {updatable && item.latest && (
-        <div className="alert alert--ok">
-          上游最新是 {item.latest.version}
-          {item.latest.prerelease && '（预发布）'}，库里还没有。
-          <button
-            className="link"
-            disabled={busy || downloading}
-            onClick={() => onDownload(item.latest?.tag ?? '')}
-          >
-            下载它
-          </button>
-        </div>
-      )}
-
-      {item.versions.length > 0 && (
-        <div className="plugin-versions">
-          {item.versions.map((version) => (
-            <div className="plugin-version" key={version.tag}>
-              <span className="plugin-version__name" title={version.fileName}>
-                {version.version}
-                {version.prerelease && <span className="badge badge--warn">预发布</span>}
-              </span>
-              <span className="plugin-version__meta">
-                {formatBytes(version.size)} · {formatDate(version.publishedAt)}
-              </span>
-              <button
-                className="link link--danger"
-                disabled={busy || downloading}
-                onClick={() => {
-                  if (window.confirm(`确定要删除 ${item.name} ${version.version} 吗？已经装到实例里的副本不受影响。`)) {
-                    onRemoveVersion(version.tag)
-                  }
-                }}
-              >
-                删除
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {releaseError && <div className="alert alert--error">{releaseError}</div>}
-      {releases && (
-        <div className="field">
-          <span>上游发布</span>
-          <div className="plugin-versions">
-            {releases.map((release) => (
-              <div className="plugin-version" key={release.tag}>
-                <span className="plugin-version__name" title={release.asset.name}>
-                  {release.version}
-                  {release.prerelease && <span className="badge badge--warn">预发布</span>}
-                  {held.has(release.tag) && <span className="badge">已下载</span>}
-                </span>
-                <span className="plugin-version__meta">
-                  {formatBytes(release.asset.size)} · {formatDate(release.publishedAt)}
-                </span>
-                <button
-                  className="link"
-                  disabled={busy || downloading}
-                  onClick={() => onDownload(release.tag)}
-                >
-                  {held.has(release.tag) ? '重新下载' : '下载'}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <footer className="asset__actions">
-        {item.usedBy.length > 0 ? (
-          <span className="asset__users">
-            使用中：
-            {item.usedBy.map((name) => (
-              <span className="badge" key={name}>
-                {name}
-              </span>
-            ))}
-          </span>
-        ) : (
-          <span className="muted">暂时没有实例用它</span>
-        )}
-        <span className="device-row__main">
-          <button className="link" disabled={busy} onClick={onCheck}>
-            检查更新
-          </button>
-          <button className="link" disabled={busy || loadingReleases} onClick={() => void loadReleases()}>
-            {loadingReleases ? '获取中…' : releases ? '已列出' : '选择版本'}
-          </button>
-          <button className="link" disabled={busy} onClick={onEdit}>
-            编辑
-          </button>
-          <button className="link link--danger" disabled={busy} onClick={onRemove}>
-            删除
-          </button>
+        <span className="plugin-row__title">
+          <strong>
+            {item.name}
+            {updatable && <span className="badge badge--update">有更新</span>}
+            {item.source.private && <span className="badge">私有</span>}
+            {item.targetDir !== 'plugins' && <span className="badge">{item.targetDir}/</span>}
+          </strong>
+          <small title={item.source.repo}>{item.source.repo}</small>
         </span>
-      </footer>
+      </button>
+
+      <span className="plugin-row__facts">
+        <span title={newest ? `最新已下载 ${newest.version}` : '还没下载过'}>
+          {newest ? `已下载 ${newest.version}` : '未下载'}
+          {item.versions.length > 1 && ` · 共 ${item.versions.length} 版`}
+        </span>
+        <small>
+          {item.checkError
+            ? `检查失败：${item.checkError}`
+            : item.latest
+              ? `上游 ${item.latest.version} · 检查于 ${formatDate(item.checkedAt ?? '')}`
+              : '还没检查过更新'}
+        </small>
+      </span>
+
+      <span className="plugin-row__users">
+        {item.usedBy.length > 0 ? (
+          item.usedBy.map((name) => (
+            <span className="badge" key={name}>
+              {name}
+            </span>
+          ))
+        ) : (
+          <span className="muted">没有实例用它</span>
+        )}
+      </span>
+
+      <span className="plugin-row__actions">
+        {updatable && (
+          <button className="link" disabled={busy || downloading} onClick={onUpdate}>
+            下载新版
+          </button>
+        )}
+        <button className="link" onClick={onOpen}>
+          详情
+        </button>
+      </span>
     </article>
-  )
-}
-
-/** Add and edit share a form: the fields are the same, and so are the rules. */
-function PluginDialog({
-  item,
-  busy,
-  onCancel,
-  onSubmit,
-}: {
-  item: LibraryPlugin | null
-  busy: boolean
-  onCancel: () => void
-  onSubmit: (input: PluginInput) => Promise<boolean>
-}) {
-  const [name, setName] = useState(item?.name ?? '')
-  const [repo, setRepo] = useState(item?.source.repo ?? '')
-  const [assetPattern, setAssetPattern] = useState(item?.source.assetPattern ?? '')
-  const [prerelease, setPrerelease] = useState(item?.source.prerelease ?? false)
-  const [isPrivate, setIsPrivate] = useState(item?.source.private ?? false)
-  const [targetDir, setTargetDir] = useState(item?.targetDir ?? 'plugins')
-  const [note, setNote] = useState(item?.note ?? '')
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    await onSubmit({ name, repo, assetPattern, prerelease, private: isPrivate, targetDir, note })
-  }
-
-  return (
-    <div className="modal" role="dialog" aria-modal="true">
-      <form className="modal__card" onSubmit={(event) => void submit(event)}>
-        <h2 className="modal__title">{item ? `编辑「${item.name}」` : '添加插件'}</h2>
-        <p className="modal__lead">
-          目前只支持 GitHub Release —— 和面板自己更新走的是同一条路，镜像源也跟着设置里的那个走。
-        </p>
-
-        <label className="field">
-          <span>GitHub 仓库</span>
-          <input
-            value={repo}
-            autoFocus
-            required
-            placeholder="EssentialsX/Essentials，或直接粘贴仓库地址"
-            onChange={(e) => setRepo(e.target.value)}
-          />
-          <small>填 owner/name 就行；从浏览器地址栏整条粘过来也能识别。</small>
-        </label>
-
-        <label className="field">
-          <span>显示名称</span>
-          <input
-            value={name}
-            placeholder="留空就用仓库名"
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
-
-        <label className="field">
-          <span>安装目录</span>
-          <input value={targetDir} placeholder="plugins" onChange={(e) => setTargetDir(e.target.value)} />
-          <small>
-            Bukkit / Spigot / Paper / Velocity / BungeeCord 都是 <code>plugins</code>；
-            Fabric、Forge 的模组要填 <code>mods</code>。
-          </small>
-        </label>
-
-        <label className="field">
-          <span>文件名匹配</span>
-          <input
-            value={assetPattern}
-            placeholder="留空自动挑选，例如 EssentialsX-*.jar"
-            onChange={(e) => setAssetPattern(e.target.value)}
-          />
-          <small>
-            一个 Release 里挂了好几个 jar 时用它指定要哪个。留空时面板会跳过 sources、javadoc
-            这类附带包，从剩下的里挑最大的那个。
-          </small>
-        </label>
-
-        <label className="checkbox checkbox--stacked">
-          <input
-            type="checkbox"
-            checked={prerelease}
-            onChange={(e) => setPrerelease(e.target.checked)}
-          />
-          <span>包含预发布版本</span>
-          <small>作者标了 pre-release 的版本通常是还没准备好上正式服的。</small>
-        </label>
-
-        <label className="checkbox checkbox--stacked">
-          <input
-            type="checkbox"
-            checked={isPrivate}
-            onChange={(e) => setIsPrivate(e.target.checked)}
-          />
-          <span>私有仓库</span>
-          <small>
-            通常不用管：配了访问令牌后，面板每次检查更新和下载前都会问一下 GitHub 这个仓库是不是私有的，
-            并按实际情况自动纠正这个勾。私有仓库的 jar 只能从 GitHub API 取，所以不走下载镜像 ——
-            镜像是外人，没必要让它知道这个仓库的存在。
-          </small>
-        </label>
-
-        <label className="field">
-          <span>备注</span>
-          <input value={note} placeholder="给自己看的，可留空" onChange={(e) => setNote(e.target.value)} />
-        </label>
-
-        <div className="modal__actions">
-          <button className="btn" type="button" onClick={onCancel} disabled={busy}>
-            取消
-          </button>
-          <button className="btn btn--primary" type="submit" disabled={busy || !repo.trim()}>
-            {item ? '保存' : '添加'}
-          </button>
-        </div>
-      </form>
-    </div>
   )
 }
 
@@ -559,6 +243,7 @@ function JobStatus({
         </div>
         <p className="chart-note">
           正在下载 {job.pluginName} {job.version}（{job.fileName}）
+          {job.mirror && ` · 来自 ${mirrorLabel(job.mirror)}`}
           <button className="link link--danger" onClick={onCancel} disabled={busy}>
             取消
           </button>
@@ -570,7 +255,8 @@ function JobStatus({
   if (job.state === 'done') {
     return (
       <div className="alert alert--ok">
-        已下载 {job.pluginName} {job.version}，现在可以在实例的「插件」标签里装上。
+        已下载 {job.pluginName} {job.version}
+        {job.mirror && `（来自 ${mirrorLabel(job.mirror)}）`}，现在可以在实例的「插件」标签里装上。
       </div>
     )
   }
@@ -585,4 +271,10 @@ function JobStatus({
       {job.fileName && `（${job.fileName}）`}
     </div>
   )
+}
+
+/** Names a mirror id for the job line. Unknown ids are custom prefixes, which
+ *  are already their own name. */
+function mirrorLabel(id: string): string {
+  return id === 'direct' ? 'GitHub 直连' : id
 }

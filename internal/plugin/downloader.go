@@ -43,11 +43,14 @@ const (
 // Like a core download, it survives the transfer: the finished job stays
 // readable so an operator who closed the tab still sees how it went.
 type Job struct {
-	PluginID   string     `json:"pluginId"`
-	PluginName string     `json:"pluginName"`
-	Tag        string     `json:"tag"`
-	Version    string     `json:"version"`
-	FileName   string     `json:"fileName"`
+	PluginID   string `json:"pluginId"`
+	PluginName string `json:"pluginName"`
+	Tag        string `json:"tag"`
+	Version    string `json:"version"`
+	FileName   string `json:"fileName"`
+	// Mirror is where the bytes actually came from, which with the automatic
+	// order in play is not something the operator's setting can tell them.
+	Mirror     string     `json:"mirror,omitempty"`
 	Total      int64      `json:"total"`
 	Downloaded int64      `json:"downloaded"`
 	State      JobState   `json:"state"`
@@ -331,11 +334,15 @@ func (d *Downloader) run(ctx context.Context, job *Job, item Plugin, release Rel
 
 // transfer streams one asset to disk and returns its SHA-256.
 func (d *Downloader) transfer(ctx context.Context, job *Job, temp string, src Source, asset Asset) (string, error) {
-	body, err := d.client.Fetch(ctx, src, asset)
+	body, mirror, err := d.client.Fetch(ctx, src, asset)
 	if err != nil {
 		return "", err
 	}
 	defer body.Close()
+
+	d.mu.Lock()
+	job.Mirror = mirror
+	d.mu.Unlock()
 
 	file, err := os.OpenFile(temp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {

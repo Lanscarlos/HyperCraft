@@ -209,6 +209,9 @@ export const api = {
    */
   setPluginToken: (token: string) =>
     request<PluginLibrary>('PUT', '/api/plugins/config/token', { token }),
+  /** Chooses the proxy plugin jars download through: an id, or a URL prefix. */
+  setPluginMirror: (mirror: string) =>
+    request<PluginLibrary>('PUT', '/api/plugins/config/mirror', { mirror }),
   deletePlugin: (id: string) => request<void>('DELETE', `/api/plugins/${encodeURIComponent(id)}`),
   /** Asks upstream what versions exist. Always a network round trip. */
   pluginReleases: (id: string) =>
@@ -233,6 +236,9 @@ export const api = {
     request<void>('POST', `/api/instances/${id}/plugins`, { pluginId, tag }),
   setInstancePluginEnabled: (id: string, key: string, enabled: boolean) =>
     request<void>('PUT', `/api/instances/${id}/plugins`, { key, enabled }),
+  /** Starts tracking a jar the panel found, once it matched a library version. */
+  adoptInstancePlugin: (id: string, key: string) =>
+    request<void>('POST', `/api/instances/${id}/plugins/adopt`, { key }),
   uninstallInstancePlugin: (id: string, key: string) =>
     request<void>('DELETE', `/api/instances/${id}/plugins?key=${encodeURIComponent(key)}`),
 

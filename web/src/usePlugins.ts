@@ -40,6 +40,8 @@ export interface PluginController {
   removeVersion: (id: string, tag: string) => Promise<void>
   /** Stores the GitHub token, or clears it with an empty string. */
   setToken: (token: string) => Promise<boolean>
+  /** Chooses the download mirror, by id or as a custom URL prefix. */
+  setMirror: (mirror: string) => Promise<boolean>
 }
 
 /**
@@ -181,6 +183,15 @@ export function usePlugins(enabled: boolean): PluginController {
     [act],
   )
 
+  const setMirror = useCallback(
+    (mirror: string) =>
+      act(async () => {
+        setLibrary(await api.setPluginMirror(mirror))
+        return true
+      }, '保存下载源失败').catch(() => false),
+    [act],
+  )
+
   return {
     library,
     plugins,
@@ -200,5 +211,6 @@ export function usePlugins(enabled: boolean): PluginController {
     cancel,
     removeVersion,
     setToken,
+    setMirror,
   }
 }

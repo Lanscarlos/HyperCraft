@@ -1,12 +1,14 @@
+import type { PluginController } from '../usePlugins'
 import type { TerminalController } from '../useTerminal'
 import { updateLabel } from '../useUpdate'
 import type { UpdateController } from '../useUpdate'
 import { DevicesPage } from './DevicesPage'
+import { PluginSourceSettings } from './PluginSourceSettings'
 import { TerminalSettings } from './TerminalSettings'
 import { UpdatePanel } from './UpdatePanel'
 
 /** Which settings page is open. Part of the URL, so it survives a reload. */
-export type SettingsSection = 'terminal' | 'devices' | 'update'
+export type SettingsSection = 'terminal' | 'devices' | 'plugin-source' | 'update'
 
 /**
  * Java runtimes and server cores used to live here too. They moved out to
@@ -17,6 +19,7 @@ export type SettingsSection = 'terminal' | 'devices' | 'update'
 export const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: 'terminal', label: '终端' },
   { id: 'devices', label: '已配对设备' },
+  { id: 'plugin-source', label: '插件源' },
   { id: 'update', label: '面板更新' },
 ]
 
@@ -29,6 +32,8 @@ interface Props {
   onSection: (section: SettingsSection) => void
   terminal: TerminalController
   update: UpdateController
+  /** The plugin library, for the download source and token settings. */
+  plugins: PluginController
   /** Jumps to the terminal page once the operator has switched it on. */
   onOpenTerminal: () => void
   /** Instances that would be stopped by a panel update. */
@@ -47,6 +52,7 @@ export function SettingsPage({
   onSection,
   terminal,
   update,
+  plugins,
   onOpenTerminal,
   runningNames,
 }: Props) {
@@ -75,6 +81,7 @@ export function SettingsPage({
           <TerminalSettings terminal={terminal} onOpenTerminal={onOpenTerminal} />
         )}
         {section === 'devices' && <DevicesPage />}
+        {section === 'plugin-source' && <PluginSourceSettings plugins={plugins} />}
         {section === 'update' && (
           <div className="page">
             <h1>面板更新</h1>

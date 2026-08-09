@@ -494,6 +494,47 @@ func TestPublicRepositoryIsNotMarkedPrivateByAConfiguredToken(t *testing.T) {
 	}
 }
 
+func TestPluginMirrorIsChosenAndPersisted(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	var library pluginLibraryResponse
+	decodeBody(t, env.do(http.MethodGet, "/api/plugins", nil), &library)
+	if library.Mirror != plugin.MirrorAuto || len(library.Mirrors) < 2 {
+		t.Fatalf("a fresh panel should offer mirrors and default to automatic: %+v", library)
+	}
+
+	decodeBody(t, env.do(http.MethodPut, "/api/plugins/config/mirror",
+		pluginMirrorRequest{Mirror: plugin.MirrorDirect}), &library)
+	if library.Mirror != plugin.MirrorDirect {
+		t.Fatalf("mirror is %q", library.Mirror)
+	}
+
+	panel, err := env.store.LoadPanel()
+	if err != nil {
+		t.Fatalf("LoadPanel: %v", err)
+	}
+	if panel.PluginMirror != plugin.MirrorDirect {
+		t.Errorf("the choice was not persisted: %q", panel.PluginMirror)
+	}
+
+	// An operator's own proxy is as valid as the ones this build ships with;
+	// anything that is neither an id nor a prefix is refused rather than
+	// quietly turned into the default.
+	decodeBody(t, env.do(http.MethodPut, "/api/plugins/config/mirror",
+		pluginMirrorRequest{Mirror: "https://my.proxy"}), &library)
+	if library.Mirror != "https://my.proxy/" {
+		t.Errorf("custom prefix is %q", library.Mirror)
+	}
+
+	rejected := env.do(http.MethodPut, "/api/plugins/config/mirror",
+		pluginMirrorRequest{Mirror: "ghfast.top"})
+	rejected.Body.Close()
+	if rejected.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rejected.StatusCode)
+	}
+}
+
 func TestPluginTokenIsNeverReadBackOut(t *testing.T) {
 	env := newTestEnv(t)
 	env.login()
