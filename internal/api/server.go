@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -52,7 +53,15 @@ type Server struct {
 	// devices holds the paired native clients. It is seeded from the panel
 	// config and is the runtime owner of that list from then on.
 	devices *auth.DeviceStore
-	metrics *metrics.Collector
+	// loginLimit throttles the two endpoints that check the panel password,
+	// and kdf caps how many of those checks run at once. Both are public and
+	// both are expensive; see ratelimit.go.
+	loginLimit *rateLimiter
+	kdf        *kdfGate
+	// trustedProxies decides whether X-Forwarded-For is believed when working
+	// out which client a request belongs to. See config.Panel.TrustedProxies.
+	trustedProxies []netip.Prefix
+	metrics        *metrics.Collector
 	// paths is the panel's on-disk layout, used to seed the path picker with
 	// the directories an operator is most likely to want.
 	paths config.Paths
@@ -110,12 +119,23 @@ type Options struct {
 }
 
 func NewServer(opts Options) *Server {
+	trusted, bad := parseTrustedProxies(opts.Panel.TrustedProxies)
+	if len(bad) > 0 {
+		opts.Logger.Warn("ignoring unparseable trustedProxies entries",
+			"entries", strings.Join(bad, ", "))
+	}
+
 	s := &Server{
 		log:      opts.Logger,
 		mgr:      opts.Manager,
 		store:    opts.Store,
 		sessions: opts.Sessions,
 		devices:  auth.NewDeviceStore(opts.Panel.Devices),
+
+		loginLimit:     newRateLimiter(loginBurst, loginRefill),
+		kdf:            newKDFGate(defaultKDFSlots(), kdfWait),
+		trustedProxies: trusted,
+
 		metrics:  opts.Metrics,
 		paths:    opts.Paths,
 		jars:     opts.Jars,
@@ -164,6 +184,12 @@ func (s *Server) FlushDevices() error {
 	}
 	return s.persistPanel()
 }
+
+// SweepRateLimits drops login-throttle buckets for addresses that have gone
+// quiet. Nothing depends on it for correctness — an idle bucket has refilled
+// and would allow the next attempt anyway — so it runs on the same slow timer
+// as the session GC purely to keep the table from growing.
+func (s *Server) SweepRateLimits() { s.loginLimit.sweep() }
 
 func (s *Server) routes() http.Handler {
 	api := http.NewServeMux()

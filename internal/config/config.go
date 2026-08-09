@@ -77,6 +77,23 @@ type Panel struct {
 	// 0600 and is already the file that must not be readable by anyone but the
 	// panel. It is never sent back out over the API — see handlePluginToken.
 	GitHubToken string `json:"githubToken,omitempty"`
+	// TrustedProxies are the CIDRs (or bare IPs, taken as /32 and /128) of
+	// reverse proxies and accelerators allowed to speak for their clients. It
+	// decides one thing: whether X-Forwarded-For is believed when deciding
+	// which address the login rate limiter counts against.
+	//
+	// Empty — the default — means every request is counted against the address
+	// it actually arrived from, which is correct for a panel reached directly.
+	// It has to be opt-in: X-Forwarded-For is a header any client can write, so
+	// believing it unconditionally would hand the rate limiter's key to the
+	// attacker it exists to slow down.
+	//
+	// Behind something like Alibaba Cloud GA or a CDN the opposite failure
+	// appears — every request arrives from a handful of back-to-origin
+	// addresses, so one attacker would spend the whole budget and lock out
+	// everybody else. Listing those addresses here restores per-client
+	// counting.
+	TrustedProxies []string `json:"trustedProxies,omitempty"`
 	// Terminal configures the host shell terminal. Off unless the operator
 	// turns it on — see Terminal.
 	Terminal   Terminal        `json:"terminal"`
