@@ -15,7 +15,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // `npm run dev` talks to a panel started with `go run ./cmd/hypercraft`.
-      '/api': { target: 'http://127.0.0.1:8080', changeOrigin: true, ws: true },
+      '/api': { target: 'http://127.0.0.1:19190', changeOrigin: true, ws: true },
     },
   },
 })

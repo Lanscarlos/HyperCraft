@@ -99,15 +99,16 @@ sudo systemctl start hypercraft
 
 ### 4. 打开面板
 
-默认只监听 `127.0.0.1:8080`，公网连不上是有意为之。想立刻看一眼，在**你自己的电脑上**开个 SSH 隧道，
-然后访问 http://127.0.0.1:8080 ：
+默认监听 `0.0.0.0:19190`，也就是所有网卡都监听，装好之后直接访问 http://你的服务器IP:19190 就行
+（别忘了在防火墙/安全组里放行 19190）。
+
+面板讲的是明文 HTTP，而且能在这台机器上执行任意控制台命令，所以要长期挂在公网上，务必配反代加 TLS，
+见下面的[部署细节](#部署细节systemd-与反代)。只想自己用、不想暴露出去的话，把 `-listen` 改回
+`127.0.0.1:19190`，然后在**你自己的电脑上**开个 SSH 隧道：
 
 ```bash
-ssh -L 8080:127.0.0.1:8080 you@your-server
+ssh -L 19190:127.0.0.1:19190 you@your-server
 ```
-
-要长期从外网访问，配反代加 TLS，见下面的[部署细节](#部署细节systemd-与反代)。别图快把 `-listen` 改成
-`0.0.0.0:8080` 裸奔 —— 那是个没有 TLS 的登录框，而且面板能在这台机器上执行任意控制台命令。
 
 ### 开新服的流程
 
@@ -129,13 +130,14 @@ ssh -L 8080:127.0.0.1:8080 you@your-server
 | 参数 | 环境变量 | 默认值 | 说明 |
 |---|---|---|---|
 | `-data` | `HYPERCRAFT_DATA` | `./data` | 面板状态 + 服务器文件的根目录 |
-| `-listen` | `HYPERCRAFT_LISTEN` | `127.0.0.1:8080` | 监听地址，会写进配置持久化 |
+| `-listen` | `HYPERCRAFT_LISTEN` | `0.0.0.0:19190` | 监听地址，会写进配置持久化 |
 | `-username` | `HYPERCRAFT_USERNAME` | `admin` | 首次创建凭据时的用户名 |
 | `-log-level` | `HYPERCRAFT_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 | `-reset-password` | | | 重置成一个新随机密码，打印后退出 |
 | `-version` | | | 打印版本 |
 
-默认只监听回环地址。面板能在你的机器上执行任意控制台命令，暴露到公网应该是个有意识的决定 —— 见下面的部署章节。
+默认监听所有网卡，外网可直接访问。面板能在你的机器上执行任意控制台命令，公网部署请务必加 TLS 反代，
+或者把 `-listen` 改成 `127.0.0.1:19190` 只留本机 —— 见下面的部署章节。
 
 ## 数据目录
 
@@ -170,17 +172,19 @@ data/
   单独挂的数据盘），或者某个实例目录指向了 `/opt/hypercraft` 外面，记得把那个路径加进 `ReadWritePaths`，
   否则面板会遇到只读文件系统。
 
-防火墙只放行 Minecraft 端口，面板端口不要开：
+防火墙放行 Minecraft 端口和面板端口：
 
 ```bash
 sudo ufw allow 25565/tcp
+sudo ufw allow 19190/tcp
 ```
 
-要从外网访问面板，用 Nginx/Caddy 反代并配上 TLS。WebSocket 需要透传 Upgrade 头：
+面板是明文 HTTP，直接开 19190 给公网等于把没有 TLS 的登录框挂上去。更稳妥的做法是只放行 443，
+把 `-listen` 收回 `127.0.0.1:19190`，用 Nginx/Caddy 反代并配上 TLS。WebSocket 需要透传 Upgrade 头：
 
 ```nginx
 location / {
-    proxy_pass http://127.0.0.1:8080;
+    proxy_pass http://127.0.0.1:19190;
     proxy_http_version 1.1;
     proxy_set_header Upgrade    $http_upgrade;
     proxy_set_header Connection "upgrade";
@@ -194,7 +198,7 @@ Caddy 省事一些，这三行就够了，证书和上面那几个头它自己�
 
 ```caddyfile
 panel.example.com {
-    reverse_proxy 127.0.0.1:8080
+    reverse_proxy 127.0.0.1:19190
 }
 ```
 
@@ -226,8 +230,8 @@ Authorization: Bearer hcd_xxxxxxxx...
 - **改密码会解除所有设备的配对**，需要重新配对。
 
 > **配对之前先把 TLS 配好。** 设备令牌是长期凭证，不像会话那样过几天自己失效，在明文 HTTP 上
-> 它会随每个请求原样过一遍网络。面板默认只监听 `127.0.0.1`，一旦要给手机用就得暴露出去，
-> 这时反代加 TLS 不是建议而是前提。用明文 HTTP 配对时面板会在日志里警告，但不会阻止你。
+> 它会随每个请求原样过一遍网络。面板默认监听 `0.0.0.0`，手机开箱即可连上，也正因为如此，
+> 反代加 TLS 不是建议而是前提。用明文 HTTP 配对时面板会在日志里警告，但不会阻止你。
 
 Android 9 以上默认禁止明文 HTTP，所以客户端连非 HTTPS 的面板还需要额外配置
 `networkSecurityConfig` —— 又一个直接上 TLS 更省事的理由。
@@ -333,7 +337,7 @@ make build     # 构建前端 + 编译单二进制 ./hypercraft
 ./hypercraft -data ./data
 ```
 
-同样是首次启动打印一次随机密码，然后开 http://127.0.0.1:8080 。
+同样是首次启动打印一次随机密码，然后开 http://127.0.0.1:19190 。
 
 ## 开发
 
@@ -342,8 +346,8 @@ make test           # go test -race ./...
 make lint           # gofmt + go vet
 
 # 热重载开发：两个终端
-go run ./cmd/hypercraft -data ./data     # 后端 :8080
-npm --prefix web run dev                 # 前端 :5173，API 自动代理到 8080
+go run ./cmd/hypercraft -data ./data     # 后端 :19190
+npm --prefix web run dev                 # 前端 :5173，API 自动代理到 19190
 
 make cross          # 交叉编译 linux/amd64, linux/arm64, windows, darwin/arm64
 make package VERSION=v1.2.0   # 交叉编译 + 打包出 release/ 里的压缩包和 SHA256SUMS.txt
