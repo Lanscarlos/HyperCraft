@@ -4,17 +4,21 @@ import { api } from '../api'
 import type {
   InstanceInput,
   InstanceStatus,
-  JarInfo,
   JavaRuntime,
   SystemJava,
 } from '../types'
 import { ENCODING_OPTIONS, isLive } from '../types'
-import { CoreDownloader } from './CoreDownloader'
+import type { CoreController } from '../useCores'
+import { useHostJars } from '../useHostJars'
+import { InstanceCorePicker } from './InstanceCorePicker'
+import { DirectoryField } from './PathPicker'
 
 interface Props {
   instance: InstanceStatus
+  cores: CoreController
   onSaved: (updated: InstanceStatus) => void
   onDeleted: () => void
+  onOpenLibrary: () => void
 }
 
 function toInput(instance: InstanceStatus): InstanceInput {
@@ -48,7 +52,13 @@ const fromLines = (text: string) =>
     .map((line) => line.trim())
     .filter(Boolean)
 
-export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
+export function LaunchSettings({
+  instance,
+  cores,
+  onSaved,
+  onDeleted,
+  onOpenLibrary,
+}: Props) {
   const [form, setForm] = useState<InstanceInput>(() => toInput(instance))
   const [jvmText, setJvmText] = useState(() => toLines(instance.jvmArgs ?? []))
   const [serverText, setServerText] = useState(() =>
@@ -57,16 +67,20 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
   const [commandText, setCommandText] = useState(() =>
     toLines(instance.command ?? []),
   )
-  const [jars, setJars] = useState<JarInfo[]>([])
   const [runtimes, setRuntimes] = useState<JavaRuntime[]>([])
   const [systemJava, setSystemJava] = useState<SystemJava | null>(null)
   const [javaLoaded, setJavaLoaded] = useState(false)
   const [customJava, setCustomJava] = useState(false)
-  // Bumped after a core download so the jar list picks up the new file.
+  // Bumped after a core is copied in so the jar list picks up the new file.
   const [jarsRev, setJarsRev] = useState(0)
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  // The jar list follows the directory field rather than the saved config, so
+  // retargeting an instance at an existing server directory offers that
+  // directory's jars before the change is even saved.
+  const { jars, exists: directoryExists } = useHostJars(form.directory, jarsRev)
 
   useEffect(() => {
     setForm(toInput(instance))
@@ -74,13 +88,6 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
     setServerText(toLines(instance.serverArgs ?? []))
     setCommandText(toLines(instance.command ?? []))
   }, [instance.id])
-
-  useEffect(() => {
-    api
-      .listJars(instance.id)
-      .then(setJars)
-      .catch(() => setJars([]))
-  }, [instance.id, instance.directory, jarsRev])
 
   useEffect(() => {
     api
@@ -93,25 +100,19 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
       .finally(() => setJavaLoaded(true))
   }, [instance.id])
 
-  // A finished download has already been applied server-side, so the form only
-  // has to catch up on the fields the daemon touched — anything else the
-  // operator was editing stays as they left it.
-  const onDownloaded = useCallback(
-    async (fileName: string, appliedAsJar: boolean) => {
+  // The copy has already been applied server-side, so the form only has to
+  // catch up on the fields the daemon touched — anything else the operator was
+  // editing stays as they left it.
+  const onCoreApplied = useCallback(
+    (_fileName: string, updated: InstanceStatus, appliedAsJar: boolean) => {
       setJarsRev((rev) => rev + 1)
       if (!appliedAsJar) return
-      try {
-        const fresh = await api.getInstance(instance.id)
-        onSaved(fresh)
-        setForm((prev) => ({ ...prev, jar: fresh.jar }))
-        setServerText(toLines(fresh.serverArgs ?? []))
-        setStatus(`已下载 ${fileName} 并设为启动 jar`)
-        setError(null)
-      } catch {
-        // The jar is on disk either way; a failed refresh is not worth a banner.
-      }
+      onSaved(updated)
+      setForm((prev) => ({ ...prev, jar: updated.jar }))
+      setServerText(toLines(updated.serverArgs ?? []))
+      setError(null)
     },
-    [instance.id, onSaved],
+    [onSaved],
   )
 
   const update = <K extends keyof InstanceInput>(
@@ -180,21 +181,27 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
           />
         </label>
 
-        <label className="field">
-          <span>服务器目录</span>
-          <input
-            value={form.directory}
-            onChange={(e) => update('directory', e.target.value)}
-            disabled={isLive(instance.state)}
-          />
-          <small>
-            服务端 jar、存档和配置都放在这里。
-            {isLive(instance.state) && ' 服务器运行时无法修改。'}
-          </small>
-        </label>
+        <DirectoryField
+          value={form.directory}
+          onChange={(value) => update('directory', value)}
+          disabled={isLive(instance.state)}
+          hint={
+            <>
+              服务端 jar、存档和配置都放在这里。「浏览…」可以指到本机任意位置，
+              包括一个已经有服务端的目录。
+              {!directoryExists && ' 这个目录还不存在，保存后会在启动时创建。'}
+              {isLive(instance.state) && ' 服务器运行时无法修改。'}
+            </>
+          }
+        />
       </section>
 
-      <CoreDownloader instance={instance} onDownloaded={onDownloaded} />
+      <InstanceCorePicker
+        instance={instance}
+        cores={cores}
+        onApplied={onCoreApplied}
+        onOpenLibrary={onOpenLibrary}
+      />
 
       <section className="panel">
         <h3 className="panel__title">启动方式</h3>
@@ -235,8 +242,8 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
           )}
           <small>
             {runtimes.length > 0
-              ? '面板装的 Java 在这里直接选；侧边栏的「Java 运行时」页面可以再装别的版本。'
-              : '侧边栏的「Java 运行时」页面可以一键装一个，装完这里就能选。'}
+              ? '面板装的 Java 在这里直接选；「设置 → Java 运行时」可以再装别的版本。'
+              : '「设置 → Java 运行时」可以一键装一个，装完这里就能选。'}
           </small>
         </label>
 
@@ -256,8 +263,8 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
           </datalist>
           <small>
             {jars.length > 0
-              ? `目录下找到 ${jars.length} 个 jar 文件`
-              : '目录下暂时没有 jar 文件，上面下一个或自己传一个'}
+              ? `上面这个目录下找到 ${jars.length} 个 jar 文件，点输入框可以直接选`
+              : '目录下暂时没有 jar 文件，从上面的核心库复制一个，或自己传一个'}
           </small>
         </label>
 

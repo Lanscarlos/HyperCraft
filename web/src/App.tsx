@@ -2,18 +2,17 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { ApiError, api } from './api'
 import { ChangePasswordDialog } from './components/ChangePasswordDialog'
-import { HostOverview } from './components/HostOverview'
+import { Dashboard } from './components/Dashboard'
 import { InstanceView } from './components/InstanceView'
-import { JavaPage } from './components/JavaPage'
 import { Login } from './components/Login'
 import { NewInstanceDialog } from './components/NewInstanceDialog'
-import { UpdatePanel } from './components/UpdatePanel'
+import { SettingsPage, isSettingsSection } from './components/SettingsPage'
+import type { SettingsSection } from './components/SettingsPage'
 import type { InstanceStatus, User } from './types'
 import { STATE_LABELS, isLive, mergeState } from './types'
+import { useCores } from './useCores'
 import { useJava } from './useJava'
-import type { JavaController } from './useJava'
 import { useUpdate } from './useUpdate'
-import type { UpdateController } from './useUpdate'
 
 /** How often the instance list refreshes; the console pushes state instantly,
  *  this is only to keep the sidebar honest for servers you are not watching. */
@@ -21,22 +20,35 @@ const POLL_INTERVAL_MS = 5000
 
 /** Where the app is. Panel-wide pages sit beside the per-instance view; the
  *  URL is the only place it is stored, so deep links and reloads work. */
-type Route = { kind: 'overview' } | { kind: 'java' } | { kind: 'instance'; id: string }
+type Route =
+  | { kind: 'dashboard' }
+  | { kind: 'settings'; section: SettingsSection }
+  | { kind: 'instance'; id: string }
 
 function routeFromPath(): Route {
   const path = window.location.pathname
   const instance = path.match(/^\/i\/([^/]+)/)
   if (instance) return { kind: 'instance', id: instance[1] }
-  if (path === '/java' || path.startsWith('/java/')) return { kind: 'java' }
-  return { kind: 'overview' }
+
+  const settings = path.match(/^\/settings(?:\/([^/]+))?/)
+  if (settings) {
+    const section = settings[1] ?? ''
+    return { kind: 'settings', section: isSettingsSection(section) ? section : 'java' }
+  }
+  // /java was the Java page's own URL before the settings section existed;
+  // bookmarks and the old release's links still point at it.
+  if (path === '/java' || path.startsWith('/java/')) {
+    return { kind: 'settings', section: 'java' }
+  }
+  return { kind: 'dashboard' }
 }
 
 function pathOf(route: Route): string {
   switch (route.kind) {
     case 'instance':
       return `/i/${route.id}`
-    case 'java':
-      return '/java'
+    case 'settings':
+      return `/settings/${route.section}`
     default:
       return '/'
   }
@@ -51,12 +63,12 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  // Polled at the app level rather than inside the overview page, so the "new
-  // version" hint still appears while you are looking at an instance.
+  // Polled at the app level rather than inside the pages that show them: all
+  // three are long-running daemon jobs that keep going after you navigate away,
+  // and the sidebar says so while they do.
   const update = useUpdate(Boolean(user))
-  // Same reason: an install keeps running in the daemon after you navigate
-  // away from the Java page, and the sidebar says so while it does.
   const java = useJava(Boolean(user))
+  const cores = useCores(Boolean(user))
 
   useEffect(() => {
     api
@@ -78,7 +90,12 @@ export default function App() {
   }, [])
 
   const select = useCallback(
-    (id: string | null) => navigate(id ? { kind: 'instance', id } : { kind: 'overview' }),
+    (id: string | null) => navigate(id ? { kind: 'instance', id } : { kind: 'dashboard' }),
+    [navigate],
+  )
+
+  const openSettings = useCallback(
+    (section: SettingsSection) => navigate({ kind: 'settings', section }),
     [navigate],
   )
 
@@ -133,11 +150,16 @@ export default function App() {
 
   const selectedId = route.kind === 'instance' ? route.id : null
   const selected = instances.find((item) => item.id === selectedId) ?? null
+  // Matches the backend's State.Running(), which is what decides the list of
+  // servers recorded for resume — so the update dialog promises exactly what
+  // will happen.
+  const runningNames = instances.filter((item) => isLive(item.state)).map((item) => item.name)
+  const settingsBusy = java.installing || cores.downloading
 
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="sidebar__brand" onClick={() => navigate({ kind: 'overview' })}>
+        <div className="sidebar__brand" onClick={() => navigate({ kind: 'dashboard' })}>
           <span className="sidebar__logo">⛏</span>
           <div>
             <strong>HyperCraft</strong>
@@ -154,24 +176,22 @@ export default function App() {
 
         <nav className="sidebar__nav">
           <button
-            className={`sidebar__link${route.kind === 'overview' ? ' sidebar__link--active' : ''}`}
-            onClick={() => navigate({ kind: 'overview' })}
+            className={`sidebar__link${route.kind === 'dashboard' ? ' sidebar__link--active' : ''}`}
+            onClick={() => navigate({ kind: 'dashboard' })}
           >
-            <span className="sidebar__name">总览</span>
+            <span className="sidebar__name">仪表盘</span>
           </button>
           <button
-            className={`sidebar__link${route.kind === 'java' ? ' sidebar__link--active' : ''}`}
-            onClick={() => navigate({ kind: 'java' })}
+            className={`sidebar__link${route.kind === 'settings' ? ' sidebar__link--active' : ''}`}
+            onClick={() => openSettings(route.kind === 'settings' ? route.section : 'java')}
           >
-            <span className="sidebar__name">Java 运行时</span>
-            {java.installing ? (
-              <span className="badge badge--update">安装中</span>
+            <span className="sidebar__name">设置</span>
+            {settingsBusy ? (
+              <span className="badge badge--update">
+                {java.installing ? '安装中' : '下载中'}
+              </span>
             ) : (
-              // Only once there is something to count: a "0" next to a feature
-              // you have not used yet reads as a warning it is not.
-              (java.overview?.runtimes.length ?? 0) > 0 && (
-                <span className="badge">{java.overview?.runtimes.length}</span>
-              )
+              update.status?.updateAvailable && <span className="badge badge--update">1</span>
             )}
           </button>
         </nav>
@@ -211,37 +231,54 @@ export default function App() {
       <main className="main">
         {loadError && <div className="alert alert--error">{loadError}</div>}
 
-        {route.kind === 'java' ? (
-          <JavaPage java={java} />
+        {route.kind === 'settings' ? (
+          <SettingsPage
+            section={route.section}
+            onSection={openSettings}
+            java={java}
+            cores={cores}
+            update={update}
+            runningNames={runningNames}
+          />
         ) : selected ? (
           <InstanceView
             key={selected.id}
             instance={selected}
+            cores={cores}
             onChanged={applyInstance}
             onDeleted={() => {
               select(null)
               void refresh()
             }}
+            onOpenLibrary={() => openSettings('cores')}
           />
         ) : (
-          <Welcome
+          <Dashboard
+            user={user}
             instances={instances}
             onSelect={select}
             onCreate={() => setShowNew(true)}
-            onOpenJava={() => navigate({ kind: 'java' })}
+            onOpenSettings={openSettings}
+            onChanged={applyInstance}
             update={update}
             java={java}
+            cores={cores}
           />
         )}
       </main>
 
       {showNew && (
         <NewInstanceDialog
+          cores={cores}
           onCancel={() => setShowNew(false)}
           onCreated={(created) => {
             setShowNew(false)
             setInstances((prev) => [...prev, created])
             select(created.id)
+          }}
+          onOpenLibrary={() => {
+            setShowNew(false)
+            openSettings('cores')
           }}
         />
       )}
@@ -257,88 +294,4 @@ export default function App() {
       )}
     </div>
   )
-}
-
-function Welcome({
-  instances,
-  onSelect,
-  onCreate,
-  onOpenJava,
-  update,
-  java,
-}: {
-  instances: InstanceStatus[]
-  onSelect: (id: string) => void
-  onCreate: () => void
-  onOpenJava: () => void
-  update: UpdateController
-  java: JavaController
-}) {
-  // isLive matches the backend's State.Running(), which is what decides the
-  // list of servers recorded for resume — so the dialog promises exactly what
-  // will happen.
-  const runningNames = instances.filter((item) => isLive(item.state)).map((item) => item.name)
-
-  return (
-    <div className="welcome">
-      <h1>服务器总览</h1>
-      <p className="welcome__lead">
-        面板以后台守护进程的方式持有服务器进程。关掉浏览器、退出登录，甚至重启路由，
-        服务器都会照常运行 —— 只有停止面板本身才会（优雅地）关掉它们。
-      </p>
-
-      <UpdatePanel update={update} runningNames={runningNames} />
-
-      <HostOverview />
-
-      <p className="welcome__hint">
-        {javaSummary(java)}
-        <button className="link" onClick={onOpenJava}>
-          去管理 Java 运行时
-        </button>
-      </p>
-
-      {instances.length === 0 ? (
-        <div className="welcome__empty">
-          <p>还没有任何实例。</p>
-          <button className="btn btn--primary" onClick={onCreate}>
-            新建第一个服务器
-          </button>
-        </div>
-      ) : (
-        <div className="cards">
-          {instances.map((item) => (
-            <button key={item.id} className="card" onClick={() => onSelect(item.id)}>
-              <div className="card__head">
-                <span className={`status__dot status__dot--${item.state}`} />
-                <strong>{item.name}</strong>
-              </div>
-              <div className="card__meta">{STATE_LABELS[item.state]}</div>
-              <div className="card__path" title={item.directory}>
-                {item.directory}
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** One line about Java for the overview, so the page that owns it is still
- *  findable from here. */
-function javaSummary(java: JavaController): string {
-  if (java.installing) {
-    return `正在安装 Java ${java.job?.major ?? ''}…`
-  }
-  if (java.overview === null) {
-    return 'Java 运行时'
-  }
-  const installed = java.overview.runtimes.length
-  if (installed === 0) {
-    return java.overview.system
-      ? '面板还没装 Java，实例可以用系统自带的那个。'
-      : '这台机器上还没有 Java，服务端跑不起来。'
-  }
-  return `面板已装 ${installed} 个 Java 运行时。`
 }

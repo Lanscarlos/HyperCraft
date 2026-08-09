@@ -77,12 +77,13 @@ func TestUploadAndDownloadRoundTrip(t *testing.T) {
 		t.Errorf("Content-Disposition = %q", cd)
 	}
 
-	// The uploaded jar should also show up for the launch-settings dropdown.
-	resp = env.do(http.MethodGet, "/api/instances/"+created.ID+"/jars", nil)
-	var jars []jarInfo
-	decodeBody(t, resp, &jars)
-	if len(jars) != 1 || jars[0].Name != "paper-1.21.jar" {
-		t.Errorf("jar listing = %+v", jars)
+	// The uploaded jar should also show up for the launch-settings dropdown,
+	// which reads the instance directory through the host browser.
+	resp = env.do(http.MethodGet, "/api/fs?path="+url.QueryEscape(created.Directory), nil)
+	var listing hostDirResponse
+	decodeBody(t, resp, &listing)
+	if len(listing.Jars) != 1 || listing.Jars[0].Name != "paper-1.21.jar" {
+		t.Errorf("jar listing = %+v", listing.Jars)
 	}
 }
 

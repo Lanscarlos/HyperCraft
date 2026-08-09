@@ -34,6 +34,7 @@ type testEnv struct {
 	client *http.Client
 	mgr    *instance.Manager
 	store  *store.Store
+	paths  config.Paths
 	// fill stands in for the PaperMC API and its CDN; see handlers_downloads_test.go.
 	fill *fakeFill
 	// adoptium stands in for the Java download API; see handlers_java_test.go.
@@ -71,7 +72,12 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 		Store:    st,
 		Sessions: auth.NewSessionStore(time.Hour),
 		Metrics:  metrics.New(time.Second, time.Minute, t.TempDir(), logger),
-		Jars:     serverjar.NewDownloader(serverjar.NewClient(fill.URL(), "test"), logger),
+		Paths:    paths,
+		Jars: serverjar.NewDownloader(
+			serverjar.NewClient(fill.URL(), "test"),
+			serverjar.NewLibrary(paths.CoresRoot()),
+			logger,
+		),
 		Java: javaruntime.NewInstaller(
 			javaruntime.NewClient(adoptium.URL(), "test"),
 			javaruntime.NewStore(paths.JavaRoot()),
@@ -94,7 +100,7 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 	}
 	return &testEnv{
 		t: t, server: srv, client: &http.Client{Jar: jar},
-		mgr: mgr, store: st, fill: fill, adoptium: adoptium,
+		mgr: mgr, store: st, paths: paths, fill: fill, adoptium: adoptium,
 	}
 }
 

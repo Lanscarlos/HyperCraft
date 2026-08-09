@@ -223,8 +223,8 @@ export interface JavaMajor {
 
 export type CoreDownloadState = 'downloading' | 'done' | 'failed' | 'cancelled'
 
+/** The panel-wide download slot; cores land in the library, not in an instance. */
 export interface CoreDownloadJob {
-  instanceId: string
   project: string
   projectName: string
   version: string
@@ -235,9 +235,66 @@ export interface CoreDownloadJob {
   downloaded: number
   state: CoreDownloadState
   error?: string
-  setAsJar: boolean
+  /** The library entry a finished download produced. */
+  coreId?: string
   startedAt: string
   finishedAt?: string
+}
+
+/** One server jar kept in the panel-wide library, ready to copy into instances. */
+export interface ServerCore {
+  id: string
+  fileName: string
+  project: string
+  projectName: string
+  kind: 'server' | 'proxy' | ''
+  version: string
+  build: number
+  channel: string
+  sha256: string
+  size: number
+  addedAt: string
+  /** True for a jar dropped into the library by hand, which has no build info. */
+  imported: boolean
+  /** Instances whose launch jar has this file name. */
+  usedBy: string[]
+}
+
+export interface CoreLibrary {
+  root: string
+  cores: ServerCore[]
+  job: CoreDownloadJob | null
+}
+
+// ------------------------------------------------------- host directories
+
+export interface HostEntry {
+  name: string
+  path: string
+  isDir: boolean
+  size: number
+}
+
+export interface HostShortcut {
+  label: string
+  path: string
+}
+
+/** One directory on the machine the panel runs on, for the path picker. */
+export interface HostListing {
+  path: string
+  /** Empty at a filesystem root, which is where "go up" stops. */
+  parent: string
+  /** False for a path that does not exist yet, which is fine when creating. */
+  exists: boolean
+  separator: string
+  entries: HostEntry[]
+  /** The .jar files directly in this directory. */
+  jars: JarInfo[]
+  truncated: boolean
+  /** Set when the directory exists but could not be read, usually permissions. */
+  error?: string
+  shortcuts: HostShortcut[]
 }
 
 export interface User {

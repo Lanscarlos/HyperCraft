@@ -95,6 +95,11 @@ func (p Paths) ServersRoot() string { return filepath.Join(p.Root, "servers") }
 // here by hand is picked up too, so it doubles as "the panel's JDK shelf".
 func (p Paths) JavaRoot() string { return filepath.Join(p.Root, "java") }
 
+// CoresRoot is the panel-wide library of server jars. A core is downloaded once
+// and copied into as many instances as needed, so a new server can be created
+// offline; a jar dropped in here by hand is listed too.
+func (p Paths) CoresRoot() string { return filepath.Join(p.Root, "cores") }
+
 // ResumeFile records which servers were running when the panel restarted
 // itself to install an update, so they can be brought back afterwards. It is
 // written just before the restart and consumed on the next boot.

@@ -8,83 +8,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
-
-// memSink is an in-memory stand-in for the instance directory.
-type memSink struct {
-	mu    sync.Mutex
-	files map[string][]byte
-}
-
-func newMemSink() *memSink { return &memSink{files: make(map[string][]byte)} }
-
-func (s *memSink) Exists(name string) (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	_, ok := s.files[name]
-	return ok, nil
-}
-
-func (s *memSink) Create(name string) (io.WriteCloser, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.files[name]; ok {
-		return nil, ErrExists
-	}
-	s.files[name] = nil
-	return &memFile{sink: s, name: name}, nil
-}
-
-func (s *memSink) Remove(name string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.files[name]; !ok {
-		return errors.New("not found")
-	}
-	delete(s.files, name)
-	return nil
-}
-
-func (s *memSink) Rename(from, to string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	data, ok := s.files[from]
-	if !ok {
-		return errors.New("not found")
-	}
-	if _, taken := s.files[to]; taken {
-		return ErrExists
-	}
-	s.files[to] = data
-	delete(s.files, from)
-	return nil
-}
-
-func (s *memSink) get(name string) ([]byte, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	data, ok := s.files[name]
-	return data, ok
-}
-
-type memFile struct {
-	sink *memSink
-	name string
-}
-
-func (f *memFile) Write(p []byte) (int, error) {
-	f.sink.mu.Lock()
-	defer f.sink.mu.Unlock()
-	f.sink.files[f.name] = append(f.sink.files[f.name], p...)
-	return len(p), nil
-}
-
-func (f *memFile) Close() error { return nil }
 
 // upstream is a fake Fill API plus CDN.
 type upstream struct {
@@ -124,17 +54,20 @@ func newUpstream(t *testing.T, body []byte) *upstream {
 	return up
 }
 
-func newTestDownloader(up *upstream) *Downloader {
+// newTestDownloader returns a downloader writing into a fresh library.
+func newTestDownloader(t *testing.T, up *upstream) (*Downloader, *Library) {
+	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewDownloader(NewClient(up.URL, "test"), logger)
+	library := NewLibrary(t.TempDir())
+	return NewDownloader(NewClient(up.URL, "test"), library, logger), library
 }
 
-// awaitJob polls until the instance's job leaves the downloading state.
-func awaitJob(t *testing.T, d *Downloader, instanceID string) Job {
+// awaitJob polls until the download leaves the downloading state.
+func awaitJob(t *testing.T, d *Downloader) Job {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		job, ok := d.Status(instanceID)
+		job, ok := d.Status()
 		if ok && job.State != JobDownloading {
 			return job
 		}
@@ -144,18 +77,35 @@ func awaitJob(t *testing.T, d *Downloader, instanceID string) Job {
 	return Job{}
 }
 
+// read returns a file's contents from the library directory.
+func read(t *testing.T, library *Library, name string) ([]byte, bool) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(library.Root(), name))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, false
+		}
+		t.Fatalf("read %s: %v", name, err)
+	}
+	return data, true
+}
+
+func write(t *testing.T, library *Library, name, content string) {
+	t.Helper()
+	if err := os.MkdirAll(library.Root(), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(library.Root(), name), []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+}
+
 func TestDownloadWritesVerifiedJar(t *testing.T) {
 	body := []byte(strings.Repeat("paper", 5000))
 	up := newUpstream(t, body)
-	d := newTestDownloader(up)
-	sink := newMemSink()
+	d, library := newTestDownloader(t, up)
 
-	var applied string
-	job, err := d.Start("inst-1", Request{
-		Project: "paper",
-		Version: "1.21.11",
-		OnDone:  func(name string) error { applied = name; return nil },
-	}, sink)
+	job, err := d.Start(Request{Project: "paper", Version: "1.21.11"})
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -163,21 +113,37 @@ func TestDownloadWritesVerifiedJar(t *testing.T) {
 		t.Fatalf("unexpected job snapshot: %+v", job)
 	}
 
-	done := awaitJob(t, d, "inst-1")
+	done := awaitJob(t, d)
 	if done.State != JobDone {
 		t.Fatalf("state %s, error %q", done.State, done.Error)
 	}
 	if done.Downloaded != int64(len(body)) {
 		t.Errorf("downloaded %d, want %d", done.Downloaded, len(body))
 	}
-	if got, ok := sink.get("paper-1.21.11-132.jar"); !ok || string(got) != string(body) {
+	if done.CoreID != "paper-1.21.11-132.jar" {
+		t.Errorf("job names core %q", done.CoreID)
+	}
+	if got, ok := read(t, library, "paper-1.21.11-132.jar"); !ok || string(got) != string(body) {
 		t.Errorf("jar contents differ (present=%v)", ok)
 	}
-	if _, ok := sink.get("paper-1.21.11-132.jar.hypercraft-part"); ok {
+	if _, ok := read(t, library, "paper-1.21.11-132.jar"+partSuffix); ok {
 		t.Errorf("part file was left behind")
 	}
-	if applied != "paper-1.21.11-132.jar" {
-		t.Errorf("OnDone got %q", applied)
+
+	// The build details have to survive in the index, or the library page can
+	// only show a file name.
+	cores, err := library.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(cores) != 1 {
+		t.Fatalf("library holds %d cores, want 1", len(cores))
+	}
+	if cores[0].Version != "1.21.11" || cores[0].Build != 132 || cores[0].Project != "paper" {
+		t.Errorf("metadata was not recorded: %+v", cores[0])
+	}
+	if cores[0].Imported {
+		t.Errorf("a downloaded core must not be marked as imported")
 	}
 }
 
@@ -186,36 +152,34 @@ func TestDownloadWritesVerifiedJar(t *testing.T) {
 func TestDownloadRejectsBadChecksum(t *testing.T) {
 	up := newUpstream(t, []byte(strings.Repeat("paper", 100)))
 	up.corrupt = true
-	d := newTestDownloader(up)
-	sink := newMemSink()
+	d, library := newTestDownloader(t, up)
 
-	if _, err := d.Start("inst-1", Request{Project: "paper", Version: "1.21.11"}, sink); err != nil {
+	if _, err := d.Start(Request{Project: "paper", Version: "1.21.11"}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 
-	done := awaitJob(t, d, "inst-1")
+	done := awaitJob(t, d)
 	if done.State != JobFailed || !strings.Contains(done.Error, "checksum") {
 		t.Fatalf("expected a checksum failure, got %s / %q", done.State, done.Error)
 	}
-	if _, ok := sink.get("paper-1.21.11-132.jar"); ok {
+	if _, ok := read(t, library, "paper-1.21.11-132.jar"); ok {
 		t.Errorf("corrupt download was placed anyway")
 	}
-	if _, ok := sink.get("paper-1.21.11-132.jar.hypercraft-part"); ok {
+	if _, ok := read(t, library, "paper-1.21.11-132.jar"+partSuffix); ok {
 		t.Errorf("part file was left behind")
 	}
 }
 
 func TestDownloadRefusesToClobber(t *testing.T) {
 	up := newUpstream(t, []byte("jar"))
-	d := newTestDownloader(up)
-	sink := newMemSink()
-	sink.files["paper-1.21.11-132.jar"] = []byte("the jar already running this server")
+	d, library := newTestDownloader(t, up)
+	write(t, library, "paper-1.21.11-132.jar", "the jar already in the library")
 
-	_, err := d.Start("inst-1", Request{Project: "paper", Version: "1.21.11"}, sink)
+	_, err := d.Start(Request{Project: "paper", Version: "1.21.11"})
 	if !errors.Is(err, ErrExists) {
 		t.Fatalf("got %v, want ErrExists", err)
 	}
-	if got, _ := sink.get("paper-1.21.11-132.jar"); string(got) != "the jar already running this server" {
+	if got, _ := read(t, library, "paper-1.21.11-132.jar"); string(got) != "the jar already in the library" {
 		t.Errorf("existing jar was touched: %q", got)
 	}
 }
@@ -223,17 +187,16 @@ func TestDownloadRefusesToClobber(t *testing.T) {
 func TestDownloadOverwritesWhenAsked(t *testing.T) {
 	body := []byte("a newer build")
 	up := newUpstream(t, body)
-	d := newTestDownloader(up)
-	sink := newMemSink()
-	sink.files["paper-1.21.11-132.jar"] = []byte("older")
+	d, library := newTestDownloader(t, up)
+	write(t, library, "paper-1.21.11-132.jar", "older")
 
-	if _, err := d.Start("inst-1", Request{Project: "paper", Version: "1.21.11", Overwrite: true}, sink); err != nil {
+	if _, err := d.Start(Request{Project: "paper", Version: "1.21.11", Overwrite: true}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if done := awaitJob(t, d, "inst-1"); done.State != JobDone {
+	if done := awaitJob(t, d); done.State != JobDone {
 		t.Fatalf("state %s, error %q", done.State, done.Error)
 	}
-	if got, _ := sink.get("paper-1.21.11-132.jar"); string(got) != string(body) {
+	if got, _ := read(t, library, "paper-1.21.11-132.jar"); string(got) != string(body) {
 		t.Errorf("jar was not replaced: %q", got)
 	}
 }
@@ -241,18 +204,17 @@ func TestDownloadOverwritesWhenAsked(t *testing.T) {
 func TestSecondDownloadIsRejectedWhileOneRuns(t *testing.T) {
 	up := newUpstream(t, []byte("slow"))
 	up.gate = make(chan struct{})
-	d := newTestDownloader(up)
-	sink := newMemSink()
+	d, _ := newTestDownloader(t, up)
 
-	if _, err := d.Start("inst-1", Request{Project: "paper", Version: "1.21.11"}, sink); err != nil {
+	if _, err := d.Start(Request{Project: "paper", Version: "1.21.11"}); err != nil {
 		t.Fatalf("first Start: %v", err)
 	}
-	if _, err := d.Start("inst-1", Request{Project: "paper", Version: "1.21.11"}, sink); !errors.Is(err, ErrBusy) {
+	if _, err := d.Start(Request{Project: "paper", Version: "1.21.11"}); !errors.Is(err, ErrBusy) {
 		t.Fatalf("second Start: got %v, want ErrBusy", err)
 	}
 
 	close(up.gate)
-	if done := awaitJob(t, d, "inst-1"); done.State != JobDone {
+	if done := awaitJob(t, d); done.State != JobDone {
 		t.Fatalf("state %s, error %q", done.State, done.Error)
 	}
 }
@@ -262,52 +224,35 @@ func TestCancelStopsDownload(t *testing.T) {
 	up.gate = make(chan struct{})
 	defer close(up.gate)
 
-	d := newTestDownloader(up)
-	sink := newMemSink()
-	if _, err := d.Start("inst-1", Request{Project: "paper", Version: "1.21.11"}, sink); err != nil {
+	d, library := newTestDownloader(t, up)
+	if _, err := d.Start(Request{Project: "paper", Version: "1.21.11"}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if err := d.Cancel("inst-1"); err != nil {
+	if err := d.Cancel(); err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
 
-	done := awaitJob(t, d, "inst-1")
+	done := awaitJob(t, d)
 	if done.State != JobCancelled {
 		t.Fatalf("state %s, error %q", done.State, done.Error)
 	}
-	if _, ok := sink.get("paper-1.21.11-132.jar.hypercraft-part"); ok {
+	if _, ok := read(t, library, "paper-1.21.11-132.jar"+partSuffix); ok {
 		t.Errorf("cancelled download left a part file")
 	}
 	// A finished job is not cancellable, and saying so beats a silent success.
-	if err := d.Cancel("inst-1"); err == nil {
+	if err := d.Cancel(); err == nil {
 		t.Errorf("cancelling a finished job should fail")
-	}
-}
-
-func TestForgetDropsJob(t *testing.T) {
-	up := newUpstream(t, []byte("jar"))
-	d := newTestDownloader(up)
-	sink := newMemSink()
-
-	if _, err := d.Start("inst-1", Request{Project: "paper", Version: "1.21.11"}, sink); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	awaitJob(t, d, "inst-1")
-
-	d.Forget("inst-1")
-	if _, ok := d.Status("inst-1"); ok {
-		t.Errorf("job survived Forget")
 	}
 }
 
 func TestStartRejectsUnknownProject(t *testing.T) {
 	up := newUpstream(t, []byte("jar"))
-	d := newTestDownloader(up)
+	d, _ := newTestDownloader(t, up)
 
-	if _, err := d.Start("inst-1", Request{Project: "forge", Version: "1.21.11"}, newMemSink()); !errors.Is(err, ErrUnknownProject) {
+	if _, err := d.Start(Request{Project: "forge", Version: "1.21.11"}); !errors.Is(err, ErrUnknownProject) {
 		t.Fatalf("got %v, want ErrUnknownProject", err)
 	}
-	if _, ok := d.Status("inst-1"); ok {
+	if _, ok := d.Status(); ok {
 		t.Errorf("a rejected project should not leave a job behind")
 	}
 }

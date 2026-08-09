@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/lanscarlos/hypercraft/internal/mcprops"
@@ -198,42 +197,4 @@ func (s *Server) handleAcceptEULA(w http.ResponseWriter, r *http.Request) {
 
 	s.log.Info("EULA accepted", "instance", inst.Config().Name)
 	writeJSON(w, http.StatusOK, s.readEULA(dir))
-}
-
-type jarInfo struct {
-	Name string `json:"name"`
-	Size int64  `json:"size"`
-}
-
-// handleListJars lists candidate server jars so the instance form can offer a
-// dropdown instead of asking the operator to type a filename exactly.
-func (s *Server) handleListJars(w http.ResponseWriter, r *http.Request) {
-	inst, ok := s.instanceFromPath(w, r)
-	if !ok {
-		return
-	}
-
-	entries, err := os.ReadDir(inst.Config().Directory)
-	if err != nil {
-		if os.IsNotExist(err) {
-			writeJSON(w, http.StatusOK, []jarInfo{})
-			return
-		}
-		s.writeDomainError(w, err)
-		return
-	}
-
-	jars := make([]jarInfo, 0, 4)
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".jar") {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		jars = append(jars, jarInfo{Name: entry.Name(), Size: info.Size()})
-	}
-	sort.Slice(jars, func(a, b int) bool { return jars[a].Name < jars[b].Name })
-	writeJSON(w, http.StatusOK, jars)
 }
