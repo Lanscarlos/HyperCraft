@@ -1497,3 +1497,33 @@ a {
   color: var(--text-dim);
   overflow-wrap: anywhere;
 }
+
+.device-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.device-row {
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.device-row__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.device-row__spacer {
+  flex: 1;
+}
+
+.device-row__meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}

@@ -4,6 +4,7 @@ import type {
   CoreDownloadJob,
   CoreProject,
   CoreVersion,
+  Device,
   EulaStatus,
   JavaMajor,
   JavaOverview,
@@ -79,6 +80,13 @@ export const api = {
       currentPassword,
       newPassword,
     }),
+
+  listDevices: () => request<Device[]>('GET', '/api/auth/devices'),
+  // Pairing is deliberately not here: it takes the password rather than a
+  // session, and the browser has no use for a token it cannot store safely.
+  // The UI can only list and unpair.
+  deleteDevice: (id: string) =>
+    request<void>('DELETE', `/api/auth/devices/${id}`),
 
   listInstances: () => request<InstanceStatus[]>('GET', '/api/instances'),
   getInstance: (id: string) =>

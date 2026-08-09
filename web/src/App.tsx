@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { ApiError, api } from './api'
 import { ChangePasswordDialog } from './components/ChangePasswordDialog'
+import { DevicesDialog } from './components/DevicesDialog'
 import { HostOverview } from './components/HostOverview'
 import { InstanceView } from './components/InstanceView'
 import { JavaPage } from './components/JavaPage'
@@ -49,6 +50,7 @@ export default function App() {
   const [route, setRoute] = useState<Route>(routeFromPath)
   const [showNew, setShowNew] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [showDevices, setShowDevices] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
   // Polled at the app level rather than inside the overview page, so the "new
@@ -202,6 +204,9 @@ export default function App() {
           <button className="link" onClick={() => setShowPassword(true)}>
             修改密码
           </button>
+          <button className="link" onClick={() => setShowDevices(true)}>
+            设备
+          </button>
           <button className="link" onClick={() => void signOut()}>
             退出
           </button>
@@ -245,6 +250,8 @@ export default function App() {
           }}
         />
       )}
+
+      {showDevices && <DevicesDialog onClose={() => setShowDevices(false)} />}
 
       {showPassword && (
         <ChangePasswordDialog
