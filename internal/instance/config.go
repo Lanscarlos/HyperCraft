@@ -42,6 +42,13 @@ type Config struct {
 	ServerArgs  []string `json:"serverArgs"`  // args after the jar, e.g. --nogui
 	Command     []string `json:"command"`     // full argv; when set, the fields above are ignored
 
+	// Console settings. A server started by the panel talks to a pipe, not a
+	// terminal, and both of these compensate for what it does about that:
+	// colours get switched off, and on Windows the JVM writes the ANSI code
+	// page instead of UTF-8.
+	Encoding   string `json:"encoding"`   // console charset: auto (default), utf-8, gbk, …
+	ForceColor *bool  `json:"forceColor"` // keep ANSI colours on through the pipe; default true
+
 	// Supervision settings.
 	AutoStart      bool   `json:"autoStart"`      // start when the panel boots
 	AutoRestart    bool   `json:"autoRestart"`    // restart after an unexpected exit
@@ -73,6 +80,15 @@ func (c *Config) applyDefaults() {
 	if c.ServerArgs == nil {
 		c.ServerArgs = []string{"--nogui"}
 	}
+	if canonical, ok := canonicalEncoding(c.Encoding); ok {
+		c.Encoding = canonical
+	}
+	if c.ForceColor == nil {
+		// Colours on by default: an instance saved before this option existed
+		// should behave like a console, not like a log file.
+		on := true
+		c.ForceColor = &on
+	}
 	if c.CreatedAt.IsZero() {
 		c.CreatedAt = time.Now()
 	}
@@ -103,7 +119,50 @@ func (c *Config) validate() error {
 	if c.usesCustomCommand() && strings.TrimSpace(c.Command[0]) == "" {
 		return fmt.Errorf("%w: command's first element must be the executable", ErrInvalidConfig)
 	}
+	if _, ok := canonicalEncoding(c.Encoding); !ok {
+		return fmt.Errorf("%w: unknown console encoding %q", ErrInvalidConfig, c.Encoding)
+	}
 	return nil
+}
+
+// colorForced reports whether the panel should make the server emit ANSI
+// colour even though its stdout is a pipe.
+func (c *Config) colorForced() bool { return c.ForceColor == nil || *c.ForceColor }
+
+// consoleJVMArgs are the flags that make a piped JVM's console behave like the
+// one you get in cmd or a terminal.
+//
+// They go before the operator's own JVM args, so anyone who disagrees can
+// override any of them by repeating the property — the last -D wins.
+func (c *Config) consoleJVMArgs() []string {
+	args := make([]string, 0, 9)
+
+	if c.colorForced() {
+		// TerminalConsoleAppender — used by vanilla, Paper, Fabric and friends
+		// — only colours its output when it can see a terminal, and there is
+		// no terminal behind a pipe. terminal.ansi=true says "emit it anyway";
+		// terminal.jline=false stops JLine from trying to drive a terminal
+		// that does not exist and printing a warning about it.
+		args = append(args, "-Dterminal.jline=false", "-Dterminal.ansi=true")
+	}
+
+	// Anything other than UTF-8 is a charset we decode ourselves, so leave the
+	// JVM on its platform default in that case.
+	if canonical, _ := canonicalEncoding(c.Encoding); canonical == EncodingAuto || canonical == EncodingUTF8 {
+		// file.encoding is what Java 8-17 uses for the console streams; 18+
+		// splits stdout/stderr/stdin out into their own properties (and still
+		// answers to the older sun.* spellings), so set both generations.
+		args = append(args,
+			"-Dfile.encoding=UTF-8",
+			"-Dstdout.encoding=UTF-8",
+			"-Dstderr.encoding=UTF-8",
+			"-Dstdin.encoding=UTF-8",
+			"-Dsun.stdout.encoding=UTF-8",
+			"-Dsun.stderr.encoding=UTF-8",
+			"-Dsun.stdin.encoding=UTF-8",
+		)
+	}
+	return args
 }
 
 // usesCustomCommand reports whether this instance bypasses the java/jar path.
@@ -118,13 +177,15 @@ func (c *Config) commandLine() (string, []string, error) {
 		return "", nil, fmt.Errorf("%w: no server jar configured", ErrInvalidConfig)
 	}
 
-	args := make([]string, 0, len(c.JVMArgs)+len(c.ServerArgs)+4)
+	console := c.consoleJVMArgs()
+	args := make([]string, 0, len(console)+len(c.JVMArgs)+len(c.ServerArgs)+4)
 	if c.MinMemoryMB > 0 {
 		args = append(args, fmt.Sprintf("-Xms%dM", c.MinMemoryMB))
 	}
 	if c.MaxMemoryMB > 0 {
 		args = append(args, fmt.Sprintf("-Xmx%dM", c.MaxMemoryMB))
 	}
+	args = append(args, console...)
 	args = append(args, c.JVMArgs...)
 	args = append(args, "-jar", c.Jar)
 	args = append(args, c.ServerArgs...)

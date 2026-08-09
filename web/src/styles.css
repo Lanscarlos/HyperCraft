@@ -548,6 +548,49 @@ a {
   font-size: 12px;
 }
 
+/* Tab completion candidates, sitting just above the input like a shell's. */
+.console__hints {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.console__hint-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.console__hint {
+  padding: 2px 8px;
+  background: #1c2330;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.console__hint--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b1220;
+}
+
+.console__hint-more,
+.console__hint-desc {
+  color: var(--text-dim);
+  font-size: 11px;
+  align-self: center;
+}
+
 .console__input {
   display: flex;
   align-items: center;

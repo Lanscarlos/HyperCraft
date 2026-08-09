@@ -2,6 +2,7 @@ package instance
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -32,6 +33,20 @@ const scrollback = 2000
 // it the instance stays in "starting", which is what the UI greys the console
 // input on.
 var readyPattern = regexp.MustCompile(`Done \([0-9.]+s\)!`)
+
+// ansiPattern matches the escape sequences a coloured console emits: CSI
+// sequences (colour, cursor moves) and OSC strings (window titles).
+var ansiPattern = regexp.MustCompile("\x1b\\[[0-9;?]*[ -/]*[@-~]|\x1b\\][^\x07\x1b]*(?:\x07|\x1b\\\\)|\x1b[@-Z\\\\-_]")
+
+// stripANSI removes the escape sequences from a line so patterns can be
+// matched against what a human would read. Now that the panel asks servers to
+// colour their output, the readiness line arrives wrapped in them.
+func stripANSI(s string) string {
+	if !strings.ContainsRune(s, 0x1b) {
+		return s
+	}
+	return ansiPattern.ReplaceAllString(s, "")
+}
 
 // Instance supervises a single Minecraft server process.
 //
@@ -64,6 +79,9 @@ type Instance struct {
 type runningProc struct {
 	cmd   *exec.Cmd
 	stdin io.WriteCloser
+	// codec is pinned at start: changing the instance's encoding must not
+	// reinterpret a stream mid-flight.
+	codec *codec
 	done  chan struct{} // closed once the process has been reaped
 }
 
@@ -203,7 +221,7 @@ func (i *Instance) Start() error {
 		return fmt.Errorf("start process: %w", err)
 	}
 
-	run := &runningProc{cmd: cmd, stdin: stdin, done: make(chan struct{})}
+	run := &runningProc{cmd: cmd, stdin: stdin, codec: newCodec(cfg.Encoding), done: make(chan struct{})}
 	i.run = run
 	i.manualStop = false
 	i.exitCode = nil
@@ -215,15 +233,16 @@ func (i *Instance) Start() error {
 
 	var pumps sync.WaitGroup
 	pumps.Add(2)
-	go i.pump(&pumps, stdout, StreamStdout)
-	go i.pump(&pumps, stderr, StreamStderr)
+	go i.pump(&pumps, stdout, StreamStdout, run.codec)
+	go i.pump(&pumps, stderr, StreamStderr, run.codec)
 	go i.reap(run, &pumps)
 
 	return nil
 }
 
-// pump reads one output stream line by line into the ring buffer.
-func (i *Instance) pump(wg *sync.WaitGroup, r io.Reader, stream StreamKind) {
+// pump reads one output stream line by line into the ring buffer, converting
+// each line to UTF-8 as it goes.
+func (i *Instance) pump(wg *sync.WaitGroup, r io.Reader, stream StreamKind, cd *codec) {
 	defer wg.Done()
 
 	scanner := bufio.NewScanner(r)
@@ -232,10 +251,12 @@ func (i *Instance) pump(wg *sync.WaitGroup, r io.Reader, stream StreamKind) {
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	for scanner.Scan() {
-		text := strings.TrimRight(scanner.Text(), "\r")
+		// Decode the raw bytes: scanner.Text() would hand a GBK or Shift_JIS
+		// line straight on as if it had been UTF-8 all along.
+		text := cd.decode(bytes.TrimRight(scanner.Bytes(), "\r"))
 		i.publishLine(stream, text)
 
-		if stream == StreamStdout && readyPattern.MatchString(text) {
+		if stream == StreamStdout && readyPattern.MatchString(stripANSI(text)) {
 			i.markReady()
 		}
 	}
@@ -370,7 +391,7 @@ func (i *Instance) Stop() error {
 	i.mu.Unlock()
 
 	i.emitSystem(fmt.Sprintf("sending %q, waiting up to %s", stopCmd, timeout))
-	if _, err := io.WriteString(run.stdin, stopCmd+"\n"); err != nil {
+	if _, err := run.stdin.Write(run.codec.encode(stopCmd + "\n")); err != nil {
 		// stdin is gone; skip straight to signalling.
 		i.log.Warn("stop command could not be written", "err", err)
 		i.emitSystem(fmt.Sprintf("could not write stop command (%v), signalling instead", err))
@@ -470,7 +491,7 @@ func (i *Instance) SendCommand(cmd string) error {
 	// Echo before writing so every connected console shows the command even
 	// though only one client typed it.
 	i.publishLine(StreamSystem, "> "+cmd)
-	if _, err := io.WriteString(run.stdin, cmd+"\n"); err != nil {
+	if _, err := run.stdin.Write(run.codec.encode(cmd + "\n")); err != nil {
 		return fmt.Errorf("write to server stdin: %w", err)
 	}
 	return nil

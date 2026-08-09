@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '../api'
 import type { InstanceInput, InstanceStatus, JarInfo } from '../types'
-import { isLive } from '../types'
+import { ENCODING_OPTIONS, isLive } from '../types'
 import { CoreDownloader } from './CoreDownloader'
 
 interface Props {
@@ -22,6 +22,8 @@ function toInput(instance: InstanceStatus): InstanceInput {
     jvmArgs: instance.jvmArgs ?? [],
     serverArgs: instance.serverArgs ?? [],
     command: instance.command ?? [],
+    encoding: instance.encoding || 'auto',
+    forceColor: instance.forceColor ?? true,
     autoStart: instance.autoStart,
     autoRestart: instance.autoRestart,
     stopCommand: instance.stopCommand,
@@ -261,6 +263,43 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
           <small>
             填了这里就完全接管启动方式，上面的 Java / jar / 内存设置全部忽略。
             一行一个参数，第一行是可执行文件。适合基岩版服务端或 start.sh 之类的启动脚本。
+          </small>
+        </label>
+      </section>
+
+      <section className="panel">
+        <h3 className="panel__title">控制台</h3>
+
+        <label className="field">
+          <span>输出编码</span>
+          <select
+            value={form.encoding}
+            onChange={(e) => update('encoding', e.target.value)}
+          >
+            {ENCODING_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <small>
+            控制台按这个编码解读服务器输出、并按同样的编码发送命令。「自动」会让 JVM 用
+            UTF-8 输出，同时对不是 UTF-8 的行按系统编码兜底 —— 中文 Windows 上出现乱码时，
+            如果用的是自定义启动脚本，改成 GBK 通常就好了。
+          </small>
+        </label>
+
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={form.forceColor}
+            onChange={(e) => update('forceColor', e.target.checked)}
+          />
+          <span>强制彩色输出（推荐）</span>
+          <small>
+            服务端只在检测到终端时才上色，而面板是通过管道读它的输出，所以默认会加上
+            <code> -Dterminal.jline=false -Dterminal.ansi=true</code>，让网页控制台和
+            cmd 里一样有颜色。自定义启动命令不受影响，需要自己加。
           </small>
         </label>
       </section>
