@@ -16,7 +16,7 @@ func withUpdater(version string) func(*Options) {
 	return func(o *Options) {
 		o.Version = version
 		o.Updater = selfupdate.NewService(
-			"owner/repo", version, "", selfupdate.Hooks{},
+			"owner/repo", version, "", selfupdate.ChannelStable, selfupdate.Hooks{},
 			slog.New(slog.NewTextHandler(io.Discard, nil)),
 		)
 	}
@@ -173,6 +173,70 @@ func TestUpdateMirrorRequiresASessionAndCSRF(t *testing.T) {
 
 	env.login()
 	resp = env.doRaw(http.MethodPut, "/api/update/mirror", mirrorRequest{Mirror: ""}, false)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("without the CSRF header = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestUpdateChannelRoundTripsAndPersists(t *testing.T) {
+	env := newTestEnv(t, withUpdater("v1.0.0"))
+	env.login()
+
+	// A fresh panel is on the stable channel: nothing opts an operator into
+	// builds that were never released.
+	resp := env.do(http.MethodGet, "/api/update", nil)
+	var status selfupdate.Status
+	decodeBody(t, resp, &status)
+	if status.Channel != selfupdate.ChannelStable {
+		t.Errorf("default channel = %q, want stable", status.Channel)
+	}
+
+	resp = env.do(http.MethodPut, "/api/update/channel",
+		channelRequest{Channel: string(selfupdate.ChannelSnapshot)})
+	decodeBody(t, resp, &status)
+	if status.Channel != selfupdate.ChannelSnapshot {
+		t.Errorf("Channel = %q, want snapshot", status.Channel)
+	}
+
+	// An update restarts the panel, so a channel that reverted on restart would
+	// quietly put a snapshot panel back on the stable track.
+	panel, err := env.store.LoadPanel()
+	if err != nil {
+		t.Fatalf("LoadPanel: %v", err)
+	}
+	if panel.Channel() != string(selfupdate.ChannelSnapshot) {
+		t.Errorf("persisted channel = %q, want snapshot", panel.Channel())
+	}
+}
+
+func TestUpdateChannelRejectsUnknownChannels(t *testing.T) {
+	env := newTestEnv(t, withUpdater("v1.0.0"))
+	env.login()
+
+	// Silently falling back to stable here would leave the UI showing a channel
+	// the panel is not on.
+	for _, bad := range []string{"", "beta", "nightly", "SNAPSHOT"} {
+		resp := env.do(http.MethodPut, "/api/update/channel", channelRequest{Channel: bad})
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("channel %q = %d, want 400", bad, resp.StatusCode)
+		}
+	}
+}
+
+func TestUpdateChannelRequiresASessionAndCSRF(t *testing.T) {
+	env := newTestEnv(t, withUpdater("v1.0.0"))
+	req := channelRequest{Channel: string(selfupdate.ChannelSnapshot)}
+
+	resp := env.do(http.MethodPut, "/api/update/channel", req)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("without a session = %d, want 401", resp.StatusCode)
+	}
+
+	env.login()
+	resp = env.doRaw(http.MethodPut, "/api/update/channel", req, false)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("without the CSRF header = %d, want 403", resp.StatusCode)

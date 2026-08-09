@@ -5,6 +5,7 @@ import type { InstanceStatus, User } from '../types'
 import { STATE_LABELS, isLive } from '../types'
 import type { CoreController } from '../useCores'
 import type { JavaController } from '../useJava'
+import { updateLabel } from '../useUpdate'
 import type { UpdateController } from '../useUpdate'
 import { HostOverview } from './HostOverview'
 
@@ -40,6 +41,7 @@ export function Dashboard({
   java,
   cores,
 }: Props) {
+  const notice = updateLabel(update.status)
   const running = instances.filter((item) => isLive(item.state))
   const crashed = instances.filter((item) => item.state === 'crashed')
 
@@ -51,11 +53,11 @@ export function Dashboard({
         服务器都会照常运行 —— 只有停止面板本身才会（优雅地）关掉它们。
       </p>
 
-      {update.status?.updateAvailable && (
+      {notice && (
         <div className="alert alert--ok">
-          有新版本 {update.status.latestVersion}（当前 {update.status.currentVersion}）。
+          {notice}：{update.status?.latestVersion}（当前 {update.status?.currentVersion}）。
           <button className="link" onClick={() => onOpenSettings('update')}>
-            去更新
+            {update.status?.downgrade ? '去装回正式版' : '去更新'}
           </button>
         </div>
       )}
@@ -97,7 +99,7 @@ export function Dashboard({
         <Stat
           label="面板版本"
           value={user.version}
-          detail={update.status?.updateAvailable ? `可更新到 ${update.status.latestVersion}` : '已是最新'}
+          detail={notice ? `${notice} ${update.status?.latestVersion}` : '已是最新'}
           onClick={() => onOpenSettings('update')}
         />
       </div>

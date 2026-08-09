@@ -12,7 +12,7 @@ import type { InstanceStatus, User } from './types'
 import { STATE_LABELS, isLive, mergeState } from './types'
 import { useCores } from './useCores'
 import { useJava } from './useJava'
-import { useUpdate } from './useUpdate'
+import { updateLabel, useUpdate } from './useUpdate'
 
 /** How often the instance list refreshes; the console pushes state instantly,
  *  this is only to keep the sidebar honest for servers you are not watching. */
@@ -155,6 +155,7 @@ export default function App() {
   // will happen.
   const runningNames = instances.filter((item) => isLive(item.state)).map((item) => item.name)
   const settingsBusy = java.installing || cores.downloading
+  const updateNotice = updateLabel(update.status)
 
   return (
     <div className="app">
@@ -165,9 +166,9 @@ export default function App() {
             <strong>HyperCraft</strong>
             <small>
               {user.version}
-              {update.status?.updateAvailable && (
-                <span className="badge badge--update" title={`可更新到 ${update.status.latestVersion}`}>
-                  有新版本
+              {updateNotice && (
+                <span className="badge badge--update" title={`可更新到 ${update.status?.latestVersion}`}>
+                  {updateNotice}
                 </span>
               )}
             </small>
@@ -191,7 +192,7 @@ export default function App() {
                 {java.installing ? '安装中' : '下载中'}
               </span>
             ) : (
-              update.status?.updateAvailable && <span className="badge badge--update">1</span>
+              updateNotice && <span className="badge badge--update">1</span>
             )}
           </button>
         </nav>

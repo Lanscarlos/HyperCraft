@@ -133,45 +133,12 @@ jobs:
       - name: 运行测试
         run: make test
 
-      # `make cross` owns the build flags (-trimpath, -s -w, the version
-      # ldflag) so the workflow and a local build stay in sync. It builds the
-      # frontend first, so every archive embeds the same UI.
-      - name: 交叉编译
-        run: make cross VERSION=${{ needs.resolve.outputs.tag }}
-
-      - name: 打包
-        env:
-          VERSION: ${{ needs.resolve.outputs.version }}
-        run: |
-          set -euo pipefail
-          mkdir -p release
-          for bin in dist/hypercraft-*; do
-            target=${bin#dist/hypercraft-}          # linux-amd64, windows-amd64.exe, ...
-            target=${target%.exe}
-            stage="hypercraft-${VERSION}-${target}"
-            mkdir -p "$stage"
-
-            case "$bin" in
-              *.exe) cp "$bin" "$stage/hypercraft.exe" ;;
-              *)     cp "$bin" "$stage/hypercraft"; chmod +x "$stage/hypercraft" ;;
-            esac
-            cp README.md CHANGELOG.md LICENSE "$stage/"
-            # The systemd unit is only useful on Linux.
-            case "$target" in
-              linux-*) cp deploy/hypercraft.service "$stage/" ;;
-            esac
-
-            # zip for Windows, tar.gz everywhere else.
-            case "$target" in
-              windows-*) zip -qr "release/${stage}.zip" "$stage" ;;
-              *)         tar -czf "release/${stage}.tar.gz" "$stage" ;;
-            esac
-            rm -rf "$stage"
-          done
-
-          cd release
-          sha256sum hypercraft-* > SHA256SUMS.txt
-          ls -lh
+      # `make package` owns the build flags (-trimpath, -s -w, the version
+      # ldflag) and the archive layout, so the workflow, the snapshot workflow
+      # and a local build stay in sync. It builds the frontend first, so every
+      # archive embeds the same UI.
+      - name: 交叉编译并打包
+        run: make package VERSION=${{ needs.resolve.outputs.tag }}
 
       # Pulls the section for this version out of CHANGELOG.md. Missing entry is
       # a warning, not a failure — the release still goes out with a stub.

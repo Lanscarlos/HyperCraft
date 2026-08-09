@@ -14,10 +14,10 @@ import type {
   FileListing,
   InstanceMetrics,
   InstanceStatus,
-  JarInfo,
   PropertiesResponse,
   PropertyEntry,
   SystemInfo,
+  UpdateChannel,
   UpdateStatus,
   User,
 } from './types'
@@ -115,7 +115,6 @@ export const api = {
     request<EulaStatus>('GET', `/api/instances/${id}/eula`),
   acceptEula: (id: string) =>
     request<EulaStatus>('POST', `/api/instances/${id}/eula`),
-  listJars: (id: string) => request<JarInfo[]>('GET', `/api/instances/${id}/jars`),
 
   listCoreProjects: () => request<CoreProject[]>('GET', '/api/downloads/projects'),
   listCoreVersions: (project: string) =>
@@ -167,6 +166,8 @@ export const api = {
   applyUpdate: () => request<UpdateStatus>('POST', '/api/update/apply'),
   setUpdateMirror: (mirror: string) =>
     request<UpdateStatus>('PUT', '/api/update/mirror', { mirror }),
+  setUpdateChannel: (channel: UpdateChannel) =>
+    request<UpdateStatus>('PUT', '/api/update/channel', { channel }),
 
   system: () => request<SystemInfo>('GET', '/api/system'),
   instanceMetrics: (id: string) =>

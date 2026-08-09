@@ -1,5 +1,6 @@
 import type { CoreController } from '../useCores'
 import type { JavaController } from '../useJava'
+import { updateLabel } from '../useUpdate'
 import type { UpdateController } from '../useUpdate'
 import { CoreLibraryPage } from './CoreLibraryPage'
 import { JavaPage } from './JavaPage'
@@ -56,8 +57,8 @@ export function SettingsPage({
             {entry.label}
             {entry.id === 'java' && java.installing && <span className="badge">安装中</span>}
             {entry.id === 'cores' && cores.downloading && <span className="badge">下载中</span>}
-            {entry.id === 'update' && update.status?.updateAvailable && (
-              <span className="badge badge--update">新版本</span>
+            {entry.id === 'update' && updateLabel(update.status) && (
+              <span className="badge badge--update">{updateLabel(update.status)}</span>
             )}
           </button>
         ))}
@@ -71,7 +72,7 @@ export function SettingsPage({
             <h1>面板更新</h1>
             <p className="page__lead">
               面板可以自己下载并替换掉自己的二进制，然后重启 —— 更新前正在运行的服务器会先优雅停止，
-              升级完成后再自动拉起来。
+              升级完成后再自动拉起来。快照通道能提前拿到 main 上每个通过 CI 的构建。
             </p>
             <UpdatePanel update={update} runningNames={runningNames} />
           </div>

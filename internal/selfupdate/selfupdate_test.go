@@ -154,8 +154,8 @@ func TestCheckReportsNewerRelease(t *testing.T) {
 	if rel.Version != "1.2.0" {
 		t.Errorf("Version = %q, want 1.2.0", rel.Version)
 	}
-	if !u.IsNewerThanCurrent(rel) {
-		t.Error("IsNewerThanCurrent = false, want true")
+	if available, _ := u.Offer(rel); !available {
+		t.Error("Offer said no; 1.2.0 is newer than the running 1.0.0")
 	}
 	if !rel.HasAssetForPlatform() {
 		t.Errorf("HasAssetForPlatform = false; release has no %s", AssetName(rel.Version))
@@ -171,7 +171,7 @@ func TestCheckDoesNotOfferOlderOrEqualRelease(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Check: %v", err)
 		}
-		if u.IsNewerThanCurrent(rel) {
+		if available, _ := u.Offer(rel); available {
 			t.Errorf("running %s: offered %s as an update", current, rel.Version)
 		}
 	}
@@ -185,7 +185,7 @@ func TestCheckNeverOffersAnUpdateToADevBuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Check: %v", err)
 	}
-	if u.IsNewerThanCurrent(rel) {
+	if available, _ := u.Offer(rel); available {
 		t.Error("a dev build was offered an update; it would overwrite a local build")
 	}
 }
@@ -320,7 +320,7 @@ func TestServiceRestartsTheInstalledBinaryNotTheBackup(t *testing.T) {
 
 	var restartedWith string
 	var beforeInstallRan bool
-	svc := NewService("owner/repo", "v1.0.0", "", Hooks{
+	svc := NewService("owner/repo", "v1.0.0", "", ChannelStable, Hooks{
 		BeforeInstall:  func() error { beforeInstallRan = true; return nil },
 		TriggerRestart: func(binary string) { restartedWith = binary },
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -362,7 +362,7 @@ func TestServiceAbortsCleanlyWhenPreparationFails(t *testing.T) {
 	f.corruptSum = true
 
 	var restarted, aborted bool
-	svc := NewService("owner/repo", "v1.0.0", "", Hooks{
+	svc := NewService("owner/repo", "v1.0.0", "", ChannelStable, Hooks{
 		BeforeInstall:  func() error { return nil },
 		InstallAborted: func() { aborted = true },
 		TriggerRestart: func(string) { restarted = true },

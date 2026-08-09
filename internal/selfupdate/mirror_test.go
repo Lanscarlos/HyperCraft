@@ -292,7 +292,7 @@ func TestGetFirstPrefersTheFirstURLAndFallsBack(t *testing.T) {
 }
 
 func TestServiceMirrorIsReportedAndSettable(t *testing.T) {
-	svc := NewService("owner/repo", "v1.0.0", "https://ghfast.top/", Hooks{},
+	svc := NewService("owner/repo", "v1.0.0", "https://ghfast.top/", ChannelStable, Hooks{},
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	if got := svc.Status().Mirror; got != "https://ghfast.top/" {

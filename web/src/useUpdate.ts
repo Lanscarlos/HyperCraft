@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api, panelVersion } from './api'
-import type { UpdateStatus } from './types'
+import type { UpdateChannel, UpdateStatus } from './types'
 
 /** Idle cadence. The panel caches its own GitHub check, so this only pulls a
  *  value that is already in memory; it exists to notice a check that ran on the
@@ -22,6 +22,7 @@ export interface UpdateController {
   check: () => Promise<void>
   apply: () => Promise<void>
   setMirror: (mirror: string) => Promise<void>
+  setChannel: (channel: UpdateChannel) => Promise<void>
 }
 
 /**
@@ -141,5 +142,48 @@ export function useUpdate(enabled: boolean): UpdateController {
     }
   }, [])
 
-  return { status, updating, restarting, error, checking, check, apply, setMirror }
+  // Switching channel drops the cached check on the server, since it describes
+  // the channel just left. Checking straight away fills the gap, so the page
+  // never sits on "尚未检查" after a switch.
+  const setChannel = useCallback(async (channel: UpdateChannel) => {
+    setError(null)
+    setChecking(true)
+    try {
+      setStatus(await api.setUpdateChannel(channel))
+      const next = await api.checkUpdate()
+      setStatus(next)
+      if (next.checkError) setError(next.checkError)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '切换更新通道失败')
+    } finally {
+      setChecking(false)
+    }
+  }, [])
+
+  return {
+    status,
+    updating,
+    restarting,
+    error,
+    checking,
+    check,
+    apply,
+    setMirror,
+    setChannel,
+  }
+}
+
+/**
+ * What to call the offered version, in a badge or a one-line hint.
+ *
+ * `updateAvailable` covers three different things now that snapshots exist —
+ * a new release, a new snapshot, and the step back to stable from a snapshot —
+ * and calling all three "有新版本" would be wrong about the last one. The
+ * sidebar, the settings tab and the dashboard all need the same phrasing, so
+ * it lives here rather than as a ternary repeated three times.
+ */
+export function updateLabel(status: UpdateStatus | null): string | null {
+  if (!status?.updateAvailable) return null
+  if (status.downgrade) return '可回到正式版'
+  return status.latestIsPrerelease ? '有新快照' : '有新版本'
 }

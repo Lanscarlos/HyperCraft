@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
-import { UPDATE_MIRRORS } from '../types'
+import { UPDATE_CHANNELS, UPDATE_MIRRORS } from '../types'
+import type { UpdateChannel, UpdateStatus } from '../types'
 import type { UpdateController } from '../useUpdate'
 
 interface Props {
@@ -46,11 +47,17 @@ export function UpdatePanel({ update, runningNames }: Props) {
       <dl className="update__meta">
         <div>
           <dt>当前版本</dt>
-          <dd>{status.currentVersion}</dd>
+          <dd>
+            {status.currentVersion}
+            {status.currentIsSnapshot && <span className="badge">快照</span>}
+          </dd>
         </div>
         <div>
           <dt>最新版本</dt>
-          <dd>{status.latestVersion ?? '尚未检查'}</dd>
+          <dd>
+            {status.latestVersion ?? '尚未检查'}
+            {status.latestIsPrerelease && <span className="badge">快照</span>}
+          </dd>
         </div>
         <div>
           <dt>上次检查</dt>
@@ -67,10 +74,25 @@ export function UpdatePanel({ update, runningNames }: Props) {
         <p className="update__note">{status.ineligibleWhy}</p>
       ) : status.updateAvailable ? (
         <>
-          <div className="alert alert--ok">
-            有新版本 <strong>{status.latestVersion}</strong> 可用
-            {status.publishedAt && `（发布于 ${new Date(status.publishedAt).toLocaleDateString()}）`}
+          <div className={status.downgrade ? 'alert' : 'alert alert--ok'}>
+            {status.downgrade ? (
+              <>
+                可以回到正式版 <strong>{status.latestVersion}</strong>
+                （比当前运行的快照旧，装完就回到正式版轨道）
+              </>
+            ) : (
+              <>
+                有新版本 <strong>{status.latestVersion}</strong> 可用
+                {status.publishedAt &&
+                  `（发布于 ${new Date(status.publishedAt).toLocaleDateString()}）`}
+              </>
+            )}
           </div>
+          {status.latestIsPrerelease && (
+            <p className="update__note">
+              这是 main 分支的自动构建，通过了 CI 但没有经过发布前的验证。
+            </p>
+          )}
           {status.releaseNotes && (
             <details className="update__notes">
               <summary>更新内容</summary>
@@ -79,7 +101,7 @@ export function UpdatePanel({ update, runningNames }: Props) {
           )}
           <div className="update__actions">
             <button className="btn btn--primary" onClick={() => setConfirming(true)}>
-              立即更新到 {status.latestVersion}
+              {status.downgrade ? '回到' : '立即更新到'} {status.latestVersion}
             </button>
             {status.releaseUrl && (
               <a className="link" href={status.releaseUrl} target="_blank" rel="noreferrer">
@@ -89,8 +111,18 @@ export function UpdatePanel({ update, runningNames }: Props) {
           </div>
         </>
       ) : (
-        <p className="update__note">已经是最新版本。</p>
+        <p className="update__note">
+          {status.channel === 'snapshot'
+            ? '已经是最新的快照。'
+            : '已经是最新版本。'}
+        </p>
       )}
+
+      <ChannelPicker
+        status={status}
+        busy={checking}
+        onChange={(next) => void update.setChannel(next)}
+      />
 
       <MirrorPicker
         mirror={status.mirror}
@@ -100,6 +132,8 @@ export function UpdatePanel({ update, runningNames }: Props) {
       {confirming && (
         <ConfirmUpdateDialog
           version={status.latestVersion ?? ''}
+          prerelease={status.latestIsPrerelease}
+          downgrade={status.downgrade}
           runningNames={runningNames}
           onCancel={() => setConfirming(false)}
           onConfirm={() => {
@@ -109,6 +143,55 @@ export function UpdatePanel({ update, runningNames }: Props) {
         />
       )}
     </section>
+  )
+}
+
+/** Chooses which releases this panel is offered: only the tagged ones, or also
+ *  the snapshot built from every green commit on main. */
+function ChannelPicker({
+  status,
+  busy,
+  onChange,
+}: {
+  status: UpdateStatus
+  busy: boolean
+  onChange: (channel: UpdateChannel) => void
+}) {
+  const current = UPDATE_CHANNELS.find((c) => c.value === status.channel)
+
+  return (
+    <details className="update__mirror" open={status.channel === 'snapshot'}>
+      <summary>更新通道：{current?.label ?? status.channel}</summary>
+
+      <div className="update__mirror-body">
+        {UPDATE_CHANNELS.map((option) => (
+          <label className="checkbox" key={option.value}>
+            <input
+              type="radio"
+              name="update-channel"
+              checked={status.channel === option.value}
+              disabled={busy}
+              onChange={() => onChange(option.value)}
+            />
+            <span>
+              {option.label}
+              <small style={{ display: 'block' }}>{option.note}</small>
+            </span>
+          </label>
+        ))}
+
+        <p className="update__note">
+          快照通道也会看到正式版 —— 哪个版本号更新就更新到哪个，所以正式版发布后会自动
+          从快照回到正式版。
+          {status.currentIsSnapshot && status.channel === 'stable' && (
+            <>
+              {' '}
+              当前运行的是快照，切回正式版通道后面板会提示装回最新的正式版，那一步是往回装的。
+            </>
+          )}
+        </p>
+      </div>
+    </details>
   )
 }
 
@@ -208,11 +291,15 @@ function UpdateProgress({ phase, progress }: { phase: string; progress: number }
 
 function ConfirmUpdateDialog({
   version,
+  prerelease,
+  downgrade,
   runningNames,
   onCancel,
   onConfirm,
 }: {
   version: string
+  prerelease: boolean
+  downgrade: boolean
   runningNames: string[]
   onCancel: () => void
   onConfirm: () => void
@@ -220,10 +307,25 @@ function ConfirmUpdateDialog({
   return (
     <div className="modal" role="dialog" aria-modal="true">
       <div className="modal__card">
-        <h2 className="modal__title">更新到 {version}</h2>
+        <h2 className="modal__title">
+          {downgrade ? '回到' : '更新到'} {version}
+        </h2>
         <p className="modal__lead">
           面板会先下载并校验新版本，成功后才停止服务器并重启自己。下载失败不会影响正在运行的服务器。
         </p>
+
+        {prerelease && (
+          <p className="modal__lead">
+            <strong>{version} 是快照，不是正式发布版本。</strong>
+            它由 main 分支的提交自动构建，通过了 CI，但没有经过发布前的验证。
+          </p>
+        )}
+        {downgrade && (
+          <p className="modal__lead">
+            这一步会把面板从快照装回正式版，也就是<strong>版本号往回走</strong>。
+            如果快照写过正式版还不认识的配置，请先备份 <code>data</code> 目录。
+          </p>
+        )}
 
         {runningNames.length > 0 ? (
           <>

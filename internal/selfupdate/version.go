@@ -35,6 +35,12 @@ func IsReleaseVersion(v string) bool {
 	return true
 }
 
+// IsStableVersion reports whether v is a final release rather than something
+// leading up to one — 1.2.0 rather than 1.2.0-rc.1 or 1.2.1-snapshot.431.
+func IsStableVersion(v string) bool {
+	return IsReleaseVersion(v) && !strings.Contains(NormalizeVersion(v), "-")
+}
+
 // CompareVersions orders two semantic versions, returning -1 if a sorts before
 // b, 0 if they are equal, and 1 if a sorts after b. A pre-release sorts before
 // the release it leads to, so 1.2.0-rc.1 < 1.2.0.
