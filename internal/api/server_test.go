@@ -16,6 +16,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/instance"
+	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/mcprops"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
@@ -32,8 +33,11 @@ type testEnv struct {
 	server *httptest.Server
 	client *http.Client
 	mgr    *instance.Manager
+	store  *store.Store
 	// fill stands in for the PaperMC API and its CDN; see handlers_downloads_test.go.
 	fill *fakeFill
+	// adoptium stands in for the Java download API; see handlers_java_test.go.
+	adoptium *fakeAdoptium
 }
 
 // newTestEnv builds a panel backed by a temporary data directory. Tests that
@@ -60,6 +64,7 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mgr := instance.NewManager(st, paths.ServersRoot(), logger)
 	fill := newFakeFill(t)
+	adoptium := newFakeAdoptium(t)
 
 	options := Options{
 		Manager:  mgr,
@@ -67,9 +72,14 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 		Sessions: auth.NewSessionStore(time.Hour),
 		Metrics:  metrics.New(time.Second, time.Minute, t.TempDir(), logger),
 		Jars:     serverjar.NewDownloader(serverjar.NewClient(fill.URL(), "test"), logger),
-		Panel:    panel,
-		Version:  "test",
-		Logger:   logger,
+		Java: javaruntime.NewInstaller(
+			javaruntime.NewClient(adoptium.URL(), "test"),
+			javaruntime.NewStore(paths.JavaRoot()),
+			logger,
+		),
+		Panel:   panel,
+		Version: "test",
+		Logger:  logger,
 	}
 	for _, opt := range opts {
 		opt(&options)
@@ -82,7 +92,10 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 	if err != nil {
 		t.Fatalf("cookiejar: %v", err)
 	}
-	return &testEnv{t: t, server: srv, client: &http.Client{Jar: jar}, mgr: mgr, fill: fill}
+	return &testEnv{
+		t: t, server: srv, client: &http.Client{Jar: jar},
+		mgr: mgr, store: st, fill: fill, adoptium: adoptium,
+	}
 }
 
 // do issues a request with the CSRF header the UI always sends.

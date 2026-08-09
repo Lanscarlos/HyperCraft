@@ -30,7 +30,7 @@
 
 ## 快速开始（全新的 Debian）
 
-发布产物是单文件二进制，前端已经嵌在里面，不需要 Go、Node 或者任何运行时依赖。部署就是三件事：解压、装 Java、交给 systemd。下面这套在一台什么都没装的 Debian 上从头到尾能跑通。
+发布产物是单文件二进制，前端已经嵌在里面，不需要 Go、Node 或者任何运行时依赖。部署就两件事：解压，交给 systemd。服务端要的 Java 也不用 `apt` —— 面板起来之后在总览页点一下就能装，所以下面这套在一台**什么都没装**的 Debian 上从头到尾能跑通。
 
 ### 1. 下载解压到 `/opt/hypercraft`
 
@@ -63,20 +63,7 @@ sudo chown -R minecraft:minecraft /opt/hypercraft
 `chown` 不能省：数据目录要写，面板内自动更新还要原地替换 `/opt/hypercraft/hypercraft` 并留一份
 `hypercraft.old`，运行用户对这个目录没有写权限的话更新会失败。
 
-### 3. 装 Java
-
-面板自己是静态二进制、零依赖，但它拉起来的服务端是 `java -jar`：
-
-```bash
-sudo apt install -y openjdk-21-jre-headless
-```
-
-版本要求比较硬 —— Paper 26.x 要 Java 25，1.21.11 要 Java 21，不匹配时服务端的报错跟 Java
-一个字都不沾边。Debian 13 官方源里有 21，Debian 12 要走 `bookworm-backports`，Java 25 目前得用
-[Adoptium](https://adoptium.net/installation/linux/) 的源。装多个版本共存没问题，「启动设置」里可以
-按实例指定 Java 路径。
-
-### 4. 交给 systemd
+### 3. 交给 systemd
 
 面板是所有 Minecraft 进程的父进程，在 SSH 里直接跑，你一断线服务器就跟着停了，所以别跳过这步。
 
@@ -106,7 +93,7 @@ sudo -u minecraft /opt/hypercraft/hypercraft -data /opt/hypercraft/data -reset-p
 sudo systemctl start hypercraft
 ```
 
-### 5. 打开面板
+### 4. 打开面板
 
 默认只监听 `127.0.0.1:8080`，公网连不上是有意为之。想立刻看一眼，在**你自己的电脑上**开个 SSH 隧道，
 然后访问 http://127.0.0.1:8080 ：
@@ -124,7 +111,9 @@ ssh -L 8080:127.0.0.1:8080 you@your-server
 2. 「启动设置」→「下载服务端核心」，选 Paper（或 Velocity）和版本，点下载。
    面板会直接把 jar 下到实例目录（默认在数据目录下的 `servers/<名字>/`），并设为启动 jar。
    想用别的核心就自己把 jar 丢进那个目录，一样能跑。
-3. 「启动设置」里调内存 —— jar 下拉会自动列出目录里的文件。
+3. 「启动设置」里选 Java 运行时、调内存 —— jar 下拉会自动列出目录里的文件。
+   刚装好的机器上一个 Java 都没有，去总览页「Java 运行时」一键装一个即可（1.20.5 起要
+   Java 21，Paper 26.x 要 25）；系统里本来就有的 Java 也会一并列出来。
 4. 「服务器配置」里点「我已阅读并同意 EULA」，改改 MOTD、端口、难度。
 5. 回「控制台」点启动。
 
@@ -147,6 +136,8 @@ ssh -L 8080:127.0.0.1:8080 you@your-server
 data/
 ├── panel.json        # 面板配置 + 密码哈希 (PBKDF2-SHA256, 0600)
 ├── instances.json    # 实例注册表
+├── java/             # 面板下载的 Java 运行时，一个版本一个目录
+│   └── temurin-21.0.12-8-jre/
 └── servers/
     ├── 生存服/        # 实例的工作目录：jar、存档、配置全在这
     └── 创造服/
@@ -196,10 +187,18 @@ panel.example.com {
 
 ## 已经做了的
 
+- **Java 运行时管理** —— 总览页可以一键下载 Eclipse Temurin 的 JRE / JDK（任意大版本，LTS 有标注），
+  装进面板数据目录，不碰系统里的 Java；每个实例在「启动设置」里各自选一个，所以 1.12 的老服和
+  1.21 的新服可以在同一台机器上共存。列表里会显示系统自带的 Java、每个运行时被哪些实例用着，
+  正在跑的不让删。手动解压进 `data/java/` 的 JDK 也会被自动认出来。
 - **面板内自动更新** —— 有新版本时侧栏会标出来，总览页点一下就更新，不用 SSH 上去换二进制。
   先下载并用 release 的 `SHA256SUMS.txt` 校验，这一步失败不动任何东西；校验通过后才停服、
   换二进制、用 `exec` 就地重启（PID 不变，systemd 察觉不到），然后自动把刚才在跑的服务器
   拉回来。确认弹窗会列出要停哪几个。旧二进制留作 `hypercraft.old` 方便回退。
+
+  下载默认走 `https://ghfast.top/` 镜像（国内直连 GitHub 的下载速度基本没法用），界面上可以
+  换成别的或直连，镜像挂了自动回退直连。**镜像只搬压缩包**：校验用的 `SHA256SUMS.txt` 优先
+  从 GitHub 直接取，所以镜像换不掉二进制——它给的包对不上 GitHub 的哈希就会被拒绝。
 - **一键下载服务端核心** —— 目前是 Paper 和 Velocity，数据来自 PaperMC 的 Fill API。选版本后
   面板自己去下（走服务器的网络，不经过你的浏览器），下载归守护进程管，关掉网页也会继续，
   重开页面能接上进度。落盘前校验 sha256 和体积，先写 `.part` 再改名 —— 失败、取消或断网都不会
@@ -245,6 +244,8 @@ panel.example.com {
 
 按我觉得的优先级排：玩家列表和白名单/OP 管理（现在只能手改 JSON）、自动备份、多用户和权限、定时任务（定时重启/广播）、更多可下载的核心（Fabric / Forge / 基岩版）、更长时间的监控历史（现在只在内存里存 1 小时，重启面板就没了）。
 
+Java 那块有个已知边界：Temurin 只有 glibc 构建，musl 系统（Alpine 之类）装了也跑不起来 —— 面板会检测到并直接说明，让你改用系统包管理器装。
+
 ## 从源码构建
 
 不想用发布的二进制，或者要改代码：
@@ -282,6 +283,7 @@ internal/instance/   核心：进程监管、状态机、控制台环形缓冲�
 internal/api/        HTTP + WebSocket
 internal/serverfiles/ 文件管理，全部经由 os.Root 限制在实例目录内
 internal/serverjar/   服务端核心下载：PaperMC Fill API 客户端 + 后台下载任务
+internal/javaruntime/ Java 运行时：Adoptium 客户端、安全解压、已装运行时注册表
 internal/metrics/    CPU/内存采样，按进程树汇总
 internal/mcprops/    server.properties 解析/写回（保留格式，Java 转义）
 internal/store/      JSON 持久化（临时文件 + rename 原子写）
@@ -326,7 +328,7 @@ tag，产物和发布说明都会覆盖掉，不用另开一个版本号。
 
 ## 依赖与环境要求
 
-只是部署的话，这一节可以跳过 —— 发布的二进制是 `CGO_ENABLED=0` 静态编译的，除了运行 Minecraft 服务端要的 Java，别的什么都不需要装。
+只是部署的话，这一节可以跳过 —— 发布的二进制是 `CGO_ENABLED=0` 静态编译的，服务端要的 Java 面板自己会装，所以目标机器上什么都不用先准备。
 
 从源码构建需要 **Go 1.25+**（文件管理器用到了 1.25 的 `os.Root.Rename` / `RemoveAll` 等；`GOTOOLCHAIN` 默认会自动下载，本机 Go 版本旧一些也不影响）。前端需要 Node 20+。
 

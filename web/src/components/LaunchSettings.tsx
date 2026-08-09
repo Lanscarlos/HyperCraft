@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '../api'
-import type { InstanceInput, InstanceStatus, JarInfo } from '../types'
+import type {
+  InstanceInput,
+  InstanceStatus,
+  JarInfo,
+  JavaRuntime,
+  SystemJava,
+} from '../types'
 import { ENCODING_OPTIONS, isLive } from '../types'
 import { CoreDownloader } from './CoreDownloader'
 
@@ -31,6 +37,9 @@ function toInput(instance: InstanceStatus): InstanceInput {
   }
 }
 
+/** Sentinel for the "type a path yourself" option in the Java picker. */
+const CUSTOM_JAVA = '__custom__'
+
 /** Args are edited as one-per-line text, which is far easier than a list UI. */
 const toLines = (args: string[]) => args.join('\n')
 const fromLines = (text: string) =>
@@ -49,6 +58,10 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
     toLines(instance.command ?? []),
   )
   const [jars, setJars] = useState<JarInfo[]>([])
+  const [runtimes, setRuntimes] = useState<JavaRuntime[]>([])
+  const [systemJava, setSystemJava] = useState<SystemJava | null>(null)
+  const [javaLoaded, setJavaLoaded] = useState(false)
+  const [customJava, setCustomJava] = useState(false)
   // Bumped after a core download so the jar list picks up the new file.
   const [jarsRev, setJarsRev] = useState(0)
   const [status, setStatus] = useState<string | null>(null)
@@ -68,6 +81,17 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
       .then(setJars)
       .catch(() => setJars([]))
   }, [instance.id, instance.directory, jarsRev])
+
+  useEffect(() => {
+    api
+      .javaOverview()
+      .then((overview) => {
+        setRuntimes(overview.runtimes)
+        setSystemJava(overview.system)
+      })
+      .catch(() => undefined)
+      .finally(() => setJavaLoaded(true))
+  }, [instance.id])
 
   // A finished download has already been applied server-side, so the form only
   // has to catch up on the fields the daemon touched — anything else the
@@ -137,6 +161,10 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
   }
 
   const usingCustomCommand = fromLines(commandText).length > 0
+  // Anything that is not the system java or a managed runtime is a path the
+  // operator typed, so the text box stays visible for it.
+  const knownJava = form.java === 'java' || runtimes.some((r) => r.javaPath === form.java)
+  const showCustomJava = customJava || (javaLoaded && !knownJava)
 
   return (
     <form className="settings" onSubmit={save}>
@@ -172,14 +200,44 @@ export function LaunchSettings({ instance, onSaved, onDeleted }: Props) {
         <h3 className="panel__title">启动方式</h3>
 
         <label className="field">
-          <span>Java 可执行文件</span>
-          <input
-            value={form.java}
-            onChange={(e) => update('java', e.target.value)}
-            placeholder="java"
+          <span>Java 运行时</span>
+          <select
+            value={showCustomJava ? CUSTOM_JAVA : form.java}
+            onChange={(e) => {
+              if (e.target.value === CUSTOM_JAVA) {
+                setCustomJava(true)
+                return
+              }
+              setCustomJava(false)
+              update('java', e.target.value)
+            }}
             disabled={usingCustomCommand}
-          />
-          <small>填 java 表示用 PATH 里的默认版本，也可以填绝对路径。</small>
+          >
+            <option value="java">
+              系统 java（PATH{systemJava?.major ? `，Java ${systemJava.major}` : ''}）
+            </option>
+            {runtimes.map((runtime) => (
+              <option key={runtime.id} value={runtime.javaPath}>
+                Java {runtime.major} · {runtime.version} ·{' '}
+                {runtime.imageType.toUpperCase()}（面板安装）
+              </option>
+            ))}
+            <option value={CUSTOM_JAVA}>自定义路径…</option>
+          </select>
+          {showCustomJava && (
+            <input
+              value={form.java}
+              onChange={(e) => update('java', e.target.value)}
+              placeholder="/usr/lib/jvm/java-21-openjdk/bin/java"
+              disabled={usingCustomCommand}
+              spellCheck={false}
+            />
+          )}
+          <small>
+            {runtimes.length > 0
+              ? '面板装的 Java 在这里直接选；总览页可以再装别的版本。'
+              : '总览页的「Java 运行时」里可以一键装一个，装完这里就能选。'}
+          </small>
         </label>
 
         <label className="field">

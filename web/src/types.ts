@@ -151,6 +151,76 @@ export interface CoreBuild {
   size: number
 }
 
+// --------------------------------------------------------- java runtimes
+
+/** A Java installation the panel can launch servers with. */
+export interface JavaRuntime {
+  id: string
+  path: string
+  /** The launcher an instance's config points at; empty if the directory is broken. */
+  javaPath: string
+  vendor: string
+  version: string
+  major: number
+  imageType: string
+  size: number
+  installedAt: string
+  /** Instances whose launch config points into this runtime. */
+  usedBy: string[]
+  /** True while one of those instances is running on it. */
+  live: boolean
+}
+
+export interface SystemJava {
+  path: string
+  version: string
+  major: number
+  vendor: string
+  source: string
+}
+
+export interface JavaPlatform {
+  os: string
+  arch: string
+  /** Non-fatal note, e.g. musl systems where Temurin will not run. */
+  warning?: string
+}
+
+export type JavaInstallState =
+  | 'downloading'
+  | 'extracting'
+  | 'done'
+  | 'failed'
+  | 'cancelled'
+
+export interface JavaInstallJob {
+  major: number
+  imageType: string
+  version: string
+  fileName: string
+  total: number
+  downloaded: number
+  state: JavaInstallState
+  error?: string
+  runtimeId?: string
+  startedAt: string
+  finishedAt?: string
+}
+
+export interface JavaOverview {
+  root: string
+  platform: JavaPlatform
+  runtimes: JavaRuntime[]
+  system: SystemJava | null
+  job: JavaInstallJob | null
+}
+
+export interface JavaMajor {
+  major: number
+  lts: boolean
+  installed: boolean
+}
+
 export type CoreDownloadState = 'downloading' | 'done' | 'failed' | 'cancelled'
 
 export interface CoreDownloadJob {
@@ -282,7 +352,29 @@ export interface UpdateStatus {
   ineligibleWhy?: string
   /** Set when the last update attempt failed. */
   error?: string
+  /** Download proxy prefix; empty means downloads go straight to GitHub. */
+  mirror: string
 }
+
+/** Known GitHub download proxies. The panel accepts any prefix, these are just
+ *  the ones offered without typing. */
+export const UPDATE_MIRRORS: { label: string; value: string; note: string }[] = [
+  {
+    label: 'ghfast.top（默认）',
+    value: 'https://ghfast.top/',
+    note: '国内访问 GitHub 下载较快',
+  },
+  {
+    label: 'gh-proxy.com',
+    value: 'https://gh-proxy.com/',
+    note: '备选，用法相同',
+  },
+  {
+    label: '直连 GitHub',
+    value: '',
+    note: '不经过任何第三方，海外服务器选这个',
+  },
+]
 
 // ----------------------------------------------------------------- files
 

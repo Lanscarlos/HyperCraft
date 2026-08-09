@@ -16,7 +16,7 @@ func withUpdater(version string) func(*Options) {
 	return func(o *Options) {
 		o.Version = version
 		o.Updater = selfupdate.NewService(
-			"owner/repo", version, selfupdate.Hooks{},
+			"owner/repo", version, "", selfupdate.Hooks{},
 			slog.New(slog.NewTextHandler(io.Discard, nil)),
 		)
 	}
@@ -98,6 +98,84 @@ func TestUpdateApplyRejectedWhenNothingToInstall(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("apply with no known update = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestUpdateMirrorRoundTripsAndPersists(t *testing.T) {
+	env := newTestEnv(t, withUpdater("v1.0.0"))
+	env.login()
+
+	resp := env.do(http.MethodPut, "/api/update/mirror", mirrorRequest{Mirror: "https://gh-proxy.com"})
+	var status selfupdate.Status
+	decodeBody(t, resp, &status)
+
+	// A prefix without the trailing slash is the obvious typo; it is fixed up
+	// rather than rejected, because gluing the two URLs together would only
+	// fail later, mid-update.
+	if status.Mirror != "https://gh-proxy.com/" {
+		t.Errorf("Mirror = %q, want a trailing slash added", status.Mirror)
+	}
+
+	// It has to survive a restart: an update restarts the panel, and a mirror
+	// that reverted afterwards would be useless for the next one.
+	panel, err := env.store.LoadPanel()
+	if err != nil {
+		t.Fatalf("LoadPanel: %v", err)
+	}
+	if panel.Mirror() != "https://gh-proxy.com/" {
+		t.Errorf("persisted mirror = %q", panel.Mirror())
+	}
+}
+
+func TestUpdateMirrorCanBeTurnedOff(t *testing.T) {
+	env := newTestEnv(t, withUpdater("v1.0.0"))
+	env.login()
+
+	resp := env.do(http.MethodPut, "/api/update/mirror", mirrorRequest{Mirror: ""})
+	var status selfupdate.Status
+	decodeBody(t, resp, &status)
+	if status.Mirror != "" {
+		t.Errorf("Mirror = %q, want empty for direct downloads", status.Mirror)
+	}
+
+	// Empty must persist as a deliberate choice, not be refilled with the
+	// default on the next load.
+	panel, err := env.store.LoadPanel()
+	if err != nil {
+		t.Fatalf("LoadPanel: %v", err)
+	}
+	if panel.Mirror() != "" {
+		t.Errorf("persisted mirror = %q, want the operator's choice of direct", panel.Mirror())
+	}
+}
+
+func TestUpdateMirrorRejectsNonHTTPPrefixes(t *testing.T) {
+	env := newTestEnv(t, withUpdater("v1.0.0"))
+	env.login()
+
+	for _, bad := range []string{"ghfast.top", "javascript:alert(1)", "ftp://example.com/", "://"} {
+		resp := env.do(http.MethodPut, "/api/update/mirror", mirrorRequest{Mirror: bad})
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("mirror %q = %d, want 400", bad, resp.StatusCode)
+		}
+	}
+}
+
+func TestUpdateMirrorRequiresASessionAndCSRF(t *testing.T) {
+	env := newTestEnv(t, withUpdater("v1.0.0"))
+
+	resp := env.do(http.MethodPut, "/api/update/mirror", mirrorRequest{Mirror: ""})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("without a session = %d, want 401", resp.StatusCode)
+	}
+
+	env.login()
+	resp = env.doRaw(http.MethodPut, "/api/update/mirror", mirrorRequest{Mirror: ""}, false)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("without the CSRF header = %d, want 403", resp.StatusCode)
 	}
 }
 

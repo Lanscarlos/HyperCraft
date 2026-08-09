@@ -5,6 +5,9 @@ import type {
   CoreProject,
   CoreVersion,
   EulaStatus,
+  JavaMajor,
+  JavaOverview,
+  JavaInstallJob,
   InstanceInput,
   FileListing,
   InstanceMetrics,
@@ -136,9 +139,19 @@ export const api = {
   cancelCoreDownload: (id: string) =>
     request<void>('POST', `/api/instances/${id}/jars/download/cancel`),
 
+  javaOverview: () => request<JavaOverview>('GET', '/api/java'),
+  javaMajors: () => request<JavaMajor[]>('GET', '/api/java/available'),
+  installJava: (major: number, imageType: 'jre' | 'jdk') =>
+    request<JavaInstallJob>('POST', '/api/java/install', { major, imageType }),
+  cancelJavaInstall: () => request<void>('POST', '/api/java/install/cancel'),
+  deleteJavaRuntime: (id: string) =>
+    request<void>('DELETE', `/api/java/${encodeURIComponent(id)}`),
+
   updateStatus: () => request<UpdateStatus>('GET', '/api/update'),
   checkUpdate: () => request<UpdateStatus>('POST', '/api/update/check'),
   applyUpdate: () => request<UpdateStatus>('POST', '/api/update/apply'),
+  setUpdateMirror: (mirror: string) =>
+    request<UpdateStatus>('PUT', '/api/update/mirror', { mirror }),
 
   system: () => request<SystemInfo>('GET', '/api/system'),
   instanceMetrics: (id: string) =>

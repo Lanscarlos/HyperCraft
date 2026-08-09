@@ -26,6 +26,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/instance"
+	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
 	"github.com/lanscarlos/hypercraft/internal/selfupdate"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
@@ -137,11 +138,18 @@ func run() error {
 
 	// Core downloads run in the daemon, so they keep going with nobody watching
 	// — same reason the server processes live here rather than in a request.
-	downloads := serverjar.NewDownloader(
-		serverjar.NewClient("", "HyperCraft/"+version+" (+https://github.com/Lanscarlos/HyperCraft)"),
+	userAgent := "HyperCraft/" + version + " (+https://github.com/Lanscarlos/HyperCraft)"
+	downloads := serverjar.NewDownloader(serverjar.NewClient("", userAgent), logger)
+	defer downloads.Close()
+
+	// Java runtimes live beside the servers, in the data directory, so a panel
+	// that manages its own JDKs stays as movable as one that does not.
+	javaInstaller := javaruntime.NewInstaller(
+		javaruntime.NewClient("", userAgent),
+		javaruntime.NewStore(paths.JavaRoot()),
 		logger,
 	)
-	defer downloads.Close()
+	defer javaInstaller.Close()
 
 	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
@@ -156,7 +164,7 @@ func run() error {
 	// running image has been renamed aside and the OS would report the backup.
 	var newBinary atomic.Pointer[string]
 
-	updater := selfupdate.NewService(updateRepo, version, selfupdate.Hooks{
+	updater := selfupdate.NewService(updateRepo, version, panel.Mirror(), selfupdate.Hooks{
 		// Recorded before the swap so the servers this update is about to stop
 		// come back on the other side, whether or not they auto-start.
 		BeforeInstall:  func() error { return st.SaveResume(manager.RunningIDs()) },
@@ -173,6 +181,7 @@ func run() error {
 		Sessions: sessions,
 		Metrics:  collector,
 		Jars:     downloads,
+		Java:     javaInstaller,
 		Updater:  updater,
 		Panel:    panel,
 		Version:  version,
@@ -240,6 +249,7 @@ func run() error {
 	// Downloads go before the servers do: a half-written jar is worth nothing,
 	// and the servers deserve the whole shutdown budget.
 	downloads.Close()
+	javaInstaller.Close()
 
 	logger.Info("stopping managed servers", "grace", shutdownGrace)
 	manager.Shutdown(shutdownGrace)

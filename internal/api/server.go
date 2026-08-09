@@ -16,6 +16,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/instance"
+	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
 	"github.com/lanscarlos/hypercraft/internal/selfupdate"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
@@ -42,10 +43,19 @@ type Server struct {
 	// jars fetches server cores from PaperMC. Optional: a nil downloader turns
 	// the feature off and leaves uploading a jar as the only way in.
 	jars *serverjar.Downloader
+	// java manages the Java runtimes servers are launched with. Optional, on
+	// the same terms as jars.
+	java *javaruntime.Installer
 	// updater installs new panel releases. Optional in the same way: nil turns
 	// in-panel updates off.
 	updater *selfupdate.Service
 	version string
+
+	// The system java is found by forking one, so the answer is cached.
+	systemJavaMu    sync.Mutex
+	systemJavaCache javaruntime.SystemJava
+	systemJavaFound bool
+	systemJavaAt    time.Time
 
 	panelMu sync.RWMutex
 	panel   config.Panel
@@ -61,6 +71,7 @@ type Options struct {
 	Sessions *auth.SessionStore
 	Metrics  *metrics.Collector
 	Jars     *serverjar.Downloader
+	Java     *javaruntime.Installer
 	Updater  *selfupdate.Service
 	Panel    config.Panel
 	Version  string
@@ -75,6 +86,7 @@ func NewServer(opts Options) *Server {
 		sessions: opts.Sessions,
 		metrics:  opts.Metrics,
 		jars:     opts.Jars,
+		java:     opts.Java,
 		updater:  opts.Updater,
 		panel:    opts.Panel,
 		version:  opts.Version,
@@ -131,6 +143,14 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("POST /api/instances/{id}/jars/download", s.handleStartCoreDownload)
 	protected.HandleFunc("POST /api/instances/{id}/jars/download/cancel", s.handleCancelCoreDownload)
 
+	// Java runtimes. Panel-wide rather than per-instance: one download serves
+	// every server that needs that version.
+	protected.HandleFunc("GET /api/java", s.handleJavaOverview)
+	protected.HandleFunc("GET /api/java/available", s.handleListJavaMajors)
+	protected.HandleFunc("POST /api/java/install", s.handleInstallJava)
+	protected.HandleFunc("POST /api/java/install/cancel", s.handleCancelJavaInstall)
+	protected.HandleFunc("DELETE /api/java/{id}", s.handleDeleteJava)
+
 	protected.HandleFunc("GET /api/instances/{id}/console", s.handleConsoleSocket)
 
 	// File manager. Every path here is confined to the instance directory by
@@ -152,6 +172,7 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("GET /api/update", s.handleUpdateStatus)
 	protected.HandleFunc("POST /api/update/check", s.handleUpdateCheck)
 	protected.HandleFunc("POST /api/update/apply", s.handleUpdateApply)
+	protected.HandleFunc("PUT /api/update/mirror", s.handleUpdateMirror)
 
 	api.Handle("/api/", s.requireAuth(s.requireCSRF(protected)))
 
