@@ -179,12 +179,32 @@ func (m *Manager) Delete(id string, deleteFiles bool) error {
 	return nil
 }
 
-// StartAutoStart launches every instance flagged AutoStart. Called once at
-// panel boot so a machine reboot brings the servers back by itself.
-func (m *Manager) StartAutoStart() {
+// RunningIDs lists the instances that are currently up. It is taken just
+// before a self-update restart so the same servers can be brought back.
+func (m *Manager) RunningIDs() []string {
+	var ids []string
+	for _, inst := range m.List() {
+		if inst.State().Running() {
+			ids = append(ids, inst.ID())
+		}
+	}
+	return ids
+}
+
+// StartAutoStart launches every instance flagged AutoStart, plus any listed in
+// resume — servers that were running when the panel restarted itself to
+// install an update, whether or not they auto-start on a normal boot.
+//
+// Called once at panel boot so a machine reboot, or an update, brings the
+// servers back by itself.
+func (m *Manager) StartAutoStart(resume []string) {
+	wanted := make(map[string]bool, len(resume))
+	for _, id := range resume {
+		wanted[id] = true
+	}
 	for _, inst := range m.List() {
 		cfg := inst.Config()
-		if !cfg.AutoStart {
+		if !cfg.AutoStart && !wanted[cfg.ID] {
 			continue
 		}
 		if err := inst.Start(); err != nil {

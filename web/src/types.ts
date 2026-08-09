@@ -19,6 +19,10 @@ export interface InstanceConfig {
   jvmArgs: string[]
   serverArgs: string[]
   command: string[] | null
+  /** Console charset: 'auto', 'utf-8', 'gbk', … See ENCODING_OPTIONS. */
+  encoding: string
+  /** Make the server emit ANSI colour even though its stdout is a pipe. */
+  forceColor: boolean
   autoStart: boolean
   autoRestart: boolean
   stopCommand: string
@@ -41,6 +45,20 @@ export type InstanceInput = Omit<
   InstanceConfig,
   'id' | 'createdAt' | 'command'
 > & { command: string[] }
+
+/** Console encodings the daemon accepts, in the order the dropdown shows them. */
+export const ENCODING_OPTIONS: { value: string; label: string }[] = [
+  { value: 'auto', label: '自动（推荐）' },
+  { value: 'utf-8', label: 'UTF-8' },
+  { value: 'gbk', label: 'GBK（简体中文）' },
+  { value: 'gb18030', label: 'GB18030（简体中文）' },
+  { value: 'big5', label: 'Big5（繁体中文）' },
+  { value: 'shift_jis', label: 'Shift_JIS（日文）' },
+  { value: 'euc-jp', label: 'EUC-JP（日文）' },
+  { value: 'euc-kr', label: 'EUC-KR（韩文）' },
+  { value: 'windows-1252', label: 'Windows-1252（西欧）' },
+  { value: 'iso-8859-1', label: 'ISO-8859-1（西欧）' },
+]
 
 export type StreamKind = 'stdout' | 'stderr' | 'system'
 
@@ -306,6 +324,34 @@ export interface SystemInfo {
   samples: HostSample[]
   panel: { heapBytes: number; goroutines: number }
   instances: { total: number; running: number }
+}
+
+// --------------------------------------------------------------- updates
+
+export type UpdatePhase =
+  | 'idle'
+  | 'checking'
+  | 'downloading'
+  | 'installing'
+  | 'restarting'
+
+export interface UpdateStatus {
+  currentVersion: string
+  latestVersion?: string
+  updateAvailable: boolean
+  releaseUrl?: string
+  releaseNotes?: string
+  publishedAt?: string
+  checkedAt?: string
+  /** Set when the last check could not reach GitHub; the cached result stands. */
+  checkError?: string
+  phase: UpdatePhase
+  progress: number
+  /** False for dev builds and platforms the release has no binary for. */
+  eligible: boolean
+  ineligibleWhy?: string
+  /** Set when the last update attempt failed. */
+  error?: string
 }
 
 // ----------------------------------------------------------------- files

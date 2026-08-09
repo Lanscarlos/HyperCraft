@@ -20,6 +20,8 @@ type instanceRequest struct {
 	JVMArgs        []string `json:"jvmArgs"`
 	ServerArgs     []string `json:"serverArgs"`
 	Command        []string `json:"command"`
+	Encoding       string   `json:"encoding"`
+	ForceColor     *bool    `json:"forceColor"`
 	AutoStart      bool     `json:"autoStart"`
 	AutoRestart    bool     `json:"autoRestart"`
 	StopCommand    string   `json:"stopCommand"`
@@ -28,15 +30,19 @@ type instanceRequest struct {
 
 func (req instanceRequest) toConfig() instance.Config {
 	return instance.Config{
-		Name:           strings.TrimSpace(req.Name),
-		Directory:      strings.TrimSpace(req.Directory),
-		Java:           strings.TrimSpace(req.Java),
-		Jar:            strings.TrimSpace(req.Jar),
-		MinMemoryMB:    req.MinMemoryMB,
-		MaxMemoryMB:    req.MaxMemoryMB,
-		JVMArgs:        cleanArgs(req.JVMArgs),
-		ServerArgs:     cleanArgs(req.ServerArgs),
-		Command:        cleanArgs(req.Command),
+		Name:        strings.TrimSpace(req.Name),
+		Directory:   strings.TrimSpace(req.Directory),
+		Java:        strings.TrimSpace(req.Java),
+		Jar:         strings.TrimSpace(req.Jar),
+		MinMemoryMB: req.MinMemoryMB,
+		MaxMemoryMB: req.MaxMemoryMB,
+		JVMArgs:     cleanArgs(req.JVMArgs),
+		ServerArgs:  cleanArgs(req.ServerArgs),
+		Command:     cleanArgs(req.Command),
+		Encoding:    strings.TrimSpace(req.Encoding),
+		// Absent means "unset": applyDefaults turns it into colours-on rather
+		// than silently taking Go's zero value for a bool.
+		ForceColor:     req.ForceColor,
 		AutoStart:      req.AutoStart,
 		AutoRestart:    req.AutoRestart,
 		StopCommand:    strings.TrimSpace(req.StopCommand),

@@ -141,6 +141,21 @@ while IFS= read -r line; do :; done
 	waitForState(t, inst, StateRunning)
 }
 
+// The panel asks servers to colour their output, which wraps the readiness
+// line in escape codes. Missing it would leave the console input greyed out on
+// a server that is up and running.
+func TestReadyLineIsFoundThroughColourCodes(t *testing.T) {
+	inst := newTestInstance(t, `#!/bin/sh
+printf '\033[32m[12:00:01 INFO]: Done (1.234s)! For help, type "help"\033[m\n'
+while IFS= read -r line; do :; done
+`)
+
+	if err := inst.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitForState(t, inst, StateRunning)
+}
+
 func TestUnexpectedExitIsReportedAsCrashed(t *testing.T) {
 	inst := newTestInstance(t, `#!/bin/sh
 echo "[12:00:00] [main/ERROR]: Failed to load eula.txt" >&2
@@ -222,6 +237,44 @@ func TestServerSurvivesEveryConsoleDisconnect(t *testing.T) {
 	if len(history2) <= len(history) {
 		t.Errorf("scrollback did not grow while disconnected: %d -> %d", len(history), len(history2))
 	}
+}
+
+// A server that writes the host code page instead of UTF-8 — the everyday
+// case on a Chinese Windows box — must still reach the browser as text, and
+// must understand a command typed in the same language.
+func TestLegacyEncodedConsoleRoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	inst, err := New(Config{
+		ID:        "gbk",
+		Name:      "gbk",
+		Directory: dir,
+		Encoding:  "gbk",
+		// \304\343\272\303 is "你好" in GBK, written as the octal escapes
+		// POSIX printf understands so no shell reinterprets the bytes.
+		Command: fakeServer(t, dir, `#!/bin/sh
+printf '[12:00:01] [Server thread/INFO]: Done (0.1s)! \304\343\272\303\n'
+while IFS= read -r line; do
+  printf 'ran %s\n' "$line"
+done
+`),
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = inst.Kill(); inst.Close() })
+
+	if err := inst.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitForState(t, inst, StateRunning)
+	waitForLine(t, inst, "你好")
+
+	// The command goes out as GBK and comes back through the same decoder, so
+	// seeing it echoed proves both directions.
+	if err := inst.SendCommand("say 世界"); err != nil {
+		t.Fatalf("SendCommand: %v", err)
+	}
+	waitForLine(t, inst, "ran say 世界")
 }
 
 func TestStartRejectsASecondProcess(t *testing.T) {

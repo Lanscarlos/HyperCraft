@@ -18,6 +18,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
+	"github.com/lanscarlos/hypercraft/internal/selfupdate"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
 )
@@ -44,7 +45,10 @@ type Server struct {
 	jars *serverjar.Downloader
 	// java manages the Java runtimes servers are launched with. Optional, on
 	// the same terms as jars.
-	java    *javaruntime.Installer
+	java *javaruntime.Installer
+	// updater installs new panel releases. Optional in the same way: nil turns
+	// in-panel updates off.
+	updater *selfupdate.Service
 	version string
 
 	// The system java is found by forking one, so the answer is cached.
@@ -68,6 +72,7 @@ type Options struct {
 	Metrics  *metrics.Collector
 	Jars     *serverjar.Downloader
 	Java     *javaruntime.Installer
+	Updater  *selfupdate.Service
 	Panel    config.Panel
 	Version  string
 	Logger   *slog.Logger
@@ -82,6 +87,7 @@ func NewServer(opts Options) *Server {
 		metrics:  opts.Metrics,
 		jars:     opts.Jars,
 		java:     opts.Java,
+		updater:  opts.Updater,
 		panel:    opts.Panel,
 		version:  opts.Version,
 		upgrader: websocket.Upgrader{
@@ -161,6 +167,11 @@ func (s *Server) routes() http.Handler {
 	// Resource usage.
 	protected.HandleFunc("GET /api/instances/{id}/metrics", s.handleInstanceMetrics)
 	protected.HandleFunc("GET /api/system", s.handleSystem)
+
+	// Panel self-update.
+	protected.HandleFunc("GET /api/update", s.handleUpdateStatus)
+	protected.HandleFunc("POST /api/update/check", s.handleUpdateCheck)
+	protected.HandleFunc("POST /api/update/apply", s.handleUpdateApply)
 
 	api.Handle("/api/", s.requireAuth(s.requireCSRF(protected)))
 

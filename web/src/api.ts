@@ -16,6 +16,7 @@ import type {
   PropertiesResponse,
   PropertyEntry,
   SystemInfo,
+  UpdateStatus,
   User,
 } from './types'
 
@@ -146,6 +147,10 @@ export const api = {
   deleteJavaRuntime: (id: string) =>
     request<void>('DELETE', `/api/java/${encodeURIComponent(id)}`),
 
+  updateStatus: () => request<UpdateStatus>('GET', '/api/update'),
+  checkUpdate: () => request<UpdateStatus>('POST', '/api/update/check'),
+  applyUpdate: () => request<UpdateStatus>('POST', '/api/update/apply'),
+
   system: () => request<SystemInfo>('GET', '/api/system'),
   instanceMetrics: (id: string) =>
     request<InstanceMetrics>('GET', `/api/instances/${id}/metrics`),
@@ -168,6 +173,26 @@ export const api = {
     request<void>('POST', `/api/instances/${id}/files/rename`, { from, to }),
   deleteFile: (id: string, filePath: string) =>
     request<void>('DELETE', `/api/instances/${id}/files?path=${encodeURIComponent(filePath)}`),
+}
+
+/**
+ * Reads the running panel's version, or null while it is unreachable. Used to
+ * watch for the panel coming back after a self-update: it is unauthenticated,
+ * so it still answers before the session cookie is presented, and it never
+ * throws — a failure here is the expected state mid-restart.
+ */
+export async function panelVersion(): Promise<string | null> {
+  try {
+    const response = await fetch('/api/health', {
+      credentials: 'same-origin',
+      cache: 'no-store',
+    })
+    if (!response.ok) return null
+    const body = (await response.json()) as { version?: unknown }
+    return typeof body.version === 'string' ? body.version : null
+  } catch {
+    return null
+  }
 }
 
 /** Absolute ws:// URL for an instance console, matching the page's scheme. */

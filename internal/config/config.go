@@ -67,3 +67,8 @@ func (p Paths) ServersRoot() string { return filepath.Join(p.Root, "servers") }
 // JavaRoot is where downloaded Java runtimes are unpacked. Anything dropped in
 // here by hand is picked up too, so it doubles as "the panel's JDK shelf".
 func (p Paths) JavaRoot() string { return filepath.Join(p.Root, "java") }
+
+// ResumeFile records which servers were running when the panel restarted
+// itself to install an update, so they can be brought back afterwards. It is
+// written just before the restart and consumed on the next boot.
+func (p Paths) ResumeFile() string { return filepath.Join(p.Root, "resume.json") }
