@@ -1,17 +1,20 @@
 import type { CoreController } from '../useCores'
 import type { JavaController } from '../useJava'
+import type { TerminalController } from '../useTerminal'
 import { updateLabel } from '../useUpdate'
 import type { UpdateController } from '../useUpdate'
 import { CoreLibraryPage } from './CoreLibraryPage'
 import { JavaPage } from './JavaPage'
+import { TerminalSettings } from './TerminalSettings'
 import { UpdatePanel } from './UpdatePanel'
 
 /** Which settings page is open. Part of the URL, so it survives a reload. */
-export type SettingsSection = 'java' | 'cores' | 'update'
+export type SettingsSection = 'java' | 'cores' | 'terminal' | 'update'
 
 export const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: 'java', label: 'Java 运行时' },
   { id: 'cores', label: '服务端核心' },
+  { id: 'terminal', label: '终端' },
   { id: 'update', label: '面板更新' },
 ]
 
@@ -24,7 +27,10 @@ interface Props {
   onSection: (section: SettingsSection) => void
   java: JavaController
   cores: CoreController
+  terminal: TerminalController
   update: UpdateController
+  /** Jumps to the terminal page once the operator has switched it on. */
+  onOpenTerminal: () => void
   /** Instances that would be stopped by a panel update. */
   runningNames: string[]
 }
@@ -42,7 +48,9 @@ export function SettingsPage({
   onSection,
   java,
   cores,
+  terminal,
   update,
+  onOpenTerminal,
   runningNames,
 }: Props) {
   return (
@@ -57,6 +65,9 @@ export function SettingsPage({
             {entry.label}
             {entry.id === 'java' && java.installing && <span className="badge">安装中</span>}
             {entry.id === 'cores' && cores.downloading && <span className="badge">下载中</span>}
+            {entry.id === 'terminal' && terminal.status?.enabled && (
+              <span className="badge">已开启</span>
+            )}
             {entry.id === 'update' && updateLabel(update.status) && (
               <span className="badge badge--update">{updateLabel(update.status)}</span>
             )}
@@ -67,6 +78,9 @@ export function SettingsPage({
       <div className="settings-page__body">
         {section === 'java' && <JavaPage java={java} />}
         {section === 'cores' && <CoreLibraryPage cores={cores} />}
+        {section === 'terminal' && (
+          <TerminalSettings terminal={terminal} onOpenTerminal={onOpenTerminal} />
+        )}
         {section === 'update' && (
           <div className="page">
             <h1>面板更新</h1>

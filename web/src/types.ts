@@ -481,3 +481,23 @@ export interface FileListing {
   maxEditableBytes: number
   maxUploadBytes: number
 }
+
+// -------------------------------------------------------------- terminal
+
+/** Mirrors terminalStatus in internal/api/handlers_terminal.go. */
+export interface TerminalStatus {
+  /** The operator's switch. */
+  enabled: boolean
+  /** Whether this platform can run a shell at all; false on Windows. */
+  supported: boolean
+  /** The program a session would run, e.g. /bin/bash. */
+  shell: string
+  /** The account the panel — and so the shell — runs as. */
+  user: string
+  /** Where a new shell starts. */
+  cwd: string
+  /** Why the terminal is unavailable; empty when it is merely switched off. */
+  reason?: string
+  /** Shells open right now. */
+  live: number
+}

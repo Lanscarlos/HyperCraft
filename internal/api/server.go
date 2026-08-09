@@ -15,6 +15,7 @@ import (
 
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
+	"github.com/lanscarlos/hypercraft/internal/hostterm"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
@@ -53,7 +54,10 @@ type Server struct {
 	// updater installs new panel releases. Optional in the same way: nil turns
 	// in-panel updates off.
 	updater *selfupdate.Service
-	version string
+	// terminal runs shells on the host. Optional, and even when present it
+	// does nothing until the operator flips config.Terminal.Enabled.
+	terminal *hostterm.Service
+	version  string
 
 	// The system java is found by forking one, so the answer is cached.
 	systemJavaMu    sync.Mutex
@@ -78,6 +82,7 @@ type Options struct {
 	Jars     *serverjar.Downloader
 	Java     *javaruntime.Installer
 	Updater  *selfupdate.Service
+	Terminal *hostterm.Service
 	Panel    config.Panel
 	Version  string
 	Logger   *slog.Logger
@@ -94,6 +99,7 @@ func NewServer(opts Options) *Server {
 		jars:     opts.Jars,
 		java:     opts.Java,
 		updater:  opts.Updater,
+		terminal: opts.Terminal,
 		panel:    opts.Panel,
 		version:  opts.Version,
 		upgrader: websocket.Upgrader{
@@ -187,6 +193,14 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("POST /api/update/apply", s.handleUpdateApply)
 	protected.HandleFunc("PUT /api/update/mirror", s.handleUpdateMirror)
 	protected.HandleFunc("PUT /api/update/channel", s.handleUpdateChannel)
+
+	// Host shell. The routes exist whatever the switch says — the status one
+	// is what the settings page renders the switch from, and the other two
+	// refuse while it is off — so turning the terminal on takes effect
+	// immediately instead of waiting for a panel restart.
+	protected.HandleFunc("GET /api/terminal", s.handleTerminalStatus)
+	protected.HandleFunc("PUT /api/terminal", s.handleTerminalToggle)
+	protected.HandleFunc("GET /api/terminal/session", s.handleTerminalSocket)
 
 	api.Handle("/api/", s.requireAuth(s.requireCSRF(protected)))
 

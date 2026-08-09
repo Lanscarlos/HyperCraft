@@ -1706,3 +1706,109 @@ a {
   color: var(--text-dim);
   font-size: 12px;
 }
+
+/* --------------------------------------------------------- host terminal */
+
+/* The shell fills the pane the way the console does, but with no command bar
+   under it: everything, including history and completion, happens inside the
+   terminal itself because that is where the shell's own line editor lives. */
+.hostterm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  padding: 16px 2px 16px;
+}
+
+.hostterm__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.hostterm__where {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hostterm__where strong {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 14px;
+}
+
+.hostterm__where span {
+  color: var(--text-dim);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.hostterm__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hostterm__phase {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.hostterm__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--state-stopped);
+}
+
+.hostterm__dot--open {
+  background: var(--state-running);
+}
+
+.hostterm__dot--connecting {
+  background: var(--state-starting);
+}
+
+.hostterm__dot--closed {
+  background: var(--danger);
+}
+
+.hostterm__notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #1b2130;
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--state-starting);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+/* Same padding as the console screen so the two panes line up when you flip
+   between a server and the shell. */
+.hostterm__screen {
+  flex: 1;
+  min-height: 240px;
+  padding: 8px 4px 8px 10px;
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.hostterm__hint {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* Used for the warnings on the terminal settings page, where the point is
+   "read this before you click", not "something went wrong". */
+.alert--warn {
+  border-left-color: var(--state-starting);
+  color: #e8d6ab;
+}

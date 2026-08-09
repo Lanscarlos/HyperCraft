@@ -6,6 +6,8 @@ require github.com/gorilla/websocket v1.5.3
 
 require golang.org/x/text v0.40.0
 
+require github.com/creack/pty v1.1.24
+
 require (
 	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect

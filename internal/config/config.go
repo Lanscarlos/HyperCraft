@@ -44,8 +44,24 @@ type Panel struct {
 	// what a config written before channels existed carries. No pointer here:
 	// there is nothing to express beyond the two channels, and stable is both
 	// the default and the safe answer for anything unrecognised.
-	UpdateChannel string          `json:"updateChannel,omitempty"`
-	Credential    auth.Credential `json:"credential"`
+	UpdateChannel string `json:"updateChannel,omitempty"`
+	// Terminal configures the host shell terminal. Off unless the operator
+	// turns it on — see Terminal.
+	Terminal   Terminal        `json:"terminal"`
+	Credential auth.Credential `json:"credential"`
+}
+
+// Terminal configures the in-panel shell.
+//
+// It is off by default and stays off through an upgrade, because turning it on
+// changes what the panel password is worth: without it, someone who guesses it
+// can manage Minecraft servers; with it, they have a shell as the user the
+// panel runs as. That is a decision for the operator, not a default.
+type Terminal struct {
+	Enabled bool `json:"enabled"`
+	// Shell overrides the program the terminal runs. Empty picks the login
+	// shell from $SHELL, falling back to bash and then sh.
+	Shell string `json:"shell,omitempty"`
 }
 
 // Defaults returns a config with everything but the credential filled in.

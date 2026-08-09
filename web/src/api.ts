@@ -17,6 +17,7 @@ import type {
   PropertiesResponse,
   PropertyEntry,
   SystemInfo,
+  TerminalStatus,
   UpdateChannel,
   UpdateStatus,
   User,
@@ -169,6 +170,10 @@ export const api = {
   setUpdateChannel: (channel: UpdateChannel) =>
     request<UpdateStatus>('PUT', '/api/update/channel', { channel }),
 
+  terminalStatus: () => request<TerminalStatus>('GET', '/api/terminal'),
+  setTerminalEnabled: (enabled: boolean) =>
+    request<TerminalStatus>('PUT', '/api/terminal', { enabled }),
+
   system: () => request<SystemInfo>('GET', '/api/system'),
   instanceMetrics: (id: string) =>
     request<InstanceMetrics>('GET', `/api/instances/${id}/metrics`),
@@ -217,6 +222,18 @@ export async function panelVersion(): Promise<string | null> {
 export function consoleSocketURL(id: string): string {
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
   return `${scheme}://${window.location.host}/api/instances/${id}/console`
+}
+
+/**
+ * Absolute ws:// URL for a host shell, sized to the terminal that will drive it.
+ *
+ * The size is a query parameter rather than a first message because the shell
+ * is started during the handshake: getting it right up front is what stops a
+ * prompt from being drawn at 80x24 and reflowing a moment later.
+ */
+export function terminalSocketURL(cols: number, rows: number): string {
+  const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  return `${scheme}://${window.location.host}/api/terminal/session?cols=${cols}&rows=${rows}`
 }
 
 /** Direct link for a download; the browser handles the transfer itself. */
