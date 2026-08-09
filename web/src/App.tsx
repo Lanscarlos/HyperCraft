@@ -224,6 +224,15 @@ export default function App() {
           + 新建实例
         </button>
 
+        <div className="sidebar__section">
+          <span>实例</span>
+          {instances.length > 0 && (
+            <span className="sidebar__count">
+              {runningNames.length}/{instances.length}
+            </span>
+          )}
+        </div>
+
         <nav className="sidebar__list">
           {instances.length === 0 && (
             <p className="sidebar__empty">还没有实例，先新建一个吧。</p>

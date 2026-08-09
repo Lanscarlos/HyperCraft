@@ -4,7 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#080b11" />
+    <meta name="description" content="HyperCraft —— 自托管的 Minecraft 服务器面板" />
+    <!-- Inline so the favicon travels inside the single binary with everything
+         else; percent-encoded UTF-8 because the glyph lives in a data URI. -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2346b17a'/%3E%3Ctext x='16' y='24' font-size='19' text-anchor='middle'%3E%E2%9B%8F%3C/text%3E%3C/svg%3E"
+    />
     <title>HyperCraft 面板</title>
+    <!-- Painted before the stylesheet lands, so a slow load never flashes white. -->
+    <style>
+      html {
+        background: #080b11;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
