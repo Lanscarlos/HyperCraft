@@ -169,6 +169,7 @@ export const api = {
     repo: string
     assetPattern?: string
     prerelease?: boolean
+    private?: boolean
     targetDir?: string
     note?: string
   }) =>
@@ -177,6 +178,7 @@ export const api = {
       repo: input.repo,
       assetPattern: input.assetPattern ?? '',
       prerelease: input.prerelease ?? false,
+      private: input.private ?? false,
       targetDir: input.targetDir ?? '',
       note: input.note ?? '',
     }),
@@ -187,6 +189,7 @@ export const api = {
       repo: string
       assetPattern?: string
       prerelease?: boolean
+      private?: boolean
       targetDir?: string
       note?: string
     },
@@ -196,9 +199,16 @@ export const api = {
       repo: input.repo,
       assetPattern: input.assetPattern ?? '',
       prerelease: input.prerelease ?? false,
+      private: input.private ?? false,
       targetDir: input.targetDir ?? '',
       note: input.note ?? '',
     }),
+  /**
+   * Stores the GitHub token private repositories are read with, or clears it
+   * with an empty string. Write-only: nothing reads it back out.
+   */
+  setPluginToken: (token: string) =>
+    request<PluginLibrary>('PUT', '/api/plugins/config/token', { token }),
   deletePlugin: (id: string) => request<void>('DELETE', `/api/plugins/${encodeURIComponent(id)}`),
   /** Asks upstream what versions exist. Always a network round trip. */
   pluginReleases: (id: string) =>

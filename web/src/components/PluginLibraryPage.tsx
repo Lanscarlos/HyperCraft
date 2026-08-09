@@ -35,6 +35,11 @@ export function PluginLibraryPage({
     0,
   )
   const versionCount = tracked.reduce((sum, item) => sum + item.versions.length, 0)
+  // Worth saying out loud rather than leaving as a per-card check failure: a
+  // private plugin with no token can neither check nor download, and the reason
+  // is one setting away.
+  const privateWithoutToken =
+    library !== null && !library.tokenConfigured && tracked.some((item) => item.source.private)
 
   // A finished download adds a version; the listing has to catch up.
   useEffect(() => {
@@ -74,6 +79,12 @@ export function PluginLibraryPage({
 
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
       {job && <JobStatus job={job} onCancel={() => void plugins.cancel()} busy={busy} />}
+
+      {privateWithoutToken && (
+        <div className="alert alert--warn">
+          有插件来自私有仓库，但面板还没有 GitHub 访问令牌 —— 在下面填一个，否则这些插件既检查不到更新也下载不了。
+        </div>
+      )}
 
       <section className="panel">
         <div className="chart-head">
@@ -124,6 +135,13 @@ export function PluginLibraryPage({
         )}
       </section>
 
+      <GitHubTokenPanel
+        configured={library?.tokenConfigured ?? false}
+        hint={library?.tokenHint}
+        busy={busy}
+        onSave={(token) => plugins.setToken(token)}
+      />
+
       {(adding || editing) && (
         <PluginDialog
           item={editing}
@@ -143,6 +161,86 @@ export function PluginLibraryPage({
         />
       )}
     </div>
+  )
+}
+
+/**
+ * The credential private repositories are read with.
+ *
+ * It is write-only on purpose: the panel will say whether it holds a token and
+ * show its last four characters, and that is all — a token that can be read
+ * back out of a page is a token that leaks with the page. Getting a wrong one
+ * right again is done by pasting a new one over it, not by editing it in place.
+ */
+function GitHubTokenPanel({
+  configured,
+  hint,
+  busy,
+  onSave,
+}: {
+  configured: boolean
+  hint?: string
+  busy: boolean
+  onSave: (token: string) => Promise<boolean>
+}) {
+  const [token, setToken] = useState('')
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!token.trim()) return
+    if (await onSave(token.trim())) setToken('')
+  }
+
+  return (
+    <section className="panel">
+      <div className="chart-head">
+        <h2 className="panel__title">GitHub 访问令牌</h2>
+        {configured && <span className="badge badge--ok">已配置{hint && ` ···${hint}`}</span>}
+      </div>
+      <p className="chart-note">
+        自己写的插件发在私有仓库里时，面板得先能证明「我是你」才看得见它 —— 填一个令牌就行，
+        添加插件时把「私有仓库」勾上，检查更新和下载都会走带认证的 GitHub API。
+        顺带一提，就算全是公开仓库，配了令牌也值：匿名调用每小时只有 60 次，插件一多就不够用。
+      </p>
+      <form onSubmit={(event) => void save(event)}>
+        <label className="field">
+          <span>令牌</span>
+          <input
+            type="password"
+            value={token}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={configured ? '粘贴新令牌以替换现有的' : 'github_pat_… 或 ghp_…'}
+            onChange={(e) => setToken(e.target.value)}
+          />
+          <small>
+            在 GitHub 的 Settings → Developer settings → Personal access tokens 里生成。
+            fine-grained 令牌只要给目标仓库的 <code>Contents: Read-only</code> 权限；
+            classic 令牌勾 <code>repo</code>。令牌存在面板自己的 panel.json 里（0600），
+            只发给 api.github.com，不会经过下载镜像。
+          </small>
+        </label>
+        <div className="field__tools">
+          <button className="btn btn--primary" type="submit" disabled={busy || !token.trim()}>
+            {configured ? '替换令牌' : '保存令牌'}
+          </button>
+          {configured && (
+            <button
+              className="btn"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                if (window.confirm('清除后，私有仓库的插件将无法检查更新或下载。确定吗？')) {
+                  void onSave('')
+                }
+              }}
+            >
+              清除
+            </button>
+          )}
+        </div>
+      </form>
+    </section>
   )
 }
 
@@ -196,6 +294,7 @@ function PluginCard({
           </span>
         </div>
         {updatable && <span className="badge badge--update">有更新</span>}
+        {item.source.private && <span className="badge">私有</span>}
         {item.targetDir !== 'plugins' && <span className="badge">{item.targetDir}/</span>}
       </div>
 
@@ -335,12 +434,13 @@ function PluginDialog({
   const [repo, setRepo] = useState(item?.source.repo ?? '')
   const [assetPattern, setAssetPattern] = useState(item?.source.assetPattern ?? '')
   const [prerelease, setPrerelease] = useState(item?.source.prerelease ?? false)
+  const [isPrivate, setIsPrivate] = useState(item?.source.private ?? false)
   const [targetDir, setTargetDir] = useState(item?.targetDir ?? 'plugins')
   const [note, setNote] = useState(item?.note ?? '')
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    await onSubmit({ name, repo, assetPattern, prerelease, targetDir, note })
+    await onSubmit({ name, repo, assetPattern, prerelease, private: isPrivate, targetDir, note })
   }
 
   return (
@@ -402,6 +502,20 @@ function PluginDialog({
           />
           <span>包含预发布版本</span>
           <small>作者标了 pre-release 的版本通常是还没准备好上正式服的。</small>
+        </label>
+
+        <label className="checkbox checkbox--stacked">
+          <input
+            type="checkbox"
+            checked={isPrivate}
+            onChange={(e) => setIsPrivate(e.target.checked)}
+          />
+          <span>私有仓库</span>
+          <small>
+            自己的插件发在私有仓库里就勾上，需要先在插件库页面配好 GitHub 访问令牌。
+            私有仓库的 jar 只能从 GitHub API 取，所以不走下载镜像 —— 镜像是外人，
+            没必要让它知道这个仓库的存在。
+          </small>
         </label>
 
         <label className="field">

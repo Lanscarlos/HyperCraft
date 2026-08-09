@@ -260,8 +260,7 @@ func (l *Library) Edit(id, name string, src Source, targetDir, note string) (Plu
 	if name = strings.TrimSpace(name); name != "" {
 		item.Name = name
 	}
-	if item.Source.Repo != src.Repo || item.Source.AssetPattern != src.AssetPattern ||
-		item.Source.Prerelease != src.Prerelease {
+	if item.Source != src {
 		// The cached check describes the old source; keeping it would show a
 		// "latest" the new source may not even publish.
 		item.Latest = nil

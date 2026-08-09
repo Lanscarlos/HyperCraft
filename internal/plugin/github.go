@@ -13,6 +13,13 @@
 // TLS and whoever can publish to the repository the operator named. The
 // recorded digest is there so the same file can be recognised later, not so a
 // tampered one can be rejected on the way in.
+//
+// A repository does not have to be public. An operator who publishes their own
+// plugin to a private repository can give the panel a GitHub access token, and
+// a source marked Private is then read and downloaded through the authenticated
+// API. The token is only ever sent to the API host this client was built with —
+// never to a download mirror, which is a third party the operator's credential
+// has no business reaching.
 package plugin
 
 import (
@@ -24,6 +31,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -40,6 +48,12 @@ var (
 	ErrNoAsset = errors.New("this release publishes no jar")
 	// ErrInvalidRepo rejects anything that is not an "owner/name" pair.
 	ErrInvalidRepo = errors.New("invalid GitHub repository")
+	// ErrNeedsToken means GitHub answered as if the repository did not exist,
+	// which is also what it says about a private repository nobody has proved
+	// they can see. It is its own error because the fix is specific and would
+	// otherwise be buried under "not found": configure an access token, or
+	// check that the one configured can reach this repository.
+	ErrNeedsToken = errors.New("this repository needs a GitHub access token")
 )
 
 // SourceGitHub is the only source kind so far. It is stored rather than
@@ -75,6 +89,14 @@ type Source struct {
 	// default: a plugin marked prerelease is one the author is not ready to
 	// have running on someone's server.
 	Prerelease bool `json:"prerelease,omitempty"`
+	// Private marks a repository only an authenticated account can see —
+	// typically the operator's own plugin, published where nobody else can read
+	// it. It is a stored flag rather than something detected per request for two
+	// reasons: a private release's jar has to be fetched through the API rather
+	// than from the public download host, and it must skip the download mirror,
+	// which would otherwise be handed the name of a repository the operator has
+	// deliberately kept off the public internet.
+	Private bool `json:"private,omitempty"`
 }
 
 // Normalise trims and validates a source, returning the cleaned copy.
@@ -146,7 +168,15 @@ func ParseRepo(raw string) (string, error) {
 type Asset struct {
 	Name string `json:"name"`
 	Size int64  `json:"size"`
-	URL  string `json:"url"`
+	// URL is the public download link. It needs no credential and is what a
+	// mirror can be pointed at, but it is only good for a public repository:
+	// GitHub serves it from a host that does not accept API tokens.
+	URL string `json:"url"`
+	// APIURL is the same asset through the REST API, which is the only way to
+	// download one out of a private repository. Asked for with an
+	// "Accept: application/octet-stream" header it answers with the bytes
+	// instead of the asset's metadata.
+	APIURL string `json:"apiUrl,omitempty"`
 }
 
 // Release is one version a plugin could be updated to.
@@ -173,6 +203,14 @@ type Client struct {
 	// self-updater: it carries the bytes, never the metadata, because the
 	// proxies people use for this do not front api.github.com at all.
 	mirror string
+	// token authenticates API requests. Panel-wide rather than per plugin: it
+	// is the operator's own GitHub account either way, and a token per
+	// repository would be a secret to rotate per repository.
+	//
+	// Guarded because the settings page can replace it while a check is in
+	// flight; everything else on this client is fixed at construction.
+	tokenMu sync.RWMutex
+	token   string
 }
 
 func NewClient(apiBase, userAgent string) *Client {
@@ -200,15 +238,66 @@ func (c *Client) SetMirror(prefix string) {
 // Mirror is the configured download proxy, or "" for direct downloads.
 func (c *Client) Mirror() string { return c.mirror }
 
-// downloadOrder is where to fetch an asset from, most preferred first. The
-// mirror goes first because speed is the entire point of having one, and the
-// direct link follows so a mirror that is down or has not synced a release
-// published minutes ago does not turn into a failed install.
-func (c *Client) downloadOrder(raw string) []string {
-	if c.mirror == "" || !strings.HasPrefix(raw, "https://github.com/") {
-		return []string{raw}
+// SetToken stores the GitHub access token, or "" to go back to anonymous
+// requests. It takes effect on the next request rather than needing a restart:
+// an operator pasting a token into the settings page is usually looking at the
+// repository that would not load, and expects to retry it immediately.
+func (c *Client) SetToken(token string) {
+	c.tokenMu.Lock()
+	defer c.tokenMu.Unlock()
+	c.token = strings.TrimSpace(token)
+}
+
+// authToken is read internally only. There is deliberately no exported getter:
+// nothing in the panel needs to show the token back, and a getter is how a
+// secret ends up in a JSON response by accident.
+func (c *Client) authToken() string {
+	c.tokenMu.RLock()
+	defer c.tokenMu.RUnlock()
+	return c.token
+}
+
+// attempt is one place to try fetching an asset from, and whether the panel's
+// token may be sent there.
+type attempt struct {
+	url string
+	// auth carries the token and asks the API for raw bytes. It is only ever
+	// set for a URL on this client's own API host — see downloadOrder.
+	auth bool
+}
+
+// downloadOrder is where to fetch an asset from, most preferred first.
+//
+// A public asset goes through the mirror before GitHub: speed is the entire
+// point of having one, and the direct link follows so a mirror that is down or
+// has not synced a release published minutes ago does not turn into a failed
+// install. A private one has exactly one route — the API, authenticated — and
+// no fallback: the public link cannot serve it, and a mirror must not be told
+// about it.
+func (c *Client) downloadOrder(src Source, asset Asset) ([]attempt, error) {
+	if !src.Private {
+		if c.mirror == "" || !strings.HasPrefix(asset.URL, "https://github.com/") {
+			return []attempt{{url: asset.URL}}, nil
+		}
+		return []attempt{{url: c.mirror + asset.URL}, {url: asset.URL}}, nil
 	}
-	return []string{c.mirror + raw, raw}
+
+	if c.authToken() == "" {
+		return nil, fmt.Errorf("%w: %s is marked private, so downloading from it needs a token", ErrNeedsToken, src.Repo)
+	}
+	if !c.isAPIURL(asset.APIURL) {
+		// Release metadata is re-read immediately before every download, so this
+		// is a stub or a mangled record rather than something an operator hits.
+		return nil, fmt.Errorf("%w: %s has no API download URL, so it cannot be fetched privately",
+			ErrNoAsset, asset.Name)
+	}
+	return []attempt{{url: asset.APIURL, auth: true}}, nil
+}
+
+// isAPIURL reports whether a URL belongs to the API host this client talks to.
+// It is what keeps the token off every other host, mirrors included.
+func (c *Client) isAPIURL(raw string) bool {
+	return raw != "" && strings.HasPrefix(raw, c.apiBase+"/")
 }
 
 // githubRelease is the subset of GitHub's release JSON this package reads.
@@ -220,9 +309,10 @@ type githubRelease struct {
 	Prerelease  bool      `json:"prerelease"`
 	PublishedAt time.Time `json:"published_at"`
 	Assets      []struct {
-		Name string `json:"name"`
-		Size int64  `json:"size"`
-		URL  string `json:"browser_download_url"`
+		Name   string `json:"name"`
+		Size   int64  `json:"size"`
+		URL    string `json:"browser_download_url"`
+		APIURL string `json:"url"`
 	} `json:"assets"`
 }
 
@@ -284,11 +374,17 @@ func (c *Client) Latest(ctx context.Context, src Source) (Release, error) {
 	return releases[0], nil
 }
 
-// Fetch opens an asset for download, trying the mirror before GitHub.
-func (c *Client) Fetch(ctx context.Context, asset Asset) (io.ReadCloser, error) {
+// Fetch opens an asset for download: through the mirror before GitHub for a
+// public release, through the authenticated API for a private one.
+func (c *Client) Fetch(ctx context.Context, src Source, asset Asset) (io.ReadCloser, error) {
+	order, err := c.downloadOrder(src, asset)
+	if err != nil {
+		return nil, err
+	}
+
 	var lastErr error
-	for _, url := range c.downloadOrder(asset.URL) {
-		body, err := c.open(ctx, url)
+	for _, next := range order {
+		body, err := c.open(ctx, next)
 		if err == nil {
 			return body, nil
 		}
@@ -299,15 +395,32 @@ func (c *Client) Fetch(ctx context.Context, asset Asset) (io.ReadCloser, error) 
 		}
 		lastErr = err
 	}
+	if !src.Private && c.authToken() != "" {
+		// The release listing was readable but the public download link was not.
+		// With a token in play the likely cause is a private repository whose
+		// source was never marked private, and that is a one-checkbox fix the
+		// bare transport error would never suggest.
+		return nil, fmt.Errorf("%w — if %s is private, mark its source as private so the jar is fetched through the API",
+			lastErr, src.Repo)
+	}
 	return nil, lastErr
 }
 
-func (c *Client) open(ctx context.Context, url string) (io.ReadCloser, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func (c *Client) open(ctx context.Context, next attempt) (io.ReadCloser, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, next.url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", c.userAgent)
+	if next.auth {
+		// The API answers an asset request with its metadata unless this header
+		// says otherwise, and it redirects to a signed storage URL rather than
+		// serving the bytes itself. Go drops the Authorization header on a
+		// cross-host redirect, which is both what storage wants — a signed URL
+		// carrying a second credential is rejected — and what the panel wants.
+		req.Header.Set("Accept", "application/octet-stream")
+		c.authorize(req)
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -315,9 +428,21 @@ func (c *Client) open(ctx context.Context, url string) (io.ReadCloser, error) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, fmt.Errorf("%w: %s returned HTTP %d", ErrUpstream, url, resp.StatusCode)
+		if next.auth && (resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnauthorized) {
+			return nil, fmt.Errorf("%w: GitHub refused the download (HTTP %d) — check that the token is valid and can read this repository",
+				ErrNeedsToken, resp.StatusCode)
+		}
+		return nil, fmt.Errorf("%w: %s returned HTTP %d", ErrUpstream, next.url, resp.StatusCode)
 	}
 	return resp.Body, nil
+}
+
+// authorize attaches the token. Callers must have established that the request
+// is going to this client's own API host first.
+func (c *Client) authorize(req *http.Request) {
+	if token := c.authToken(); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 }
 
 func (c *Client) getJSON(ctx context.Context, url string, dst any) error {
@@ -330,6 +455,11 @@ func (c *Client) getJSON(ctx context.Context, url string, dst any) error {
 	}
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Accept", "application/vnd.github+json")
+	// Every metadata URL is built from apiBase, so this is the API host by
+	// construction; the check is here so it stays true if that ever changes.
+	if c.isAPIURL(url) {
+		c.authorize(req)
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -339,8 +469,15 @@ func (c *Client) getJSON(ctx context.Context, url string, dst any) error {
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-	case http.StatusNotFound:
-		return fmt.Errorf("%w: repository not found, or it has no public releases", ErrNoRelease)
+	case http.StatusNotFound, http.StatusUnauthorized:
+		// GitHub answers "not found" for a repository the caller may not see, so
+		// this status cannot tell a typo from a private repository. Which of the
+		// two is worth suggesting depends on whether a token was sent at all.
+		if c.authToken() == "" {
+			return fmt.Errorf("%w: repository not found — if it is private, configure a GitHub access token in the plugin library",
+				ErrNeedsToken)
+		}
+		return fmt.Errorf("%w: repository not found, or the configured token cannot read it", ErrNeedsToken)
 	case http.StatusForbidden, http.StatusTooManyRequests:
 		// 403 is not automatically a rate limit: a blocked repository, an
 		// org-level restriction and a proxy in the way all answer with it too,
@@ -416,13 +553,18 @@ func resetTime(resp *http.Response) time.Time {
 }
 
 // jarAssets keeps the release assets that could be a plugin.
+//
+// An asset needs somewhere to be fetched from, but which of the two links that
+// is depends on the repository: a public release is taken from the download
+// host, a private one only exists through the API. So either one is enough to
+// keep the entry, and downloadOrder decides which is usable.
 func jarAssets(release githubRelease) []Asset {
 	out := make([]Asset, 0, len(release.Assets))
 	for _, asset := range release.Assets {
-		if !strings.EqualFold(path.Ext(asset.Name), ".jar") || asset.URL == "" {
+		if !strings.EqualFold(path.Ext(asset.Name), ".jar") || (asset.URL == "" && asset.APIURL == "") {
 			continue
 		}
-		out = append(out, Asset{Name: asset.Name, Size: asset.Size, URL: asset.URL})
+		out = append(out, Asset{Name: asset.Name, Size: asset.Size, URL: asset.URL, APIURL: asset.APIURL})
 	}
 	return out
 }

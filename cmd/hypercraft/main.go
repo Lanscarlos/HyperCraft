@@ -166,6 +166,9 @@ func run() error {
 	pluginLibrary := plugin.NewLibrary(paths.PluginsRoot())
 	pluginClient := plugin.NewClient("", userAgent)
 	pluginClient.SetMirror(panel.Mirror())
+	// A token is what makes the operator's own private repository readable, and
+	// it also lifts the anonymous API's 60 calls an hour out of the way.
+	pluginClient.SetToken(panel.GitHubToken)
 	pluginDownloads := plugin.NewDownloader(pluginClient, pluginLibrary, logger)
 	defer pluginDownloads.Close()
 	instancePlugins := plugin.NewInstances(pluginLibrary, paths.InstancePluginsFile())

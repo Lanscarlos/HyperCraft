@@ -57,6 +57,15 @@ type Panel struct {
 	// page: "this machine's line to GitHub is bad" is true for every download,
 	// and re-picking the mirror each time would be the annoyance.
 	JavaSource string `json:"javaSource,omitempty"`
+	// GitHubToken authenticates the panel's plugin lookups and downloads, so a
+	// plugin the operator publishes to their own private repository can be
+	// tracked like any other. Empty means anonymous requests, which is all a
+	// public repository needs.
+	//
+	// It lives here, beside the password hash, because panel.json is written
+	// 0600 and is already the file that must not be readable by anyone but the
+	// panel. It is never sent back out over the API — see handlePluginToken.
+	GitHubToken string `json:"githubToken,omitempty"`
 	// Terminal configures the host shell terminal. Off unless the operator
 	// turns it on — see Terminal.
 	Terminal   Terminal        `json:"terminal"`
