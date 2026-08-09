@@ -37,12 +37,12 @@
 ```bash
 sudo mkdir -p /opt/hypercraft
 cd /opt/hypercraft
-sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v1.1.0/hypercraft-1.1.0-linux-amd64.tar.gz
-sudo tar -xzf hypercraft-1.1.0-linux-amd64.tar.gz --strip-components=1
+sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v1.2.0/hypercraft-1.2.0-linux-amd64.tar.gz
+sudo tar -xzf hypercraft-1.2.0-linux-amd64.tar.gz --strip-components=1
 ```
 
 包里是二进制、`hypercraft.service` 和几个文档文件。ARM 机器（`uname -m` 显示 `aarch64`）把 URL 里的
-`amd64` 换成 `arm64`。上面这个 URL 固定指向 v1.1.0，更新的版本见
+`amd64` 换成 `arm64`。上面这个 URL 固定指向 v1.2.0，更新的版本见
 [Releases 页面](https://github.com/Lanscarlos/HyperCraft/releases/latest) —— 不过装好之后面板能自己升级，
 这个链接一般只用一次。
 
@@ -53,7 +53,7 @@ sudo tar -xzf hypercraft-1.1.0-linux-amd64.tar.gz --strip-components=1
 校验文件和压缩包都从同一个镜像拿的话，校验就没多大意义了）：
 
 ```bash
-sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v1.1.0/SHA256SUMS.txt
+sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v1.2.0/SHA256SUMS.txt
 sha256sum -c SHA256SUMS.txt --ignore-missing
 ```
 
@@ -328,7 +328,7 @@ tag，产物和发布说明都会覆盖掉，不用另开一个版本号。
 
 抬版本号的那个 PR 里，顺手把「快速开始」里的下载 URL 也改成新版本 —— 压缩包名带版本号，
 所以没法用 `releases/latest/download/` 那种永久链接，只能手动跟。把「下载解压」那一小节里出现的
-`1.1.0` 全换掉即可：两条 `wget`、一条 `tar`，加正文里提到的那一次。
+旧版本号全换掉即可：两条 `wget`、一条 `tar`，加正文里提到的那一次。
 
 ## 依赖与环境要求
 
