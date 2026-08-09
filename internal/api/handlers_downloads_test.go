@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 )
 
@@ -55,22 +54,37 @@ func newFakeFill(t *testing.T) *fakeFill {
 
 func (f *fakeFill) URL() string { return f.server.URL }
 
-// awaitDownload polls the status endpoint the way the UI does.
-func (e *testEnv) awaitDownload(instanceID string) serverjar.Job {
+// awaitDownload polls the library endpoint the way the UI does.
+func (e *testEnv) awaitDownload() serverjar.Job {
 	e.t.Helper()
 
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		resp := e.do(http.MethodGet, "/api/instances/"+instanceID+"/jars/download", nil)
-		var job *serverjar.Job
-		decodeBody(e.t, resp, &job)
-		if job != nil && job.State != serverjar.JobDownloading {
-			return *job
+		var library coreLibraryResponse
+		decodeBody(e.t, e.do(http.MethodGet, "/api/cores", nil), &library)
+		if library.Job != nil && library.Job.State != serverjar.JobDownloading {
+			return *library.Job
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	e.t.Fatalf("download did not finish in time")
 	return serverjar.Job{}
+}
+
+// downloadCore fetches one core into the library and returns its ID.
+func (e *testEnv) downloadCore(project, version string) string {
+	e.t.Helper()
+
+	resp := e.do(http.MethodPost, "/api/cores", startDownloadRequest{Project: project, Version: version})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		e.t.Fatalf("expected 202 starting a download, got %d", resp.StatusCode)
+	}
+	job := e.awaitDownload()
+	if job.State != serverjar.JobDone {
+		e.t.Fatalf("download failed: %s / %s", job.State, job.Error)
+	}
+	return job.CoreID
 }
 
 func TestCoreCatalogueIsOffered(t *testing.T) {
@@ -116,29 +130,29 @@ func TestCoreVersionsRejectUnknownProject(t *testing.T) {
 	}
 }
 
-func TestDownloadCoreLandsInTheInstanceDirectory(t *testing.T) {
+func TestDownloadedCoreLandsInTheLibrary(t *testing.T) {
 	env := newTestEnv(t)
 	env.login()
-	created := env.createInstance("paper-dl")
 
-	resp := env.do(http.MethodPost, "/api/instances/"+created.ID+"/jars/download",
-		startDownloadRequest{Project: "paper", Version: "1.21.11", SetAsJar: true})
-	var started serverjar.Job
-	decodeBody(t, resp, &started)
-	if resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("expected 202, got %d", resp.StatusCode)
-	}
-	if started.FileName != "paper-1.21.11-132.jar" {
-		t.Fatalf("unexpected job: %+v", started)
+	id := env.downloadCore("paper", "1.21.11")
+	if id != "paper-1.21.11-132.jar" {
+		t.Fatalf("unexpected core id %q", id)
 	}
 
-	job := env.awaitDownload(created.ID)
-	if job.State != serverjar.JobDone {
-		t.Fatalf("download failed: %s / %s", job.State, job.Error)
+	var library coreLibraryResponse
+	decodeBody(t, env.do(http.MethodGet, "/api/cores", nil), &library)
+	if len(library.Cores) != 1 {
+		t.Fatalf("library holds %d cores, want 1", len(library.Cores))
+	}
+	core := library.Cores[0]
+	if core.Version != "1.21.11" || core.Build != 132 || core.ProjectName != "Paper" {
+		t.Errorf("core metadata is wrong: %+v", core)
+	}
+	if len(core.UsedBy) != 0 {
+		t.Errorf("nothing uses it yet, got %v", core.UsedBy)
 	}
 
-	onDisk := filepath.Join(created.Directory, "paper-1.21.11-132.jar")
-	data, err := os.ReadFile(onDisk)
+	data, err := os.ReadFile(filepath.Join(library.Root, "paper-1.21.11-132.jar"))
 	if err != nil {
 		t.Fatalf("read downloaded jar: %v", err)
 	}
@@ -146,56 +160,150 @@ func TestDownloadCoreLandsInTheInstanceDirectory(t *testing.T) {
 		t.Errorf("jar is %d bytes, want %d", len(data), len(env.fill.body))
 	}
 
-	// setAsJar has to be applied by the daemon: the operator may well have
-	// closed the tab before the transfer finished.
-	var refreshed instance.Status
-	decodeBody(t, env.do(http.MethodGet, "/api/instances/"+created.ID, nil), &refreshed)
-	if refreshed.Jar != "paper-1.21.11-132.jar" {
-		t.Errorf("launch jar is %q, want the downloaded file", refreshed.Jar)
-	}
-
 	// Downloading the same build again must not silently replace it.
-	again := env.do(http.MethodPost, "/api/instances/"+created.ID+"/jars/download",
+	again := env.do(http.MethodPost, "/api/cores",
 		startDownloadRequest{Project: "paper", Version: "1.21.11"})
 	again.Body.Close()
 	if again.StatusCode != http.StatusConflict {
-		t.Errorf("expected 409 when the jar is already there, got %d", again.StatusCode)
+		t.Errorf("expected 409 when the core is already in the library, got %d", again.StatusCode)
+	}
+}
+
+func TestApplyCoreCopiesItIntoTheInstance(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	id := env.downloadCore("paper", "1.21.11")
+	created := env.createInstance("paper-from-library")
+
+	resp := env.do(http.MethodPost, "/api/instances/"+created.ID+"/core",
+		applyCoreRequest{CoreID: id, SetAsJar: true})
+	var applied applyCoreResponse
+	decodeBody(t, resp, &applied)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if applied.FileName != id {
+		t.Errorf("copied %q, want %q", applied.FileName, id)
+	}
+	if applied.Instance.Jar != id {
+		t.Errorf("launch jar is %q, want the copied core", applied.Instance.Jar)
+	}
+
+	data, err := os.ReadFile(filepath.Join(created.Directory, id))
+	if err != nil {
+		t.Fatalf("read copied jar: %v", err)
+	}
+	if len(data) != len(env.fill.body) {
+		t.Errorf("copy is %d bytes, want %d", len(data), len(env.fill.body))
+	}
+	if _, err := os.Stat(filepath.Join(created.Directory, id+".hypercraft-part")); err == nil {
+		t.Errorf("the copy left its part file behind")
+	}
+
+	// The library now knows the instance is running a copy of this core.
+	var library coreLibraryResponse
+	decodeBody(t, env.do(http.MethodGet, "/api/cores", nil), &library)
+	if len(library.Cores) != 1 || len(library.Cores[0].UsedBy) != 1 {
+		t.Fatalf("expected the core to be in use: %+v", library.Cores)
+	}
+}
+
+// Copying twice would be an accident on a jar that may be the one currently
+// running, so it takes an explicit overwrite.
+func TestApplyCoreRefusesToClobber(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	id := env.downloadCore("paper", "1.21.11")
+	created := env.createInstance("clobber")
+
+	first := env.do(http.MethodPost, "/api/instances/"+created.ID+"/core", applyCoreRequest{CoreID: id})
+	first.Body.Close()
+	if first.StatusCode != http.StatusOK {
+		t.Fatalf("first copy: expected 200, got %d", first.StatusCode)
+	}
+
+	second := env.do(http.MethodPost, "/api/instances/"+created.ID+"/core", applyCoreRequest{CoreID: id})
+	second.Body.Close()
+	if second.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409 on the second copy, got %d", second.StatusCode)
+	}
+
+	third := env.do(http.MethodPost, "/api/instances/"+created.ID+"/core",
+		applyCoreRequest{CoreID: id, Overwrite: true})
+	third.Body.Close()
+	if third.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 with overwrite, got %d", third.StatusCode)
 	}
 }
 
 // Velocity is a proxy: it has no world and rejects the --nogui the default
 // launch config passes to a Minecraft server.
-func TestDownloadingVelocityClearsServerArgs(t *testing.T) {
+func TestApplyingVelocityClearsServerArgs(t *testing.T) {
 	env := newTestEnv(t)
 	env.login()
+	id := env.downloadCore("velocity", "1.21.11")
 	created := env.createInstance("proxy")
 
-	resp := env.do(http.MethodPost, "/api/instances/"+created.ID+"/jars/download",
-		startDownloadRequest{Project: "velocity", Version: "1.21.11", SetAsJar: true})
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("expected 202, got %d", resp.StatusCode)
+	resp := env.do(http.MethodPost, "/api/instances/"+created.ID+"/core",
+		applyCoreRequest{CoreID: id, SetAsJar: true})
+	var applied applyCoreResponse
+	decodeBody(t, resp, &applied)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	if job := env.awaitDownload(created.ID); job.State != serverjar.JobDone {
-		t.Fatalf("download failed: %s / %s", job.State, job.Error)
+	if applied.Instance.Jar != "velocity-1.21.11-132.jar" {
+		t.Errorf("launch jar is %q", applied.Instance.Jar)
+	}
+	if len(applied.Instance.ServerArgs) != 0 {
+		t.Errorf("a proxy should not keep %v as server args", applied.Instance.ServerArgs)
+	}
+}
+
+func TestApplyUnknownCoreIs404(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	created := env.createInstance("missing-core")
+
+	for _, id := range []string{"nope.jar", "../escape.jar"} {
+		resp := env.do(http.MethodPost, "/api/instances/"+created.ID+"/core", applyCoreRequest{CoreID: id})
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("coreId %q: expected 404, got %d", id, resp.StatusCode)
+		}
+	}
+}
+
+func TestDeleteCoreLeavesInstanceCopiesAlone(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	id := env.downloadCore("paper", "1.21.11")
+	created := env.createInstance("keeps-its-jar")
+
+	resp := env.do(http.MethodPost, "/api/instances/"+created.ID+"/core",
+		applyCoreRequest{CoreID: id, SetAsJar: true})
+	resp.Body.Close()
+
+	deleted := env.do(http.MethodDelete, "/api/cores/"+id, nil)
+	deleted.Body.Close()
+	if deleted.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", deleted.StatusCode)
 	}
 
-	var refreshed instance.Status
-	decodeBody(t, env.do(http.MethodGet, "/api/instances/"+created.ID, nil), &refreshed)
-	if refreshed.Jar != "velocity-1.21.11-132.jar" {
-		t.Errorf("launch jar is %q", refreshed.Jar)
+	var library coreLibraryResponse
+	decodeBody(t, env.do(http.MethodGet, "/api/cores", nil), &library)
+	if len(library.Cores) != 0 {
+		t.Errorf("core survived deletion: %+v", library.Cores)
 	}
-	if len(refreshed.ServerArgs) != 0 {
-		t.Errorf("a proxy should not keep %v as server args", refreshed.ServerArgs)
+	if _, err := os.Stat(filepath.Join(created.Directory, id)); err != nil {
+		t.Errorf("the instance's own copy was deleted too: %v", err)
 	}
 }
 
 func TestDownloadRejectsUnknownVersion(t *testing.T) {
 	env := newTestEnv(t)
 	env.login()
-	created := env.createInstance("bad-version")
 
-	resp := env.do(http.MethodPost, "/api/instances/"+created.ID+"/jars/download",
+	resp := env.do(http.MethodPost, "/api/cores",
 		startDownloadRequest{Project: "paper", Version: "9.9.9"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
@@ -203,29 +311,26 @@ func TestDownloadRejectsUnknownVersion(t *testing.T) {
 	}
 }
 
-func TestDownloadStatusIsNullBeforeAnyDownload(t *testing.T) {
+func TestLibraryIsEmptyBeforeAnyDownload(t *testing.T) {
 	env := newTestEnv(t)
 	env.login()
-	created := env.createInstance("fresh")
 
-	resp := env.do(http.MethodGet, "/api/instances/"+created.ID+"/jars/download", nil)
-	defer resp.Body.Close()
+	resp := env.do(http.MethodGet, "/api/cores", nil)
+	var library coreLibraryResponse
+	decodeBody(t, resp, &library)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	var job *serverjar.Job
-	decodeBody(t, resp, &job)
-	if job != nil {
-		t.Errorf("expected null, got %+v", job)
+	if len(library.Cores) != 0 || library.Job != nil {
+		t.Errorf("expected an empty library, got %+v", library)
 	}
 }
 
 func TestCancelWithoutADownloadIsAConflict(t *testing.T) {
 	env := newTestEnv(t)
 	env.login()
-	created := env.createInstance("nothing-running")
 
-	resp := env.do(http.MethodPost, "/api/instances/"+created.ID+"/jars/download/cancel", nil)
+	resp := env.do(http.MethodPost, "/api/cores/cancel", nil)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("expected 409, got %d", resp.StatusCode)

@@ -51,8 +51,12 @@ type Server struct {
 	// config and is the runtime owner of that list from then on.
 	devices *auth.DeviceStore
 	metrics *metrics.Collector
-	// jars fetches server cores from PaperMC. Optional: a nil downloader turns
-	// the feature off and leaves uploading a jar as the only way in.
+	// paths is the panel's on-disk layout, used to seed the path picker with
+	// the directories an operator is most likely to want.
+	paths config.Paths
+	// jars fetches server cores from PaperMC into the panel-wide library.
+	// Optional: a nil downloader turns the feature off and leaves uploading a
+	// jar as the only way in.
 	jars *serverjar.Downloader
 	// java manages the Java runtimes servers are launched with. Optional, on
 	// the same terms as jars.
@@ -81,6 +85,7 @@ type Options struct {
 	Store    *store.Store
 	Sessions *auth.SessionStore
 	Metrics  *metrics.Collector
+	Paths    config.Paths
 	Jars     *serverjar.Downloader
 	Java     *javaruntime.Installer
 	Updater  *selfupdate.Service
@@ -97,6 +102,7 @@ func NewServer(opts Options) *Server {
 		sessions: opts.Sessions,
 		devices:  auth.NewDeviceStore(opts.Panel.Devices),
 		metrics:  opts.Metrics,
+		paths:    opts.Paths,
 		jars:     opts.Jars,
 		java:     opts.Java,
 		updater:  opts.Updater,
@@ -175,15 +181,18 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("PUT /api/instances/{id}/properties", s.handlePutProperties)
 	protected.HandleFunc("GET /api/instances/{id}/eula", s.handleGetEULA)
 	protected.HandleFunc("POST /api/instances/{id}/eula", s.handleAcceptEULA)
-	protected.HandleFunc("GET /api/instances/{id}/jars", s.handleListJars)
 
-	// Server core downloads, fetched by the daemon straight onto the machine.
+	// Server cores. Panel-wide rather than per-instance, for the same reason
+	// Java runtimes are: one download serves every server built from it, and
+	// an instance is handed its own copy out of the library.
 	protected.HandleFunc("GET /api/downloads/projects", s.handleListCoreProjects)
 	protected.HandleFunc("GET /api/downloads/projects/{project}/versions", s.handleListCoreVersions)
 	protected.HandleFunc("GET /api/downloads/projects/{project}/versions/{version}/build", s.handleLatestCoreBuild)
-	protected.HandleFunc("GET /api/instances/{id}/jars/download", s.handleCoreDownloadStatus)
-	protected.HandleFunc("POST /api/instances/{id}/jars/download", s.handleStartCoreDownload)
-	protected.HandleFunc("POST /api/instances/{id}/jars/download/cancel", s.handleCancelCoreDownload)
+	protected.HandleFunc("GET /api/cores", s.handleCoreLibrary)
+	protected.HandleFunc("POST /api/cores", s.handleStartCoreDownload)
+	protected.HandleFunc("POST /api/cores/cancel", s.handleCancelCoreDownload)
+	protected.HandleFunc("DELETE /api/cores/{id}", s.handleDeleteCore)
+	protected.HandleFunc("POST /api/instances/{id}/core", s.handleApplyCore)
 
 	// Java runtimes. Panel-wide rather than per-instance: one download serves
 	// every server that needs that version.
@@ -206,6 +215,10 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("POST /api/instances/{id}/files/mkdir", s.handleMkdir)
 	protected.HandleFunc("POST /api/instances/{id}/files/rename", s.handleRenameFile)
 
+	// Directories on the host, for the instance directory picker. Read-only,
+	// and not confined to an instance — see handlers_hostfs.go.
+	protected.HandleFunc("GET /api/fs", s.handleBrowseHost)
+
 	// Resource usage.
 	protected.HandleFunc("GET /api/instances/{id}/metrics", s.handleInstanceMetrics)
 	protected.HandleFunc("GET /api/system", s.handleSystem)
@@ -215,6 +228,7 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("POST /api/update/check", s.handleUpdateCheck)
 	protected.HandleFunc("POST /api/update/apply", s.handleUpdateApply)
 	protected.HandleFunc("PUT /api/update/mirror", s.handleUpdateMirror)
+	protected.HandleFunc("PUT /api/update/channel", s.handleUpdateChannel)
 
 	api.Handle("/api/", s.requireAuth(s.requireCSRF(protected)))
 

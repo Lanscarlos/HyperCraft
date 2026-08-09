@@ -3,20 +3,17 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import type { Device } from '../types'
 
-interface Props {
-  onClose: () => void
-}
-
 /**
- * Lists the paired native clients so the operator can see what holds a token
- * and take one away.
+ * The native clients holding a device token.
  *
- * Pairing itself is not here. It takes the password rather than a session, and
- * the token it returns is meant for an app to store — handing it to a browser
- * that has no safe place to keep it would be the wrong shape. The panel's
- * README documents the pairing call; this dialog is the other half.
+ * Pairing itself is not offered here. It takes the password rather than a
+ * session, and the token it returns is meant to be stored by an app — handing
+ * one to a browser that has nowhere safe to keep it would undo the reason the
+ * two credential kinds are separate. The README documents the pairing call;
+ * this page is the other half of it: seeing what holds a token, and taking one
+ * away.
  */
-export function DevicesDialog({ onClose }: Props) {
+export function DevicesPage() {
   const [devices, setDevices] = useState<Device[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busyID, setBusyID] = useState<string | null>(null)
@@ -55,12 +52,15 @@ export function DevicesDialog({ onClose }: Props) {
   }
 
   return (
-    <div className="modal" role="dialog" aria-modal="true">
-      <div className="modal__card">
-        <h2 className="modal__title">已配对设备</h2>
-        <p className="modal__lead">
-          桌面端和手机 App 用设备令牌登录，不受面板重启影响。配对方法见 README。
-        </p>
+    <div className="page">
+      <h1>已配对设备</h1>
+      <p className="page__lead">
+        桌面端和手机 App 用设备令牌登录，不像浏览器会话那样面板一重启就失效，所以自动更新不会把你从
+        App 里登出。配对方法见 README；改密码会解除所有设备的配对。
+      </p>
+
+      <section className="panel">
+        <h3 className="panel__title">设备</h3>
 
         {error && <div className="alert alert--error">{error}</div>}
 
@@ -74,6 +74,7 @@ export function DevicesDialog({ onClose }: Props) {
               <div className="device-row" key={device.id}>
                 <div className="device-row__main">
                   <strong>{device.name}</strong>
+                  {device.current && <span className="badge">当前设备</span>}
                   <span className="device-row__spacer" />
                   <button
                     className="link link--danger"
@@ -94,13 +95,7 @@ export function DevicesDialog({ onClose }: Props) {
             ))}
           </div>
         )}
-
-        <div className="modal__actions">
-          <button className="btn" type="button" onClick={onClose}>
-            关闭
-          </button>
-        </div>
-      </div>
+      </section>
     </div>
   )
 }

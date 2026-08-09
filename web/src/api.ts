@@ -2,10 +2,12 @@ import type {
   ConsoleLine,
   CoreBuild,
   CoreDownloadJob,
+  CoreLibrary,
   CoreProject,
   CoreVersion,
   Device,
   EulaStatus,
+  HostListing,
   JavaMajor,
   JavaOverview,
   JavaInstallJob,
@@ -13,10 +15,10 @@ import type {
   FileListing,
   InstanceMetrics,
   InstanceStatus,
-  JarInfo,
   PropertiesResponse,
   PropertyEntry,
   SystemInfo,
+  UpdateChannel,
   UpdateStatus,
   User,
 } from './types'
@@ -121,7 +123,6 @@ export const api = {
     request<EulaStatus>('GET', `/api/instances/${id}/eula`),
   acceptEula: (id: string) =>
     request<EulaStatus>('POST', `/api/instances/${id}/eula`),
-  listJars: (id: string) => request<JarInfo[]>('GET', `/api/instances/${id}/jars`),
 
   listCoreProjects: () => request<CoreProject[]>('GET', '/api/downloads/projects'),
   listCoreVersions: (project: string) =>
@@ -131,21 +132,34 @@ export const api = {
       'GET',
       `/api/downloads/projects/${project}/versions/${encodeURIComponent(version)}/build`,
     ),
-  /** null when this instance has never downloaded a core. */
-  coreDownload: (id: string) =>
-    request<CoreDownloadJob | null>('GET', `/api/instances/${id}/jars/download`),
-  startCoreDownload: (
-    id: string,
-    input: { project: string; version: string; setAsJar: boolean; overwrite?: boolean },
-  ) =>
-    request<CoreDownloadJob>('POST', `/api/instances/${id}/jars/download`, {
+
+  coreLibrary: () => request<CoreLibrary>('GET', '/api/cores'),
+  startCoreDownload: (input: { project: string; version: string; overwrite?: boolean }) =>
+    request<CoreDownloadJob>('POST', '/api/cores', {
       project: input.project,
       version: input.version,
-      setAsJar: input.setAsJar,
       overwrite: input.overwrite ?? false,
     }),
-  cancelCoreDownload: (id: string) =>
-    request<void>('POST', `/api/instances/${id}/jars/download/cancel`),
+  cancelCoreDownload: () => request<void>('POST', '/api/cores/cancel'),
+  deleteCore: (id: string) => request<void>('DELETE', `/api/cores/${encodeURIComponent(id)}`),
+  /** Copies a core out of the library into an instance directory. */
+  applyCore: (
+    id: string,
+    input: { coreId: string; setAsJar: boolean; overwrite?: boolean },
+  ) =>
+    request<{ fileName: string; instance: InstanceStatus }>(
+      'POST',
+      `/api/instances/${id}/core`,
+      {
+        coreId: input.coreId,
+        setAsJar: input.setAsJar,
+        overwrite: input.overwrite ?? false,
+      },
+    ),
+
+  /** Lists a directory on the host. Empty path means the panel's servers root. */
+  browseHost: (dir: string) =>
+    request<HostListing>('GET', `/api/fs?path=${encodeURIComponent(dir)}`),
 
   javaOverview: () => request<JavaOverview>('GET', '/api/java'),
   javaMajors: () => request<JavaMajor[]>('GET', '/api/java/available'),
@@ -160,6 +174,8 @@ export const api = {
   applyUpdate: () => request<UpdateStatus>('POST', '/api/update/apply'),
   setUpdateMirror: (mirror: string) =>
     request<UpdateStatus>('PUT', '/api/update/mirror', { mirror }),
+  setUpdateChannel: (channel: UpdateChannel) =>
+    request<UpdateStatus>('PUT', '/api/update/channel', { channel }),
 
   system: () => request<SystemInfo>('GET', '/api/system'),
   instanceMetrics: (id: string) =>

@@ -8,16 +8,18 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
 
 var (
-	// ErrBusy is returned when a download is already running for an instance.
-	ErrBusy = errors.New("a download is already running for this instance")
-	// ErrExists is returned when the target file is already in the directory
+	// ErrBusy is returned when a download is already running.
+	ErrBusy = errors.New("a core download is already running")
+	// ErrExists is returned when that exact build is already in the library
 	// and the caller did not ask to replace it.
-	ErrExists = errors.New("file already exists")
+	ErrExists = errors.New("this core is already in the library")
 	// ErrCancelled is recorded on a job the operator stopped.
 	ErrCancelled = errors.New("download cancelled")
 	// ErrChecksum is recorded when the bytes on disk are not what upstream
@@ -40,35 +42,25 @@ const (
 	JobCancelled   JobState = "cancelled"
 )
 
-// Job is a snapshot of one instance's most recent core download.
+// Job is a snapshot of the panel's most recent core download.
 //
 // It survives the download: after the transfer ends the finished job stays
 // readable, so an operator who closed the tab still sees how it went.
 type Job struct {
-	InstanceID  string     `json:"instanceId"`
-	Project     string     `json:"project"`
-	ProjectName string     `json:"projectName"`
-	Version     string     `json:"version"`
-	Build       int        `json:"build"`
-	Channel     string     `json:"channel"`
-	FileName    string     `json:"fileName"`
-	Total       int64      `json:"total"`
-	Downloaded  int64      `json:"downloaded"`
-	State       JobState   `json:"state"`
-	Error       string     `json:"error,omitempty"`
-	SetAsJar    bool       `json:"setAsJar"`
-	StartedAt   time.Time  `json:"startedAt"`
-	FinishedAt  *time.Time `json:"finishedAt,omitempty"`
-}
-
-// Sink is where a download lands. The API layer implements it over
-// serverfiles.Browser, which confines every write to the instance directory.
-type Sink interface {
-	Exists(name string) (bool, error)
-	// Create opens name for writing, failing if it already exists.
-	Create(name string) (io.WriteCloser, error)
-	Remove(name string) error
-	Rename(from, to string) error
+	Project     string   `json:"project"`
+	ProjectName string   `json:"projectName"`
+	Version     string   `json:"version"`
+	Build       int      `json:"build"`
+	Channel     string   `json:"channel"`
+	FileName    string   `json:"fileName"`
+	Total       int64    `json:"total"`
+	Downloaded  int64    `json:"downloaded"`
+	State       JobState `json:"state"`
+	Error       string   `json:"error,omitempty"`
+	// CoreID names the library entry a finished download produced.
+	CoreID     string     `json:"coreId,omitempty"`
+	StartedAt  time.Time  `json:"startedAt"`
+	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 }
 
 // Request describes one download.
@@ -76,104 +68,97 @@ type Request struct {
 	Project   string
 	Version   string
 	Overwrite bool
-	SetAsJar  bool
-	// OnDone runs once the jar is in place and before the job is marked done.
-	// It is how the API layer points the instance's launch config at the file
-	// it just fetched — which has to happen in the daemon, since the operator
-	// may well have closed the browser by then.
-	OnDone func(fileName string) error
 }
 
-// Downloader runs core downloads on behalf of instances, one at a time each.
+// Downloader fetches server cores into the panel-wide library.
 //
-// Like the server processes themselves, a download belongs to the daemon and
-// not to the request that started it: closing the tab, logging out or losing
-// the network does not interrupt a jar that is already coming down.
+// One at a time, panel-wide: the library is shared, and two transfers racing
+// over the same directory buys nothing. Like the server processes themselves, a
+// download belongs to the daemon and not to the request that started it —
+// closing the tab, logging out or losing the network does not interrupt a jar
+// that is already coming down.
 type Downloader struct {
-	client *Client
-	log    *slog.Logger
+	client  *Client
+	library *Library
+	log     *slog.Logger
 
-	mu   sync.Mutex
-	jobs map[string]*record
-}
-
-type record struct {
-	job    Job
+	mu     sync.Mutex
+	job    *Job
 	cancel context.CancelFunc
 	done   chan struct{}
 }
 
-func NewDownloader(client *Client, logger *slog.Logger) *Downloader {
-	return &Downloader{client: client, log: logger, jobs: make(map[string]*record)}
+func NewDownloader(client *Client, library *Library, logger *slog.Logger) *Downloader {
+	return &Downloader{client: client, library: library, log: logger}
 }
 
 // Client exposes the API client for the metadata handlers.
 func (d *Downloader) Client() *Client { return d.client }
 
+// Library exposes the directory downloaded cores land in.
+func (d *Downloader) Library() *Library { return d.library }
+
 // Start resolves the newest build and begins fetching it in the background.
 //
 // It returns once the download is under way; everything that can be reported
-// as a bad request — unknown project, unknown version, file already there — is
-// checked before that, so the operator gets a real error rather than a job
-// that fails a second later.
-func (d *Downloader) Start(instanceID string, req Request, sink Sink) (Job, error) {
+// as a bad request — unknown project, unknown version, core already in the
+// library — is checked before that, so the operator gets a real error rather
+// than a job that fails a second later.
+func (d *Downloader) Start(req Request) (Job, error) {
 	project, ok := LookupProject(req.Project)
 	if !ok {
 		return Job{}, fmt.Errorf("%w: %s", ErrUnknownProject, req.Project)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	rec := &record{
-		job: Job{
-			InstanceID:  instanceID,
-			Project:     project.ID,
-			ProjectName: project.Name,
-			Version:     req.Version,
-			State:       JobDownloading,
-			SetAsJar:    req.SetAsJar,
-			StartedAt:   time.Now(),
-		},
-		cancel: cancel,
-		done:   make(chan struct{}),
-	}
 
-	// Claim the instance before touching the network, so two clicks in quick
+	// Claim the slot before touching the network, so two clicks in quick
 	// succession cannot both start writing the same file.
 	d.mu.Lock()
-	if existing, ok := d.jobs[instanceID]; ok && existing.job.State == JobDownloading {
+	if d.job != nil && d.job.State == JobDownloading {
 		d.mu.Unlock()
 		cancel()
 		return Job{}, ErrBusy
 	}
-	d.jobs[instanceID] = rec
+	d.job = &Job{
+		Project:     project.ID,
+		ProjectName: project.Name,
+		Version:     req.Version,
+		State:       JobDownloading,
+		StartedAt:   time.Now(),
+	}
+	d.cancel = cancel
+	d.done = make(chan struct{})
+	job, done := d.job, d.done
 	d.mu.Unlock()
 
 	build, err := d.resolve(ctx, req)
 	if err == nil {
-		err = d.checkTarget(sink, build.FileName, req.Overwrite)
+		err = d.checkTarget(build.FileName, req.Overwrite)
 	}
 	if err != nil {
 		cancel()
-		d.finish(rec, JobFailed, err)
+		close(done)
+		d.finish(job, JobFailed, err)
 		return Job{}, err
 	}
 
 	d.mu.Lock()
-	rec.job.Build = build.Build
-	rec.job.Channel = build.Channel
-	rec.job.FileName = build.FileName
-	rec.job.Total = build.Size
-	snapshot := rec.job
+	job.Build = build.Build
+	job.Channel = build.Channel
+	job.FileName = build.FileName
+	job.Total = build.Size
+	snapshot := *job
 	d.mu.Unlock()
 
 	d.log.Info("core download started",
-		"instance", instanceID, "project", project.ID, "version", req.Version,
+		"project", project.ID, "version", req.Version,
 		"build", build.Build, "file", build.FileName, "size", build.Size)
 
 	go func() {
 		defer cancel()
-		defer close(rec.done)
-		d.run(ctx, rec, build, req, sink)
+		defer close(done)
+		d.run(ctx, job, build, project, req)
 	}()
 	return snapshot, nil
 }
@@ -186,12 +171,8 @@ func (d *Downloader) resolve(ctx context.Context, req Request) (Build, error) {
 	return d.client.LatestBuild(lookupCtx, req.Project, req.Version)
 }
 
-func (d *Downloader) checkTarget(sink Sink, name string, overwrite bool) error {
-	exists, err := sink.Exists(name)
-	if err != nil {
-		return err
-	}
-	if exists && !overwrite {
+func (d *Downloader) checkTarget(name string, overwrite bool) error {
+	if d.library.Has(name) && !overwrite {
 		return fmt.Errorf("%w: %s", ErrExists, name)
 	}
 	return nil
@@ -199,47 +180,68 @@ func (d *Downloader) checkTarget(sink Sink, name string, overwrite bool) error {
 
 // run streams the artifact to a .part file, checks it, and only then moves it
 // into place. A failed or cancelled download never leaves something that looks
-// like a working jar behind.
-func (d *Downloader) run(ctx context.Context, rec *record, build Build, req Request, sink Sink) {
-	instanceID := rec.job.InstanceID
+// like a working jar in the library.
+func (d *Downloader) run(ctx context.Context, job *Job, build Build, project Project, req Request) {
+	root := d.library.Root()
+	temp := filepath.Join(root, build.FileName+partSuffix)
+	final := filepath.Join(root, build.FileName)
 
-	temp := build.FileName + ".hypercraft-part"
-	// A previous attempt may have died with the panel and left its part file.
-	_ = sink.Remove(temp)
-
-	err := d.transfer(ctx, rec, temp, build, sink)
+	err := os.MkdirAll(root, 0o755)
 	if err == nil {
-		err = d.place(sink, temp, build.FileName, req.Overwrite)
+		// A previous attempt may have died with the panel and left its part file.
+		_ = os.Remove(temp)
+		err = d.transfer(ctx, job, temp, build)
 	}
-	if err == nil && req.OnDone != nil {
-		if err = req.OnDone(build.FileName); err != nil {
-			err = fmt.Errorf("下载完成，但设置启动 jar 失败: %w", err)
+	if err == nil {
+		err = place(temp, final, req.Overwrite)
+	}
+	if err == nil {
+		err = d.library.record(Core{
+			ID:          build.FileName,
+			FileName:    build.FileName,
+			Project:     project.ID,
+			ProjectName: project.Name,
+			Kind:        project.Kind,
+			Version:     req.Version,
+			Build:       build.Build,
+			Channel:     build.Channel,
+			SHA256:      build.SHA256,
+			Size:        build.Size,
+			AddedAt:     time.Now(),
+		})
+		if err != nil {
+			// The jar itself is fine, only its metadata is missing; say so
+			// rather than implying the download has to be repeated.
+			err = fmt.Errorf("下载完成，但记录核心信息失败: %w", err)
 		}
 	}
 
 	switch {
 	case err == nil:
-		d.finish(rec, JobDone, nil)
-		d.log.Info("core download finished", "instance", instanceID, "file", build.FileName)
+		d.mu.Lock()
+		job.CoreID = build.FileName
+		d.mu.Unlock()
+		d.finish(job, JobDone, nil)
+		d.log.Info("core download finished", "file", build.FileName)
 	case ctx.Err() != nil:
-		_ = sink.Remove(temp)
-		d.finish(rec, JobCancelled, ErrCancelled)
-		d.log.Info("core download cancelled", "instance", instanceID, "file", build.FileName)
+		_ = os.Remove(temp)
+		d.finish(job, JobCancelled, ErrCancelled)
+		d.log.Info("core download cancelled", "file", build.FileName)
 	default:
-		_ = sink.Remove(temp)
-		d.finish(rec, JobFailed, err)
-		d.log.Warn("core download failed", "instance", instanceID, "file", build.FileName, "err", err)
+		_ = os.Remove(temp)
+		d.finish(job, JobFailed, err)
+		d.log.Warn("core download failed", "file", build.FileName, "err", err)
 	}
 }
 
-func (d *Downloader) transfer(ctx context.Context, rec *record, temp string, build Build, sink Sink) error {
+func (d *Downloader) transfer(ctx context.Context, job *Job, temp string, build Build) error {
 	body, err := d.client.Fetch(ctx, build)
 	if err != nil {
 		return err
 	}
 	defer body.Close()
 
-	file, err := sink.Create(temp)
+	file, err := os.OpenFile(temp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return err
 	}
@@ -253,7 +255,7 @@ func (d *Downloader) transfer(ctx context.Context, rec *record, temp string, bui
 		to: io.MultiWriter(file, digest),
 		report: func(n int64) {
 			d.mu.Lock()
-			rec.job.Downloaded = n
+			job.Downloaded = n
 			d.mu.Unlock()
 		},
 	}
@@ -261,6 +263,8 @@ func (d *Downloader) transfer(ctx context.Context, rec *record, temp string, bui
 	// One byte past the limit, so an exactly-sized body still succeeds while an
 	// oversized one is caught instead of silently truncated.
 	written, copyErr := io.Copy(progress, io.LimitReader(body, limit+1))
+	// A close error on the last flush is the difference between a whole jar and
+	// a truncated one, so it is checked rather than deferred away.
 	closeErr := file.Close()
 	if copyErr != nil {
 		return copyErr
@@ -283,99 +287,72 @@ func (d *Downloader) transfer(ctx context.Context, rec *record, temp string, bui
 }
 
 // place moves the verified download onto its final name.
-func (d *Downloader) place(sink Sink, temp, final string, overwrite bool) error {
-	exists, err := sink.Exists(final)
-	if err != nil {
-		return err
-	}
-	if exists {
+func place(temp, final string, overwrite bool) error {
+	if _, err := os.Stat(final); err == nil {
 		if !overwrite {
-			return fmt.Errorf("%w: %s", ErrExists, final)
+			return fmt.Errorf("%w: %s", ErrExists, filepath.Base(final))
 		}
-		// Rename refuses to clobber, so the old jar goes first. It is only
-		// removed here — after the replacement is downloaded and verified —
-		// so a failed download never costs the operator a working jar.
-		if err := sink.Remove(final); err != nil {
+		// The old jar is only removed here — after the replacement is
+		// downloaded and verified — so a failed download never costs the
+		// operator a working core.
+		if err := os.Remove(final); err != nil {
 			return err
 		}
 	}
-	return sink.Rename(temp, final)
+	return os.Rename(temp, final)
 }
 
-// finish stamps the outcome on the record the goroutine owns, rather than on
-// whatever the instance's current job happens to be: the instance may have been
-// forgotten, or a new download started, while this one was unwinding.
-func (d *Downloader) finish(rec *record, state JobState, err error) {
+func (d *Downloader) finish(job *Job, state JobState, err error) {
 	now := time.Now()
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	rec.job.State = state
-	rec.job.FinishedAt = &now
+	job.State = state
+	job.FinishedAt = &now
 	if err != nil {
-		rec.job.Error = err.Error()
+		job.Error = err.Error()
 	}
 }
 
-// Status returns the instance's current or most recent job.
-func (d *Downloader) Status(instanceID string) (Job, bool) {
+// Status returns the current or most recent job.
+func (d *Downloader) Status() (Job, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	rec, ok := d.jobs[instanceID]
-	if !ok {
+	if d.job == nil {
 		return Job{}, false
 	}
-	return rec.job, true
+	return *d.job, true
 }
 
 // Cancel stops an in-flight download. Cancelling a finished one is a no-op.
-func (d *Downloader) Cancel(instanceID string) error {
+func (d *Downloader) Cancel() error {
 	d.mu.Lock()
-	rec, ok := d.jobs[instanceID]
-	if !ok || rec.job.State != JobDownloading {
+	if d.job == nil || d.job.State != JobDownloading {
 		d.mu.Unlock()
 		return fmt.Errorf("%w: no download is running", ErrCancelled)
 	}
-	cancel := rec.cancel
+	cancel := d.cancel
 	d.mu.Unlock()
 
 	cancel()
 	return nil
 }
 
-// Forget drops an instance's job, cancelling it first if it is still running.
-// Called when the instance itself is deleted.
-func (d *Downloader) Forget(instanceID string) {
-	d.mu.Lock()
-	rec, ok := d.jobs[instanceID]
-	delete(d.jobs, instanceID)
-	d.mu.Unlock()
-
-	if ok && rec.cancel != nil {
-		rec.cancel()
-	}
-}
-
-// Close cancels every running download and waits briefly for them to unwind,
-// so panel shutdown does not leave a writer racing against the process exit.
+// Close cancels a running download and waits briefly for it to unwind, so
+// panel shutdown does not leave a writer racing against the process exit.
 func (d *Downloader) Close() {
 	d.mu.Lock()
-	pending := make([]*record, 0, len(d.jobs))
-	for _, rec := range d.jobs {
-		if rec.job.State == JobDownloading {
-			rec.cancel()
-			pending = append(pending, rec)
-		}
-	}
+	running := d.job != nil && d.job.State == JobDownloading
+	cancel, done := d.cancel, d.done
 	d.mu.Unlock()
 
-	deadline := time.After(5 * time.Second)
-	for _, rec := range pending {
-		select {
-		case <-rec.done:
-		case <-deadline:
-			return
-		}
+	if !running || cancel == nil {
+		return
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
 	}
 }
 

@@ -1319,6 +1319,13 @@ a {
   color: var(--text-dim);
 }
 
+/* Secondary prose: the "nothing here yet" lines under a list. */
+.muted {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
 .data-table .actions {
   text-align: right;
 }
@@ -1497,6 +1504,210 @@ a {
   color: var(--text-dim);
   overflow-wrap: anywhere;
 }
+
+/* --------------------------------------------------- settings & dashboard */
+
+/* The settings shell owns the scroll, so switching sections does not leave the
+   next page scrolled to where the last one was. */
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.settings-page__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.settings-page .tabs {
+  margin-bottom: 0;
+}
+
+/* Numbers worth seeing without clicking anything. Capped rather than 1fr for
+   the same reason the meters are: stretched wide, a label and its value stop
+   reading as one tile. */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 220px));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+}
+
+.stat--link {
+  cursor: pointer;
+}
+
+.stat--link:hover {
+  border-color: var(--border-strong);
+}
+
+.stat__label {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.stat__value {
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat__detail {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.dashboard__instances {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* A card with its own buttons cannot itself be a button, so the clickable part
+   is a child and the card is a plain container. */
+.card--static {
+  cursor: default;
+}
+
+.card--static:hover {
+  border-color: var(--border);
+}
+
+.card__open {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+.card__open:hover strong {
+  color: var(--accent-hover);
+}
+
+.card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.card__error {
+  margin-top: 8px;
+  color: var(--danger-hover);
+  font-size: 11px;
+}
+
+/* ----------------------------------------------------------- path picker */
+
+/* An input with a button welded to its right edge. */
+.field__with-button {
+  display: flex;
+  gap: 8px;
+}
+
+.field__with-button input {
+  flex: 1;
+  min-width: 0;
+}
+
+.modal__card--wide {
+  max-width: 640px;
+}
+
+.picker__path {
+  display: flex;
+  gap: 8px;
+}
+
+.picker__path input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+}
+
+.picker__path input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.picker__list {
+  display: flex;
+  flex-direction: column;
+  /* Tall enough to browse in, short enough that the buttons stay on screen. */
+  height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.picker__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.picker__row:hover {
+  background: #1c2330;
+}
+
+.picker__row--plain {
+  cursor: default;
+  color: var(--text-dim);
+}
+
+.picker__row--plain:hover {
+  background: none;
+}
+
+.picker__list .muted {
+  padding: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------ devices */
 
 .device-list {
   display: flex;

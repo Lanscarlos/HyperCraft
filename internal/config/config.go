@@ -26,6 +26,11 @@ const DefaultMaxUploadMB = 2048
 // binary for one of its own. See internal/selfupdate.
 const DefaultUpdateMirror = "https://ghfast.top/"
 
+// DefaultUpdateChannel is the release channel a panel follows unless the
+// operator picks the other one. Snapshots are built from every green commit on
+// main and are not release-tested, so nothing opts a panel into them.
+const DefaultUpdateChannel = "stable"
+
 // Panel is the persisted panel configuration.
 type Panel struct {
 	Listen          string `json:"listen"`
@@ -34,8 +39,13 @@ type Panel struct {
 	// UpdateMirror is a pointer to tell "never configured" (nil, take the
 	// default) apart from "deliberately turned off" (empty string, go straight
 	// to GitHub). A plain string could not express the second.
-	UpdateMirror *string         `json:"updateMirror,omitempty"`
-	Credential   auth.Credential `json:"credential"`
+	UpdateMirror *string `json:"updateMirror,omitempty"`
+	// UpdateChannel is "stable" or "snapshot"; empty means stable, which is
+	// what a config written before channels existed carries. No pointer here:
+	// there is nothing to express beyond the two channels, and stable is both
+	// the default and the safe answer for anything unrecognised.
+	UpdateChannel string          `json:"updateChannel,omitempty"`
+	Credential    auth.Credential `json:"credential"`
 	// Devices are the paired native clients. Unlike sessions, which are
 	// deliberately in-memory, these survive a restart — a phone app should not
 	// be signed out every time the panel updates itself.
@@ -50,6 +60,7 @@ func Defaults() Panel {
 		SessionTTLHours: 24 * 7,
 		MaxUploadMB:     DefaultMaxUploadMB,
 		UpdateMirror:    &mirror,
+		UpdateChannel:   DefaultUpdateChannel,
 	}
 }
 
@@ -68,6 +79,9 @@ func (p *Panel) ApplyDefaults() {
 		mirror := DefaultUpdateMirror
 		p.UpdateMirror = &mirror
 	}
+	if p.UpdateChannel == "" {
+		p.UpdateChannel = DefaultUpdateChannel
+	}
 }
 
 // Mirror is the configured update mirror, or "" for downloading straight from
@@ -77,6 +91,14 @@ func (p Panel) Mirror() string {
 		return DefaultUpdateMirror
 	}
 	return *p.UpdateMirror
+}
+
+// Channel is the configured update channel, defaulting to stable.
+func (p Panel) Channel() string {
+	if p.UpdateChannel == "" {
+		return DefaultUpdateChannel
+	}
+	return p.UpdateChannel
 }
 
 // Paths resolves the on-disk layout below a data directory.
@@ -98,6 +120,11 @@ func (p Paths) ServersRoot() string { return filepath.Join(p.Root, "servers") }
 // JavaRoot is where downloaded Java runtimes are unpacked. Anything dropped in
 // here by hand is picked up too, so it doubles as "the panel's JDK shelf".
 func (p Paths) JavaRoot() string { return filepath.Join(p.Root, "java") }
+
+// CoresRoot is the panel-wide library of server jars. A core is downloaded once
+// and copied into as many instances as needed, so a new server can be created
+// offline; a jar dropped in here by hand is listed too.
+func (p Paths) CoresRoot() string { return filepath.Join(p.Root, "cores") }
 
 // ResumeFile records which servers were running when the panel restarted
 // itself to install an update, so they can be brought back afterwards. It is

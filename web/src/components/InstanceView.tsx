@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import type { InstanceStatus, StateInfo } from '../types'
 import { STATE_LABELS, isLive, mergeState } from '../types'
+import type { CoreController } from '../useCores'
 import { Console } from './Console'
 import { FileManager } from './FileManager'
 import { LaunchSettings } from './LaunchSettings'
@@ -21,11 +22,19 @@ const TABS: { id: Tab; label: string }[] = [
 
 interface Props {
   instance: InstanceStatus
+  cores: CoreController
   onChanged: (instance: InstanceStatus) => void
   onDeleted: () => void
+  onOpenLibrary: () => void
 }
 
-export function InstanceView({ instance, onChanged, onDeleted }: Props) {
+export function InstanceView({
+  instance,
+  cores,
+  onChanged,
+  onDeleted,
+  onOpenLibrary,
+}: Props) {
   const [tab, setTab] = useState<Tab>('console')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -142,8 +151,10 @@ export function InstanceView({ instance, onChanged, onDeleted }: Props) {
           <div className="instance__pane instance__pane--scroll">
             <LaunchSettings
               instance={instance}
+              cores={cores}
               onSaved={onChanged}
               onDeleted={onDeleted}
+              onOpenLibrary={onOpenLibrary}
             />
           </div>
         )}

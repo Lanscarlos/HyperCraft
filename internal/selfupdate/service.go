@@ -68,6 +68,17 @@ type Status struct {
 	// Mirror is the configured download proxy, "" when downloading straight
 	// from GitHub.
 	Mirror string `json:"mirror"`
+	// Channel is the release channel this panel follows.
+	Channel Channel `json:"channel"`
+	// CurrentIsSnapshot marks a panel running a snapshot or an rc rather than
+	// a release, so the UI can label it. A dev build is not one of these: it
+	// has no version at all, which Eligible already reports.
+	CurrentIsSnapshot bool `json:"currentIsSnapshot"`
+	// LatestIsPrerelease marks the offered version as a snapshot or rc.
+	LatestIsPrerelease bool `json:"latestIsPrerelease"`
+	// Downgrade means installing the offered version moves backwards; see
+	// Updater.Offer for the one case that happens in.
+	Downgrade bool `json:"downgrade"`
 }
 
 // Service keeps the last check result and runs updates one at a time.
@@ -85,9 +96,10 @@ type Service struct {
 	lastErr   string
 }
 
-func NewService(repo, currentVersion, mirror string, hooks Hooks, log *slog.Logger) *Service {
+func NewService(repo, currentVersion, mirror string, channel Channel, hooks Hooks, log *slog.Logger) *Service {
 	up := New(repo, currentVersion)
 	up.SetMirror(mirror)
+	up.SetChannel(channel)
 	return &Service{
 		up:    up,
 		log:   log,
@@ -105,6 +117,26 @@ func (s *Service) SetMirror(mirror string) error {
 		return ErrBusy
 	}
 	s.up.SetMirror(mirror)
+	return nil
+}
+
+// SetChannel changes which releases the panel is offered, discarding the cached
+// check: it describes the other channel, and leaving it in place would show a
+// snapshot as "available" to a panel that just asked to stop seeing them. The
+// caller is expected to run a Check straight after.
+func (s *Service) SetChannel(c Channel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.phase != PhaseIdle {
+		return ErrBusy
+	}
+	if s.up.Channel() == ParseChannel(string(c)) {
+		return nil
+	}
+	s.up.SetChannel(c)
+	s.latest = nil
+	s.checkedAt = time.Time{}
+	s.checkErr = ""
 	return nil
 }
 
@@ -166,21 +198,25 @@ func (s *Service) Status() Status {
 
 func (s *Service) statusLocked() Status {
 	st := Status{
-		CurrentVersion: s.up.CurrentVersion(),
-		Phase:          s.phase,
-		Progress:       s.progress,
-		CheckError:     s.checkErr,
-		Error:          s.lastErr,
-		Mirror:         s.up.Mirror(),
-		Eligible:       true,
+		CurrentVersion:    s.up.CurrentVersion(),
+		Phase:             s.phase,
+		Progress:          s.progress,
+		CheckError:        s.checkErr,
+		Error:             s.lastErr,
+		Mirror:            s.up.Mirror(),
+		Channel:           s.up.Channel(),
+		CurrentIsSnapshot: IsReleaseVersion(s.up.CurrentVersion()) && !IsStableVersion(s.up.CurrentVersion()),
+		Eligible:          true,
 	}
 	if !s.checkedAt.IsZero() {
 		t := s.checkedAt
 		st.CheckedAt = &t
 	}
+	// Snapshots carry a real version and stay updatable; this is about builds
+	// with no version at all, which a local `go build` produces.
 	if !IsReleaseVersion(s.up.CurrentVersion()) {
 		st.Eligible = false
-		st.IneligibleWhy = "当前运行的不是正式发布版本（版本号为 " + s.up.CurrentVersion() + "），面板内更新已停用，请手动替换二进制"
+		st.IneligibleWhy = "当前运行的不是从 release 或快照装出来的版本（版本号为 " + s.up.CurrentVersion() + "），面板内更新已停用，请手动替换二进制"
 	}
 	if s.latest == nil {
 		return st
@@ -189,6 +225,7 @@ func (s *Service) statusLocked() Status {
 	st.LatestVersion = s.latest.Version
 	st.ReleaseURL = s.latest.URL
 	st.ReleaseNotes = s.latest.Notes
+	st.LatestIsPrerelease = s.latest.Prerelease
 	if !s.latest.PublishedAt.IsZero() {
 		t := s.latest.PublishedAt
 		st.PublishedAt = &t
@@ -197,7 +234,9 @@ func (s *Service) statusLocked() Status {
 		st.Eligible = false
 		st.IneligibleWhy = fmt.Sprintf("最新版本没有提供 %s/%s 的构建，请手动更新", runtime.GOOS, runtime.GOARCH)
 	}
-	st.UpdateAvailable = st.Eligible && s.up.IsNewerThanCurrent(s.latest)
+	if st.Eligible {
+		st.UpdateAvailable, st.Downgrade = s.up.Offer(s.latest)
+	}
 	return st
 }
 

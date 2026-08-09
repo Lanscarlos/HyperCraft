@@ -138,8 +138,14 @@ func run() error {
 
 	// Core downloads run in the daemon, so they keep going with nobody watching
 	// — same reason the server processes live here rather than in a request.
+	// They land in a panel-wide library beside the Java runtimes: downloaded
+	// once, copied into as many instances as the operator makes.
 	userAgent := "HyperCraft/" + version + " (+https://github.com/Lanscarlos/HyperCraft)"
-	downloads := serverjar.NewDownloader(serverjar.NewClient("", userAgent), logger)
+	downloads := serverjar.NewDownloader(
+		serverjar.NewClient("", userAgent),
+		serverjar.NewLibrary(paths.CoresRoot()),
+		logger,
+	)
 	defer downloads.Close()
 
 	// Java runtimes live beside the servers, in the data directory, so a panel
@@ -164,7 +170,7 @@ func run() error {
 	// running image has been renamed aside and the OS would report the backup.
 	var newBinary atomic.Pointer[string]
 
-	updater := selfupdate.NewService(updateRepo, version, panel.Mirror(), selfupdate.Hooks{
+	updater := selfupdate.NewService(updateRepo, version, panel.Mirror(), selfupdate.ParseChannel(panel.Channel()), selfupdate.Hooks{
 		// Recorded before the swap so the servers this update is about to stop
 		// come back on the other side, whether or not they auto-start.
 		BeforeInstall:  func() error { return st.SaveResume(manager.RunningIDs()) },
@@ -180,6 +186,7 @@ func run() error {
 		Store:    st,
 		Sessions: sessions,
 		Metrics:  collector,
+		Paths:    paths,
 		Jars:     downloads,
 		Java:     javaInstaller,
 		Updater:  updater,

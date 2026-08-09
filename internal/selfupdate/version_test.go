@@ -27,6 +27,15 @@ func TestCompareVersions(t *testing.T) {
 		{"1.2.0-rc.2", "1.2.0-rc.10", -1},
 		{"1.2.0-alpha", "1.2.0-beta", -1},
 		{"1.2.0-rc.1", "1.2.0-rc.1", 0},
+		// Snapshots are named after the release they lead to, so they sit above
+		// the release that shipped and below the one they are heading for. That
+		// ordering is what keeps a snapshot panel moving forward and a stable
+		// panel from ever being shown one.
+		{"1.2.1-snapshot.431", "1.2.0", 1},
+		{"1.2.1-snapshot.431", "1.2.1", -1},
+		{"1.2.1-snapshot.431", "1.2.1-snapshot.428", 1},
+		// The build counter is numeric: lexically, 99 would outrank 431.
+		{"1.2.1-snapshot.431", "1.2.1-snapshot.99", 1},
 	}
 	for _, c := range cases {
 		if got := CompareVersions(c.a, c.b); got != c.want {
@@ -48,6 +57,23 @@ func TestIsReleaseVersion(t *testing.T) {
 	for _, v := range invalid {
 		if IsReleaseVersion(v) {
 			t.Errorf("IsReleaseVersion(%q) = true, want false", v)
+		}
+	}
+}
+
+func TestIsStableVersion(t *testing.T) {
+	stable := []string{"1.0.0", "v1.0.0", "10.20.30"}
+	for _, v := range stable {
+		if !IsStableVersion(v) {
+			t.Errorf("IsStableVersion(%q) = false, want true", v)
+		}
+	}
+	// Snapshots and release candidates are versions the updater understands but
+	// must not treat as a final release.
+	notStable := []string{"1.2.3-rc.1", "1.2.1-snapshot.431", "dev", ""}
+	for _, v := range notStable {
+		if IsStableVersion(v) {
+			t.Errorf("IsStableVersion(%q) = true, want false", v)
 		}
 	}
 }

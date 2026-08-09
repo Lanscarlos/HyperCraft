@@ -223,8 +223,8 @@ export interface JavaMajor {
 
 export type CoreDownloadState = 'downloading' | 'done' | 'failed' | 'cancelled'
 
+/** The panel-wide download slot; cores land in the library, not in an instance. */
 export interface CoreDownloadJob {
-  instanceId: string
   project: string
   projectName: string
   version: string
@@ -235,9 +235,66 @@ export interface CoreDownloadJob {
   downloaded: number
   state: CoreDownloadState
   error?: string
-  setAsJar: boolean
+  /** The library entry a finished download produced. */
+  coreId?: string
   startedAt: string
   finishedAt?: string
+}
+
+/** One server jar kept in the panel-wide library, ready to copy into instances. */
+export interface ServerCore {
+  id: string
+  fileName: string
+  project: string
+  projectName: string
+  kind: 'server' | 'proxy' | ''
+  version: string
+  build: number
+  channel: string
+  sha256: string
+  size: number
+  addedAt: string
+  /** True for a jar dropped into the library by hand, which has no build info. */
+  imported: boolean
+  /** Instances whose launch jar has this file name. */
+  usedBy: string[]
+}
+
+export interface CoreLibrary {
+  root: string
+  cores: ServerCore[]
+  job: CoreDownloadJob | null
+}
+
+// ------------------------------------------------------- host directories
+
+export interface HostEntry {
+  name: string
+  path: string
+  isDir: boolean
+  size: number
+}
+
+export interface HostShortcut {
+  label: string
+  path: string
+}
+
+/** One directory on the machine the panel runs on, for the path picker. */
+export interface HostListing {
+  path: string
+  /** Empty at a filesystem root, which is where "go up" stops. */
+  parent: string
+  /** False for a path that does not exist yet, which is fine when creating. */
+  exists: boolean
+  separator: string
+  entries: HostEntry[]
+  /** The .jar files directly in this directory. */
+  jars: JarInfo[]
+  truncated: boolean
+  /** Set when the directory exists but could not be read, usually permissions. */
+  error?: string
+  shortcuts: HostShortcut[]
 }
 
 export interface User {
@@ -370,7 +427,36 @@ export interface UpdateStatus {
   error?: string
   /** Download proxy prefix; empty means downloads go straight to GitHub. */
   mirror: string
+  /** Which releases this panel is offered. */
+  channel: UpdateChannel
+  /** True when the running binary is a snapshot or rc rather than a release. */
+  currentIsSnapshot: boolean
+  /** True when the offered version is a snapshot or rc. */
+  latestIsPrerelease: boolean
+  /** True when installing the offered version moves backwards — the way back
+   *  from a snapshot to the stable track. */
+  downgrade: boolean
 }
+
+export type UpdateChannel = 'stable' | 'snapshot'
+
+/** The two release channels, as offered on the update page. */
+export const UPDATE_CHANNELS: {
+  label: string
+  value: UpdateChannel
+  note: string
+}[] = [
+  {
+    label: '正式版',
+    value: 'stable',
+    note: '只更新到正式发布的版本，生产环境用这个',
+  },
+  {
+    label: '快照',
+    value: 'snapshot',
+    note: 'main 分支每次通过 CI 的提交都会出一版，尝鲜用，可能有未完成的功能',
+  },
+]
 
 /** Known GitHub download proxies. The panel accepts any prefix, these are just
  *  the ones offered without typing. */

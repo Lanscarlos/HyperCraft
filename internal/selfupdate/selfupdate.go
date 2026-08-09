@@ -47,6 +47,30 @@ const (
 	httpTimeout      = 10 * time.Minute
 )
 
+// Channel is the set of releases a panel is willing to be offered.
+type Channel string
+
+const (
+	// ChannelStable offers only published releases — the versions cut from
+	// CHANGELOG.md. This is what an unconfigured panel uses.
+	ChannelStable Channel = "stable"
+
+	// ChannelSnapshot also offers the prereleases the snapshot workflow
+	// publishes for every green commit on main. They pass CI but nothing else,
+	// so this is opt-in and stays opt-in: nothing switches a panel to it.
+	ChannelSnapshot Channel = "snapshot"
+)
+
+// ParseChannel reads a stored or user-supplied channel name, falling back to
+// stable for anything it does not recognise — including the empty string a
+// config written before channels existed carries.
+func ParseChannel(s string) Channel {
+	if Channel(strings.TrimSpace(s)) == ChannelSnapshot {
+		return ChannelSnapshot
+	}
+	return ChannelStable
+}
+
 // Release is the subset of a GitHub release this package needs.
 type Release struct {
 	Tag         string    `json:"tag"`
@@ -54,6 +78,9 @@ type Release struct {
 	Notes       string    `json:"notes"`
 	URL         string    `json:"url"`
 	PublishedAt time.Time `json:"publishedAt"`
+	// Prerelease marks a release GitHub does not consider final, which for
+	// this repository means a snapshot or an rc.
+	Prerelease bool `json:"prerelease"`
 
 	// assets maps asset name to download URL.
 	assets map[string]string
@@ -64,6 +91,9 @@ type Updater struct {
 	repo    string // "owner/name"
 	current string
 	client  *http.Client
+
+	// channel decides whether prereleases are candidates. See Check.
+	channel Channel
 
 	// apiBase points at GitHub; tests redirect it at an httptest server.
 	apiBase string
@@ -98,6 +128,7 @@ func New(repo, currentVersion string) *Updater {
 		repo:           repo,
 		current:        currentVersion,
 		client:         &http.Client{Timeout: httpTimeout},
+		channel:        ChannelStable,
 		apiBase:        "https://api.github.com",
 		downloadPrefix: "https://github.com/",
 	}
@@ -105,6 +136,12 @@ func New(repo, currentVersion string) *Updater {
 
 // CurrentVersion is the version of the running binary.
 func (u *Updater) CurrentVersion() string { return u.current }
+
+// SetChannel picks which releases Check considers.
+func (u *Updater) SetChannel(c Channel) { u.channel = ParseChannel(string(c)) }
+
+// Channel is the release channel this updater follows.
+func (u *Updater) Channel() Channel { return u.channel }
 
 // SetMirror configures a proxy for release downloads, given as a prefix that a
 // GitHub URL is appended to — "https://ghfast.top/" turns
@@ -170,64 +207,132 @@ func AssetName(version string) string {
 	return fmt.Sprintf("hypercraft-%s-%s-%s%s", NormalizeVersion(version), runtime.GOOS, runtime.GOARCH, ext)
 }
 
-// Check asks GitHub for the newest published release. Pre-releases and drafts
-// are excluded by the endpoint itself, so an rc tag is never offered.
+// releasePayload is the GitHub release JSON, in the fields this package reads.
+type releasePayload struct {
+	TagName     string    `json:"tag_name"`
+	Name        string    `json:"name"`
+	Body        string    `json:"body"`
+	HTMLURL     string    `json:"html_url"`
+	PublishedAt time.Time `json:"published_at"`
+	Draft       bool      `json:"draft"`
+	Prerelease  bool      `json:"prerelease"`
+	Assets      []struct {
+		Name string `json:"name"`
+		URL  string `json:"browser_download_url"`
+	} `json:"assets"`
+}
+
+func (p releasePayload) release() *Release {
+	rel := &Release{
+		Tag:         p.TagName,
+		Version:     NormalizeVersion(p.TagName),
+		Notes:       p.Body,
+		URL:         p.HTMLURL,
+		PublishedAt: p.PublishedAt,
+		Prerelease:  p.Prerelease,
+		assets:      make(map[string]string, len(p.Assets)),
+	}
+	for _, a := range p.Assets {
+		rel.assets[a.Name] = a.URL
+	}
+	return rel
+}
+
+// Check asks GitHub what this panel's channel currently offers.
+//
+// On the stable channel that is /releases/latest, which excludes prereleases
+// and drafts at the endpoint itself, so a snapshot or an rc tag can never be
+// offered by accident. The snapshot channel has to list releases instead and
+// pick the highest version itself — including stable ones, so a panel tracking
+// snapshots still moves to a release the moment it is newer than the snapshot
+// it is running.
 func (u *Updater) Check(ctx context.Context) (*Release, error) {
-	url := fmt.Sprintf("%s/repos/%s/releases/latest", u.apiBase, u.repo)
+	if u.channel == ChannelSnapshot {
+		return u.checkNewest(ctx)
+	}
+	return u.checkLatestStable(ctx)
+}
+
+func (u *Updater) checkLatestStable(ctx context.Context) (*Release, error) {
+	var payload releasePayload
+	if err := u.getJSON(ctx, fmt.Sprintf("%s/repos/%s/releases/latest", u.apiBase, u.repo), &payload); err != nil {
+		return nil, err
+	}
+	if payload.TagName == "" {
+		return nil, errors.New("release has no tag")
+	}
+	return payload.release(), nil
+}
+
+// checkNewest picks the highest version among the recent releases. One page is
+// plenty: snapshots are pruned to a handful and releases are rare, so the
+// newest of either is always near the top.
+func (u *Updater) checkNewest(ctx context.Context) (*Release, error) {
+	var payload []releasePayload
+	if err := u.getJSON(ctx, fmt.Sprintf("%s/repos/%s/releases?per_page=30", u.apiBase, u.repo), &payload); err != nil {
+		return nil, err
+	}
+
+	var best *Release
+	for _, p := range payload {
+		// A draft is not published; a tag this package cannot compare (a
+		// nightly date stamp, say) would sort unpredictably against the
+		// running version, so it is left alone rather than guessed at.
+		if p.Draft || !IsReleaseVersion(NormalizeVersion(p.TagName)) {
+			continue
+		}
+		rel := p.release()
+		if best == nil || CompareVersions(rel.Version, best.Version) > 0 {
+			best = rel
+		}
+	}
+	if best == nil {
+		return nil, errors.New("no published release found")
+	}
+	return best, nil
+}
+
+func (u *Updater) getJSON(ctx context.Context, url string, into any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := u.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("reach GitHub: %w", err)
+		return fmt.Errorf("reach GitHub: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("github returned %s", resp.Status)
+		return fmt.Errorf("github returned %s", resp.Status)
 	}
-
-	var payload struct {
-		TagName     string    `json:"tag_name"`
-		Name        string    `json:"name"`
-		Body        string    `json:"body"`
-		HTMLURL     string    `json:"html_url"`
-		PublishedAt time.Time `json:"published_at"`
-		Assets      []struct {
-			Name string `json:"name"`
-			URL  string `json:"browser_download_url"`
-		} `json:"assets"`
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(into); err != nil {
+		return fmt.Errorf("parse release: %w", err)
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&payload); err != nil {
-		return nil, fmt.Errorf("parse release: %w", err)
-	}
-	if payload.TagName == "" {
-		return nil, errors.New("release has no tag")
-	}
-
-	rel := &Release{
-		Tag:         payload.TagName,
-		Version:     NormalizeVersion(payload.TagName),
-		Notes:       payload.Body,
-		URL:         payload.HTMLURL,
-		PublishedAt: payload.PublishedAt,
-		assets:      make(map[string]string, len(payload.Assets)),
-	}
-	for _, a := range payload.Assets {
-		rel.assets[a.Name] = a.URL
-	}
-	return rel, nil
+	return nil
 }
 
-// IsNewerThanCurrent reports whether rel should be offered as an update.
-func (u *Updater) IsNewerThanCurrent(rel *Release) bool {
+// Offer reports whether rel should be presented to the operator, and whether
+// installing it would move the panel backwards.
+//
+// Backwards is only ever offered in one situation: the panel is running a
+// snapshot and its channel has been set back to stable. The newest release is
+// then older than what is running, and installing it is precisely what the
+// operator asked for — without it, leaving the snapshot track would mean
+// waiting for the next release or replacing the binary by hand.
+func (u *Updater) Offer(rel *Release) (available, downgrade bool) {
 	if rel == nil || !IsReleaseVersion(u.current) || !IsReleaseVersion(rel.Version) {
-		return false
+		return false, false
 	}
-	return CompareVersions(rel.Version, u.current) > 0
+	switch cmp := CompareVersions(rel.Version, u.current); {
+	case cmp > 0:
+		return true, false
+	case cmp < 0 && u.channel == ChannelStable && !IsStableVersion(u.current):
+		return true, true
+	}
+	return false, false
 }
 
 // HasAssetForPlatform reports whether rel ships a build this machine can run.
