@@ -1,59 +1,150 @@
 /* ------------------------------------------------------------------ tokens
 
-   The panel commits to a single dark look, so every colour is defined once
-   here rather than as a light/dark pair. Surfaces climb from --bg (the page)
-   through --surface-1 (cards, sidebar) to --surface-3 (controls sitting on a
-   card); anything that needs to read as "on top of" something else moves up
-   one step instead of inventing a new hex. */
+   Colour is one Material 3 scheme — a warm terracotta grown from #8F4C38 —
+   in two modes. The two blocks below are the only place a raw hex appears;
+   every rule after them works in named roles, so a mode is a table of values
+   and nothing else. `data-theme` on <html> is always resolved to light or
+   dark before first paint (see theme.ts), so dark needs one block, not a
+   media query and an override of it.
+
+   The M3 roles come first, copied from the scheme. Under them are the working
+   names the rest of the sheet uses: surfaces climb from --bg (the page)
+   through --surface-1 (cards, sidebar) to --surface-4 (a control sitting on a
+   card), which is M3's container ladder under a shorter name. Anything that
+   has to read as "on top of" something else moves up one step rather than
+   inventing a value. */
 
 :root {
-  --bg: #080b11;
-  --bg-input: #0a0e15;
+  /* --- M3 roles, light ----------------------------------------------
+     Only the roles the panel actually paints with; the scheme's secondary
+     family and the containers nothing reads are left out rather than carried
+     as decoration. */
+  --primary: #8f4c38;
+  --on-primary: #ffffff;
+  --primary-container: #ffdbd1;
+  --on-primary-container: #723523;
+  --error: #ba1a1a;
+  --on-error-container: #93000a;
+  --surface: #fff8f6;
+  --on-surface: #231917;
+  --on-surface-variant: #53433f;
+  --outline: #85736e;
+  --outline-variant: #d8c2bc;
+  --surface-lowest: #ffffff;
+  --surface-low: #fff1ed;
+  --surface-container: #fceae5;
+  --surface-high: #f7e4e0;
+  --surface-highest: #f1dfda;
+  --inverse-surface: #392e2b;
+  --inverse-on-surface: #ffede8;
+  --inverse-primary: #ffb5a0;
 
-  --surface-1: #10151e;
-  --surface-2: #161d29;
-  --surface-3: #1d2533;
-  --surface-4: #242e3e;
+  /* --- semantics the scheme has no role for -------------------------- */
 
-  --border: #1e2633;
-  --border-strong: #2c3648;
-  --border-accent: #3c5a4a;
+  /* A server is running or it is not, and a terracotta "running" dot reads as
+     a warning. So go and caution keep hues of their own — caution stepped off
+     the scheme's tertiary so it still belongs to the palette — and each is
+     checked for 3:1 against the surface it sits on. */
+  --ok: #2e7d55;
+  --ok-ink: #235f41;
+  --ok-soft: rgba(46, 125, 85, 0.1);
+  --caution: #a8801b;
+  --caution-ink: #534619;
+  --caution-soft: rgba(140, 116, 46, 0.14);
 
-  --text: #dfe5ef;
-  --text-dim: #8d98ab;
-  --text-faint: #6b7688;
+  /* --- working names ------------------------------------------------- */
 
-  --accent: #46b17a;
-  --accent-hover: #5cc78e;
-  --accent-ink: #04150c;
-  --accent-soft: rgba(70, 177, 122, 0.14);
-  --accent-glow: rgba(70, 177, 122, 0.28);
+  /* Light runs the ladder the way a light UI reads it: the page is the warm
+     tinted surface, a card is plain white sitting on top of it, and anything
+     nested inside a card goes *warmer* to look recessed. Dark inverts that —
+     the page is the darkest thing and every step up is lighter — which is why
+     the two modes assign these five from opposite ends of the same ladder. */
+  --bg: var(--surface);
+  --bg-input: var(--surface);
 
-  --danger: #d0666a;
-  --danger-hover: #e5807f;
-  --danger-soft: rgba(208, 102, 106, 0.13);
-  --warn: #e0b13a;
-  --warn-soft: rgba(224, 177, 58, 0.13);
+  --surface-1: var(--surface-lowest);
+  --surface-2: var(--surface-low);
+  --surface-3: var(--surface-container);
+  --surface-4: var(--surface-high);
 
-  --state-stopped: #6b7484;
-  --state-starting: #e0b13a;
-  --state-running: #46b17a;
-  --state-stopping: #e0b13a;
-  --state-crashed: #d0666a;
+  /* Two very faint washes over the page, drawn from the scheme rather than
+     from a hue of their own. */
+  --wash-1: rgba(143, 76, 56, 0.05);
+  --wash-2: rgba(108, 93, 47, 0.045);
+
+  --border: var(--outline-variant);
+  --border-strong: #c3aca6;
+  --border-accent: #dfaf9f;
+
+  --text: var(--on-surface);
+  --text-dim: var(--on-surface-variant);
+  --text-faint: var(--outline);
+
+  --accent: var(--primary);
+  /* Hover moves *towards* the ink of the mode, so it darkens on light and
+     lightens on dark rather than always going one way. */
+  --accent-hover: var(--on-primary-container);
+  --accent-ink: var(--on-primary);
+  --accent-soft: rgba(143, 76, 56, 0.1);
+  --accent-glow: rgba(143, 76, 56, 0.22);
+  --accent-face: linear-gradient(180deg, #9d5641, #8a4835);
+  --accent-face-hover: linear-gradient(180deg, #ac6149, #96513c);
+  --accent-face-off: #ead7d0;
+  --accent-ink-off: #ab948c;
+
+  --danger: var(--error);
+  --danger-hover: var(--on-error-container);
+  --danger-ink: var(--on-error-container);
+  --danger-soft: rgba(186, 26, 26, 0.08);
+  --danger-face: linear-gradient(180deg, #fff1ef, #ffe4e0);
+  --danger-face-hover: linear-gradient(180deg, #ffe6e2, #ffd6d1);
+  --danger-edge: #f0bdb6;
+  --danger-edge-hover: #e39c93;
+
+  --state-stopped: var(--outline);
+  --state-starting: var(--caution);
+  --state-running: var(--ok);
+  --state-crashed: var(--error);
+
+  /* Surface effects. A card is lit from the top in both modes; on light that
+     is a white sheen, on dark a much fainter one, and neither is a colour a
+     rule should have to know. */
+  --sheen: rgba(255, 255, 255, 0.6);
+  --sunken: rgba(87, 60, 52, 0.035);
+  --inset: inset 0 1px 2px rgba(87, 60, 52, 0.09);
+  --scrim: rgba(43, 32, 29, 0.44);
+  --stripe: rgba(255, 255, 255, 0.24);
+  --brand-face: linear-gradient(150deg, #a85c45, #7d402e);
+  --selection: var(--primary-container);
+  --on-selection: var(--on-primary-container);
+
+  /* The terminal keeps a dark canvas in both modes: Minecraft's log colours
+     are ANSI, and ANSI is written for a dark background. On light that canvas
+     is the scheme's own inverse surface, which is exactly what M3 reserves
+     for a panel that inverts against the page. */
+  --term-bg: var(--inverse-surface);
+  --term-fg: var(--inverse-on-surface);
+  --term-cursor: var(--inverse-primary);
+  --term-selection: #6b4c42;
+  --term-black: #8a7871;
+  --term-bright-black: #a89791;
+  --term-blue: #8ab4f8;
+  --term-bright-blue: #adc9fb;
+  --term-edge: #4a3c38;
 
   --radius-sm: 6px;
   --radius: 9px;
   --radius-lg: 14px;
   --radius-pill: 999px;
 
-  /* One soft shadow per elevation step. Dark UIs read depth from the halo
-     more than the drop, so each is a tight shadow over a wider, softer one. */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow: 0 2px 4px rgba(0, 0, 0, 0.32), 0 8px 24px -12px rgba(0, 0, 0, 0.7);
-  --shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.36), 0 28px 60px -20px rgba(0, 0, 0, 0.75);
+  /* One soft shadow per elevation step, tinted with the scheme's own brown so
+     a card never drops a grey shadow onto a warm page. */
+  --shadow-sm: 0 1px 2px rgba(87, 60, 52, 0.11);
+  --shadow: 0 1px 3px rgba(87, 60, 52, 0.1), 0 8px 22px -12px rgba(87, 60, 52, 0.3);
+  --shadow-lg: 0 4px 10px rgba(87, 60, 52, 0.12), 0 26px 52px -20px rgba(87, 60, 52, 0.36);
 
-  --ring: 0 0 0 3px rgba(70, 177, 122, 0.22);
-  --ring-danger: 0 0 0 3px rgba(208, 102, 106, 0.2);
+  --ring: 0 0 0 3px rgba(143, 76, 56, 0.2);
+  --ring-danger: 0 0 0 3px rgba(186, 26, 26, 0.18);
 
   --dur: 140ms;
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
@@ -61,8 +152,94 @@
   --font-mono: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas,
     'Liberation Mono', monospace;
 
-  color-scheme: dark;
+  color-scheme: light;
   accent-color: var(--accent);
+}
+
+/* The same scheme's dark mode. Only the values move — no rule below this
+   block tests for a mode. */
+:root[data-theme='dark'] {
+  --primary: #ffb5a0;
+  --on-primary: #561f0f;
+  --primary-container: #723523;
+  --on-primary-container: #ffdbd1;
+  --error: #ffb4ab;
+  --on-error-container: #ffdad6;
+  --surface: #1a1110;
+  --on-surface: #f1dfda;
+  --on-surface-variant: #d8c2bc;
+  --outline: #a08c87;
+  --outline-variant: #53433f;
+  --surface-lowest: #140c0b;
+  --surface-low: #231917;
+  --surface-container: #271d1b;
+  --surface-high: #322825;
+  --surface-highest: #3d3230;
+  --inverse-surface: #f1dfda;
+  --inverse-on-surface: #392e2b;
+  --inverse-primary: #8f4c38;
+
+  --ok: #58c58c;
+  --ok-ink: #9ddcb8;
+  --ok-soft: rgba(88, 197, 140, 0.13);
+  --caution: #e0b13a;
+  --caution-ink: #e8d9ae;
+  --caution-soft: rgba(216, 197, 141, 0.12);
+
+  /* The ladder read from the other end: the page is the darkest step and a
+     card is one lighter, where light has the page tinted and the card white. */
+  --bg-input: var(--surface-lowest);
+  --surface-1: var(--surface-low);
+  --surface-2: var(--surface-container);
+  --surface-3: var(--surface-high);
+  --surface-4: var(--surface-highest);
+
+  --wash-1: rgba(255, 181, 160, 0.07);
+  --wash-2: rgba(216, 197, 141, 0.05);
+
+  --border-strong: #62504b;
+  --border-accent: #7d5445;
+
+  --accent-soft: rgba(255, 181, 160, 0.12);
+  --accent-glow: rgba(255, 181, 160, 0.26);
+  --accent-face: linear-gradient(180deg, #ffb5a0, #eb9c86);
+  --accent-face-hover: linear-gradient(180deg, #ffc6b4, #f7a893);
+  --accent-face-off: #4a332c;
+  --accent-ink-off: #97817a;
+
+  --danger-soft: rgba(255, 180, 171, 0.11);
+  --danger-face: linear-gradient(180deg, #3a2320, #2e1b19);
+  --danger-face-hover: linear-gradient(180deg, #4a2c28, #3a2320);
+  --danger-edge: #5e3a35;
+  --danger-edge-hover: #7d4b44;
+
+  --sheen: rgba(255, 255, 255, 0.03);
+  --sunken: rgba(255, 255, 255, 0.014);
+  --inset: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  --scrim: rgba(10, 6, 5, 0.7);
+  --stripe: rgba(255, 255, 255, 0.16);
+  --brand-face: linear-gradient(150deg, #ffb5a0, #c97b62);
+  --selection: rgba(255, 181, 160, 0.28);
+  --on-selection: #ffede8;
+
+  --term-bg: var(--surface-lowest);
+  --term-fg: var(--on-surface);
+  --term-cursor: var(--primary);
+  --term-selection: #5d4037;
+  --term-black: #7c6a65;
+  --term-bright-black: #a08c87;
+  --term-blue: #8ab4f8;
+  --term-bright-blue: #adc9fb;
+  --term-edge: var(--outline-variant);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.42);
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.34), 0 8px 24px -12px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.38), 0 28px 60px -20px rgba(0, 0, 0, 0.75);
+
+  --ring: 0 0 0 3px rgba(255, 181, 160, 0.24);
+  --ring-danger: 0 0 0 3px rgba(255, 180, 171, 0.2);
+
+  color-scheme: dark;
 }
 
 * {
@@ -77,12 +254,14 @@ body,
 }
 
 body {
-  /* Two very wide, very faint washes: enough to keep a full-screen dark panel
-     from reading as a flat sheet, faint enough that no text sits on a
-     gradient it has to fight. Fixed so scrolling panes do not drag them. */
+  /* Two very wide, very faint washes: enough to keep a full-screen panel from
+     reading as a flat sheet, faint enough that no text sits on a gradient it
+     has to fight. Both are drawn from the scheme — primary at the top left,
+     tertiary at the top right — so the page is warm before anything is on it.
+     Fixed so scrolling panes do not drag them. */
   background:
-    radial-gradient(1100px 620px at 12% -12%, rgba(70, 177, 122, 0.09), transparent 62%),
-    radial-gradient(900px 520px at 96% -6%, rgba(57, 135, 229, 0.07), transparent 58%),
+    radial-gradient(1100px 620px at 12% -12%, var(--wash-1), transparent 62%),
+    radial-gradient(900px 520px at 96% -6%, var(--wash-2), transparent 58%),
     var(--bg);
   background-attachment: fixed;
   color: var(--text);
@@ -102,13 +281,13 @@ h3 {
 }
 
 code {
-  background: var(--bg-input);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 5px;
   padding: 1px 5px;
   font-family: var(--font-mono);
   font-size: 0.88em;
-  color: #b9c6d6;
+  color: var(--text-dim);
 }
 
 a {
@@ -122,15 +301,15 @@ a:hover {
 }
 
 ::selection {
-  background: var(--accent-glow);
-  color: #fff;
+  background: var(--selection);
+  color: var(--on-selection);
 }
 
-/* One scrollbar treatment for the whole app: the default light-on-dark
-   scrollbar is the loudest thing on the page otherwise. */
+/* One scrollbar treatment for the whole app: the platform default is the
+   loudest thing on the page otherwise. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--surface-4) transparent;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -143,14 +322,14 @@ a:hover {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--surface-3);
+  background: var(--border);
   border: 2px solid transparent;
   background-clip: padding-box;
   border-radius: var(--radius-pill);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--surface-4);
+  background: var(--border-strong);
   background-clip: padding-box;
 }
 
@@ -180,7 +359,9 @@ a:hover {
   flex-direction: column;
   gap: 12px;
   padding: 14px 12px;
-  background: linear-gradient(180deg, #11161f 0%, #0c1017 100%);
+  /* One step off the page rather than a colour of its own: the rail reads as
+     a container, and the main pane keeps the lighter surface. */
+  background: var(--surface-1);
   border-right: 1px solid var(--border);
   min-height: 0;
 }
@@ -203,11 +384,11 @@ a:hover {
   height: 34px;
   flex: none;
   border-radius: 10px;
-  background: linear-gradient(150deg, var(--accent-hover), #2e7d55);
+  background: var(--brand-face);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.25),
     0 4px 12px -4px var(--accent-glow);
-  color: var(--accent-ink);
+  color: var(--on-primary);
   font-size: 17px;
   transition: transform var(--dur) var(--ease);
 }
@@ -296,7 +477,7 @@ a:hover {
 
 .sidebar__link--active,
 .sidebar__item--active {
-  background: linear-gradient(90deg, var(--accent-soft), rgba(70, 177, 122, 0.03));
+  background: linear-gradient(90deg, var(--accent-soft), transparent);
   border-color: var(--border-accent);
   color: var(--text);
 }
@@ -383,6 +564,36 @@ a:hover {
   white-space: nowrap;
 }
 
+/* Light / dark / 跟随系统, cycled in place. It lives beside the username
+   rather than in 设置 because it is a per-person, per-device preference and
+   the one setting you change without meaning to open a settings page. */
+.theme-toggle {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.theme-toggle:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+
 .main {
   display: flex;
   flex-direction: column;
@@ -438,11 +649,11 @@ a:hover {
   width: 46px;
   height: 46px;
   border-radius: 13px;
-  background: linear-gradient(150deg, var(--accent-hover), #2e7d55);
+  background: var(--brand-face);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.25),
     0 8px 22px -8px var(--accent-glow);
-  color: var(--accent-ink);
+  color: var(--on-primary);
   font-size: 23px;
 }
 
@@ -493,7 +704,7 @@ a:hover {
 
 .btn:hover:not(:disabled) {
   background: linear-gradient(180deg, var(--surface-4), var(--surface-3));
-  border-color: #3a465b;
+  border-color: var(--outline);
   transform: translateY(-1px);
 }
 
@@ -514,8 +725,8 @@ a:hover {
 }
 
 .btn--primary {
-  background: linear-gradient(180deg, var(--accent-hover), #3a9a68);
-  border-color: #3a9a68;
+  background: var(--accent-face);
+  border-color: transparent;
   color: var(--accent-ink);
   font-weight: 600;
   box-shadow:
@@ -524,31 +735,31 @@ a:hover {
 }
 
 .btn--primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #6ad49b, var(--accent));
-  border-color: var(--accent-hover);
+  background: var(--accent-face-hover);
+  border-color: transparent;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.28),
     0 8px 20px -8px var(--accent-glow);
 }
 
-/* opacity alone leaves the green primary looking clickable when it isn't */
+/* opacity alone leaves the filled primary looking clickable when it isn't */
 .btn--primary:disabled {
-  background: #2b3a33;
-  border-color: #2b3a33;
-  color: #728a7c;
+  background: var(--accent-face-off);
+  border-color: transparent;
+  color: var(--accent-ink-off);
   opacity: 1;
   box-shadow: none;
 }
 
 .btn--danger {
-  background: linear-gradient(180deg, #2a1d21, #221a1d);
-  border-color: #4d333a;
-  color: var(--danger-hover);
+  background: var(--danger-face);
+  border-color: var(--danger-edge);
+  color: var(--danger-ink);
 }
 
 .btn--danger:hover:not(:disabled) {
-  background: linear-gradient(180deg, #3a262b, #2c1e22);
-  border-color: #6a4149;
+  background: var(--danger-face-hover);
+  border-color: var(--danger-edge-hover);
 }
 
 .btn--danger:focus-visible {
@@ -600,7 +811,7 @@ a:hover {
   background: var(--bg-input);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--inset);
   color: var(--text);
   font-family: inherit;
   font-size: 13px;
@@ -623,7 +834,7 @@ a:hover {
 .field input:hover:not(:disabled),
 .field select:hover:not(:disabled),
 .field textarea:hover:not(:disabled) {
-  border-color: #38445a;
+  border-color: var(--outline);
 }
 
 .field input:focus,
@@ -698,25 +909,25 @@ a:hover {
 
 .alert--error {
   background: var(--danger-soft);
-  border-color: rgba(208, 102, 106, 0.32);
+  border-color: color-mix(in srgb, var(--danger) 34%, transparent);
   border-left-color: var(--danger);
-  color: #f0c8c8;
+  color: var(--danger-ink);
 }
 
 .alert--ok {
-  background: var(--accent-soft);
-  border-color: rgba(70, 177, 122, 0.3);
-  border-left-color: var(--accent);
-  color: #c4e7d4;
+  background: var(--ok-soft);
+  border-color: color-mix(in srgb, var(--ok) 34%, transparent);
+  border-left-color: var(--ok);
+  color: var(--ok-ink);
 }
 
 /* Used for the warnings on the terminal settings page, where the point is
    "read this before you click", not "something went wrong". */
 .alert--warn {
-  background: var(--warn-soft);
-  border-color: rgba(224, 177, 58, 0.3);
-  border-left-color: var(--state-starting);
-  color: #ecd9a8;
+  background: var(--caution-soft);
+  border-color: color-mix(in srgb, var(--caution) 36%, transparent);
+  border-left-color: var(--caution);
+  color: var(--caution-ink);
 }
 
 .alert .link {
@@ -759,18 +970,16 @@ a:hover {
 .status__dot--starting,
 .status__dot--stopping {
   background: var(--state-starting);
-  box-shadow: 0 0 0 3px rgba(224, 177, 58, 0.16);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-starting) 18%, transparent);
   animation: pulse 1.2s ease-in-out infinite;
 }
 .status__dot--running {
   background: var(--state-running);
-  box-shadow:
-    0 0 6px rgba(70, 177, 122, 0.75),
-    0 0 0 3px rgba(70, 177, 122, 0.14);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-running) 20%, transparent);
 }
 .status__dot--crashed {
   background: var(--state-crashed);
-  box-shadow: 0 0 0 3px rgba(208, 102, 106, 0.16);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-crashed) 18%, transparent);
 }
 
 @keyframes pulse {
@@ -946,15 +1155,14 @@ a:hover {
   padding: 10px 4px 10px 12px;
   /* Flat, not a gradient: the terminal canvas paints its own opaque
      background on top, so anything but a single colour shows a seam. */
-  background: var(--bg-input);
-  border: 1px solid var(--border);
+  background: var(--term-bg);
+  border: 1px solid var(--term-edge);
   border-radius: var(--radius);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   overflow: hidden;
 }
 
 .console__error {
-  color: #f0c8c8;
+  color: var(--danger-ink);
   font-size: 12px;
 }
 
@@ -1088,15 +1296,15 @@ a:hover {
   background: var(--surface-1);
   /* A single hairline of light along the top edge; it is what makes a card
      sit on the page instead of being a hole cut into it. */
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.028), transparent 96px);
+  background-image: linear-gradient(180deg, var(--sheen), transparent 96px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
 }
 
 .panel--warn {
-  border-color: rgba(224, 177, 58, 0.3);
-  background: linear-gradient(180deg, rgba(224, 177, 58, 0.07), transparent 120px), var(--surface-1);
+  border-color: color-mix(in srgb, var(--caution) 34%, transparent);
+  background: linear-gradient(180deg, var(--caution-soft), transparent 120px), var(--surface-1);
 }
 
 .panel__title {
@@ -1135,7 +1343,7 @@ a:hover {
 
 .update {
   background: var(--surface-1);
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.028), transparent 96px);
+  background-image: linear-gradient(180deg, var(--sheen), transparent 96px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
@@ -1406,7 +1614,7 @@ a:hover {
   align-items: center;
   gap: 12px;
   padding: 34px 20px;
-  background: rgba(255, 255, 255, 0.012);
+  background: var(--sunken);
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-lg);
   color: var(--text-dim);
@@ -1429,7 +1637,7 @@ a:hover {
   gap: 6px;
   padding: 16px;
   background: var(--surface-1);
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.028), transparent 80px);
+  background-image: linear-gradient(180deg, var(--sheen), transparent 80px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
@@ -1483,7 +1691,7 @@ a:hover {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(3, 5, 9, 0.68);
+  background: var(--scrim);
   backdrop-filter: blur(6px);
   z-index: 50;
   animation: fade 160ms var(--ease) both;
@@ -1524,21 +1732,33 @@ a:hover {
 
 /* ------------------------------------------------------------------ charts
 
-   The chart tokens are defined once rather than as a light/dark pair. The two
-   series colours were checked against --chart-surface with the palette
-   validator: CVD ΔE 19.6 between them, both above 3:1 contrast — the surface
-   has since darkened slightly, which only widens that margin. Swapping either
-   colour means re-running it. */
+   Series colours are not the brand's. A chart's job is to keep CPU apart from
+   memory, and two hues stepped off one terracotta cannot do that — so each
+   mode gets its own pair, stepped for the surface it is drawn on and put
+   through the palette validator against that surface:
+
+     light (#ffffff)  CVD ΔE 21.7, both ≥ 3:1
+     dark  (#231917)  CVD ΔE 19.6, both ≥ 3:1
+
+   Swapping either colour, or moving the card surface under them, means
+   re-running it. The status trio is separate and never used as a series. */
 
 :root {
-  --chart-surface: #10151e;
-  --chart-grid: #1e2633;
-  --chart-reference: #3b4553;
+  --chart-surface: var(--surface-1);
+  --chart-grid: #ead6d0;
+  --chart-reference: #c3aca6;
+  --series-cpu: #2a6ad6;
+  --series-memory: #1b8a5f;
+  --status-ok: var(--ok);
+  --status-warning: var(--caution);
+  --status-critical: var(--error);
+}
+
+:root[data-theme='dark'] {
+  --chart-grid: #3d3230;
+  --chart-reference: #6b5b57;
   --series-cpu: #3987e5;
   --series-memory: #199e70;
-  --status-ok: #2fa96a;
-  --status-warning: #e0b13a;
-  --status-critical: #d0666a;
 }
 
 .chart {
@@ -1699,7 +1919,7 @@ a:hover {
   padding: 20px;
   margin-bottom: 24px;
   background: var(--surface-1);
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.028), transparent 120px);
+  background-image: linear-gradient(180deg, var(--sheen), transparent 120px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
@@ -1766,27 +1986,27 @@ a:hover {
 
 .meter__track {
   height: 6px;
-  background: var(--surface-3);
+  background: var(--surface-4);
   border-radius: var(--radius-pill);
   overflow: hidden;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--inset);
 }
 
+/* Flat, one colour per state. The gradient-and-glow the fills used to carry
+   was a dark-UI device; on a light surface it only muddies the one thing the
+   bar has to say, which is how far along it is. */
 .meter__fill {
   height: 100%;
   border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, #279a5e, var(--status-ok));
-  box-shadow: 0 0 8px -1px rgba(47, 169, 106, 0.55);
+  background: var(--status-ok);
   transition: width 0.4s ease;
 }
 
 .meter__fill--warning {
-  background: linear-gradient(90deg, #c99a24, var(--status-warning));
-  box-shadow: 0 0 8px -1px rgba(224, 177, 58, 0.5);
+  background: var(--status-warning);
 }
 .meter__fill--critical {
-  background: linear-gradient(90deg, #b9484d, var(--status-critical));
-  box-shadow: 0 0 8px -1px rgba(208, 102, 106, 0.5);
+  background: var(--status-critical);
 }
 
 .meter__detail {
@@ -1802,7 +2022,7 @@ a:hover {
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.012);
+  background: var(--sunken);
 }
 
 .data-table {
@@ -1874,7 +2094,7 @@ a:hover {
 }
 
 .link--danger:hover {
-  color: #f09a9a;
+  color: var(--danger);
 }
 
 /* ------------------------------------------------------------- file manager */
@@ -1973,15 +2193,15 @@ a:hover {
 .progress {
   position: relative;
   height: 22px;
-  background: var(--surface-3);
+  background: var(--surface-4);
   border-radius: var(--radius-sm);
   overflow: hidden;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--inset);
 }
 
 .progress__bar {
   height: 100%;
-  background: linear-gradient(90deg, #2f8d5f, var(--accent));
+  background: var(--accent);
   transition: width 0.2s linear;
 }
 
@@ -1993,11 +2213,11 @@ a:hover {
   inset: 0;
   background-image: linear-gradient(
     115deg,
-    rgba(255, 255, 255, 0.12) 25%,
+    var(--stripe) 25%,
     transparent 25%,
     transparent 50%,
-    rgba(255, 255, 255, 0.12) 50%,
-    rgba(255, 255, 255, 0.12) 75%,
+    var(--stripe) 50%,
+    var(--stripe) 75%,
     transparent 75%
   );
   background-size: 22px 22px;
@@ -2013,6 +2233,8 @@ a:hover {
   }
 }
 
+/* The label sits over both the filled and the unfilled half of the bar, so it
+   cannot take either one's ink; the halo is what keeps it legible on both. */
 .progress__label {
   position: absolute;
   inset: 0;
@@ -2021,7 +2243,8 @@ a:hover {
   font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  color: var(--text);
+  text-shadow: 0 0 4px var(--bg-input), 0 0 8px var(--bg-input);
 }
 
 .file-editor {
@@ -2030,7 +2253,7 @@ a:hover {
   background: var(--bg-input);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--inset);
   color: var(--text);
   font-family: var(--font-mono);
   font-size: 12.5px;
@@ -2128,7 +2351,7 @@ a:hover {
 
 /* The machine's own Java, which the panel reports but does not own. */
 .asset--muted {
-  background: rgba(255, 255, 255, 0.012);
+  background: var(--sunken);
   border-style: dashed;
 }
 
@@ -2156,9 +2379,9 @@ a:hover {
 }
 
 .asset__tile--accent {
-  background: linear-gradient(150deg, rgba(70, 177, 122, 0.22), rgba(70, 177, 122, 0.08));
+  background: var(--primary-container);
   border-color: var(--border-accent);
-  color: var(--accent-hover);
+  color: var(--on-primary-container);
 }
 
 .asset__title {
@@ -2279,7 +2502,7 @@ a:hover {
 }
 
 .choice:hover:not(:disabled) {
-  border-color: #3a465b;
+  border-color: var(--outline);
   transform: translateY(-1px);
 }
 
@@ -2288,8 +2511,11 @@ a:hover {
   box-shadow: var(--ring);
 }
 
+/* Layered over the base rather than replacing it: a background shorthand here
+   drops --bg-input, and the picked option ends up *paler* than the ones it is
+   picked out of. */
 .choice--active {
-  background: linear-gradient(180deg, var(--accent-soft), rgba(70, 177, 122, 0.04));
+  background: linear-gradient(180deg, var(--accent-soft), transparent), var(--bg-input);
   border-color: var(--accent);
 }
 
@@ -2525,24 +2751,26 @@ input.input-slim:disabled {
   margin-top: 0;
 }
 
-/* Badge variants used on the asset cards. */
+/* Badge variants used on the asset cards. "Installed" and "running" are the
+   same go-signal the status dots use, so they take that hue rather than the
+   brand's — a terracotta "运行中" would read as a caution. */
 .badge--ok {
-  background: var(--accent-soft);
-  border-color: var(--border-accent);
-  color: #9fd9b8;
+  background: var(--ok-soft);
+  border-color: color-mix(in srgb, var(--ok) 34%, transparent);
+  color: var(--ok-ink);
 }
 
 .badge--live {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
+  background: var(--ok);
+  border-color: var(--ok);
+  color: var(--surface-lowest);
   font-weight: 600;
 }
 
 .badge--warn {
-  background: var(--warn-soft);
-  border-color: rgba(224, 177, 58, 0.35);
-  color: #e6cd8e;
+  background: var(--caution-soft);
+  border-color: color-mix(in srgb, var(--caution) 36%, transparent);
+  color: var(--caution-ink);
 }
 
 /* --------------------------------------------------- settings & dashboard */
@@ -2584,7 +2812,7 @@ input.input-slim:disabled {
   gap: 4px;
   padding: 15px 16px;
   background: var(--surface-1);
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.028), transparent 70px);
+  background-image: linear-gradient(180deg, var(--sheen), transparent 70px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
@@ -2847,7 +3075,7 @@ input.input-slim:disabled {
 
 .hostterm__dot--open {
   background: var(--state-running);
-  box-shadow: 0 0 6px rgba(70, 177, 122, 0.7);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-running) 20%, transparent);
 }
 
 .hostterm__dot--connecting {
@@ -2864,10 +3092,11 @@ input.input-slim:disabled {
   align-items: center;
   gap: 10px;
   padding: 9px 13px;
-  background: var(--warn-soft);
-  border: 1px solid rgba(224, 177, 58, 0.3);
-  border-left: 3px solid var(--state-starting);
+  background: var(--caution-soft);
+  border: 1px solid color-mix(in srgb, var(--caution) 34%, transparent);
+  border-left: 3px solid var(--caution);
   border-radius: var(--radius-sm);
+  color: var(--caution-ink);
   font-size: 13px;
 }
 
@@ -2879,10 +3108,9 @@ input.input-slim:disabled {
   padding: 10px 4px 10px 12px;
   /* Flat, not a gradient: the terminal canvas paints its own opaque
      background on top, so anything but a single colour shows a seam. */
-  background: var(--bg-input);
-  border: 1px solid var(--border);
+  background: var(--term-bg);
+  border: 1px solid var(--term-edge);
   border-radius: var(--radius);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   overflow: hidden;
 }
 

@@ -5,10 +5,10 @@ import { formatBytes, formatPercent, formatTime } from '../format'
 import type { InstanceMetrics, InstanceStatus } from '../types'
 import { TimeSeriesChart, type Point } from './TimeSeriesChart'
 
-// Validated against the panel's dark chart surface (#131720): CVD ΔE 19.6,
-// both above 3:1 contrast. See internal notes in styles.css.
-const CPU_COLOR = '#3987e5'
-const MEMORY_COLOR = '#199e70'
+// Named rather than literal: each theme steps the pair for its own chart
+// surface, and both steps are validated where they are defined (styles.css).
+const CPU_COLOR = 'var(--series-cpu)'
+const MEMORY_COLOR = 'var(--series-memory)'
 
 const RANGES = [
   { label: '5 分钟', ms: 5 * 60_000 },

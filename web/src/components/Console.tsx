@@ -6,6 +6,7 @@ import '@xterm/xterm/css/xterm.css'
 
 import { useConsole } from '../useConsole'
 import { commonPrefix, complete, trackPlayers, type Candidate } from '../completion'
+import { onThemeChange, terminalTheme } from '../theme'
 import type { ConsoleLine, InstanceState, StateInfo } from '../types'
 import { isLive } from '../types'
 
@@ -83,19 +84,10 @@ export function Console({ instanceId, state, onState }: ConsoleProps) {
       fontSize: 13,
       lineHeight: 1.25,
       scrollback: 5000,
-      theme: {
-        // Matches --bg-input, which is what .console__screen paints behind it.
-        background: '#0a0e15',
-        foreground: '#c9d1d9',
-        cursor: '#0a0e15',
-        selectionBackground: '#2f5580',
-        // Minecraft's log colours map onto the ANSI 16. The defaults are too
-        // dark against that background — black would be invisible.
-        black: '#484f58',
-        brightBlack: '#6e7681',
-        blue: '#6ea8ff',
-        brightBlue: '#89b4ff',
-      },
+      // Read off the tokens, so the canvas matches what .console__screen
+      // paints behind it in either mode. The console takes no input, so the
+      // cursor is hidden by giving it the background.
+      theme: { ...terminalTheme(), cursor: 'transparent' },
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
@@ -118,7 +110,14 @@ export function Console({ instanceId, state, onState }: ConsoleProps) {
     })
     observer.observe(hostRef.current!)
 
+    // The canvas cannot inherit a token, so a mode switch has to be handed to
+    // it; the scrollback is untouched, only the palette is swapped.
+    const unwatch = onThemeChange(() => {
+      term.options.theme = { ...terminalTheme(), cursor: 'transparent' }
+    })
+
     return () => {
+      unwatch()
       observer.disconnect()
       term.dispose()
       termRef.current = null
