@@ -46,7 +46,11 @@ sudo tar -xzf hypercraft-1.1.0-linux-amd64.tar.gz --strip-components=1
 [Releases 页面](https://github.com/Lanscarlos/HyperCraft/releases/latest) —— 不过装好之后面板能自己升级，
 这个链接一般只用一次。
 
-想验下载完整性的话，同一个 release 里有 `SHA256SUMS.txt`：
+国内的机器直连 GitHub 大概率慢到没法用，在 URL 前面加个镜像前缀就行 ——
+`https://ghfast.top/https://github.com/...`，这也是面板自己更新时默认走的那个。
+
+想验下载完整性的话，同一个 release 里有 `SHA256SUMS.txt`（这个建议直连 GitHub 取，
+校验文件和压缩包都从同一个镜像拿的话，校验就没多大意义了）：
 
 ```bash
 sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v1.1.0/SHA256SUMS.txt
