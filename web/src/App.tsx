@@ -5,6 +5,7 @@ import { ChangePasswordDialog } from './components/ChangePasswordDialog'
 import { Dashboard } from './components/Dashboard'
 import { InstanceView } from './components/InstanceView'
 import { Login } from './components/Login'
+import { HostTerminal } from './components/HostTerminal'
 import { NewInstanceDialog } from './components/NewInstanceDialog'
 import { SettingsPage, isSettingsSection } from './components/SettingsPage'
 import type { SettingsSection } from './components/SettingsPage'
@@ -12,6 +13,7 @@ import type { InstanceStatus, User } from './types'
 import { STATE_LABELS, isLive, mergeState } from './types'
 import { useCores } from './useCores'
 import { useJava } from './useJava'
+import { useTerminal } from './useTerminal'
 import { updateLabel, useUpdate } from './useUpdate'
 
 /** How often the instance list refreshes; the console pushes state instantly,
@@ -23,12 +25,15 @@ const POLL_INTERVAL_MS = 5000
 type Route =
   | { kind: 'dashboard' }
   | { kind: 'settings'; section: SettingsSection }
+  | { kind: 'terminal' }
   | { kind: 'instance'; id: string }
 
 function routeFromPath(): Route {
   const path = window.location.pathname
   const instance = path.match(/^\/i\/([^/]+)/)
   if (instance) return { kind: 'instance', id: instance[1] }
+
+  if (path === '/terminal' || path.startsWith('/terminal/')) return { kind: 'terminal' }
 
   const settings = path.match(/^\/settings(?:\/([^/]+))?/)
   if (settings) {
@@ -49,6 +54,8 @@ function pathOf(route: Route): string {
       return `/i/${route.id}`
     case 'settings':
       return `/settings/${route.section}`
+    case 'terminal':
+      return '/terminal'
     default:
       return '/'
   }
@@ -69,6 +76,9 @@ export default function App() {
   const update = useUpdate(Boolean(user))
   const java = useJava(Boolean(user))
   const cores = useCores(Boolean(user))
+  // Not polled, unlike the three above: nothing turns the terminal on but a
+  // person clicking the switch, and that path already refreshes the status.
+  const terminal = useTerminal(Boolean(user))
 
   useEffect(() => {
     api
@@ -98,6 +108,8 @@ export default function App() {
     (section: SettingsSection) => navigate({ kind: 'settings', section }),
     [navigate],
   )
+
+  const openTerminal = useCallback(() => navigate({ kind: 'terminal' }), [navigate])
 
   const refresh = useCallback(async () => {
     try {
@@ -182,6 +194,17 @@ export default function App() {
           >
             <span className="sidebar__name">仪表盘</span>
           </button>
+          {/* Only shown once the operator has switched it on; there is nothing
+              useful behind this entry otherwise, and an always-visible shell
+              icon invites clicking on something you did not ask for. */}
+          {terminal.status?.enabled && terminal.status.supported && (
+            <button
+              className={`sidebar__link${route.kind === 'terminal' ? ' sidebar__link--active' : ''}`}
+              onClick={openTerminal}
+            >
+              <span className="sidebar__name">终端</span>
+            </button>
+          )}
           <button
             className={`sidebar__link${route.kind === 'settings' ? ' sidebar__link--active' : ''}`}
             onClick={() => openSettings(route.kind === 'settings' ? route.section : 'java')}
@@ -238,9 +261,13 @@ export default function App() {
             onSection={openSettings}
             java={java}
             cores={cores}
+            terminal={terminal}
             update={update}
+            onOpenTerminal={openTerminal}
             runningNames={runningNames}
           />
+        ) : route.kind === 'terminal' ? (
+          <HostTerminal terminal={terminal} onOpenSettings={() => openSettings('terminal')} />
         ) : selected ? (
           <InstanceView
             key={selected.id}

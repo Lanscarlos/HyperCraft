@@ -25,6 +25,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/api"
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
+	"github.com/lanscarlos/hypercraft/internal/hostterm"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
@@ -181,6 +182,21 @@ func run() error {
 		},
 	}, logger)
 
+	// The shell the terminal page hands out. Constructed unconditionally so the
+	// settings page can describe what enabling it would give you; it starts no
+	// process until the operator turns the feature on and opens a terminal.
+	shells := hostterm.New(hostterm.Options{
+		Shell:  panel.Terminal.Shell,
+		Dir:    root,
+		Logger: logger,
+	})
+	if panel.Terminal.Enabled {
+		logger.Warn("host terminal is enabled",
+			"shell", shells.Shell(),
+			"note", "anyone who can sign in to the panel gets a shell as this user",
+		)
+	}
+
 	server := api.NewServer(api.Options{
 		Manager:  manager,
 		Store:    st,
@@ -190,6 +206,7 @@ func run() error {
 		Jars:     downloads,
 		Java:     javaInstaller,
 		Updater:  updater,
+		Terminal: shells,
 		Panel:    panel,
 		Version:  version,
 		Logger:   logger,
