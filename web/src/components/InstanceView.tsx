@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { DUR } from '../motion'
 import type { InstanceSection } from '../routes'
 import type { InstanceStatus } from '../types'
 import type { CoreController } from '../useCores'
@@ -130,10 +131,26 @@ function Pane({
   scroll?: boolean
   children: React.ReactNode
 }) {
+  // Every other view in the panel gets its entrance from the fact that it was
+  // just created; these were created the first time you opened them and are
+  // only being un-hidden, which no CSS animation fires on. So the switch marks
+  // the pane that has come forward for the length of one entrance and then
+  // takes the mark off — and taking it off is the point, because a class that
+  // stayed would mean the animation never ran a second time.
+  const [entering, setEntering] = useState(false)
+  useEffect(() => {
+    if (!active) return
+    setEntering(true)
+    const timer = window.setTimeout(() => setEntering(false), DUR.mid)
+    return () => window.clearTimeout(timer)
+  }, [active])
+
   return (
     <div
       hidden={!active}
-      className={`instance__pane${scroll ? ' instance__pane--scroll' : ''}`}
+      className={`instance__pane${scroll ? ' instance__pane--scroll' : ''}${
+        entering ? ' instance__pane--entering' : ''
+      }`}
       id={`instance-panel-${id}`}
     >
       {children}

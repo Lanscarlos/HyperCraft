@@ -165,8 +165,40 @@
   --ring: 0 0 0 3px rgba(143, 76, 56, 0.2);
   --ring-danger: 0 0 0 3px rgba(186, 26, 26, 0.18);
 
+  /* --- motion ---------------------------------------------------------
+     One scale, four steps, and the step is picked by what the movement is
+     *for* rather than by how far it travels:
+
+       --dur-1  a tint under the pointer: hover, press, focus. Short enough to
+                read as the surface reacting rather than as an animation.
+       --dur    the default — a control changing state where it stands.
+       --dur-3  something arriving or leaving in a fixed spot: a menu, a
+                popover, one row of a list landing.
+       --dur-4  something that crosses the screen or covers it: the drawer,
+                the rail folding, a modal.
+
+     Two curves do nearly all of it. --ease is emphasized — slow off the mark,
+     long in the tail — which is what gives an arriving surface some weight;
+     --ease-in is its mirror and is only ever used on the way out, because a
+     thing leaving should accelerate away instead of loitering. --ease-out is
+     the flat one, for anything driven by data rather than by a hand (a bar
+     tracking a number), where a long tail just reads as lag. --ease-spring
+     overshoots by a hair and is kept for the couple of places a control should
+     feel sprung. */
+  --dur-1: 90ms;
   --dur: 140ms;
+  --dur-3: 220ms;
+  --dur-4: 300ms;
+
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-in: cubic-bezier(0.5, 0, 0.9, 0.3);
+  --ease-out: cubic-bezier(0.33, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.3, 1.5, 0.6, 1);
+
+  /* How long a bar takes to walk to a new reading. Longer than any of the
+     above on purpose: it is not a response to a click, it is a value moving,
+     and it has to stay legible while it moves. */
+  --dur-data: 400ms;
 
   --font-mono: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas,
     'Liberation Mono', monospace;
@@ -378,6 +410,145 @@ a:hover {
   outline-offset: 2px;
 }
 
+/* ----------------------------------------------------------------- motion
+
+   The tokens say how long and along what curve. This section holds the parts
+   that belong to no single component: the shared keyframes, and the three
+   conventions that are what actually make a hundred separate rules feel like
+   one panel rather than a hundred separately-tuned widgets.
+
+   **Press.** Everything that can be pressed sinks under the pointer and comes
+   back on release — a pixel of travel, or a percent and a half of scale. Small
+   enough that nobody would name it, big enough that a tap is acknowledged
+   before the request it fired has left the machine. A control with a hover
+   state and no press state is the commonest reason a panel feels hard: the
+   hover promises the thing is live and then the click says nothing at all, so
+   the only feedback left is the result arriving a few hundred milliseconds
+   later. `--press` is the amount, in one place, so a row and a card and a tab
+   all sink by the same amount.
+
+   **Symmetry.** Anything that animates in animates out. A sheet that rises
+   into place over 220ms and then vanishes between two frames reads as a
+   glitch, not as a dismissal — which is why the menus, the modals and the
+   palette carry a data-state through their exit instead of being unmounted
+   where they stand. The exit is always the shorter of the two and always on
+   --ease-in: you have already decided to leave, and waiting out a leisurely
+   fade for something you are done with is its own kind of friction.
+
+   **Arrival.** A list that appears all at once reads as a repaint. The same
+   list arriving over a fifth of a second reads as a list. See the stagger at
+   the bottom of this section. */
+
+:root {
+  /* Both halves of the press, so nothing has to re-derive them. */
+  --press: 0.985;
+  --press-drop: 1px;
+
+  /* Lets height/block-size animate to and from `auto` — what the sidebar's
+     folding group headings and the expanding <details> below need. Ignored by
+     browsers that do not have it, which simply keeps today's instant open. */
+  interpolate-size: allow-keywords;
+}
+
+/* Something arriving in place: up a little, out from under itself a little.
+   Used by every sheet, card and dialog that appears where it is asked for. */
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Its exit. Deliberately not `pop` reversed: it leaves from where it is and
+   shrinks slightly rather than retracing the arc it came in on, which is what
+   keeps a dismissal from looking like a rewind. */
+@keyframes pop-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(3px) scale(0.985);
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* The light/dark dissolve. The default cross-fade is the right shape; it is
+   only too slow for something the toggle fires three times while someone makes
+   up their mind. See theme.ts, which is what starts it. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--dur-4);
+  animation-timing-function: var(--ease);
+}
+
+/* ---- the stagger -------------------------------------------------------
+
+   One rule, applied to every collection in the panel, so a grid of instance
+   cards and a table of rows and the metric strip all fill in the same way.
+
+   Two details matter. The step is small — 26ms — because the point is a
+   direction of travel, not a performance; anything slower turns loading a
+   list into watching one. And it stops at the eighth child: past that the
+   delay would outlast anyone's patience for the ninth row, so everything
+   below simply lands with the eighth.
+
+   `backwards`, not `both`. `both` would leave the animation's final
+   `transform: none` in force forever, and an animated value outranks a
+   declared one — every :hover lift on a card in here would silently stop
+   working. `backwards` fills only the delay and then gets out of the way.
+
+   The alert list is not in here: .alert brings an entrance of its own, and a
+   warning is the one thing that should not wait its turn. */
+:is(
+  .cards,
+  .dashboard__instances,
+  .summary,
+  .asset-grid,
+  .choice-grid,
+  .tiles,
+  .rows,
+  .plugin-rows,
+  .device-list
+) > * {
+  animation: rise var(--dur-3) var(--ease) backwards;
+
+  &:nth-child(2) {
+    animation-delay: 26ms;
+  }
+  &:nth-child(3) {
+    animation-delay: 52ms;
+  }
+  &:nth-child(4) {
+    animation-delay: 78ms;
+  }
+  &:nth-child(5) {
+    animation-delay: 104ms;
+  }
+  &:nth-child(6) {
+    animation-delay: 130ms;
+  }
+  &:nth-child(7) {
+    animation-delay: 156ms;
+  }
+  &:nth-child(n + 8) {
+    animation-delay: 182ms;
+  }
+}
+
 /* ------------------------------------------------------------------ shell */
 
 .boot {
@@ -422,6 +593,12 @@ a:hover {
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
   height: 100%;
+  /* Folding to the rail moves exactly one number, and animating that number is
+     the whole difference between a jump cut and the column sliding shut under
+     the pointer that asked for it. The content beside it reflows along the
+     way, which is the point: it is one movement, not a resize followed by a
+     repaint of everything to its right. */
+  transition: grid-template-columns var(--dur-4) var(--ease);
 }
 
 .app[data-rail='on'] {
@@ -438,6 +615,13 @@ a:hover {
   background: var(--surface-1);
   border-right: 1px solid var(--border);
   min-height: 0;
+  /* Clipped for the length of the fold: a 240px-wide row inside a column on
+     its way to 64px would otherwise spill across the page for the duration.
+     Nothing here needs to paint outside the column — the active-row marker
+     stops exactly at its left edge — so this costs nothing the rest of the
+     time. */
+  overflow: hidden;
+  transition: padding var(--dur-4) var(--ease);
   /* Focused programmatically when it opens as a drawer; that must not paint a
      ring around the whole panel. */
   outline: none;
@@ -562,7 +746,12 @@ a:hover {
   transition:
     background var(--dur) var(--ease),
     color var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.sidebar__link:active {
+  transform: scale(var(--press));
 }
 
 /* The active row is marked twice — a tinted surface and a bar on the rail —
@@ -577,7 +766,10 @@ a:hover {
   border-radius: 0 3px 3px 0;
   background: var(--accent);
   transform: translateY(-50%);
-  transition: height var(--dur) var(--ease);
+  /* Sprung, and it is the one marker in the panel that is: this bar is how you
+     confirm the click landed on the row you meant, and a hair of overshoot is
+     what makes it read as having snapped into place rather than grown. */
+  transition: height var(--dur-3) var(--ease-spring);
 }
 
 .sidebar__link--active::before {
@@ -652,12 +844,18 @@ a:hover {
   text-decoration: none;
   transition:
     background var(--dur) var(--ease),
-    color var(--dur) var(--ease);
+    color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .sidebar__back:hover {
   background: var(--surface-2);
   color: var(--text);
+}
+
+/* Back is the one row that moves in the direction it goes. */
+.sidebar__back:active {
+  transform: translateX(-2px);
 }
 
 .sidebar__back .icon {
@@ -687,12 +885,17 @@ a:hover {
   cursor: pointer;
   transition:
     border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease);
+    background var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .sidebar__entity--switch:hover {
   background: var(--surface-3);
   border-color: var(--border-strong);
+}
+
+.sidebar__entity--switch:active {
+  transform: scale(var(--press));
 }
 
 .sidebar__entity-dot {
@@ -749,12 +952,19 @@ a:hover {
   text-align: left;
   transition:
     border-color var(--dur) var(--ease),
-    color var(--dur) var(--ease);
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .sidebar__search-btn:hover {
+  background: var(--surface-2);
   border-color: var(--border-strong);
   color: var(--text-dim);
+}
+
+.sidebar__search-btn:active {
+  transform: scale(var(--press));
 }
 
 .sidebar__search-btn .icon {
@@ -820,6 +1030,67 @@ a:hover {
   color: var(--accent);
 }
 
+/* --- entering a scope -------------------------------------------------
+
+   The other half of scopeMorph.ts. That module handles the two things only
+   JavaScript can — the copy of the outgoing list, and the header flying up
+   from the row it replaced — and leaves the incoming list to CSS, which is
+   where a plain entrance belongs.
+
+   It waits 90ms before starting, which is most of the 140ms the old list takes
+   to clear. Both lists live in the same column, so a list that starts arriving
+   into a column still full of the last one is not one movement with two parts
+   — it is two navigations printed over each other, and for a moment neither is
+   readable. The rows then land in sequence, top-down, the way the eye is about
+   to read them.
+
+   `data-entering` is taken off after 300ms, and taking it off is load-bearing:
+   a class that stayed would mean the animation never ran again.
+
+   It is the rows that animate and not the blocks they sit in, which looks like
+   a detail and is not: the row flying up from the old list lands *inside* one
+   of these blocks, and a block fading in from zero would hold its own arriving
+   contents invisible for the first ninety milliseconds — including the one
+   thing in the sidebar that must not be hidden, because it is the one the eye
+   is following. Animating the leaves leaves the flier free. */
+.sidebar[data-entering]
+  :is(.sidebar__back, .sidebar__entity, .sidebar__brand, .sidebar__search-btn, .sidebar__new),
+.sidebar[data-entering] .sidebar__scroll :is(.sidebar__link, .sidebar__group, .sidebar__empty) {
+  animation: rise var(--dur-3) var(--ease) backwards;
+  animation-delay: 90ms;
+}
+
+/* Down each group in turn, which is the order they are about to be read in. */
+.sidebar[data-entering] .sidebar__nav .sidebar__link {
+  &:nth-child(2) {
+    animation-delay: 110ms;
+  }
+  &:nth-child(3) {
+    animation-delay: 130ms;
+  }
+  &:nth-child(n + 4) {
+    animation-delay: 150ms;
+  }
+}
+
+/* The one element that is not arriving: it is already on its way, under a
+   script animation carrying it from wherever its other half used to be. An
+   entrance here would fight that for the same two properties, and an entrance
+   with a delay would blank it for the first third of the journey. */
+.sidebar[data-entering] [data-lead] {
+  animation: none;
+}
+
+/* The copy that the outgoing list leaves in. It is positioned entirely from
+   JavaScript — it has to sit exactly where the real column is — so all this
+   owns is the guarantee that it can never be interacted with: it is a picture
+   of a sidebar that no longer exists, and a click landing on one of its links
+   would navigate somewhere the reader did not ask to go. */
+.sidebar__ghost,
+.sidebar__ghost * {
+  pointer-events: none !important;
+}
+
 /* ------------------------------------------------------------------- rail
 
    Folded, the sidebar is icons and nothing else. Everything that carries text
@@ -831,25 +1102,49 @@ a:hover {
   align-items: stretch;
 }
 
+/* The labels fade before they leave the flow rather than blinking out at the
+   first frame of a 300ms fold. `allow-discrete` is what defers the display
+   change to the end of the fade — a browser that does not know it simply falls
+   back to hiding them at once, which is what happened here before. */
+.sidebar__title,
+.sidebar__state,
+.sidebar__empty,
+.sidebar__kbd,
+.sidebar__entity-text,
+.sidebar__entity-hint,
+.sidebar__name {
+  transition:
+    opacity var(--dur-1) var(--ease),
+    display var(--dur-1) allow-discrete;
+}
+
 .app[data-rail='on'] .sidebar__title,
-.app[data-rail='on'] .sidebar__group,
 .app[data-rail='on'] .sidebar__state,
 .app[data-rail='on'] .sidebar__empty,
 .app[data-rail='on'] .sidebar__kbd,
 .app[data-rail='on'] .sidebar__entity-text,
 .app[data-rail='on'] .sidebar__entity-hint,
 .app[data-rail='on'] .sidebar__name {
+  opacity: 0;
   display: none;
 }
 
 /* A group heading folds to the rule that was under it, so the categories are
-   still separable when their names are gone. */
+   still separable when their names are gone. It collapses rather than
+   disappearing: the heading's own height is what the fold takes away, and
+   watching it close is what says the group is still there. */
+.sidebar__group {
+  overflow: hidden;
+  transition:
+    height var(--dur-4) var(--ease),
+    padding var(--dur-4) var(--ease);
+}
+
 .app[data-rail='on'] .sidebar__group {
   display: block;
   height: 0;
   padding: 6px 0;
   border-top: 1px solid var(--border);
-  overflow: hidden;
 }
 
 .app[data-rail='on'] .sidebar__brand,
@@ -948,7 +1243,8 @@ a:hover {
   transition:
     background var(--dur) var(--ease),
     color var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .topbar__toggle:hover,
@@ -956,6 +1252,15 @@ a:hover {
   background: var(--surface-2);
   border-color: var(--border);
   color: var(--text);
+}
+
+/* The icon buttons on the strip sink further than a full-width control does —
+   there is no label travelling with them, so the whole target has to move
+   enough to be felt. */
+.topbar__toggle:active,
+.topbar__search:active,
+.theme-toggle:active {
+  transform: scale(0.9);
 }
 
 /* ⌘K, for the layouts where the sidebar's own search button is behind a
@@ -975,7 +1280,8 @@ a:hover {
   transition:
     background var(--dur) var(--ease),
     color var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .topbar__right {
@@ -1022,12 +1328,21 @@ a:hover {
   cursor: pointer;
   font-family: inherit;
   font-size: inherit;
-  text-decoration: none;
+  /* Underlined the whole time, in nothing. The line has to be there before it
+     is visible or the hover would turn it on between two frames — on a strip
+     where three steps sit a few pixels apart, that reads as the layout
+     twitching rather than as a link answering. */
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 2px;
+  transition:
+    color var(--dur) var(--ease),
+    text-decoration-color var(--dur) var(--ease);
 }
 
 .crumbs__link:hover {
   color: var(--text);
-  text-decoration: underline;
+  text-decoration-color: currentColor;
 }
 
 .crumbs__here {
@@ -1059,7 +1374,20 @@ a:hover {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-lg);
-  animation: rise 120ms var(--ease) both;
+  /* Grown out of the button that opened it rather than dropped in from
+     nowhere, which is what the origin is for: the corner nearest the ⋯ stays
+     put and the sheet unfolds away from it. */
+  transform-origin: top right;
+  animation: pop var(--dur-3) var(--ease) both;
+}
+
+/* Menu owns the leaving state and holds the sheet mounted for exactly as long
+   as this takes; see useDismiss.ts. A sheet on its way out is scenery — it has
+   to stop taking clicks, or the last tenth of a second of a dismissal is a
+   window in which 强制结束 is still a live target. */
+.menu[data-state='out'] .menu__sheet {
+  animation: pop-out var(--dur) var(--ease-in) both;
+  pointer-events: none;
 }
 
 .menu__item {
@@ -1073,10 +1401,17 @@ a:hover {
   font-size: 13px;
   text-align: left;
   white-space: nowrap;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
 }
 
 .menu__item:hover:not(:disabled) {
   background: var(--surface-2);
+}
+
+.menu__item:active:not(:disabled) {
+  background: var(--surface-3);
 }
 
 .menu__item:disabled {
@@ -1111,7 +1446,12 @@ a:hover {
   font-size: 13px;
   transition:
     background var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.usermenu__button:active {
+  transform: scale(var(--press));
 }
 
 .usermenu__button:hover {
@@ -1151,7 +1491,10 @@ a:hover {
   background: var(--scrim);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 180ms var(--ease);
+  /* Exactly as long as the drawer's own slide: two durations a fifth apart is
+     enough for the page to look like it finishes darkening after the panel has
+     already arrived. */
+  transition: opacity var(--dur-4) var(--ease);
 }
 
 /* Light / dark / 跟随系统, cycled in place. It sits in the top bar rather
@@ -1177,7 +1520,8 @@ a:hover {
   transition:
     background var(--dur) var(--ease),
     color var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .theme-toggle:hover {
@@ -1293,7 +1637,7 @@ a:hover {
   transition:
     background var(--dur) var(--ease),
     border-color var(--dur) var(--ease),
-    transform var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease),
     box-shadow var(--dur) var(--ease);
 }
 
@@ -1303,8 +1647,11 @@ a:hover {
   transform: translateY(-1px);
 }
 
+/* Past the resting position, not back to it. The button lifts a pixel under
+   the pointer, so returning to zero on press is a one-pixel move that reads as
+   nothing at all; going a pixel *under* is what makes the click land. */
 .btn:active:not(:disabled) {
-  transform: translateY(0);
+  transform: translateY(var(--press-drop)) scale(var(--press));
   box-shadow: none;
 }
 
@@ -1735,6 +2082,23 @@ a:hover {
   white-space: nowrap;
 }
 
+/* State is the one thing on screen that changes without anyone touching it,
+   and a dot that snaps from grey to green is a change you only catch if you
+   happened to be looking at it. Over a fifth of a second it is caught in
+   peripheral vision — which is the whole job of a status dot on a sidebar you
+   are not currently reading. */
+.status__dot,
+.console__dot,
+.hostterm__dot,
+.pill,
+.badge {
+  transition:
+    background var(--dur-3) var(--ease),
+    border-color var(--dur-3) var(--ease),
+    box-shadow var(--dur-3) var(--ease),
+    color var(--dur-3) var(--ease);
+}
+
 .status__dot {
   width: 9px;
   height: 9px;
@@ -1824,6 +2188,15 @@ a:hover {
   display: none;
 }
 
+/* A pane is never unmounted, so it cannot use the entrance every page gets:
+   an animation only runs when its element is created, and these were created
+   the first time you opened the section. InstanceView flags the pane that has
+   just come forward for the length of one entrance instead — same movement,
+   driven by the switch rather than by a mount. */
+.instance__pane--entering {
+  animation: rise var(--dur-3) var(--ease) backwards;
+}
+
 .instance__pane--scroll {
   overflow-y: auto;
 }
@@ -1902,12 +2275,19 @@ a:hover {
   font-size: 12px;
   transition:
     border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease);
+    background var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .cockpit__address:hover {
   background: var(--surface-3);
   border-color: var(--border-strong);
+}
+
+/* This one copies to the clipboard, and the copy is silent: the press is the
+   only thing that says the click was taken. */
+.cockpit__address:active {
+  transform: scale(0.96);
 }
 
 .cockpit__address code {
@@ -1973,12 +2353,17 @@ a:hover {
   cursor: pointer;
   transition:
     border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease);
+    background var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .tile--link:hover {
   border-color: var(--border-strong);
   background: var(--surface-2);
+}
+
+.tile--link:active {
+  transform: scale(var(--press));
 }
 
 .tile__label {
@@ -2080,12 +2465,20 @@ a:hover {
   text-align: left;
   transition:
     border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease);
+    background var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .quick__item:hover:not(:disabled) {
   background: var(--surface-3);
   border-color: var(--border-strong);
+}
+
+/* These fire a command into a running server, so the press is the only
+   acknowledgement there is until the log answers. */
+.quick__item:active:not(:disabled) {
+  transform: scale(var(--press));
+  background: var(--surface-4);
 }
 
 .quick__item:disabled {
@@ -2143,86 +2536,6 @@ a:hover {
 .power__spacer {
   display: block;
   width: 32px;
-}
-
-.tabs {
-  display: flex;
-  gap: 2px;
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.tabs::-webkit-scrollbar {
-  display: none;
-}
-
-/* The scrollbar is hidden, so without this a strip cut off at the edge is
-   indistinguishable from a strip with fewer tabs. The fade is applied only to
-   the edge actually cut off, which the component measures. */
-.tabs[data-edge='end'] {
-  mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent);
-}
-
-.tabs[data-edge='start'] {
-  mask-image: linear-gradient(90deg, transparent, #000 30px);
-}
-
-.tabs[data-edge='both'] {
-  mask-image: linear-gradient(
-    90deg,
-    transparent,
-    #000 30px,
-    #000 calc(100% - 30px),
-    transparent
-  );
-}
-
-.tabs__tab {
-  position: relative;
-  padding: 9px 15px;
-  background: none;
-  border: none;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  color: var(--text-dim);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 14px;
-  white-space: nowrap;
-  transition:
-    color var(--dur) var(--ease),
-    background var(--dur) var(--ease);
-}
-
-/* The underline is a child rather than a border so it can grow from the
-   middle when a tab is picked instead of blinking into place. */
-.tabs__tab::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  right: 50%;
-  bottom: -1px;
-  height: 2px;
-  border-radius: 2px 2px 0 0;
-  background: var(--accent);
-  transition:
-    left var(--dur) var(--ease),
-    right var(--dur) var(--ease);
-}
-
-.tabs__tab:hover {
-  color: var(--text);
-  background: var(--surface-2);
-}
-
-.tabs__tab--active {
-  color: var(--text);
-  font-weight: 600;
-}
-
-.tabs__tab--active::after {
-  left: 10px;
-  right: 10px;
 }
 
 /* --------------------------------------------------------------- console */
@@ -2320,12 +2633,17 @@ a:hover {
   font-size: 12px;
   transition:
     background var(--dur) var(--ease),
-    color var(--dur) var(--ease);
+    color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .console__hint:hover {
   color: var(--text);
   background: var(--surface-3);
+}
+
+.console__hint:active {
+  transform: scale(0.94);
 }
 
 .console__hint--active {
@@ -2389,11 +2707,17 @@ a:hover {
   cursor: pointer;
   font-family: inherit;
   font-size: 12px;
-  transition: background var(--dur) var(--ease);
+  transition:
+    background var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .console__input button:hover:not(:disabled) {
   background: var(--surface-4);
+}
+
+.console__input button:active:not(:disabled) {
+  transform: scale(0.95);
 }
 
 .console__input button:disabled {
@@ -2553,6 +2877,25 @@ a:hover {
   color: var(--text);
 }
 
+/* A disclosure that opens instantly shoves everything under it down the page
+   by two hundred pixels between one frame and the next, which is the single
+   most disorienting thing left in the panel — the release notes are long. It
+   unrolls instead. `interpolate-size` (set on :root, in the motion section) is
+   what allows the height to animate to `auto`; a browser without either that
+   or ::details-content simply keeps today's instant open, which is why this is
+   written as an enhancement rather than as a height the markup depends on. */
+details::details-content {
+  block-size: 0;
+  overflow: hidden;
+  transition:
+    block-size var(--dur-3) var(--ease),
+    content-visibility var(--dur-3) allow-discrete;
+}
+
+details[open]::details-content {
+  block-size: auto;
+}
+
 /* Release notes are markdown from the changelog; shown as-is rather than
    rendered, so no markdown dependency is pulled in for one panel. */
 .update__notes pre {
@@ -2625,11 +2968,16 @@ a:hover {
    .page is the plain scrolling page shell every panel-wide view uses; the
    overview is the same thing with cards under it. */
 
+/* Every page arrives the same way, and it is deliberately the smallest of the
+   entrances: six pixels and a fifth of a second. A page is the largest thing
+   that moves in the panel, so it is also the thing whose movement gets old
+   fastest — anything more theatrical here would be paid for on every click for
+   the life of the install. */
 .welcome,
 .page {
   overflow-y: auto;
   padding-bottom: 30px;
-  animation: fade 200ms var(--ease) both;
+  animation: rise var(--dur-3) var(--ease) backwards;
 }
 
 .page {
@@ -2788,6 +3136,14 @@ a:hover {
   box-shadow: var(--shadow);
 }
 
+/* All the way back down and a shade under, so the lift the hover gave it is
+   visibly spent rather than merely paused. */
+.card:active {
+  transform: translateY(0) scale(var(--press));
+  box-shadow: var(--shadow-sm);
+  transition-duration: var(--dur-1);
+}
+
 .card__head {
   display: flex;
   align-items: center;
@@ -2813,7 +3169,13 @@ a:hover {
   white-space: nowrap;
 }
 
-/* ---------------------------------------------------------------- modals */
+/* ---------------------------------------------------------------- modals
+
+   Both halves of the appearance are here, and so are both halves of the
+   dismissal — see Modal.tsx, which holds the dialog mounted for exactly as
+   long as the exit takes. Before that it was a one-way animation: a card that
+   rose into place over a fifth of a second and then, on 取消, was simply gone
+   between two frames, along with the blurred page behind it. */
 
 .modal {
   position: fixed;
@@ -2824,7 +3186,7 @@ a:hover {
   background: var(--scrim);
   backdrop-filter: blur(6px);
   z-index: 50;
-  animation: fade 160ms var(--ease) both;
+  animation: fade var(--dur-3) var(--ease) both;
 }
 
 .modal__card {
@@ -2839,7 +3201,15 @@ a:hover {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  animation: rise 220ms var(--ease) both;
+  animation: pop var(--dur-4) var(--ease) both;
+}
+
+.modal[data-state='out'] {
+  animation: fade-out var(--dur) var(--ease-in) both;
+}
+
+.modal[data-state='out'] .modal__card {
+  animation: pop-out var(--dur) var(--ease-in) both;
 }
 
 .modal__title {
@@ -3021,12 +3391,17 @@ a:hover {
   transition:
     background var(--dur) var(--ease),
     border-color var(--dur) var(--ease),
-    color var(--dur) var(--ease);
+    color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .chip:hover {
   color: var(--text);
   background: var(--surface-2);
+}
+
+.chip:active {
+  transform: scale(0.94);
 }
 
 .chip--active {
@@ -3081,7 +3456,7 @@ a:hover {
   height: 100%;
   border-radius: var(--radius-pill);
   background: var(--status-ok);
-  transition: width 0.4s ease;
+  transition: width var(--dur-data) var(--ease-out);
 }
 
 .meter__fill--warning {
@@ -3198,11 +3573,17 @@ a:hover {
   font-family: inherit;
   font-size: 13px;
   padding: 2px 6px;
-  transition: background var(--dur) var(--ease);
+  transition:
+    background var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .breadcrumb__crumb:hover {
   background: var(--accent-soft);
+}
+
+.breadcrumb__crumb:active {
+  transform: scale(0.94);
 }
 
 .breadcrumb__sep {
@@ -3284,7 +3665,7 @@ a:hover {
 .progress__bar {
   height: 100%;
   background: var(--accent);
-  transition: width 0.2s linear;
+  transition: width var(--dur) linear;
 }
 
 /* The stripes only exist to say "still moving" while a download sits at the
@@ -3430,12 +3811,14 @@ a:hover {
   border-radius: var(--radius);
   transition:
     border-color var(--dur) var(--ease),
-    box-shadow var(--dur) var(--ease);
+    box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
 }
 
 .asset:hover {
   border-color: var(--border-strong);
   box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
 }
 
 /* The machine's own Java, which the panel reports but does not own. */
@@ -3595,6 +3978,11 @@ a:hover {
   transform: translateY(-1px);
 }
 
+.choice:active:not(:disabled) {
+  transform: translateY(var(--press-drop)) scale(var(--press));
+  transition-duration: var(--dur-1);
+}
+
 .choice:focus-visible {
   outline: none;
   box-shadow: var(--ring);
@@ -3671,12 +4059,17 @@ a:hover {
   transition:
     background var(--dur) var(--ease),
     color var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .segmented__option:hover:not(:disabled) {
   background: var(--surface-2);
   color: var(--text);
+}
+
+.segmented__option:active:not(:disabled) {
+  transform: scale(var(--press));
 }
 
 .segmented__option:focus-visible {
@@ -3731,12 +4124,17 @@ a:hover {
   transition:
     background var(--dur) var(--ease),
     color var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .version:hover:not(:disabled) {
   color: var(--text);
   background: var(--surface-3);
+}
+
+.version:active:not(:disabled) {
+  transform: scale(0.94);
 }
 
 .version:focus-visible {
@@ -3877,28 +4275,6 @@ input.input-slim:disabled {
   margin-left: 0;
 }
 
-/* --------------------------------------------------- settings & dashboard */
-
-/* The settings shell owns the scroll, so switching sections does not leave the
-   next page scrolled to where the last one was. */
-.settings-page {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  flex: 1;
-}
-
-.settings-page__body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding-top: 16px;
-}
-
-.settings-page .tabs {
-  margin-bottom: 0;
-}
-
 /* ------------------------------------------------------- overview summary
 
    Four numbers, and only numbers that would change what the reader does next.
@@ -3941,6 +4317,12 @@ input.input-slim:disabled {
   border-color: var(--border-strong);
   transform: translateY(-2px);
   box-shadow: var(--shadow);
+}
+
+.summary__cell--link:active {
+  transform: translateY(0) scale(var(--press));
+  box-shadow: var(--shadow-sm);
+  transition-duration: var(--dur-1);
 }
 
 /* Severity rides the left edge rather than the whole tile: a red block for
@@ -4051,7 +4433,7 @@ input.input-slim:disabled {
   height: 100%;
   border-radius: var(--radius-pill);
   background: var(--status-ok);
-  transition: width 0.4s ease;
+  transition: width var(--dur-data) var(--ease-out);
 }
 
 .card__bar-fill[data-hot='on'] {
@@ -4173,8 +4555,25 @@ input.input-slim:disabled {
   border-bottom: none;
 }
 
+/* A row is too wide to move without the whole table looking loose, so its
+   press is a tint one step further than its hover rather than any travel. The
+   same trick is used for every other full-width row in the panel. */
+.rows__row,
+.plugin-row,
+.plugin-version,
+.picker__row {
+  transition: background var(--dur-1) var(--ease);
+}
+
 .rows__row:hover {
   background: var(--surface-2);
+}
+
+.rows__row:active,
+.plugin-row:active,
+.plugin-version:active,
+.picker__row:not(.picker__row--plain):active {
+  background: var(--surface-3);
 }
 
 .rows__name {
@@ -4270,6 +4669,7 @@ button.rows__name:hover strong {
   height: 100%;
   background: var(--border-strong);
   border-radius: var(--radius-pill);
+  transition: width var(--dur-data) var(--ease-out);
 }
 
 .share__fill--live {
@@ -4306,7 +4706,7 @@ button.rows__name:hover strong {
   left: 0;
   height: 100%;
   border-radius: var(--radius-pill);
-  transition: width 0.4s ease;
+  transition: width var(--dur-data) var(--ease-out);
 }
 
 .alloc__committed {
@@ -4412,6 +4812,18 @@ button.rows__name:hover strong {
   inset: 0;
   background: var(--scrim);
   backdrop-filter: blur(4px);
+  animation: fade var(--dur-3) var(--ease) both;
+}
+
+.palette[data-state='out'] .palette__scrim {
+  animation: fade-out var(--dur) var(--ease-in) both;
+}
+
+/* ⌘K is a reflex — it gets pressed, used and dismissed inside a second — so
+   its exit is the shortest in the panel. Anything longer and the page you
+   just asked for is behind a box you have finished with. */
+.palette[data-state='out'] .palette__box {
+  animation: pop-out var(--dur-1) var(--ease-in) both;
 }
 
 .palette__box {
@@ -4425,7 +4837,7 @@ button.rows__name:hover strong {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
-  animation: fade 140ms var(--ease) both;
+  animation: pop var(--dur-3) var(--ease) both;
 }
 
 .palette__field {
@@ -4482,6 +4894,10 @@ button.rows__name:hover strong {
   font-family: inherit;
   font-size: 14px;
   text-align: left;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 /* Keyboard and pointer share one highlight, so ↓↓↵ and a click can never
@@ -4489,6 +4905,11 @@ button.rows__name:hover strong {
 .palette__item[data-active='true'] {
   background: var(--accent-soft);
   color: var(--text);
+}
+
+.palette__item:active {
+  transform: scale(0.99);
+  background: var(--accent-soft);
 }
 
 .palette__bullet {
@@ -4554,6 +4975,14 @@ button.rows__name:hover strong {
   border-color: var(--border-strong);
   transform: translateY(-2px);
   box-shadow: var(--shadow);
+}
+
+/* Same for the press: it is the child that is being clicked, but it is the
+   card that has to answer. */
+.card--static:has(.card__open:active) {
+  transform: translateY(0) scale(var(--press));
+  box-shadow: var(--shadow-sm);
+  transition-duration: var(--dur-1);
 }
 
 .card__open {
@@ -4656,7 +5085,6 @@ button.rows__name:hover strong {
   font-family: inherit;
   font-size: 13px;
   text-align: left;
-  transition: background var(--dur) var(--ease);
 }
 
 .picker__row:hover {
@@ -4860,15 +5288,15 @@ button.rows__name:hover strong {
        so closing still animates. */
     visibility: hidden;
     transition:
-      transform 200ms var(--ease),
-      visibility 0s linear 200ms;
+      transform var(--dur-4) var(--ease),
+      visibility 0s linear var(--dur-4);
   }
 
   .app[data-nav='open'] .sidebar {
     transform: none;
     visibility: visible;
     transition:
-      transform 200ms var(--ease),
+      transform var(--dur-4) var(--ease),
       visibility 0s;
   }
 
@@ -4971,7 +5399,13 @@ button.rows__name:hover strong {
 }
 
 /* Everything above animates only as decoration; none of it carries meaning,
-   so it can all be switched off. */
+   so it can all be switched off. Nothing is *only* reachable through an
+   animation — the state that each one carries is also on screen as a colour,
+   a position or a label — so cutting them costs no information.
+
+   The JavaScript-driven ones read the same preference for themselves rather
+   than relying on this block: a WAAPI animation and a scheduled unmount are
+   not transitions and would sail straight through it. See motion.ts. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -4979,6 +5413,9 @@ button.rows__name:hover strong {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    /* Smooth scrolling is motion too, and it is the kind most likely to make
+       someone who asked for less of it feel unwell. */
+    scroll-behavior: auto !important;
   }
 }
 

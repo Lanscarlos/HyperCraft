@@ -40,8 +40,16 @@ export type Route =
   | { kind: 'host'; section: HostSection }
   | { kind: 'settings'; section: SettingsSection }
 
-/** The three navigation scopes. The sidebar is replaced entirely between them. */
-export type Scope = 'global' | 'instance' | 'host'
+/**
+ * The navigation scopes. The sidebar is replaced entirely between them.
+ *
+ * 面板设置 became one of these rather than staying a page with a tab strip.
+ * Four tabs across the top of a page is a second navigation in a panel that
+ * already has one, and it was the only place in here where the way to a page
+ * depended on which page you were already on — every other destination is
+ * reachable from the sidebar, and now so are these.
+ */
+export type Scope = 'global' | 'instance' | 'host' | 'settings'
 
 export const INSTANCE_SECTIONS: { id: InstanceSection; label: string }[] = [
   { id: 'console', label: '控制台' },
@@ -55,7 +63,7 @@ export const INSTANCE_SECTIONS: { id: InstanceSection; label: string }[] = [
 export const LIBRARY_SECTIONS: { id: LibrarySection; label: string }[] = [
   { id: 'cores', label: '服务端核心' },
   { id: 'java', label: 'Java 环境' },
-  { id: 'plugins', label: '插件 / 模组' },
+  { id: 'plugins', label: '插件库' },
 ]
 
 export const HOST_SECTIONS: { id: HostSection; label: string }[] = [
@@ -82,6 +90,7 @@ function pick<T extends string>(values: { id: T }[], value: string, fallback: T)
 export function scopeOf(route: Route): Scope {
   if (route.kind === 'instance') return 'instance'
   if (route.kind === 'host') return 'host'
+  if (route.kind === 'settings') return 'settings'
   return 'global'
 }
 

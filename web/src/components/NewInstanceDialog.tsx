@@ -5,6 +5,7 @@ import { formatBytes } from '../format'
 import type { InstanceStatus, ServerCore } from '../types'
 import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
+import { Modal } from './Modal'
 import { DirectoryField } from './PathPicker'
 
 interface Props {
@@ -81,7 +82,7 @@ export function NewInstanceDialog({ cores, onCreated, onCancel, onOpenLibrary }:
   }
 
   return (
-    <div className="modal" role="dialog" aria-modal="true">
+    <Modal onClose={onCancel} busy={busy}>
       <form className="modal__card" onSubmit={submit}>
         <h2 className="modal__title">新建服务器实例</h2>
 
@@ -184,6 +185,6 @@ export function NewInstanceDialog({ cores, onCreated, onCancel, onOpenLibrary }:
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   )
 }

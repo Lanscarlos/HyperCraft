@@ -27,6 +27,8 @@ export type IconName =
   | 'lock'
   | 'search'
   | 'back'
+  | 'devices'
+  | 'update'
 
 const PATHS: Record<IconName, ReactElement> = {
   dashboard: (
@@ -128,6 +130,23 @@ const PATHS: Record<IconName, ReactElement> = {
     </>
   ),
   back: <path d="M20 12H4.5m0 0L10 6.5M4.5 12 10 17.5" />,
+  // A laptop with a phone beside it: the things that have been paired, which
+  // is what that page is a list of.
+  devices: (
+    <>
+      <path d="M3 5.5h11v8H3z" />
+      <path d="M1.5 17h14" />
+      <rect x="17" y="8" width="5.5" height="9" rx="1.4" />
+    </>
+  ),
+  // An arrow coming down into the panel itself, rather than a circular refresh:
+  // this replaces the binary on disk, it does not reload anything.
+  update: (
+    <>
+      <path d="M12 3.5v11m0 0 4-4m-4 4-4-4" />
+      <path d="M4.5 17.5v1a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-1" />
+    </>
+  ),
 }
 
 export function Icon({ name, className }: { name: IconName; className?: string }) {

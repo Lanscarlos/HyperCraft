@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { api } from '../api'
 import type { HostListing } from '../types'
+import { Modal } from './Modal'
 
 interface Props {
   /** Where to open. Empty starts at the panel's own servers directory. */
@@ -50,7 +51,7 @@ export function PathPicker({ initialPath, onPick, onCancel }: Props) {
   const files = listing?.entries.filter((entry) => !entry.isDir) ?? []
 
   return (
-    <div className="modal" role="dialog" aria-modal="true">
+    <Modal onClose={onCancel}>
       <div className="modal__card modal__card--wide">
         <h2 className="modal__title">选择目录</h2>
 
@@ -143,7 +144,7 @@ export function PathPicker({ initialPath, onPick, onCancel }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
