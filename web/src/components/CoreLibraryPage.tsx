@@ -4,6 +4,7 @@ import { api } from '../api'
 import { formatBytes, formatDate } from '../format'
 import type { CoreBuild, CoreDownloadJob, CoreProject, CoreVersion, ServerCore } from '../types'
 import type { CoreController } from '../useCores'
+import { Page } from './Page'
 
 const SUPPORT_LABELS: Record<string, string> = {
   SUPPORTED: '官方支持中',
@@ -147,22 +148,18 @@ export function CoreLibraryPage({
   const totalSize = stored.reduce((sum, core) => sum + core.size, 0)
 
   return (
-    <div className="page page--wide">
-      <header className="page__head">
-        <div>
-          <h1>服务端核心</h1>
-          <p className="page__lead">
-            面板下载的服务端 jar 都在这里存一份。创建实例时直接从这里挑一个复制过去，
-            同一个核心开十个服也只下载一次；下载走服务器自己的网络，不经过你的浏览器，
-            关掉网页也会继续。
-          </p>
-        </div>
+    <Page
+      wide
+      title="服务端核心"
+      lead="面板下载的服务端 jar 都在这里存一份。创建实例时直接从这里挑一个复制过去，同一个核心开十个服也只下载一次；下载走服务器自己的网络，不经过你的浏览器，关掉网页也会继续。"
+      aside={
         <p className="meta-chips">
           <span>{stored.length > 0 ? `${stored.length} 个核心` : '核心库还是空的'}</span>
           {stored.length > 0 && <span>共 {formatBytes(totalSize)}</span>}
           {library?.root && <span title={library.root}>存放于 {library.root}</span>}
         </p>
-      </header>
+      }
+    >
 
       <section className="panel">
         <div className="chart-head">
@@ -361,7 +358,7 @@ export function CoreLibraryPage({
           </div>
         </section>
       )}
-    </div>
+    </Page>
   )
 }
 

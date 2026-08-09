@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import type { TerminalController } from '../useTerminal'
+import { Page } from './Page'
 
 interface Props {
   terminal: TerminalController
@@ -21,7 +22,7 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
   const { status, saving, error } = terminal
 
   if (!status) {
-    return <div className="page">正在读取终端设置…</div>
+    return <Page>正在读取终端设置…</Page>
   }
 
   const enable = async () => {
@@ -30,12 +31,10 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
   }
 
   return (
-    <div className="page">
-      <h1>终端</h1>
-      <p className="page__lead">
-        在面板里直接开一个本机 shell，装插件、看日志、改配置不用再单独 SSH 上来。
-        这里跑的就是面板所在的这台机器，权限和面板进程完全一样 —— 不是连到别的服务器。
-      </p>
+    <Page
+      title="终端"
+      lead="在面板里直接开一个本机 shell，装插件、看日志、改配置不用再单独 SSH 上来。这里跑的就是面板所在的这台机器，权限和面板进程完全一样 —— 不是连到别的服务器。"
+    >
 
       {error && <div className="alert alert--error">{error}</div>}
 
@@ -118,6 +117,6 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
           )}
         </section>
       )}
-    </div>
+    </Page>
   )
 }

@@ -5,6 +5,7 @@ import { formatBytes, formatDate } from '../format'
 import type { LibraryPlugin, PluginRelease } from '../types'
 import { hasPluginUpdate } from '../types'
 import type { PluginController } from '../usePlugins'
+import { Page } from './Page'
 import { PluginDialog } from './PluginDialog'
 
 /**
@@ -71,24 +72,29 @@ export function PluginDetailPage({
   }
 
   return (
-    <div className="page page--wide">
-      <header className="page__head">
-        <div>
-          <button className="link" onClick={onBack}>
-            ← 插件库
-          </button>
-          <h1>
-            {item.name}
-            {updatable && <span className="badge badge--update">有更新</span>}
-            {item.source.private && <span className="badge">私有</span>}
-          </h1>
-          <p className="page__lead">
-            <a href={`https://github.com/${item.source.repo}`} target="_blank" rel="noreferrer">
-              {item.source.repo}
-            </a>
-            {item.note && ` · ${item.note}`}
-          </p>
-        </div>
+    <Page
+      wide
+      above={
+        <button className="link" onClick={onBack}>
+          ← 插件库
+        </button>
+      }
+      title={
+        <>
+          {item.name}
+          {updatable && <span className="badge badge--update">有更新</span>}
+          {item.source.private && <span className="badge">私有</span>}
+        </>
+      }
+      lead={
+        <>
+          <a href={`https://github.com/${item.source.repo}`} target="_blank" rel="noreferrer">
+            {item.source.repo}
+          </a>
+          {item.note && ` · ${item.note}`}
+        </>
+      }
+      aside={
         <div className="field__tools">
           <button className="btn" type="button" disabled={busy} onClick={() => void plugins.check(item.id)}>
             检查更新
@@ -100,7 +106,8 @@ export function PluginDetailPage({
             删除
           </button>
         </div>
-      </header>
+      }
+    >
 
       {item.checkError && <div className="alert alert--warn">检查更新失败：{item.checkError}</div>}
 
@@ -263,6 +270,6 @@ export function PluginDetailPage({
           }}
         />
       )}
-    </div>
+    </Page>
   )
 }

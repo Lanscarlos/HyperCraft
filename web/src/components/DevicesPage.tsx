@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '../api'
 import type { Device } from '../types'
+import { Page } from './Page'
 
 /**
  * The native clients holding a device token.
@@ -52,12 +53,10 @@ export function DevicesPage() {
   }
 
   return (
-    <div className="page">
-      <h1>已配对设备</h1>
-      <p className="page__lead">
-        桌面端和手机 App 用设备令牌登录，不像浏览器会话那样面板一重启就失效，所以自动更新不会把你从
-        App 里登出。配对方法见 README；改密码会解除所有设备的配对。
-      </p>
+    <Page
+      title="已配对设备"
+      lead="桌面端和手机 App 用设备令牌登录，不像浏览器会话那样面板一重启就失效，所以自动更新不会把你从 App 里登出。配对方法见 README；改密码会解除所有设备的配对。"
+    >
 
       <section className="panel">
         <h3 className="panel__title">设备</h3>
@@ -96,7 +95,7 @@ export function DevicesPage() {
           </div>
         )}
       </section>
-    </div>
+    </Page>
   )
 }
 

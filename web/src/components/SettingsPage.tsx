@@ -3,6 +3,7 @@ import type { TerminalController } from '../useTerminal'
 import { updateLabel } from '../useUpdate'
 import type { UpdateController } from '../useUpdate'
 import { DevicesPage } from './DevicesPage'
+import { Page } from './Page'
 import { PluginSourceSettings } from './PluginSourceSettings'
 import { TerminalSettings } from './TerminalSettings'
 import { UpdatePanel } from './UpdatePanel'
@@ -83,14 +84,12 @@ export function SettingsPage({
         {section === 'devices' && <DevicesPage />}
         {section === 'plugin-source' && <PluginSourceSettings plugins={plugins} />}
         {section === 'update' && (
-          <div className="page">
-            <h1>面板更新</h1>
-            <p className="page__lead">
-              面板可以自己下载并替换掉自己的二进制，然后重启 —— 更新前正在运行的服务器会先优雅停止，
-              升级完成后再自动拉起来。快照通道能提前拿到 main 上每个通过 CI 的构建。
-            </p>
+          <Page
+            title="面板更新"
+            lead="面板可以自己下载并替换掉自己的二进制，然后重启 —— 更新前正在运行的服务器会先优雅停止，升级完成后再自动拉起来。快照通道能提前拿到 main 上每个通过 CI 的构建。"
+          >
             <UpdatePanel update={update} runningNames={runningNames} />
-          </div>
+          </Page>
         )}
       </div>
     </div>

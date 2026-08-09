@@ -5,6 +5,7 @@ import type { InstanceStatus, StateInfo } from '../types'
 import { STATE_LABELS, isLive, mergeState } from '../types'
 import type { CoreController } from '../useCores'
 import { Console } from './Console'
+import { ConsoleStatus } from './ConsoleStatus'
 import { FileManager } from './FileManager'
 import { InstancePlugins } from './InstancePlugins'
 import { LaunchSettings } from './LaunchSettings'
@@ -13,6 +14,9 @@ import { PropertiesEditor } from './PropertiesEditor'
 import { ResourcePanel } from './ResourcePanel'
 
 type Tab = 'console' | 'files' | 'plugins' | 'resources' | 'launch' | 'properties'
+
+/** Whether the console keeps its status strip. Per-device, like the sidebar. */
+const SIDE_KEY = 'hypercraft.console-side'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'console', label: '控制台' },
@@ -43,6 +47,11 @@ export function InstanceView({
   const [tab, setTab] = useState<Tab>('console')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [side, setSide] = useState(() => window.localStorage.getItem(SIDE_KEY) !== 'off')
+
+  useEffect(() => {
+    window.localStorage.setItem(SIDE_KEY, side ? 'on' : 'off')
+  }, [side])
 
   useEffect(() => {
     setTab('console')
@@ -140,13 +149,36 @@ export function InstanceView({
 
       <div className="instance__body">
         {/* The console stays mounted so its websocket and scrollback survive a
-            trip to the settings tabs. */}
-        <div hidden={tab !== 'console'} className="instance__pane">
+            trip to the settings tabs. On a wide screen it shares the pane with
+            a strip of live numbers; below that width the strip is not rendered
+            at all and 资源 is where the same figures live. */}
+        <div
+          hidden={tab !== 'console'}
+          className="instance__pane instance__pane--split"
+          data-side={side ? 'on' : 'off'}
+        >
           <Console
             instanceId={instance.id}
             state={instance.state}
             onState={applyState}
           />
+          {side ? (
+            <ConsoleStatus
+              instance={instance}
+              active={tab === 'console'}
+              onOpenResources={() => setTab('resources')}
+              onCollapse={() => setSide(false)}
+            />
+          ) : (
+            <button
+              className="console-side__peek"
+              onClick={() => setSide(true)}
+              title="展开运行状态"
+              aria-label="展开运行状态"
+            >
+              ‹
+            </button>
+          )}
         </div>
         {tab === 'files' && (
           <div className="instance__pane instance__pane--scroll">
