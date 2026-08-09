@@ -124,6 +124,23 @@ func (e *testEnv) do(method, path string, body any) *http.Response {
 func (e *testEnv) doRaw(method, path string, body any, csrf bool) *http.Response {
 	e.t.Helper()
 
+	req := e.request(method, path, body)
+	if !csrf {
+		req.Header.Del(csrfHeader)
+	}
+
+	resp, err := e.client.Do(req)
+	if err != nil {
+		e.t.Fatalf("%s %s: %v", method, path, err)
+	}
+	return resp
+}
+
+// request builds a request the way the UI sends them — JSON body, CSRF header
+// — for callers that need to adjust it before it goes out.
+func (e *testEnv) request(method, path string, body any) *http.Request {
+	e.t.Helper()
+
 	var reader io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)
@@ -140,15 +157,8 @@ func (e *testEnv) doRaw(method, path string, body any, csrf bool) *http.Response
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if csrf {
-		req.Header.Set(csrfHeader, "1")
-	}
-
-	resp, err := e.client.Do(req)
-	if err != nil {
-		e.t.Fatalf("%s %s: %v", method, path, err)
-	}
-	return resp
+	req.Header.Set(csrfHeader, "1")
+	return req
 }
 
 func (e *testEnv) login() {
