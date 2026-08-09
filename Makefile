@@ -16,9 +16,12 @@ deps:
 	npm --prefix web install
 
 ## build the frontend into the Go embed directory
+##
+## The .gitkeep that //go:embed needs is restored by the build itself (see the
+## keep-embed-anchor plugin in web/vite.config.ts), so `npm run build` on its own
+## is safe too.
 web:
 	npm --prefix web run build
-	@touch $(DIST)/.gitkeep
 
 build: web
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/hypercraft
