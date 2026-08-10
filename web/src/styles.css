@@ -1200,10 +1200,16 @@ a:hover {
     padding var(--dur-4) var(--ease);
 }
 
+/* The space around the rule is margin, not padding. `overflow: hidden` clips at
+   the padding edge rather than the content edge, so 6px of padding left 12px of
+   the heading showing through a box that claimed to be zero high — three rows of
+   half-cut characters down the folded rail. With the padding moved outside,
+   height:0 really is zero and all that is left is the line. */
 .app[data-rail='on'] .sidebar__group {
   display: block;
   height: 0;
-  padding: 6px 0;
+  margin: 6px 0;
+  padding: 0;
   border-top: 1px solid var(--border);
 }
 
@@ -6686,12 +6692,16 @@ button.rows__name:hover strong {
 
 /* Where you are in the list behind the drawer. Present so ↑↓ is discoverable
    rather than secret, and because "3 / 24" is the thing that makes stepping
-   feel like moving through a list instead of like reopening one. */
+   feel like moving through a list instead of like reopening one.
+
+   It is also one token: on a phone the head is tight enough that it was
+   breaking after the slash and stacking two lines beside the arrows. */
 .drawer__step-count {
   margin-right: 4px;
   color: var(--text-faint);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .drawer__tabs {
@@ -7051,6 +7061,22 @@ button.rows__name:hover strong {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* On a phone the drawer is the whole screen and the row still has ~330px to
+   put four tracks in: 96 of digest, 80 of badges and a 删除 leave the file name
+   about seventy. Stacked, each part gets the full measure — and the order is
+   unchanged, so it still reads digest, file, then what you can do about it. */
+@media (max-width: 560px) {
+  .arow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 4px;
+  }
+
+  .arow__sha,
+  .arow__body {
+    grid-column: 1 / -1;
+  }
 }
 
 /* What upstream published under a release that the library does not hold.

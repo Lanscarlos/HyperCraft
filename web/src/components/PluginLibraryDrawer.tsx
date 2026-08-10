@@ -669,6 +669,9 @@ function VersionsTab({
                 ? '手动导入的 jar 没有上游可列'
                 : '把上游还发布过哪些版本一起列出来。要问一次上游 —— 匿名调用 GitHub 一小时只有 60 次配额，所以是点出来的。'
             }
+            // The glyph is the whole label otherwise, and "⟳" is not one. The
+            // title carries the cost of the call; the name carries what it does.
+            aria-label="列出上游发布过的版本"
             onClick={() => void load()}
           >
             {loading ? '…' : '⟳'}
