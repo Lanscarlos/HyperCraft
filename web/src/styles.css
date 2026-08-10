@@ -6448,7 +6448,10 @@ button.rows__name:hover strong {
   font-variant-numeric: tabular-nums;
 }
 
-.plugin-table__version select.input-slim {
+/* Both halves of the class, so this still outranks the `max-width: 100%` the
+   slim skin carries — the column is 130px and the trigger has to be told, not
+   asked. */
+.plugin-table__version .select.input-slim {
   max-width: 130px;
 }
 
@@ -6737,16 +6740,25 @@ button.rows__name:hover strong {
 
 /* ================================================================= selects
 
-   Every <select> in the panel, in one place.
- 
+   Every dropdown in the panel, in one place.
+
    They used to be whatever the platform drew: a Chrome select on Linux next to
    a hand-styled input is two different form languages in one row, and the
    version pickers on the plugin pages sit directly beside inputs and buttons
    that had all been given the panel's own treatment. `appearance: none` throws
    the native control away and the rules below rebuild it — same height, border,
-   radius, focus ring and disabled treatment as `.field input`, plus a chevron
-   drawn from a token so it follows the theme.
- 
+   radius, focus ring and disabled treatment as `.field input`.
+
+   That only ever fixed the closed half. The list it opens is drawn by the
+   platform: it cannot be sized, cannot be animated, and barely takes a colour,
+   so every dropdown in the panel ended in a grey box from another decade that
+   appeared and vanished between two frames. On a fine pointer the list is ours
+   now too — `.select` is a button, `.select-sheet` is the listbox it opens, and
+   Select.tsx is what keeps the two honest. On a coarse pointer the same class
+   lands on a real <select>, because a thumb wants the phone's own picker. Both
+   branches share the skin below; where only one of them can be meant, the
+   selector says which element it is.
+
    The chevron gets its own padding on the right so a long option label stops
    before it instead of running underneath. `background-position` is written
    from the right edge for the same reason, and both flip under RTL only if the
@@ -6760,9 +6772,6 @@ select.input-slim {
   -webkit-appearance: none;
   padding: 7px 30px 7px 11px;
   background-color: var(--bg-input);
-  background-image: var(--chevron);
-  background-repeat: no-repeat;
-  background-position: right 10px center;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   box-shadow: var(--inset);
@@ -6771,20 +6780,73 @@ select.input-slim {
   font-family: inherit;
   font-size: 13px;
   line-height: 1.4;
+  text-align: left;
   transition:
     border-color var(--dur) var(--ease),
     box-shadow var(--dur) var(--ease);
 }
 
+/* Only the native control needs its arrow painted into the background — it
+   cannot carry a child, which is also why the token has to bake in a stroke
+   colour. The button opposite gets a real <svg>, and can therefore turn it. */
+select.select,
+.field select,
+select.input-slim {
+  background-image: var(--chevron);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+/* The trigger is a flex row rather than a padded box: the label has to be able
+   to run out of room and be cut, and the chevron has to stay put while it
+   does. */
+button.select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 9px;
+  max-width: 100%;
+}
+
+.select__value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select__chevron {
+  flex: none;
+  color: var(--text-dim);
+  transition: transform var(--dur-3) var(--ease);
+}
+
+/* Turned over to point at its own list while the list is out. */
+.select[aria-expanded='true'] .select__chevron {
+  transform: rotate(180deg);
+}
+
+/* `.field select` is sized by the field rules; the button branch is not a
+   select and has to be told the same thing. */
+.field .select {
+  width: 100%;
+}
+
 /* The slim variant is the one that sits inside a dense table row, so it is a
    size down on everything and drops the inset — a shadow at that scale reads
    as a smudge rather than as depth. */
+.select.input-slim,
 select.input-slim {
   padding: 4px 26px 4px 9px;
   background-position: right 8px center;
   box-shadow: none;
   font-size: 12px;
   max-width: 100%;
+}
+
+button.select.input-slim {
+  padding-right: 7px;
 }
 
 .select--block {
@@ -6805,6 +6867,14 @@ select.input-slim:focus-visible {
   box-shadow: var(--ring);
 }
 
+/* An open list is a focused control whether or not the pointer is what focused
+   it, and :focus-visible stays off after a click. Without this the one thing
+   on screen not admitting what it is doing is the control doing it. */
+.select[aria-expanded='true'] {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
 .select:disabled,
 .field select:disabled,
 select.input-slim:disabled {
@@ -6812,16 +6882,165 @@ select.input-slim:disabled {
   cursor: not-allowed;
 }
 
-/* The popup itself is the one part still drawn by the platform. Setting the
+/* The coarse-pointer branch's popup is still the platform's. Setting the
    colours on the options at least stops a dark-mode panel from opening a white
-   list — everything past that is out of CSS's reach and not worth a
-   hand-rolled listbox, which would cost the keyboard behaviour and the mobile
-   native picker that a real <select> gets for free. */
+   list — everything past that is out of CSS's reach, and out here it is the
+   right trade: what a phone gives back for it is the picker its own keyboard
+   and scroll physics are built around. */
 .select option,
 .field select option,
 select.input-slim option {
   background: var(--surface-1);
   color: var(--text);
+}
+
+/* ---------------------------------------------------------- the list itself
+
+   Portalled to <body> and positioned against the trigger's viewport rect by
+   Select.tsx, for the same reason the modal is (see Modal.tsx): laid out where
+   it was written, it would be clipped by whichever dialog body or scrolling
+   table the trigger happens to sit in. Everything positional therefore arrives
+   as an inline style, and nothing here may fight it — no top, no left, no
+   width, no max-height. */
+.select-sheet {
+  position: fixed;
+  /* Over the modal and the drawer, under the command palette: these open from
+     inside dialogs, and nothing that opens from inside a dialog may be painted
+     behind it. */
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  overflow-y: auto;
+  /* A list scrolled to its end must not hand the rest of the gesture to the
+     dialog behind it. */
+  overscroll-behavior: contain;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  /* Grown out of the trigger rather than dropped in from nowhere: the edge
+     nearest the control stays put and the sheet unfolds away from it. */
+  transform-origin: top center;
+  animation: pop var(--dur-3) var(--ease) both;
+}
+
+/* Flipped when there was no room below. The same gesture mirrored — it still
+   unfolds away from the control it belongs to. */
+.select-sheet[data-dir='up'] {
+  transform-origin: bottom center;
+  animation-name: pop-above;
+}
+
+/* Select owns the leaving state and holds the sheet mounted for exactly as
+   long as this takes; see useDismiss.ts. */
+.select-sheet[data-state='out'] {
+  animation: pop-out var(--dur) var(--ease-in) both;
+  pointer-events: none;
+}
+
+.select-sheet__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+  /* The rows arrive behind the sheet, a beat apart, so the list reads as
+     unfolding rather than as appearing whole. --i is capped in Select.tsx:
+     this is a flourish over the first few rows, not a queue a hundred plugin
+     versions long. */
+  animation: fade var(--dur-3) var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 16ms);
+}
+
+/* On the way out the rows are scenery. Restaging them would read as the list
+   coming apart rather than as it closing. */
+.select-sheet[data-state='out'] .select-sheet__option {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The blanket override collapses durations and leaves delays alone, which by
+     itself turns the cascade into rows that are simply absent for a fifth of a
+     second — the one result nobody asked for. */
+  .select-sheet__option {
+    animation-delay: 0s !important;
+  }
+}
+
+/* One highlight, whichever hand put it there. The pointer and the arrow keys
+   move the same row, because there is only one row Enter can take. */
+.select-sheet__option[data-active='true'] {
+  background: var(--surface-2);
+}
+
+.select-sheet__option[aria-selected='true'] {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.select-sheet__option[aria-disabled='true'] {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.select-sheet__text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Both lines are cut rather than wrapped: the sheet is the trigger's width and
+   a row that can grow to three lines turns a version list into a paragraph. */
+.select-sheet__label,
+.select-sheet__note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-sheet__note {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+/* Springs in rather than switching on. It is the only confirmation there is
+   for a choice that also closes the list. */
+.select-sheet__tick {
+  flex: none;
+  color: var(--accent);
+  opacity: 0;
+  transform: scale(0.5);
+  transition:
+    opacity var(--dur) var(--ease),
+    transform var(--dur-3) var(--ease-spring);
+}
+
+.select-sheet__option[aria-selected='true'] .select-sheet__tick {
+  opacity: 1;
+  transform: none;
+}
+
+/* `pop` for a sheet that opens upwards: it settles down onto the trigger
+   instead of rising off it. */
+@keyframes pop-above {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* -------------------------------------------------------------- pick lists

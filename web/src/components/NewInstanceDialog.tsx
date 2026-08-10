@@ -7,6 +7,7 @@ import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
 import { Modal } from './Modal'
 import { DirectoryField } from './PathPicker'
+import { Select } from './Select'
 
 interface Props {
   cores: CoreController
@@ -112,14 +113,15 @@ export function NewInstanceDialog({ cores, onCreated, onCancel, onOpenLibrary }:
 
         <label className="field">
           <span>服务端核心</span>
-          <select value={coreId} onChange={(e) => setCoreId(e.target.value)}>
-            {available.map((core) => (
-              <option key={core.id} value={core.id}>
-                {coreLabel(core)}
-              </option>
-            ))}
-            <option value={NO_CORE}>不放核心（自己指定 jar）</option>
-          </select>
+          <Select
+            ariaLabel="服务端核心"
+            value={coreId}
+            options={[
+              ...available.map((core) => ({ value: core.id, label: coreLabel(core) })),
+              { value: NO_CORE, label: '不放核心（自己指定 jar）' },
+            ]}
+            onChange={setCoreId}
+          />
           <small>
             {available.length > 0 ? (
               <>

@@ -42,7 +42,17 @@ export function useDismiss(onClose: () => void, ms: number = DUR.base) {
       return
     }
     setLeaving(true)
-    timer.current = window.setTimeout(onClose, ms)
+    // Both of these have to be put back, not just the timer handle. A dialog
+    // unmounts on close and never notices, but a popover whose owner stays
+    // mounted — a menu, a select — reopens into the state it was left in:
+    // `leaving` still true means the sheet plays its *exit* on the way in and
+    // sits there with pointer-events off, which looks like a control that has
+    // stopped working after one use.
+    timer.current = window.setTimeout(() => {
+      timer.current = null
+      setLeaving(false)
+      onClose()
+    }, ms)
   }, [onClose, ms])
 
   return { leaving, close }

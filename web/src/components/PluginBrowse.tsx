@@ -10,6 +10,7 @@ import type {
 } from '../types'
 import { CompatBadge } from './PluginCompat'
 import { PluginDrawer } from './PluginDrawer'
+import { Select } from './Select'
 
 /**
  * 获取插件 — searching the registries, and downloading into the panel library.
@@ -173,32 +174,33 @@ export function PluginBrowse({
           </RailGroup>
 
           <RailGroup label="分类">
-            <select
-              className="select select--block"
+            <Select
+              className="select--block"
               value={category}
-              onChange={(event) => setCategory(event.target.value)}
-              aria-label="分类"
-            >
-              <option value="">全部分类</option>
-              {(result?.categories ?? []).map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
+              ariaLabel="分类"
+              options={[
+                { value: '', label: '全部分类' },
+                ...(result?.categories ?? []).map((entry) => ({
+                  value: entry.id,
+                  label: entry.name,
+                })),
+              ]}
+              onChange={setCategory}
+            />
           </RailGroup>
 
           <RailGroup label="排序">
-            <select
-              className="select select--block"
+            <Select
+              className="select--block"
               value={sort}
-              onChange={(event) => setSort(event.target.value)}
-              aria-label="排序"
-            >
-              <option value="relevance">相关度</option>
-              <option value="downloads">下载量</option>
-              <option value="updated">最近更新</option>
-            </select>
+              ariaLabel="排序"
+              options={[
+                { value: 'relevance', label: '相关度' },
+                { value: 'downloads', label: '下载量' },
+                { value: 'updated', label: '最近更新' },
+              ]}
+              onChange={setSort}
+            />
           </RailGroup>
 
           <RailGroup label="兼容性">
@@ -325,19 +327,16 @@ function ReferenceBlock({
   return (
     <section className="browse__reference">
       <h3 className="browse__group-label">按哪台服判断兼容性</h3>
-      <select
-        className="select select--block"
+      <Select
+        className="select--block"
         value={against}
-        onChange={(event) => onChoose(event.target.value)}
-        aria-label="按哪台服判断兼容性"
-      >
-        <option value="">不判断</option>
-        {targets.map((target) => (
-          <option key={target.id} value={target.id}>
-            {target.name}
-          </option>
-        ))}
-      </select>
+        ariaLabel="按哪台服判断兼容性"
+        options={[
+          { value: '', label: '不判断' },
+          ...targets.map((target) => ({ value: target.id, label: target.name })),
+        ]}
+        onChange={onChoose}
+      />
 
       {chosen ? (
         <p className="browse__reference-meta">

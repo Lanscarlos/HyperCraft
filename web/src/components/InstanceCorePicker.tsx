@@ -4,6 +4,7 @@ import { ApiError, api } from '../api'
 import { formatBytes } from '../format'
 import type { InstanceStatus, ServerCore } from '../types'
 import type { CoreController } from '../useCores'
+import { Select } from './Select'
 
 interface Props {
   instance: InstanceStatus
@@ -100,17 +101,16 @@ export function InstanceCorePicker({ instance, cores, onApplied, onOpenLibrary }
 
           <label className="field">
             <span>选择核心</span>
-            <select
+            <Select
+              ariaLabel="选择核心"
               value={coreId}
-              onChange={(e) => setCoreId(e.target.value)}
               disabled={busy}
-            >
-              {available.map((core) => (
-                <option key={core.id} value={core.id}>
-                  {coreLabel(core)}
-                </option>
-              ))}
-            </select>
+              options={available.map((core) => ({
+                value: core.id,
+                label: coreLabel(core),
+              }))}
+              onChange={setCoreId}
+            />
             {selected && <small>将写入 <code>{selected.fileName}</code></small>}
           </label>
 

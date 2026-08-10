@@ -5,6 +5,7 @@ import { formatDate } from '../format'
 import type { InstanceStatus, LibraryPlugin } from '../types'
 import { isLive } from '../types'
 import { Modal } from './Modal'
+import { Select } from './Select'
 
 /**
  * Handing a library plugin to one or more servers.
@@ -86,14 +87,16 @@ export function PluginInstallDialog({
         ) : (
           <label className="field">
             <span>版本</span>
-            <select className="select" value={tag} onChange={(event) => setTag(event.target.value)}>
-              {item.versions.map((entry) => (
-                <option key={entry.tag} value={entry.tag}>
-                  {entry.version}
-                  {entry.prerelease ? '（预发布）' : ''} · {formatDate(entry.publishedAt)}
-                </option>
-              ))}
-            </select>
+            <Select
+              ariaLabel="版本"
+              value={tag}
+              options={item.versions.map((entry) => ({
+                value: entry.tag,
+                label: `${entry.version}${entry.prerelease ? '（预发布）' : ''}`,
+                note: formatDate(entry.publishedAt),
+              }))}
+              onChange={setTag}
+            />
           </label>
         )}
 

@@ -7,6 +7,7 @@ import type {
   KnownProperty,
   PropertiesResponse,
 } from '../types'
+import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
 /**
@@ -238,17 +239,18 @@ function PropertyField({
     <label className="field">
       <span>{prop.label}</span>
       {prop.type === 'select' ? (
-        <select value={value} onChange={(e) => onChange(e.target.value)}>
-          {/* An unset key must not silently become the first option. */}
-          {!prop.options?.includes(value) && (
-            <option value={value}>{value || '(未设置)'}</option>
-          )}
-          {prop.options?.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+        <Select
+          ariaLabel={prop.label}
+          value={value}
+          options={[
+            // An unset key must not silently become the first option.
+            ...(prop.options?.includes(value)
+              ? []
+              : [{ value, label: value || '(未设置)' }]),
+            ...(prop.options ?? []).map((option) => ({ value: option, label: option })),
+          ]}
+          onChange={onChange}
+        />
       ) : (
         <input
           type={prop.type === 'number' ? 'number' : 'text'}

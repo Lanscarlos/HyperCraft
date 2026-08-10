@@ -12,6 +12,7 @@ import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
 import { InstanceCorePicker } from './InstanceCorePicker'
 import { DirectoryField } from './PathPicker'
+import { Select } from './Select'
 
 interface Props {
   instance: InstanceStatus
@@ -214,29 +215,32 @@ export function LaunchSettings({
 
         <label className="field">
           <span>Java 环境</span>
-          <select
+          <Select
+            ariaLabel="Java 环境"
             value={showCustomJava ? CUSTOM_JAVA : form.java}
-            onChange={(e) => {
-              if (e.target.value === CUSTOM_JAVA) {
+            disabled={usingCustomCommand}
+            options={[
+              {
+                value: 'java',
+                label: '系统 java（PATH）',
+                note: systemJava?.major ? `Java ${systemJava.major}` : undefined,
+              },
+              ...runtimes.map((runtime) => ({
+                value: runtime.javaPath,
+                label: `Java ${runtime.major} · ${runtime.version}`,
+                note: `${runtime.imageType.toUpperCase()}（面板安装）`,
+              })),
+              { value: CUSTOM_JAVA, label: '自定义路径…' },
+            ]}
+            onChange={(next) => {
+              if (next === CUSTOM_JAVA) {
                 setCustomJava(true)
                 return
               }
               setCustomJava(false)
-              update('java', e.target.value)
+              update('java', next)
             }}
-            disabled={usingCustomCommand}
-          >
-            <option value="java">
-              系统 java（PATH{systemJava?.major ? `，Java ${systemJava.major}` : ''}）
-            </option>
-            {runtimes.map((runtime) => (
-              <option key={runtime.id} value={runtime.javaPath}>
-                Java {runtime.major} · {runtime.version} ·{' '}
-                {runtime.imageType.toUpperCase()}（面板安装）
-              </option>
-            ))}
-            <option value={CUSTOM_JAVA}>自定义路径…</option>
-          </select>
+          />
           {showCustomJava && (
             <input
               value={form.java}
@@ -343,16 +347,15 @@ export function LaunchSettings({
 
         <label className="field">
           <span>输出编码</span>
-          <select
+          <Select
+            ariaLabel="输出编码"
             value={form.encoding}
-            onChange={(e) => update('encoding', e.target.value)}
-          >
-            {ENCODING_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            options={ENCODING_OPTIONS.map((option) => ({
+              value: option.value,
+              label: option.label,
+            }))}
+            onChange={(next) => update('encoding', next)}
+          />
           <small>
             控制台按这个编码解读服务器输出、并按同样的编码发送命令。「自动」会让 JVM 用
             UTF-8 输出，同时对不是 UTF-8 的行按系统编码兜底 —— 中文 Windows 上出现乱码时，

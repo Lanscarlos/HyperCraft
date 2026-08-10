@@ -15,6 +15,7 @@ import { Modal } from './Modal'
 import { loaderLabel } from './PluginBrowse'
 import { CompatBadge } from './PluginCompat'
 import { PluginInstallDialog } from './PluginInstallDialog'
+import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
 /** Which rows the status chips are showing. */
@@ -529,24 +530,33 @@ function PluginRow({
 
       <div className="plugin-table__cell plugin-table__version" role="cell">
         {entry.managed && versions.length > 0 ? (
-          <select
+          <Select
             className="input-slim"
             value={entry.tag ?? ''}
             disabled={busy}
-            aria-label={`${entry.name} 的版本`}
-            onChange={(event) => {
-              if (event.target.value !== entry.tag) onSwitchVersion(event.target.value)
+            ariaLabel={`${entry.name} 的版本`}
+            options={[
+              // An installed version whose jar has since been deleted from the
+              // library is still the version this server is running. It is not
+              // in the list, so it is put back at the top of it — dropping it
+              // would silently reassign the row to whatever sorts first.
+              ...(versions.some((version) => version.tag === entry.tag)
+                ? []
+                : [
+                    {
+                      value: entry.tag ?? '',
+                      label: `${entry.version ?? '未知'}（库里已删除）`,
+                    },
+                  ]),
+              ...versions.map((version) => ({
+                value: version.tag,
+                label: version.version,
+              })),
+            ]}
+            onChange={(next) => {
+              if (next !== entry.tag) onSwitchVersion(next)
             }}
-          >
-            {!versions.some((version) => version.tag === entry.tag) && (
-              <option value={entry.tag ?? ''}>{entry.version ?? '未知'}（库里已删除）</option>
-            )}
-            {versions.map((version) => (
-              <option key={version.tag} value={version.tag}>
-                {version.version}
-              </option>
-            ))}
-          </select>
+          />
         ) : (
           <span>{entry.version || entry.jar?.version || '未知版本'}</span>
         )}
