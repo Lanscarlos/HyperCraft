@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { api } from '../api'
+import { ask } from '../confirm'
 import type { InstanceStatus } from '../types'
 import { isLive } from '../types'
 import { useUptime } from '../useUptime'
@@ -37,7 +38,7 @@ export function PowerControls({ instance, onChanged, variant = 'full', onError }
   const uptime = useUptime(instance.startedAt, isLive(instance.state))
 
   const power = async (action: PowerAction) => {
-    if (!confirmPower(action, instance, uptime)) return
+    if (!(await confirmPower(action, instance, uptime))) return
     setBusy(true)
     setPending(action)
     onError?.(null)
@@ -136,19 +137,28 @@ function confirmPower(
   action: PowerAction,
   instance: InstanceStatus,
   uptime: string | null,
-): boolean {
-  if (action === 'start' || action === 'restart') return true
+): Promise<boolean> {
+  if (action === 'start' || action === 'restart') return Promise.resolve(true)
 
   const ran = uptime ? `已运行 ${uptime}。` : ''
   if (action === 'stop') {
-    return window.confirm(
-      `即将停止「${instance.name}」。${ran}\n\n` +
-        '服务器会先执行 stop 保存世界再退出，当前连着它的玩家会全部掉线。',
-    )
+    return ask({
+      title: `停止「${instance.name}」？`,
+      lead: `${ran}服务器会先执行 stop 保存世界再退出。`,
+      detail: '当前连着它的玩家会全部掉线。',
+      confirmLabel: '停止',
+    })
   }
-  return window.confirm(
-    `强制结束「${instance.name}」${instance.pid ? `（PID ${instance.pid}）` : ''}。\n\n` +
-      '进程会被直接杀掉，不执行保存 —— 上一次自动保存之后的世界改动全部丢失，' +
-      '正在写入的区块还可能损坏。\n\n只有在「停止」已经卡住不动时才用它。',
-  )
+  return ask({
+    title: `强制结束「${instance.name}」？`,
+    lead: (
+      <>
+        进程{instance.pid ? `（PID ${instance.pid}）` : ''}会被直接杀掉，不执行保存。
+      </>
+    ),
+    detail:
+      '上一次自动保存之后的世界改动全部丢失，正在写入的区块还可能损坏。只有在「停止」已经卡住不动时才用它。',
+    confirmLabel: '强制结束',
+    danger: true,
+  })
 }

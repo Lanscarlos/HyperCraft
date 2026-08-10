@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { api } from '../api'
+import { ask } from '../confirm'
 import { formatBytes, formatDate } from '../format'
 import type {
   InstanceStatus,
@@ -785,14 +786,15 @@ function VersionGroup({
                   removable={artifacts.length > 1 || true}
                   busy={busy}
                   onDrop={() => {
-                    if (
-                      window.confirm(
-                        `从库里删掉 ${artifact.fileName}（${formatBytes(artifact.size)}）？` +
-                          '\n\n已经装到实例里的副本不受影响，回滚快照也不受影响。',
-                      )
-                    ) {
-                      onDropArtifact(artifact)
-                    }
+                    void ask({
+                      title: '从库里删掉这个 jar？',
+                      lead: `${artifact.fileName}（${formatBytes(artifact.size)}）`,
+                      detail: '已经装到实例里的副本不受影响，回滚快照也不受影响。',
+                      confirmLabel: '删除',
+                      danger: true,
+                    }).then((ok) => {
+                      if (ok) onDropArtifact(artifact)
+                    })
                   }}
                 />
               ))}

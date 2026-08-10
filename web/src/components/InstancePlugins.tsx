@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '../api'
+import { ask, askWithToggle } from '../confirm'
 import { formatBytes } from '../format'
 import type { InstanceSection } from '../routes'
 import type {
@@ -281,29 +282,39 @@ export function InstancePlugins({
                 void act(() => api.adoptInstancePlugin(instance.id, entry.key), '接管失败')
               }
               onRollback={() => {
-                // Two questions, and the second only when there is an answer
-                // worth having: the config is only restorable when the upgrade
-                // that made the snapshot managed to copy it.
-                if (!window.confirm(`把「${entry.name}」回滚到上一次升级之前的版本？`)) return
-                const withConfig = window.confirm(
-                  '配置目录也一并还原吗？\n\n' +
-                    '确定 = 连插件的配置目录一起恢复成升级前的样子，升级之后写进去的数据会丢。\n' +
-                    '取消 = 只换回旧的 jar，配置保持现状（多数情况选这个）。',
-                )
-                void act(
-                  () => api.rollbackInstancePlugin(instance.id, entry.pluginId ?? '', withConfig),
-                  '回滚失败',
-                )
+                // One card, two decisions. It used to be two stacked boxes and
+                // the second one — 确定 = 连配置一起, 取消 = 只换 jar — asked
+                // the operator to read a legend to find out which button meant
+                // what. A checkbox says the same thing without one, and it can
+                // sit unticked, which is the answer most of the time.
+                void askWithToggle({
+                  title: `回滚「${entry.name}」？`,
+                  lead: '换回上一次升级之前的那个 jar。',
+                  detail: '升级时留下的快照就是回滚的来源，回滚之后它还在，可以再滚回来。',
+                  confirmLabel: '回滚',
+                  toggle: {
+                    label: '连配置目录一起还原',
+                    note: '插件的配置目录会退回升级前的样子，升级之后写进去的数据会丢。多数情况不用勾。',
+                  },
+                }).then(({ ok, toggled }) => {
+                  if (!ok) return
+                  void act(
+                    () => api.rollbackInstancePlugin(instance.id, entry.pluginId ?? '', toggled),
+                    '回滚失败',
+                  )
+                })
               }}
               onRemove={() => {
-                if (
-                  !window.confirm(
-                    `确定要从这台服务器移除「${entry.name}」吗？插件自己的配置目录会留着。`,
-                  )
-                ) {
-                  return
-                }
-                void act(() => api.uninstallInstancePlugin(instance.id, entry.key), '移除失败')
+                void ask({
+                  title: `从这台服移除「${entry.name}」？`,
+                  lead: `会删掉 ${instance.name} 插件目录里的这个 jar。`,
+                  detail: '插件自己的配置目录会留着，重新装回来时还是原来的设置。',
+                  confirmLabel: '移除',
+                  danger: true,
+                }).then((ok) => {
+                  if (!ok) return
+                  void act(() => api.uninstallInstancePlugin(instance.id, entry.key), '移除失败')
+                })
               }}
             />
           ))}

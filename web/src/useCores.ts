@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { ApiError, api } from './api'
+import { ask } from './confirm'
 import type { CoreDownloadJob, CoreLibrary, ServerCore } from './types'
 
 /** Cadence while a download runs, for a progress bar that moves. */
@@ -81,9 +82,13 @@ export function useCores(enabled: boolean): CoreController {
           // usually a repair after a bad file, worth offering and never worth
           // doing silently to a jar instances are being stamped out of.
           if (err instanceof ApiError && err.status === 409 && !overwrite) {
-            if (!window.confirm(`${version} 的这个构建已经在核心库里了，要重新下载并覆盖吗？`)) {
-              return
-            }
+            const ok = await ask({
+              title: '这个构建已经在核心库里了',
+              lead: `${version} 的这一版之前下载过。`,
+              detail: '重新下载会覆盖库里的那份文件。已经复制到实例目录里的副本不受影响。',
+              confirmLabel: '重新下载',
+            })
+            if (!ok) return
             const started = await api.startCoreDownload({ project, version, overwrite: true })
             setLibrary((prev) => (prev ? { ...prev, job: started } : prev))
             return

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '../api'
+import { ask } from '../confirm'
 import type {
   InstanceInput,
   InstanceStatus,
@@ -152,10 +153,31 @@ export function LaunchSettings({
   }
 
   const remove = async (deleteFiles: boolean) => {
-    const warning = deleteFiles
-      ? `确定要删除实例「${instance.name}」并永久删除目录 ${instance.directory} 下的所有文件（含存档）吗？此操作不可撤销。`
-      : `确定要从面板移除实例「${instance.name}」吗？服务器文件会保留在磁盘上。`
-    if (!window.confirm(warning)) return
+    const ok = await ask(
+      deleteFiles
+        ? {
+            title: `删除实例「${instance.name}」并抹掉它的文件？`,
+            lead: (
+              <>
+                目录 <code>{instance.directory}</code> 下的所有文件都会被永久删除，存档也在里面。
+              </>
+            ),
+            detail: '此操作不可撤销，面板没有为它留回收站。要保留文件请改用「从面板移除」。',
+            confirmLabel: '删除实例和文件',
+            danger: true,
+          }
+        : {
+            title: `从面板移除实例「${instance.name}」？`,
+            lead: '面板不再管理它，列表里也不会再出现。',
+            detail: (
+              <>
+                服务器文件原样留在 <code>{instance.directory}</code>，之后可以用「导入现有目录」再加回来。
+              </>
+            ),
+            confirmLabel: '移除',
+          },
+    )
+    if (!ok) return
 
     setBusy(true)
     try {

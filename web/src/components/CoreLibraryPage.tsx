@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api'
+import { ask } from '../confirm'
 import { formatBytes, formatDate } from '../format'
 import type { LibraryView } from '../routes'
 import type { CoreBuild, CoreDownloadJob, CoreProject, CoreVersion, ServerCore } from '../types'
@@ -126,15 +127,17 @@ export function CoreLibraryPage({
   }, [job?.state, job?.coreId, cores])
 
   const remove = async (core: ServerCore) => {
-    const inUse =
-      core.usedBy.length > 0
-        ? `实例「${core.usedBy.join('、')}」正在用同名的 jar 启动，不过它们各自有一份副本，删掉库里的这个不影响它们。`
-        : ''
-    if (
-      !window.confirm(`确定要从核心库删除 ${core.fileName}（${formatBytes(core.size)}）吗？${inUse}`)
-    ) {
-      return
-    }
+    const ok = await ask({
+      title: '从核心库删除这个 jar？',
+      lead: `${core.fileName}（${formatBytes(core.size)}）`,
+      detail:
+        core.usedBy.length > 0
+          ? `实例「${core.usedBy.join('、')}」正在用同名的 jar 启动，不过它们各自有一份副本，删掉库里的这个不影响它们。`
+          : '没有实例在用它。之后还要的话可以从下载页再取一次。',
+      confirmLabel: '删除',
+      danger: true,
+    })
+    if (!ok) return
     await cores.remove(core.id)
   }
 
