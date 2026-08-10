@@ -1,53 +1,73 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '../api'
-import { formatBytes, formatDate } from '../format'
-import type { InstancePlugin, InstanceStatus, LibraryPlugin } from '../types'
-import { isLive } from '../types'
-import type { PluginController, PluginInput } from '../usePlugins'
-import { PluginDialog } from './PluginDialog'
+import { formatBytes } from '../format'
+import type { InstanceSection, PluginTab } from '../routes'
+import { pathOf } from '../routes'
+import type {
+  InstancePlugin,
+  InstancePluginList,
+  InstanceStatus,
+  LibraryPlugin,
+  PendingPluginChange,
+} from '../types'
+import type { PluginController } from '../usePlugins'
+import { PluginBrowse, loaderLabel } from './PluginBrowse'
+import { CompatBadge } from './PluginCompat'
+import { PluginTabs } from './PluginTabs'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
+/** Which rows the status chips are showing. */
+type StatusFilter = 'all' | 'broken' | 'updatable'
+
 /**
- * One instance's plugins.
+ * One server's plugins.
  *
- * The whole install path is here, on purpose. The panel-wide library exists
- * for the operations view — shared cache, one download for five servers, bulk
- * update checks — but nobody ever decides to install a plugin *in the
- * abstract*: the thought occurs while looking at one server. Sending them to a
- * global page to have it would be sending them away from the only place the
- * decision makes sense. So this page can add a source, fetch a release and
- * install it without leaving the instance; the library keeps the inventory.
+ * The design centre of this page is exposing problems, not listing inventory.
+ * A Minecraft server that cannot load a plugin says so once, in a stack trace
+ * between two thousand startup lines, and then reports itself perfectly
+ * healthy — so the operator's first sign that their permissions plugin never
+ * loaded is a player asking why they lost their rank. Nothing in the plugins
+ * directory records it: the jar is there, correctly named, enabled, and looks
+ * exactly like the ones that worked.
  *
- * Jars the panel did not install are listed anyway, and identified from what
- * they say about themselves — pretending they are not there is how a server
- * ends up with a plugin nobody can account for, and listing them by file name
- * alone barely improves on that. One that turns out to be a copy of something
- * in the library can be adopted, after which it is an ordinary managed plugin.
+ * So the failures the daemon read out of the console are the first thing on
+ * the page, in red, with the reason written out and an action that fixes that
+ * specific reason — 安装依赖 for a missing dependency, not a generic 详情.
+ *
+ * The other thing this page refuses to do is pretend. Every change here lands
+ * in a directory the running server read once, at startup: installing,
+ * removing, swapping a version and switching a plugin off all take effect on
+ * the next boot. An on/off switch that flips instantly would be lying about
+ * every one of them, so a disabled plugin enters 已禁用 · 待重启 and is counted
+ * in the banner at the top until the server is restarted.
  */
 export function InstancePlugins({
   instance,
   plugins,
-  onOpenLibrary,
+  tab,
+  onSelectTab,
+  onOpenSection,
+  onChanged,
 }: {
   instance: InstanceStatus
-  /** The panel-wide library, so a new source can be added from right here. */
+  /** The panel-wide library, for the versions already on hand. */
   plugins: PluginController
-  onOpenLibrary: () => void
+  tab: PluginTab
+  onSelectTab: (tab: PluginTab) => void
+  /** Opens another page of this server — the file manager, for a config dir. */
+  onOpenSection: (section: InstanceSection, path?: string) => void
+  onChanged: (instance: InstanceStatus) => void
 }) {
-  const [entries, setEntries] = useState<InstancePlugin[]>([])
-  const [library, setLibrary] = useState<LibraryPlugin[]>([])
+  const [listing, setListing] = useState<InstancePluginList | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [changed, setChanged] = useState(false)
-  const [adding, setAdding] = useState(false)
+  const [filter, setFilter] = useState<StatusFilter>('all')
 
   const refresh = useCallback(async () => {
     try {
-      const listing = await api.instancePlugins(instance.id)
-      setEntries(listing.entries)
-      setLibrary(listing.library)
+      setListing(await api.instancePlugins(instance.id))
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : '读取插件列表失败')
@@ -65,9 +85,6 @@ export function InstancePlugins({
     setError(null)
     try {
       await action()
-      // Every action here changes what the server would load on its next
-      // start, never what it is running now.
-      setChanged(true)
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : fallback)
@@ -76,37 +93,30 @@ export function InstancePlugins({
     }
   }
 
-  const installed = entries.filter((entry) => entry.managed)
-  const foreign = entries.filter((entry) => !entry.managed)
-  const installedIDs = new Set(installed.map((entry) => entry.pluginId))
-  // Only plugins with something downloaded can be installed; one that has been
-  // added but never fetched has no file to copy.
-  const available = library.filter(
-    (item) => item.versions.length > 0 && !installedIDs.has(item.id),
-  )
-  // Added as a source but never fetched. They get their own list with a
-  // one-click "download the newest and install it" rather than being hidden,
-  // because that is the state a plugin is in for the thirty seconds right
-  // after it was added from this very page.
-  const pending = library.filter(
-    (item) => item.versions.length === 0 && !installedIDs.has(item.id),
-  )
+  const entries = listing?.entries ?? []
+  const broken = entries.filter((entry) => entry.failure).length
+  const updatable = entries.filter((entry) => updateFor(entry, listing?.library ?? [])).length
+  const pending = listing?.pending ?? []
 
-  /** Add a source, then bring the instance listing back in step with it. */
-  const addSource = async (input: PluginInput): Promise<boolean> => {
-    const ok = await plugins.add(input)
-    if (!ok) return false
-    setAdding(false)
-    await refresh()
-    return true
+  if (tab === 'browse') {
+    return (
+      <div className="stack">
+        <PluginTabs
+          tab={tab}
+          onSelect={onSelectTab}
+          hrefFor={(next) =>
+            pathOf({
+              kind: 'instance',
+              id: instance.id,
+              section: 'plugins',
+              tab: next === 'browse' ? 'browse' : undefined,
+            })
+          }
+        />
+        <PluginBrowse instanceId={instance.id} />
+      </div>
+    )
   }
-
-  /** Fetch a release into the library and put it in this server in one go. */
-  const fetchAndInstall = (item: LibraryPlugin, tag: string) =>
-    act(async () => {
-      await plugins.download(item.id, tag)
-      await api.installInstancePlugin(instance.id, item.id, tag)
-    }, '下载或安装失败')
 
   if (loading) {
     return (
@@ -116,329 +126,400 @@ export function InstancePlugins({
             <Skeleton w="72px" h={15} />
             <Skeleton w="52%" h={12} />
           </div>
-          <SkeletonRows rows={4} />
-        </SkeletonPanel>
-        <SkeletonPanel title={false}>
-          <div className="chart-head">
-            <Skeleton w="112px" h={15} />
-            <Skeleton w="60px" h={12} />
-          </div>
-          <SkeletonRows rows={3} />
+          <SkeletonRows rows={5} />
         </SkeletonPanel>
       </SkeletonScreen>
     )
   }
 
+  const shown = entries.filter((entry) => {
+    if (filter === 'broken') return Boolean(entry.failure)
+    if (filter === 'updatable') return Boolean(updateFor(entry, listing?.library ?? []))
+    return true
+  })
+
   return (
     <div className="stack">
-      {adding && (
-        <PluginDialog
-          item={null}
-          busy={plugins.busy}
-          onCancel={() => setAdding(false)}
-          onSubmit={addSource}
-        />
-      )}
+      <PluginTabs
+        tab={tab}
+        onSelect={onSelectTab}
+        hrefFor={(next) =>
+          pathOf({
+            kind: 'instance',
+            id: instance.id,
+            section: 'plugins',
+            tab: next === 'browse' ? 'browse' : undefined,
+          })
+        }
+        badges={{
+          installed:
+            broken > 0 ? <span className="badge badge--danger">{broken}</span> : undefined,
+        }}
+      />
+
+      <header className="chart-head">
+        <h2 className="panel__title">
+          已装插件 <span className="muted">{entries.length}</span>
+        </h2>
+        <div className="chart-head__actions">
+          <button className="btn" onClick={() => onOpenSection('files', listing?.entries[0]?.dir)}>
+            上传 jar
+          </button>
+          <button className="btn btn--primary" onClick={() => onSelectTab('browse')}>
+            搜索安装
+          </button>
+        </div>
+      </header>
 
       {error && <div className="alert alert--error">{error}</div>}
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
-      {changed && isLive(instance.state) && (
-        <div className="alert alert--warn">
-          插件的增删和启停都要重启服务器才会生效 —— 正在运行的这个进程已经把当前的插件加载进内存了。
+
+      <RestartBanner
+        pending={pending}
+        live={listing?.live ?? false}
+        busy={busy}
+        onRestart={() =>
+          void act(async () => {
+            onChanged(await api.power(instance.id, 'restart'))
+          }, '重启失败')
+        }
+      />
+
+      <TargetLine listing={listing} />
+
+      {entries.length > 0 && (
+        <div className="filters__chips">
+          <Chip active={filter === 'all'} onClick={() => setFilter('all')}>
+            全部 {entries.length}
+          </Chip>
+          <Chip active={filter === 'broken'} onClick={() => setFilter('broken')} tone="danger">
+            异常 {broken}
+          </Chip>
+          <Chip active={filter === 'updatable'} onClick={() => setFilter('updatable')}>
+            可更新 {updatable}
+          </Chip>
         </div>
       )}
 
-      <section className="panel">
-        <div className="chart-head">
-          <h2 className="panel__title">已安装</h2>
-          <p className="chart-head__meta">
-            版本和来源都由插件库统一管理，这里只管用哪个、开不开
-          </p>
-        </div>
-
-        {installed.length === 0 ? (
-          <div className="welcome__empty">
-            <p>这个实例还没从插件库装过插件。</p>
-            <p className="muted">在下面的「安装插件」里挑一个装上，或者直接添加一个新的。</p>
-          </div>
-        ) : (
-          <div className="device-list">
-            {installed.map((entry) => (
-              <InstalledRow
-                key={entry.key}
-                entry={entry}
-                item={library.find((candidate) => candidate.id === entry.pluginId)}
-                busy={busy}
-                onToggle={(enabled) =>
-                  void act(
-                    () => api.setInstancePluginEnabled(instance.id, entry.key, enabled),
-                    '切换失败',
-                  )
-                }
-                onSwitch={(tag) =>
-                  void act(
-                    () => api.installInstancePlugin(instance.id, entry.pluginId ?? '', tag),
-                    '切换版本失败',
-                  )
-                }
-                onRemove={() => {
-                  if (!window.confirm(`确定要从这个实例移除「${entry.name}」吗？插件自己的配置目录会留着。`)) {
-                    return
-                  }
-                  void act(() => api.uninstallInstancePlugin(instance.id, entry.key), '移除失败')
-                }}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="panel">
-        <div className="chart-head">
-          <h2 className="panel__title">安装插件</h2>
-          <div className="chart-head__actions">
-            <button className="btn" onClick={() => setAdding(true)}>
-              + 添加新插件
-            </button>
-            <button className="link" onClick={onOpenLibrary}>
-              管理插件库
-            </button>
-          </div>
-        </div>
-
-        {pending.length > 0 && (
-          <div className="device-list">
-            {pending.map((item) => (
-              <div className="device-row" key={item.id}>
-                <div className="device-row__main">
-                  <strong>{item.name}</strong>
-                  <span className="badge">还没下载</span>
-                  <span className="device-row__spacer" />
-                  <button
-                    className="btn btn--primary"
-                    disabled={busy || plugins.downloading || !item.latest}
-                    onClick={() =>
-                      item.latest && void fetchAndInstall(item, item.latest.tag)
-                    }
-                  >
-                    {item.latest ? `下载 ${item.latest.version} 并安装` : '还没查到版本'}
-                  </button>
-                </div>
-                <div className="device-row__meta">
-                  {item.source.repo}
-                  {item.checkError && ` · 检查更新失败：${item.checkError}`}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {available.length === 0 && pending.length === 0 ? (
+      {entries.length === 0 ? (
+        <div className="welcome__empty">
+          <p>这台服务器还没有插件。</p>
           <p className="muted">
-            插件库里没有可以装的插件了 —— 用上面的「添加新插件」填一个 GitHub 仓库，
-            面板会跟着它的 release 走。
+            用上面的「搜索安装」从 Modrinth、Hangar 或 SpigotMC 找一个装上，
+            或者把 jar 直接传进 <code>plugins/</code>，面板会认出来。
           </p>
-        ) : available.length === 0 ? null : (
-          <div className="device-list">
-            {available.map((item) => (
-              <AvailableRow
-                key={item.id}
-                item={item}
-                busy={busy}
-                onInstall={(tag) =>
-                  void act(() => api.installInstancePlugin(instance.id, item.id, tag), '安装失败')
+        </div>
+      ) : (
+        <div className="plugin-table" role="table" aria-label="已装插件">
+          <div className="plugin-table__head" role="row">
+            <span role="columnheader">插件</span>
+            <span role="columnheader">状态</span>
+            <span role="columnheader">版本</span>
+            <span role="columnheader">操作</span>
+          </div>
+          {shown.map((entry) => (
+            <PluginRow
+              key={entry.key}
+              entry={entry}
+              library={listing?.library ?? []}
+              busy={busy}
+              live={listing?.live ?? false}
+              onOpenConfig={() => onOpenSection('files', entry.configDir)}
+              onOpenConsole={() => onOpenSection('console')}
+              onFindDependency={() => onSelectTab('browse')}
+              onSwitchVersion={(tag) =>
+                void act(
+                  () => api.installInstancePlugin(instance.id, entry.pluginId ?? '', tag),
+                  '切换版本失败',
+                )
+              }
+              onSetEnabled={(enabled) =>
+                void act(
+                  () => api.setInstancePluginEnabled(instance.id, entry.key, enabled),
+                  '切换失败',
+                )
+              }
+              onAdopt={() =>
+                void act(() => api.adoptInstancePlugin(instance.id, entry.key), '接管失败')
+              }
+              onRemove={() => {
+                if (
+                  !window.confirm(
+                    `确定要从这台服务器移除「${entry.name}」吗？插件自己的配置目录会留着。`,
+                  )
+                ) {
+                  return
                 }
-              />
-            ))}
-          </div>
-        )}
-      </section>
+                void act(() => api.uninstallInstancePlugin(instance.id, entry.key), '移除失败')
+              }}
+            />
+          ))}
+          {shown.length === 0 && (
+            <p className="plugin-table__empty muted">这个筛选下没有插件。</p>
+          )}
+        </div>
+      )}
 
-      {foreign.length > 0 && (
-        <section className="panel">
-          <div className="chart-head">
-            <h2 className="panel__title">自行放入的 jar</h2>
-            <p className="chart-head__meta">
-              不是从插件库装的。面板会读 jar 自己的描述文件认出它是什么，但没有来源，也跟不了更新
-            </p>
-          </div>
-          <div className="device-list">
-            {foreign.map((entry) => (
-              <div className="device-row" key={entry.key}>
-                <div className="device-row__main">
-                  <strong>{entry.name}</strong>
-                  {entry.version && <span className="badge">{entry.version}</span>}
-                  {entry.jar?.platform && <span className="badge">{entry.jar.platform}</span>}
-                  {!entry.enabled && <span className="badge badge--warn">已停用</span>}
-                  <span className="device-row__spacer" />
-                  {entry.adoptable && (
-                    <button
-                      className="link"
-                      disabled={busy}
-                      title={`按内容校验，这就是插件库里的 ${entry.adoptable.name} ${entry.adoptable.version}`}
-                      onClick={() =>
-                        void act(
-                          () => api.adoptInstancePlugin(instance.id, entry.key),
-                          '接管失败',
-                        )
-                      }
-                    >
-                      接管
-                    </button>
-                  )}
-                  <button
-                    className="link"
-                    disabled={busy}
-                    onClick={() =>
-                      void act(
-                        () => api.setInstancePluginEnabled(instance.id, entry.key, !entry.enabled),
-                        '切换失败',
-                      )
-                    }
-                  >
-                    {entry.enabled ? '停用' : '启用'}
-                  </button>
-                  <button
-                    className="link link--danger"
-                    disabled={busy}
-                    onClick={() => {
-                      if (!window.confirm(`确定要删除 ${entry.fileName} 吗？这会直接删掉这个文件。`)) return
-                      void act(() => api.uninstallInstancePlugin(instance.id, entry.key), '删除失败')
-                    }}
-                  >
-                    删除
-                  </button>
-                </div>
-                <div className="device-row__meta">
-                  {entry.dir}/{entry.fileName} · {formatBytes(entry.size)}
-                  {entry.modified && ` · 修改于 ${formatDate(entry.modified)}`}
-                  {entry.jar?.authors?.length ? ` · 作者 ${entry.jar.authors.join('、')}` : ''}
-                  {entry.jar?.apiVersion && ` · api-version ${entry.jar.apiVersion}`}
-                  {!entry.jar && ' · 读不出插件描述文件，只能按文件名认'}
-                  {entry.adoptable && (
-                    <span className="device-row__hint">
-                      和插件库里的 {entry.adoptable.name} {entry.adoptable.version} 完全一致（按
-                      SHA-256 校验），接管之后就能像其它插件一样换版本、跟更新。
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+      {listing && !listing.logAvailable && entries.length > 0 && (
+        <p className="chart-note">
+          这台服务器自面板启动以来没跑过，读不到启动日志 —— 插件有没有加载失败，要开起来才知道。
+        </p>
       )}
     </div>
   )
 }
 
-function InstalledRow({
-  entry,
-  item,
+/**
+ * N 项变更待重启生效.
+ *
+ * Only rendered when there is something pending, and only for a running
+ * server: a stopped one will pick everything up on its next start, and telling
+ * someone to restart a server that is not running is noise. The list is named
+ * rather than counted alone — "3 项变更" without saying which three is a number
+ * you cannot act on.
+ */
+function RestartBanner({
+  pending,
+  live,
   busy,
-  onToggle,
-  onSwitch,
+  onRestart,
+}: {
+  pending: PendingPluginChange[]
+  live: boolean
+  busy: boolean
+  onRestart: () => void
+}) {
+  if (pending.length === 0 || !live) return null
+
+  return (
+    <div className="alert alert--warn restart-banner">
+      <div>
+        <strong>{pending.length} 项变更待重启生效</strong>
+        <p className="restart-banner__list">
+          {pending.slice(0, 4).map((change) => change.label).join('、')}
+          {pending.length > 4 && ` 等 ${pending.length} 项`}
+        </p>
+      </div>
+      <button className="btn btn--primary" disabled={busy} onClick={onRestart}>
+        立即重启
+      </button>
+    </div>
+  )
+}
+
+/** What the compatibility badges on this page were judged against. Worth
+ *  saying: 未知兼容性 caused by the panel not recognising the server jar looks
+ *  identical to 未知兼容性 caused by a plugin publishing nothing. */
+function TargetLine({ listing }: { listing: InstancePluginList | null }) {
+  const target = listing?.target
+  if (!target?.loader && !target?.mcVersion) {
+    return (
+      <p className="chart-note">
+        没认出这台服务器的核心和版本，所以兼容性一栏都是「未知」。
+        换成面板下载的核心，或者启动一次让它写下 <code>version_history.json</code>，就能判断了。
+      </p>
+    )
+  }
+  return (
+    <p className="chart-note">
+      按 {loaderLabel(target.loader)} {target.mcVersion} 判断兼容性
+      {target.source === 'jar-name' && '（从核心文件名猜的，可能不准）'}
+    </p>
+  )
+}
+
+function Chip({
+  active,
+  tone,
+  onClick,
+  children,
+}: {
+  active: boolean
+  tone?: 'danger'
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      className={`chip${active ? ' chip--active' : ''}${tone === 'danger' ? ' chip--danger' : ''}`}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  )
+}
+
+/** The newest library version this row is not already on, or null. */
+function updateFor(entry: InstancePlugin, library: LibraryPlugin[]) {
+  if (!entry.managed || !entry.pluginId) return null
+  const item = library.find((candidate) => candidate.id === entry.pluginId)
+  const newest = item?.versions[0]
+  if (!newest || newest.tag === entry.tag) return null
+  return newest
+}
+
+function PluginRow({
+  entry,
+  library,
+  busy,
+  live,
+  onOpenConfig,
+  onOpenConsole,
+  onFindDependency,
+  onSwitchVersion,
+  onSetEnabled,
+  onAdopt,
   onRemove,
 }: {
   entry: InstancePlugin
-  item: LibraryPlugin | undefined
+  library: LibraryPlugin[]
   busy: boolean
-  onToggle: (enabled: boolean) => void
-  onSwitch: (tag: string) => void
+  live: boolean
+  onOpenConfig: () => void
+  onOpenConsole: () => void
+  onFindDependency: () => void
+  onSwitchVersion: (tag: string) => void
+  onSetEnabled: (enabled: boolean) => void
+  onAdopt: () => void
   onRemove: () => void
 }) {
+  const update = updateFor(entry, library)
+  const item = library.find((candidate) => candidate.id === entry.pluginId)
   const versions = item?.versions ?? []
-  // A version the library no longer holds still has to appear, or the select
-  // would silently claim this server is running something it is not.
-  const options = versions.some((version) => version.tag === entry.tag)
-    ? versions
-    : [
-        { tag: entry.tag ?? '', version: `${entry.version ?? '未知'}（库里已删除）` },
-        ...versions,
-      ]
 
   return (
-    <div className="device-row">
-      <div className="device-row__main">
+    <div
+      className={`plugin-table__row${entry.failure ? ' plugin-table__row--broken' : ''}`}
+      role="row"
+    >
+      <div className="plugin-table__cell plugin-table__name" role="cell">
         <strong>{entry.name}</strong>
-        {entry.missing ? (
-          <span className="badge badge--warn">文件不见了</span>
+        {/* The reason goes directly under the name rather than behind a
+            tooltip or a details page: it is the whole content of the row. */}
+        {entry.failure ? (
+          <span className="plugin-table__reason">{entry.failure.reason}</span>
         ) : (
-          !entry.enabled && <span className="badge badge--warn">已停用</span>
+          <span className="plugin-table__path">
+            {entry.dir}/{entry.fileName}
+            {entry.size > 0 && ` · ${formatBytes(entry.size)}`}
+          </span>
         )}
-        <span className="device-row__spacer" />
+        {!entry.managed && <span className="badge">自行放入</span>}
+      </div>
 
-        <select
-          className="input-slim"
-          value={entry.tag ?? ''}
-          disabled={busy || versions.length === 0}
-          aria-label={`${entry.name} 的版本`}
-          onChange={(e) => {
-            if (e.target.value !== entry.tag) onSwitch(e.target.value)
-          }}
-        >
-          {options.map((version) => (
-            <option key={version.tag} value={version.tag}>
-              {version.version}
-            </option>
-          ))}
-        </select>
+      <div className="plugin-table__cell plugin-table__status" role="cell">
+        <StatusCell entry={entry} live={live} />
+        <CompatBadge compat={entry.compat} />
+      </div>
 
-        <button className="link" disabled={busy || entry.missing} onClick={() => onToggle(!entry.enabled)}>
-          {entry.enabled ? '停用' : '启用'}
-        </button>
+      <div className="plugin-table__cell plugin-table__version" role="cell">
+        {entry.managed && versions.length > 0 ? (
+          <select
+            className="input-slim"
+            value={entry.tag ?? ''}
+            disabled={busy}
+            aria-label={`${entry.name} 的版本`}
+            onChange={(event) => {
+              if (event.target.value !== entry.tag) onSwitchVersion(event.target.value)
+            }}
+          >
+            {!versions.some((version) => version.tag === entry.tag) && (
+              <option value={entry.tag ?? ''}>{entry.version ?? '未知'}（库里已删除）</option>
+            )}
+            {versions.map((version) => (
+              <option key={version.tag} value={version.tag}>
+                {version.version}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span>{entry.version || entry.jar?.version || '未知版本'}</span>
+        )}
+        {update && (
+          <button
+            className="badge badge--update plugin-table__upgrade"
+            disabled={busy}
+            onClick={() => onSwitchVersion(update.tag)}
+            title={`升级到 ${update.version}`}
+          >
+            → {update.version}
+          </button>
+        )}
+      </div>
+
+      <div className="plugin-table__cell plugin-table__actions" role="cell">
+        {/* A broken row offers what fixes this particular break. A generic
+            "详情" here would be a click that leads to another click. */}
+        {entry.failure?.kind === 'dependency' && (
+          <button className="link" onClick={onFindDependency}>
+            安装依赖
+          </button>
+        )}
+        {entry.failure && (
+          <button className="link" onClick={onOpenConsole}>
+            查看日志
+          </button>
+        )}
+        {!entry.failure && (
+          <>
+            <button className="link" onClick={onOpenConfig} title={entry.configDir}>
+              配置
+            </button>
+            <button
+              className="link"
+              disabled={busy || entry.missing}
+              onClick={() => onSetEnabled(!entry.enabled)}
+            >
+              {entry.enabled ? '停用' : '启用'}
+            </button>
+          </>
+        )}
+        {entry.adoptable && (
+          <button
+            className="link"
+            disabled={busy}
+            title={`按 SHA-256 校验，这就是插件库里的 ${entry.adoptable.name} ${entry.adoptable.version}`}
+            onClick={onAdopt}
+          >
+            接管
+          </button>
+        )}
         <button className="link link--danger" disabled={busy} onClick={onRemove}>
           移除
         </button>
       </div>
-      <div className="device-row__meta">
-        {entry.missing
-          ? `记录里是 ${entry.dir}/${entry.fileName}，但文件已经不在了 —— 重新选一次版本就会补回来`
-          : `${entry.dir}/${entry.fileName} · ${formatBytes(entry.size)}`}
-        {entry.installedAt && ` · 装于 ${formatDate(entry.installedAt)}`}
-      </div>
     </div>
   )
 }
 
-function AvailableRow({
-  item,
-  busy,
-  onInstall,
-}: {
-  item: LibraryPlugin
-  busy: boolean
-  onInstall: (tag: string) => void
-}) {
-  // Newest first is how the library lists them, so the default is the version
-  // an operator almost always wants.
-  const [tag, setTag] = useState(item.versions[0]?.tag ?? '')
-
+function StatusCell({ entry, live }: { entry: InstancePlugin; live: boolean }) {
+  if (entry.missing) {
+    return <span className="badge badge--danger">文件不见了</span>
+  }
+  if (entry.failure) {
+    return <span className="badge badge--danger">加载失败</span>
+  }
+  // A change the running process has not seen. Never "已停用" on its own while
+  // the old jar is still loaded in memory — that is the lie the switch used to
+  // tell.
+  if (entry.pendingAction && live) {
+    return (
+      <span className="badge badge--warn" title="这台服务器启动之后改的，进程还没看到">
+        {entry.enabled ? '已启用' : '已禁用'} · 待重启
+      </span>
+    )
+  }
+  if (!entry.enabled) {
+    return <span className="badge badge--warn">已停用</span>
+  }
+  if (!live) {
+    return <span className="badge">未运行</span>
+  }
   return (
-    <div className="device-row">
-      <div className="device-row__main">
-        <strong>{item.name}</strong>
-        <span className="device-row__spacer" />
-        <select
-          className="input-slim"
-          value={tag}
-          disabled={busy}
-          aria-label={`${item.name} 的版本`}
-          onChange={(e) => setTag(e.target.value)}
-        >
-          {item.versions.map((version) => (
-            <option key={version.tag} value={version.tag}>
-              {version.version}
-            </option>
-          ))}
-        </select>
-        <button className="btn" disabled={busy || !tag} onClick={() => onInstall(tag)}>
-          安装
-        </button>
-      </div>
-      <div className="device-row__meta">
-        {item.source.repo} · 装到 {item.targetDir}/
-        {item.versions.length > 1 && ` · 库里有 ${item.versions.length} 个版本`}
-      </div>
-    </div>
+    <span className="badge badge--live">
+      <span className="status__dot status__dot--running" />
+      运行中
+    </span>
   )
 }
+

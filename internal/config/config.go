@@ -201,6 +201,13 @@ func (p Paths) PluginsRoot() string { return filepath.Join(p.Root, "plugins") }
 // plugin library, so a plugin id can never collide with it.
 func (p Paths) InstancePluginsFile() string { return filepath.Join(p.Root, "instance-plugins.json") }
 
+// PendingPluginsFile records plugin changes a running server has not seen yet,
+// so the "N 项变更待重启生效" banner survives a page reload and a panel
+// restart. Its own file rather than a field on the install records: it is
+// cleared by the passage of a restart rather than by anything the operator
+// does, and losing it costs a banner, not a change.
+func (p Paths) PendingPluginsFile() string { return filepath.Join(p.Root, "pending-plugins.json") }
+
 // ResumeFile records which servers were running when the panel restarted
 // itself to install an update, so they can be brought back afterwards. It is
 // written just before the restart and consumed on the next boot.

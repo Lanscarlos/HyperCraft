@@ -82,6 +82,11 @@ type Server struct {
 	// other.
 	plugins         *plugin.Downloader
 	instancePlugins *plugin.Instances
+	// pendingPlugins records changes a running server has not seen yet, which
+	// is every plugin change: the directory is read once, at startup. Optional
+	// like the pair above — without it the page loses its banner, not its
+	// ability to install anything.
+	pendingPlugins *plugin.Pending
 	// updater installs new panel releases. Optional in the same way: nil turns
 	// in-panel updates off.
 	updater *selfupdate.Service
@@ -120,6 +125,7 @@ type Options struct {
 
 	Plugins         *plugin.Downloader
 	InstancePlugins *plugin.Instances
+	PendingPlugins  *plugin.Pending
 }
 
 func NewServer(opts Options) *Server {
@@ -152,6 +158,7 @@ func NewServer(opts Options) *Server {
 		version:  opts.Version,
 
 		instancePlugins: opts.InstancePlugins,
+		pendingPlugins:  opts.PendingPlugins,
 		upgrader: websocket.Upgrader{
 			HandshakeTimeout: 10 * time.Second,
 			ReadBufferSize:   4096,
@@ -254,6 +261,15 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("GET /api/plugins", s.handlePluginLibrary)
 	protected.HandleFunc("POST /api/plugins", s.handleAddPlugin)
 	protected.HandleFunc("POST /api/plugins/check", s.handleCheckPlugins)
+	// Discovery. Two segments deep for the same reason the config routes are:
+	// "browse" must not be reachable as a plugin id.
+	protected.HandleFunc("GET /api/plugins/browse", s.handleBrowsePlugins)
+	protected.HandleFunc("GET /api/plugins/browse/{source}/{id}", s.handleBrowsePluginDetail)
+	protected.HandleFunc("POST /api/plugins/browse/track", s.handleTrackPlugin)
+	// The cross-instance view, and the bulk operation it exists to enable.
+	protected.HandleFunc("GET /api/plugins/overview", s.handlePluginOverview)
+	protected.HandleFunc("POST /api/plugins/bulk/preview", s.handleBulkUpgradePreview)
+	protected.HandleFunc("POST /api/plugins/bulk/upgrade", s.handleBulkUpgrade)
 	// Two segments deep on purpose: "PUT /api/plugins/{id}" already owns the
 	// single-segment shape, and a plugin an operator happened to name "token"
 	// would otherwise become the one plugin nobody can edit.

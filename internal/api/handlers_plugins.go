@@ -3,8 +3,11 @@ package api
 import (
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
+	"time"
 
+	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/plugin"
 )
 
@@ -437,28 +440,180 @@ type instancePluginsResponse struct {
 	// together, and the picker is useless without both.
 	Library []pluginView `json:"library"`
 	Root    string       `json:"root"`
+	// Target is what this server turned out to be — the basis of every
+	// compatibility badge on the page, and worth showing so an operator can
+	// tell "未知兼容性" caused by a plugin from "未知兼容性" caused by the panel
+	// not recognising their server jar.
+	Target plugin.Target `json:"target"`
+	// Pending are the changes the running process has not seen. Empty for a
+	// stopped server: there is nothing running that could have missed them.
+	Pending []pendingChange `json:"pending"`
+	// Live says whether there is a process to restart, which is what decides
+	// between "待重启生效" and "下次启动时生效".
+	Live bool `json:"live"`
+	// Failures are the plugins the server said it could not load, read out of
+	// this boot's console output. Sent alongside the entries as well as
+	// attached to them, so a failure naming a plugin that is no longer in the
+	// directory is still reported rather than silently dropped.
+	Failures []plugin.Failure `json:"failures"`
+	// LogAvailable is false when the server has not run since the panel
+	// started, in which case an empty Failures list means "nothing to read"
+	// rather than "nothing wrong".
+	LogAvailable bool `json:"logAvailable"`
 }
 
+// pendingChange is one change awaiting a restart, with the label already
+// written — the phrasing depends on the action and belongs next to the actions.
+type pendingChange struct {
+	plugin.Change
+	Label string `json:"label"`
+}
+
+// handleListInstancePlugins answers everything one server's plugin page shows.
+//
+// Three sources joined here rather than in the browser: the directory, the
+// panel's install records, and what the server printed while starting. The
+// join has to happen where all three are, and the third is the one that turns
+// this page from an inventory into something that reports problems — a
+// Minecraft server that cannot load a plugin says so once, in the log, and
+// then carries on as if nothing happened.
 func (s *Server) handleListInstancePlugins(w http.ResponseWriter, r *http.Request) {
 	inst, ok := s.instanceFromPath(w, r)
 	if !ok {
 		return
 	}
 	if s.plugins == nil || s.instancePlugins == nil {
-		writeJSON(w, http.StatusOK, instancePluginsResponse{Entries: []plugin.Entry{}, Library: []pluginView{}})
+		writeJSON(w, http.StatusOK, instancePluginsResponse{
+			Entries: []plugin.Entry{}, Library: []pluginView{},
+			Pending: []pendingChange{}, Failures: []plugin.Failure{},
+		})
 		return
 	}
 
-	entries, err := s.instancePlugins.List(inst.Config().ID, inst.Config().Directory)
+	cfg := inst.Config()
+	entries, err := s.instancePlugins.List(cfg.ID, cfg.Directory)
 	if err != nil {
 		s.writePluginError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, instancePluginsResponse{
-		Entries: entries,
-		Library: s.pluginLibrary().Plugins,
-		Root:    inst.Config().Directory,
+
+	status := inst.Status()
+	var startedAt time.Time
+	if status.StartedAt != nil {
+		startedAt = *status.StartedAt
+	}
+
+	resp := instancePluginsResponse{
+		Entries:      entries,
+		Library:      s.pluginLibrary().Plugins,
+		Root:         cfg.Directory,
+		Target:       s.detectTarget(cfg),
+		Pending:      []pendingChange{},
+		Live:         status.State.Running(),
+		Failures:     s.scanPluginFailures(inst, startedAt),
+		LogAvailable: !startedAt.IsZero(),
+	}
+
+	for _, change := range s.pendingChanges(cfg.ID, startedAt) {
+		resp.Pending = append(resp.Pending, pendingChange{Change: change, Label: change.Label()})
+	}
+
+	pendingByKey := map[string]string{}
+	for _, change := range resp.Pending {
+		pendingByKey[change.Key] = change.Action
+	}
+
+	for i := range resp.Entries {
+		entry := &resp.Entries[i]
+		verdict := plugin.Judge(resp.Target, entry.Loaders, entry.GameVersions)
+		entry.Compat = &verdict
+		entry.PendingAction = pendingByKey[entry.Key]
+		// Both names, because which one the server printed depends on how far
+		// the load got: the jar's if it never read plugin.yml, the declared
+		// name if it did.
+		entry.Failure = plugin.MatchFailure(resp.Failures,
+			entry.Name, strings.TrimSuffix(entry.FileName, ".jar"), jarInfoName(entry))
+	}
+
+	// Problems first. An operator opens this page because something is wrong
+	// far more often than to admire the inventory, and a red row eleventh in
+	// an alphabetical list is a red row nobody sees.
+	sort.SliceStable(resp.Entries, func(a, b int) bool {
+		if left, right := resp.Entries[a].Failure != nil, resp.Entries[b].Failure != nil; left != right {
+			return left
+		}
+		if left, right := resp.Entries[a].Managed, resp.Entries[b].Managed; left != right {
+			return left
+		}
+		return strings.ToLower(resp.Entries[a].Name) < strings.ToLower(resp.Entries[b].Name)
 	})
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// entryName is what a listing calls one row, for a pending-change label. The
+// key falls through when the row has already gone, which is the removal case.
+func entryName(entries []plugin.Entry, key string) string {
+	for _, entry := range entries {
+		if entry.Key == key {
+			return entry.Name
+		}
+	}
+	return strings.TrimPrefix(strings.TrimPrefix(key, "plugin:"), "file:")
+}
+
+func jarInfoName(entry *plugin.Entry) string {
+	if entry.Jar == nil {
+		return ""
+	}
+	return entry.Jar.Name
+}
+
+// scanPluginFailures reads this boot's console output for plugins that did not
+// load.
+//
+// Scoped to the current process by timestamp. The ring buffer holds the last
+// two thousand lines whatever produced them, so a server restarted after a fix
+// would otherwise keep showing the failure it was restarted to clear — which
+// is exactly the moment an operator is looking at this page.
+func (s *Server) scanPluginFailures(inst *instance.Instance, startedAt time.Time) []plugin.Failure {
+	if startedAt.IsZero() {
+		return []plugin.Failure{}
+	}
+	all := inst.LinesSince(0)
+	lines := make([]string, 0, len(all))
+	for _, line := range all {
+		if line.Time.Before(startedAt) {
+			continue
+		}
+		lines = append(lines, line.Text)
+	}
+	failures := plugin.ScanFailures(lines)
+	if failures == nil {
+		return []plugin.Failure{}
+	}
+	return failures
+}
+
+// pendingChanges is the pending list for an instance, or nothing when the
+// store was not wired up.
+func (s *Server) pendingChanges(instanceID string, startedAt time.Time) []plugin.Change {
+	if s.pendingPlugins == nil {
+		return nil
+	}
+	return s.pendingPlugins.Since(instanceID, startedAt)
+}
+
+// recordPending notes a change against an instance. Failures are logged and
+// swallowed: the jar is already where it belongs, and refusing an install
+// because the banner could not be written would be the wrong trade.
+func (s *Server) recordPending(instanceID string, change plugin.Change) {
+	if s.pendingPlugins == nil {
+		return
+	}
+	if err := s.pendingPlugins.Record(instanceID, change); err != nil {
+		s.log.Warn("could not record a pending plugin change",
+			"instance", instanceID, "plugin", change.Name, "err", err)
+	}
 }
 
 type installPluginRequest struct {
@@ -498,6 +653,14 @@ func (s *Server) handleInstallInstancePlugin(w http.ResponseWriter, r *http.Requ
 		s.writePluginError(w, err)
 		return
 	}
+	// The jar is in place and the running server will not read it until it
+	// restarts. Saying so is the point of the record — see plugin.Pending.
+	s.recordPending(cfg.ID, plugin.Change{
+		Key:    entry.Key,
+		Name:   entry.Name,
+		Action: entry.PendingAction,
+		At:     time.Now(),
+	})
 	s.log.Info("plugin installed into instance",
 		"instance", cfg.Name, "plugin", req.PluginID, "tag", entry.Tag)
 	writeJSON(w, http.StatusOK, entry)
@@ -580,6 +743,20 @@ func (s *Server) handleToggleInstancePlugin(w http.ResponseWriter, r *http.Reque
 		s.writePluginError(w, err)
 		return
 	}
+
+	// Switching a plugin off renames its jar; the server that already loaded
+	// it goes on running it until it restarts. This is the case the panel used
+	// to get wrong with an on/off switch that looked immediate.
+	action := plugin.ActionEnable
+	if !req.Enabled {
+		action = plugin.ActionDisable
+	}
+	s.recordPending(cfg.ID, plugin.Change{
+		Key:    req.Key,
+		Name:   entryName(entries, req.Key),
+		Action: action,
+		At:     time.Now(),
+	})
 	writeJSON(w, http.StatusOK, entries)
 }
 
@@ -599,10 +776,19 @@ func (s *Server) handleUninstallInstancePlugin(w http.ResponseWriter, r *http.Re
 	}
 
 	cfg := inst.Config()
+	// Read before the removal, or there is no row left to take the name from.
+	name := key
+	if entries, err := s.instancePlugins.List(cfg.ID, cfg.Directory); err == nil {
+		name = entryName(entries, key)
+	}
+
 	if err := s.instancePlugins.Uninstall(cfg.ID, cfg.Directory, key); err != nil {
 		s.writePluginError(w, err)
 		return
 	}
+	s.recordPending(cfg.ID, plugin.Change{
+		Key: key, Name: name, Action: plugin.ActionRemove, At: time.Now(),
+	})
 	s.log.Info("plugin removed from instance", "instance", cfg.Name, "plugin", key)
 	w.WriteHeader(http.StatusNoContent)
 }

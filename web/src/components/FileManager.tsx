@@ -11,7 +11,19 @@ interface EditorState {
   original: string
 }
 
-export function FileManager({ instance }: { instance: InstanceStatus }) {
+/**
+ * `jump` is a directory another page wants opened here.
+ *
+ * A token rather than a bare path because the pane stays mounted: the plugin
+ * list's 配置 link has to work the second time it is pressed on the same
+ * plugin, and a path that has not changed would not re-trigger anything.
+ */
+export interface FileJump {
+  path: string
+  token: number
+}
+
+export function FileManager({ instance, jump }: { instance: InstanceStatus; jump?: FileJump }) {
   const [dir, setDir] = useState('')
   const [listing, setListing] = useState<FileListing | null>(null)
   const [editor, setEditor] = useState<EditorState | null>(null)
@@ -51,6 +63,18 @@ export function FileManager({ instance }: { instance: InstanceStatus }) {
     setEditor(null)
     void load('')
   }, [instance.id, load])
+
+  // Keyed on the token alone: the path is read when it fires, and adding it to
+  // the dependencies would re-navigate on an unrelated render that happened to
+  // recreate the object.
+  const jumpPath = useRef(jump?.path ?? '')
+  jumpPath.current = jump?.path ?? ''
+  useEffect(() => {
+    if (jump?.token === undefined) return
+    setEditor(null)
+    void load(jumpPath.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump?.token, load])
 
   const refresh = () => void load(dir)
 

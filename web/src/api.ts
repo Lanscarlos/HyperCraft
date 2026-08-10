@@ -1,5 +1,7 @@
 import type {
   AuthEvent,
+  BulkImpact,
+  BulkUpgradeResult,
   ConsoleLine,
   CoreBuild,
   CoreDownloadJob,
@@ -19,8 +21,11 @@ import type {
   InstancePluginList,
   InstanceStatus,
   LibraryPlugin,
+  PluginBrowseDetail,
+  PluginBrowseResult,
   PluginDownloadJob,
   PluginLibrary,
+  PluginOverview,
   PluginRelease,
   PropertiesResponse,
   PropertyEntry,
@@ -232,6 +237,56 @@ export const api = {
       'DELETE',
       `/api/plugins/${encodeURIComponent(id)}/versions?tag=${encodeURIComponent(tag)}`,
     ),
+
+  /**
+   * Searches the plugin registries.
+   *
+   * `instance` is the target the results are judged against, and is what makes
+   * every row's compatibility badge mean anything — without it the whole page
+   * reads 未知兼容性.
+   */
+  browsePlugins: (query: {
+    q?: string
+    sources?: string[]
+    category?: string
+    sort?: string
+    instance?: string
+    onlyCompatible?: boolean
+    offset?: number
+  }) => {
+    const params = new URLSearchParams()
+    if (query.q) params.set('q', query.q)
+    if (query.sources?.length) params.set('sources', query.sources.join(','))
+    if (query.category) params.set('category', query.category)
+    if (query.sort) params.set('sort', query.sort)
+    if (query.instance) params.set('instance', query.instance)
+    if (query.onlyCompatible === false) params.set('onlyCompatible', 'false')
+    if (query.offset) params.set('offset', String(query.offset))
+    return request<PluginBrowseResult>('GET', `/api/plugins/browse?${params}`)
+  },
+  /** One plugin's full record and version list, for the drawer. */
+  browsePlugin: (source: string, id: string, instance?: string) => {
+    const params = instance ? `?instance=${encodeURIComponent(instance)}` : ''
+    return request<PluginBrowseDetail>(
+      'GET',
+      `/api/plugins/browse/${encodeURIComponent(source)}/${encodeURIComponent(id)}${params}`,
+    )
+  },
+  /** Makes a registry listing into a library entry, or returns the existing
+   *  one. Installing always goes through the library — download once, copy
+   *  into as many servers as asked — so this is step one of every install. */
+  trackPlugin: (input: { source: string; id: string; name?: string; targetDir?: string }) =>
+    request<LibraryPlugin>('POST', '/api/plugins/browse/track', input),
+
+  /** The cross-instance view: which servers run which version of what. */
+  pluginOverview: () => request<PluginOverview>('GET', '/api/plugins/overview'),
+  /** What a bulk upgrade would touch. Asked fresh rather than assembled in the
+   *  browser: a cross-instance operation is the wrong place to be approximately
+   *  right about which servers are live. */
+  bulkUpgradePreview: (pluginIds: string[]) =>
+    request<BulkImpact>('POST', '/api/plugins/bulk/preview', { pluginIds }),
+  bulkUpgrade: (pluginIds: string[]) =>
+    request<BulkUpgradeResult>('POST', '/api/plugins/bulk/upgrade', { pluginIds }),
 
   instancePlugins: (id: string) =>
     request<InstancePluginList>('GET', `/api/instances/${id}/plugins`),

@@ -300,15 +300,17 @@ func (d *Downloader) run(ctx context.Context, job *Job, item Plugin, release Rel
 	}
 	if err == nil {
 		err = d.library.record(item.ID, Version{
-			Tag:         release.Tag,
-			Version:     release.Version,
-			FileName:    release.Asset.Name,
-			Size:        release.Asset.Size,
-			SHA256:      digest,
-			Prerelease:  release.Prerelease,
-			Notes:       release.Notes,
-			PublishedAt: release.PublishedAt,
-			AddedAt:     time.Now(),
+			Tag:          release.Tag,
+			Version:      release.Version,
+			FileName:     release.Asset.Name,
+			Size:         release.Asset.Size,
+			SHA256:       digest,
+			Prerelease:   release.Prerelease,
+			Notes:        release.Notes,
+			PublishedAt:  release.PublishedAt,
+			AddedAt:      time.Now(),
+			GameVersions: release.GameVersions,
+			Loaders:      release.Loaders,
 		})
 		if err != nil {
 			// The jar itself is fine, only its metadata is missing; say so

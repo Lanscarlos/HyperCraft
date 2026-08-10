@@ -94,6 +94,7 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 			logger,
 		),
 		InstancePlugins: plugin.NewInstances(pluginLibrary, paths.InstancePluginsFile()),
+		PendingPlugins:  plugin.NewPending(paths.PendingPluginsFile()),
 		Panel:           panel,
 		Version:         "test",
 		Logger:          logger,

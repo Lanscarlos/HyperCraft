@@ -175,6 +175,9 @@ func run() error {
 	pluginDownloads := plugin.NewDownloader(pluginClient, pluginLibrary, logger)
 	defer pluginDownloads.Close()
 	instancePlugins := plugin.NewInstances(pluginLibrary, paths.InstancePluginsFile())
+	// Every plugin change lands in a directory the running server read once and
+	// will not read again, so the panel records what each server has yet to see.
+	pendingPlugins := plugin.NewPending(paths.PendingPluginsFile())
 
 	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
@@ -259,6 +262,7 @@ func run() error {
 
 		Plugins:         pluginDownloads,
 		InstancePlugins: instancePlugins,
+		PendingPlugins:  pendingPlugins,
 	})
 
 	// The panel can terminate TLS itself when handed a certificate. That does

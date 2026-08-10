@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { DUR } from '../motion'
-import type { InstanceSection } from '../routes'
+import type { InstanceSection, PluginTab } from '../routes'
 import type { InstanceStatus } from '../types'
 import type { CoreController } from '../useCores'
 import type { PluginController } from '../usePlugins'
+import type { FileJump } from './FileManager'
 import { FileManager } from './FileManager'
 import { InstanceCockpit } from './InstanceCockpit'
 import { InstancePlugins } from './InstancePlugins'
@@ -15,16 +16,17 @@ import { ResourcePanel } from './ResourcePanel'
 interface Props {
   instance: InstanceStatus
   section: InstanceSection
+  /** Which half of the plugin page is showing. Only 插件 has two. */
+  tab?: PluginTab
   cores: CoreController
   /** The panel-wide plugin library, so 已装插件 can add a source itself. */
   plugins: PluginController
   onChanged: (instance: InstanceStatus) => void
   onDeleted: () => void
   onOpenSection: (section: InstanceSection) => void
+  onOpenPluginTab: (tab: PluginTab) => void
   /** The panel-wide core library, for "download another one". */
   onOpenCoreLibrary: () => void
-  /** The panel-wide plugin library. */
-  onOpenPluginLibrary: () => void
 }
 
 /**
@@ -44,17 +46,22 @@ interface Props {
 export function InstanceView({
   instance,
   section,
+  tab,
   cores,
   plugins,
   onChanged,
   onDeleted,
   onOpenSection,
+  onOpenPluginTab,
   onOpenCoreLibrary,
-  onOpenPluginLibrary,
 }: Props) {
   const [visited, setVisited] = useState<Set<InstanceSection>>(
     () => new Set<InstanceSection>([section]),
   )
+  // A directory another pane asked the file manager to open — the plugin
+  // list's 配置 shortcut, which is most of what saves an operator from
+  // hand-walking plugins/<Name>/ twenty times a week.
+  const [jump, setJump] = useState<FileJump | undefined>()
   // The section that was on screen a moment ago, kept visible over the new one
   // for the length of its exit. Without it a switch in the sidebar was a cut:
   // the outgoing pane was `hidden` in the same frame the incoming one appeared,
@@ -102,7 +109,7 @@ export function InstanceView({
       )}
       {visited.has('files') && (
         <Pane id="files" active={section === 'files'} leaving={leaving === 'files'} scroll>
-          <FileManager instance={instance} />
+          <FileManager instance={instance} jump={jump} />
         </Pane>
       )}
       {visited.has('plugins') && (
@@ -110,7 +117,16 @@ export function InstanceView({
           <InstancePlugins
             instance={instance}
             plugins={plugins}
-            onOpenLibrary={onOpenPluginLibrary}
+            tab={tab ?? 'installed'}
+            onSelectTab={onOpenPluginTab}
+            onChanged={onChanged}
+            onOpenSection={(target, path) => {
+              if (target === 'files' && path) {
+                setVisited((prev) => new Set(prev).add('files'))
+                setJump({ path, token: Date.now() })
+              }
+              onOpenSection(target)
+            }}
           />
         </Pane>
       )}

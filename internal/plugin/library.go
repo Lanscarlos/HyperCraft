@@ -58,6 +58,17 @@ type Version struct {
 	Notes       string    `json:"notes,omitempty"`
 	PublishedAt time.Time `json:"publishedAt"`
 	AddedAt     time.Time `json:"addedAt"`
+	// GameVersions and Loaders are what the source said this jar supports,
+	// copied out of the release at download time.
+	//
+	// Stored rather than re-read: this is what the installed-plugins page
+	// judges each row's compatibility against, and it has to be able to say
+	// "this jar is for 1.16.5 and the server is 1.20.4" for a server that is
+	// offline, on a panel with no network, about a registry that has since
+	// stopped listing the version. Empty for a GitHub release, which publishes
+	// neither — and empty means unknown, not compatible. See Judge.
+	GameVersions []string `json:"gameVersions,omitempty"`
+	Loaders      []string `json:"loaders,omitempty"`
 }
 
 // Plugin is one tracked plugin: where it comes from, and which of its versions

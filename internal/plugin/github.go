@@ -56,9 +56,9 @@ var (
 	ErrNeedsToken = errors.New("this repository needs a GitHub access token")
 )
 
-// SourceGitHub is the only source kind so far. It is stored rather than
-// assumed so a config written today still parses when a second kind (Modrinth,
-// Spiget, a plain URL) is added beside it.
+// SourceGitHub is a repository's releases, read through the GitHub API. It is
+// the kind this file implements; the three registry kinds live in registry.go
+// and meet this one at Source, Release and Client.
 const SourceGitHub = "github"
 
 // releasePage is how many releases one check looks at. Plugins that publish a
@@ -77,9 +77,12 @@ const maxMetadataBytes = 8 << 20
 
 // Source describes where a plugin's releases come from.
 type Source struct {
-	// Kind is always SourceGitHub today. See the constant.
+	// Kind is SourceGitHub, or one of the registry kinds in registry.go.
 	Kind string `json:"kind"`
-	// Repo is "owner/name".
+	// Repo is "owner/name" for GitHub. For a registry it is whatever that
+	// registry calls the plugin — a Modrinth slug, a Hangar project name, a
+	// numeric SpigotMC resource id — and is opaque to everything but the
+	// reader for that kind.
 	Repo string `json:"repo"`
 	// AssetPattern picks the jar when a release publishes several — a glob
 	// matched against the asset name, case-insensitively, e.g. "EssentialsX-*.jar".
@@ -99,13 +102,47 @@ type Source struct {
 	Private bool `json:"private,omitempty"`
 }
 
+// IsRegistry reports whether this source is one of the plugin catalogues
+// rather than a GitHub repository.
+//
+// An empty Kind is GitHub — it is what every source stored before the
+// registries existed says, and Normalise fills it in — so this asks which
+// registry it is rather than whether it is not GitHub. Getting that the wrong
+// way round would send every pre-existing plugin's download down the registry
+// path, where the mirror it was configured with is not applied.
+func (s Source) IsRegistry() bool {
+	switch s.Kind {
+	case SourceModrinth, SourceHangar, SourceSpigot:
+		return true
+	default:
+		return false
+	}
+}
+
 // Normalise trims and validates a source, returning the cleaned copy.
 func (s Source) Normalise() (Source, error) {
 	s.Kind = strings.TrimSpace(s.Kind)
 	if s.Kind == "" {
 		s.Kind = SourceGitHub
 	}
-	if s.Kind != SourceGitHub {
+	switch s.Kind {
+	case SourceGitHub:
+	case SourceModrinth, SourceHangar, SourceSpigot:
+		// A registry addresses a plugin by an id of its own choosing — a
+		// Modrinth slug, a Hangar project name, a numeric SpigotMC resource —
+		// so there is no owner/name pair to parse. What has to hold is that it
+		// is a single non-empty token: it goes into a URL path, and everything
+		// downstream treats Repo as opaque.
+		s.Repo = strings.Trim(strings.TrimSpace(s.Repo), "/")
+		if s.Repo == "" || strings.ContainsAny(s.Repo, " \t\n?#%\x00") {
+			return Source{}, fmt.Errorf("%w: %q is not a valid %s id", ErrInvalidRepo, s.Repo, s.Kind)
+		}
+		// None of the three has private plugins the panel could authenticate
+		// for, and Private is what routes a download through the GitHub API.
+		s.Private = false
+		s.AssetPattern = ""
+		return s, nil
+	default:
 		return Source{}, fmt.Errorf("%w: unknown source kind %q", ErrInvalidRepo, s.Kind)
 	}
 
@@ -192,13 +229,45 @@ type Release struct {
 	// Assets lists every jar in the release, so the UI can explain why the
 	// pattern picked what it did — and what else was on offer.
 	Assets []Asset `json:"assets"`
+
+	// The rest is what a plugin registry publishes and a GitHub release does
+	// not. All optional: a release with none of it is judged 未知兼容性 rather
+	// than assumed to fit, which is the whole point of the field being absent
+	// rather than defaulted. See Judge.
+
+	// GameVersions and Loaders are the two halves of the compatibility check.
+	GameVersions []string `json:"gameVersions,omitempty"`
+	Loaders      []string `json:"loaders,omitempty"`
+	// Dependencies are the other plugins this version needs. Shown in the
+	// drawer before installing, which is the moment it costs nothing to know.
+	Dependencies []Dependency `json:"dependencies,omitempty"`
+	Downloads    int64        `json:"downloads,omitempty"`
+	// SHA256 is the digest the source published, when it published one. It is
+	// not what the library records — that is always computed from the bytes
+	// that actually arrived — but it is something to compare against.
+	SHA256 string `json:"sha256,omitempty"`
+	// Unverified marks compatibility metadata that describes the plugin rather
+	// than this specific version, which is all SpigotMC offers for anything
+	// but its newest release.
+	Unverified bool `json:"unverified,omitempty"`
 }
 
-// Client reads releases from GitHub.
+// Client reads releases from GitHub, and — through the registry it owns —
+// from the three plugin catalogues.
+//
+// One client rather than two because everything downstream of it should not
+// have to care which kind of source a plugin came from. Releases, Latest and
+// Fetch all dispatch on Source.Kind, so the downloader, the library and the
+// instance installer are the same code for a Modrinth plugin as for a jar out
+// of somebody's private GitHub repository.
 type Client struct {
 	http      *http.Client
 	apiBase   string
 	userAgent string
+	// registry reads Modrinth, Hangar and SpigotMC. Built here rather than
+	// injected: it holds no configuration an operator can set, so there is
+	// nothing for the wiring to decide.
+	registry *Registry
 	// mirror is the chosen download proxy, by id or as a custom prefix. It
 	// carries the bytes and never the metadata, because the proxies people use
 	// for this do not front api.github.com at all. See mirrors.go.
@@ -225,8 +294,13 @@ func NewClient(apiBase, userAgent string) *Client {
 		http:      &http.Client{Timeout: downloadTimeout},
 		apiBase:   strings.TrimSuffix(apiBase, "/"),
 		userAgent: userAgent,
+		registry:  NewRegistry(userAgent),
 	}
 }
+
+// Registry is the reader for the three plugin catalogues, for the discovery
+// page — which searches them without any plugin being tracked yet.
+func (c *Client) Registry() *Registry { return c.registry }
 
 // SetMirror chooses which proxy plugin downloads go through: a mirror id from
 // mirrors.go, a custom "https://…/" prefix, or "" for the automatic order.
@@ -296,6 +370,16 @@ type attempt struct {
 // private one has exactly one route — the API, authenticated — and no fallback:
 // the public link cannot serve it, and a mirror must not be told about it.
 func (c *Client) downloadOrder(src Source, asset Asset) ([]attempt, error) {
+	if src.IsRegistry() {
+		// A registry serves its own CDN. The mirrors this panel knows about are
+		// GitHub proxies — prefixing a Modrinth URL with one produces a 404 at
+		// best, and at worst hands a third party a request it has no business
+		// seeing — so a registry download has exactly one route.
+		if asset.URL == "" {
+			return nil, fmt.Errorf("%w: %s 没有可用的下载链接", ErrNoAsset, asset.Name)
+		}
+		return []attempt{{url: asset.URL, mirror: MirrorDirect}}, nil
+	}
 	if !src.Private {
 		if asset.URL == "" {
 			return nil, fmt.Errorf("%w: %s has no public download link", ErrNoAsset, asset.Name)
@@ -357,6 +441,16 @@ func (c *Client) Releases(ctx context.Context, src Source) ([]Release, error) {
 	src, err := src.Normalise()
 	if err != nil {
 		return nil, err
+	}
+	if src.IsRegistry() {
+		releases, err := c.registry.Versions(ctx, src.Kind, src.Repo)
+		if err != nil {
+			return nil, err
+		}
+		if len(releases) == 0 {
+			return nil, fmt.Errorf("%w: %s 上的 %s 没有可安装的版本", ErrNoRelease, src.Kind, src.Repo)
+		}
+		return releases, nil
 	}
 
 	url := fmt.Sprintf("%s/repos/%s/releases?per_page=%d", c.apiBase, src.Repo, releasePage)

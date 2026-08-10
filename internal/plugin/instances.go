@@ -52,6 +52,15 @@ type Installed struct {
 	FileName    string    `json:"fileName"`
 	Dir         string    `json:"dir"`
 	InstalledAt time.Time `json:"installedAt"`
+	// GameVersions and Loaders are what the source said this exact jar
+	// supports, copied out of the library version at install time.
+	//
+	// Copied rather than looked up: the compatibility badge on an instance's
+	// plugin list has to keep working after the library entry is deleted or
+	// the version pruned, and what is in this server's directory does not
+	// change when the library does.
+	GameVersions []string `json:"gameVersions,omitempty"`
+	Loaders      []string `json:"loaders,omitempty"`
 }
 
 // Entry is one row of an instance's plugin list: the record joined with what
@@ -86,6 +95,30 @@ type Entry struct {
 	// tracking a file somebody installed by hand. Nil when the jar is not
 	// byte-for-byte one of the library's downloads.
 	Adoptable *Adoptable `json:"adoptable,omitempty"`
+
+	// The three fields below are filled in by the API layer, which is the only
+	// place that knows what the server is running and what it printed while
+	// starting. They are on Entry rather than in a parallel list because every
+	// one of them is a property of this row, and a page that had to join three
+	// lists by name would get the join wrong for exactly the plugins whose
+	// names disagree with their file names — which is most of the broken ones.
+
+	// Compat is whether this jar suits the server's version and loader.
+	Compat *Compat `json:"compat,omitempty"`
+	// Failure is what the server said when it could not load this plugin. The
+	// whole reason this page is a table and not a list of names.
+	Failure *Failure `json:"failure,omitempty"`
+	// PendingAction is set when this row has a change the running server has
+	// not seen: it was installed, upgraded or switched off since it started.
+	PendingAction string `json:"pendingAction,omitempty"`
+	// ConfigDir is the plugin's own directory inside the instance, whether or
+	// not it exists yet — the file manager link, and the thing an operator is
+	// actually looking for nine times out of ten.
+	ConfigDir string `json:"configDir,omitempty"`
+	// GameVersions and Loaders are what this jar claims to support, for the
+	// compatibility check and for the row's tooltip.
+	GameVersions []string `json:"gameVersions,omitempty"`
+	Loaders      []string `json:"loaders,omitempty"`
 }
 
 // Adoptable is a library version an unmanaged jar was recognised as.
@@ -183,18 +216,30 @@ func (m *Instances) List(instanceID, directory string) ([]Entry, error) {
 	for _, record := range records {
 		key := record.Dir + "/" + record.FileName
 		entry := Entry{
-			Key:         keyPluginPrefix + record.PluginID,
-			PluginID:    record.PluginID,
-			Name:        record.PluginID,
-			FileName:    record.FileName,
-			Dir:         record.Dir,
-			Managed:     true,
-			Tag:         record.Tag,
-			Version:     record.Version,
-			InstalledAt: record.InstalledAt,
+			Key:          keyPluginPrefix + record.PluginID,
+			PluginID:     record.PluginID,
+			Name:         record.PluginID,
+			FileName:     record.FileName,
+			Dir:          record.Dir,
+			Managed:      true,
+			Tag:          record.Tag,
+			Version:      record.Version,
+			InstalledAt:  record.InstalledAt,
+			GameVersions: record.GameVersions,
+			Loaders:      record.Loaders,
 		}
 		if item, err := m.library.Get(record.PluginID); err == nil {
 			entry.Name = item.Name
+			// A record written before the panel started copying compatibility
+			// metadata has none. The library may still hold the version it was
+			// installed from, and reading it back is what stops every plugin
+			// installed by an older release reading 未知兼容性 forever.
+			if len(entry.GameVersions) == 0 && len(entry.Loaders) == 0 {
+				if version := item.Version(record.Tag); version != nil {
+					entry.GameVersions = version.GameVersions
+					entry.Loaders = version.Loaders
+				}
+			}
 		}
 		if disk, ok := found[key]; ok {
 			claimed[key] = true
@@ -215,6 +260,10 @@ func (m *Instances) List(instanceID, directory string) ([]Entry, error) {
 		out = append(out, entry)
 	}
 
+	for i := range out {
+		out[i].ConfigDir = out[i].Dir + "/" + configDirName(out[i])
+	}
+
 	sort.Slice(out, func(a, b int) bool {
 		// Managed plugins first: they are the ones this page can act on, and
 		// the unmanaged jars are context rather than the subject.
@@ -224,6 +273,24 @@ func (m *Instances) List(instanceID, directory string) ([]Entry, error) {
 		return strings.ToLower(out[a].Name) < strings.ToLower(out[b].Name)
 	})
 	return out, nil
+}
+
+// configDirName is what a plugin calls its own directory.
+//
+// Bukkit gives a plugin a directory named after the name in its plugin.yml,
+// not after the jar — EssentialsX-2.20.1.jar writes to plugins/Essentials/ —
+// so the declared name is used wherever the panel has read one. This is a
+// link target rather than a claim the directory exists: a plugin that has
+// never started has no directory yet, and the file manager saying "this is
+// empty" is a better answer than the panel refusing to offer the link.
+func configDirName(entry Entry) string {
+	if entry.Jar != nil && entry.Jar.Name != "" {
+		return entry.Jar.Name
+	}
+	if entry.Name != "" {
+		return entry.Name
+	}
+	return strings.TrimSuffix(entry.FileName, path.Ext(entry.FileName))
 }
 
 // identify says what an unmanaged jar actually is.
@@ -425,28 +492,41 @@ func (m *Instances) Install(instanceID, directory, pluginID, tag string) (Entry,
 	}
 
 	if err := m.put(instanceID, Installed{
-		PluginID:    pluginID,
-		Tag:         version.Tag,
-		Version:     version.Version,
-		FileName:    version.FileName,
-		Dir:         item.TargetDir,
-		InstalledAt: time.Now(),
+		PluginID:     pluginID,
+		Tag:          version.Tag,
+		Version:      version.Version,
+		FileName:     version.FileName,
+		Dir:          item.TargetDir,
+		InstalledAt:  time.Now(),
+		GameVersions: version.GameVersions,
+		Loaders:      version.Loaders,
 	}); err != nil {
 		return Entry{}, err
 	}
 
+	// Whether this is an arrival or a version swap decides what the pending
+	// banner calls it, and the caller is the only one holding both the old
+	// state and the instance's process clock.
+	action := ActionInstall
+	if previous != nil {
+		action = ActionUpgrade
+	}
 	return Entry{
-		Key:         keyPluginPrefix + pluginID,
-		PluginID:    pluginID,
-		Name:        item.Name,
-		FileName:    version.FileName,
-		Dir:         item.TargetDir,
-		Enabled:     enabled,
-		Managed:     true,
-		Size:        version.Size,
-		Tag:         version.Tag,
-		Version:     version.Version,
-		InstalledAt: time.Now(),
+		Key:           keyPluginPrefix + pluginID,
+		PluginID:      pluginID,
+		Name:          item.Name,
+		FileName:      version.FileName,
+		Dir:           item.TargetDir,
+		Enabled:       enabled,
+		Managed:       true,
+		Size:          version.Size,
+		Tag:           version.Tag,
+		Version:       version.Version,
+		InstalledAt:   time.Now(),
+		GameVersions:  version.GameVersions,
+		Loaders:       version.Loaders,
+		PendingAction: action,
+		ConfigDir:     item.TargetDir + "/" + item.Name,
 	}, nil
 }
 

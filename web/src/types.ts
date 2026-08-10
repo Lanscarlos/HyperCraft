@@ -306,9 +306,13 @@ export interface CoreLibrary {
 
 // ------------------------------------------------------------------ plugins
 
-/** Where a plugin's releases come from. GitHub is the only kind so far. */
+/** Which catalogue a plugin comes from. Mirrors internal/plugin. */
+export type PluginSourceKind = 'github' | 'modrinth' | 'hangar' | 'spigot'
+
+/** Where a plugin's releases come from. */
 export interface PluginSource {
-  kind: 'github'
+  kind: PluginSourceKind
+  /** "owner/name" for GitHub; whatever the registry calls it otherwise. */
   repo: string
   /** Glob picking the jar when a release publishes several. */
   assetPattern?: string
@@ -332,6 +336,21 @@ export interface PluginRelease {
   publishedAt: string
   asset: { name: string; size: number; url: string }
   assets: { name: string; size: number; url: string }[]
+  /** What a registry published and a GitHub release does not. Absent means
+   *  unknown, which is never treated as compatible. */
+  gameVersions?: string[]
+  loaders?: string[]
+  dependencies?: PluginDependency[]
+  downloads?: number
+  /** Compatibility metadata that describes the plugin rather than this exact
+   *  version — all SpigotMC offers for anything but its newest release. */
+  unverified?: boolean
+}
+
+export interface PluginDependency {
+  name: string
+  required: boolean
+  url?: string
 }
 
 /** One release the panel has downloaded into the library. */
@@ -345,6 +364,8 @@ export interface PluginVersion {
   notes?: string
   publishedAt: string
   addedAt: string
+  gameVersions?: string[]
+  loaders?: string[]
 }
 
 export interface LibraryPlugin {
@@ -425,6 +446,55 @@ export interface AdoptablePlugin {
   version: string
 }
 
+// ------------------------------------------------------ compatibility
+
+/**
+ * Whether a plugin runs on a given server.
+ *
+ * Three states, not two. A source that publishes no compatibility metadata is
+ * common, and the only honest reading of silence is that nobody knows —
+ * showing it green is how someone restarts into a server that will not boot.
+ */
+export type CompatState = 'ok' | 'bad' | 'unknown'
+
+export interface PluginCompat {
+  state: CompatState
+  /** What the badge reads: 兼容 1.20.4 / 最高支持 1.16.5 / 不支持 Paper. */
+  label: string
+  /** The whole supported range, for the tooltip. */
+  detail?: string
+}
+
+/** What server a plugin would be installed into. Either field may be empty,
+ *  and empty is honest rather than defaulted. */
+export interface PluginTarget {
+  mcVersion?: string
+  loader?: string
+  /** Where the panel learned it: version-history, core-library or jar-name. */
+  source?: string
+}
+
+/** Why a plugin is not running, read out of the server's own startup output. */
+export interface PluginFailure {
+  plugin: string
+  file?: string
+  kind: 'dependency' | 'incompatible' | 'java' | 'error'
+  reason: string
+  /** Dependency names to install, for the dependency kind. */
+  missing?: string[]
+  line: string
+}
+
+/** A plugin change the running server has not seen. Every plugin change is
+ *  one: the directory is read once, at startup. */
+export interface PendingPluginChange {
+  key: string
+  name: string
+  action: 'install' | 'upgrade' | 'remove' | 'enable' | 'disable'
+  at: string
+  label: string
+}
+
 /** One row of an instance's plugin list: the panel's record joined with disk. */
 export interface InstancePlugin {
   /** Addresses this row in the toggle and remove calls. */
@@ -447,12 +517,157 @@ export interface InstancePlugin {
   jar?: PluginJarInfo
   /** Set when this jar is byte-for-byte a version the library holds. */
   adoptable?: AdoptablePlugin
+  /** Whether this jar suits the server's version and loader. */
+  compat?: PluginCompat
+  /** What the server said when it could not load this plugin. */
+  failure?: PluginFailure
+  /** Set when this row has a change the running server has not seen. */
+  pendingAction?: PendingPluginChange['action']
+  /** The plugin's own directory inside the instance, for the file-manager
+   *  shortcut. Offered whether or not it exists yet. */
+  configDir?: string
+  gameVersions?: string[]
+  loaders?: string[]
 }
 
 export interface InstancePluginList {
   entries: InstancePlugin[]
   library: LibraryPlugin[]
   root: string
+  /** What this server turned out to be — the basis of every badge on the page. */
+  target: PluginTarget
+  pending: PendingPluginChange[]
+  /** Whether there is a process to restart. Decides between 待重启生效 and
+   *  下次启动时生效. */
+  live: boolean
+  failures: PluginFailure[]
+  /** False when the server has not run since the panel started, in which case
+   *  an empty failure list means "nothing to read", not "nothing wrong". */
+  logAvailable: boolean
+}
+
+// ------------------------------------------------------------- discovery
+
+export interface RegistrySource {
+  id: PluginSourceKind
+  name: string
+  note: string
+  installable: boolean
+}
+
+export interface PluginCategory {
+  id: string
+  name: string
+}
+
+/** One server the 安装到 block offers. */
+export interface InstallTarget {
+  id: string
+  name: string
+  state: InstanceState
+  target: PluginTarget
+  /** Where a plugin would land here — "mods" on a Fabric server. */
+  pluginDir: string
+}
+
+/** One search result, from whichever registry produced it. */
+export interface PluginListing {
+  source: PluginSourceKind
+  id: string
+  name: string
+  author?: string
+  summary?: string
+  iconUrl?: string
+  downloads: number
+  updated?: string
+  loaders?: string[]
+  gameVersions?: string[]
+  categories?: string[]
+  pageUrl?: string
+  /** False for a resource the panel can only link to — an externally hosted
+   *  or paid SpigotMC entry. */
+  downloadable: boolean
+  compat?: PluginCompat
+}
+
+export interface PluginBrowseResult {
+  sources: RegistrySource[]
+  categories: PluginCategory[]
+  targets: InstallTarget[]
+  listings: PluginListing[]
+  /** Per source, why it contributed nothing. A source that worked is absent. */
+  notes?: Record<string, string>
+  truncated: boolean
+  /** How many results do not fit the target, for the count line. */
+  incompatible: number
+}
+
+export interface BrowseVersion extends PluginRelease {
+  compat: PluginCompat
+  /** True when the library already holds this jar, so installing skips the
+   *  transfer. */
+  held: boolean
+}
+
+export interface PluginBrowseDetail {
+  listing: PluginListing
+  /** The plugin's own long description, as its source publishes it. */
+  body: string
+  versions: BrowseVersion[]
+  target: PluginTarget
+  tracked?: { id: string; name: string; usedBy: string[] }
+}
+
+// -------------------------------------------------- cross-instance view
+
+/** One instance's copy of a plugin, in the global library's usage column. */
+export interface PluginUse {
+  instanceId: string
+  name: string
+  state: InstanceState
+  version: string
+  tag: string
+  /** Behind the newest version the library holds — the field the page is for. */
+  outdated: boolean
+}
+
+/** What the second line of the 最新版本 column reads. */
+export type OverviewStatus = 'all' | 'mixed' | 'unused'
+
+export interface PluginOverviewRow {
+  id: string
+  name: string
+  note?: string
+  kind: PluginSourceKind
+  repo: string
+  used: PluginUse[]
+  newest?: string
+  upstream?: string
+  status: OverviewStatus
+  size: number
+  versions: number
+}
+
+export interface PluginOverview {
+  rows: PluginOverviewRow[]
+  root: string
+  unused: number
+  unusedSize: number
+}
+
+/** What a bulk upgrade would touch, for the confirmation. */
+export interface BulkImpact {
+  plugins: { id: string; name: string; to: string; from: string[] }[]
+  instances: { id: string; name: string; state: InstanceState; plugins: string[] }[]
+  /** Affected instances that are running — the number the confirmation leads
+   *  with. A stopped server takes the change on its next start. */
+  restarts: number
+}
+
+export interface BulkUpgradeResult {
+  impact: BulkImpact
+  failures: { instance: string; plugin: string; error: string }[]
+  applied: number
 }
 
 /** True when upstream's newest release is not one the library holds. */
