@@ -55,6 +55,12 @@ export type StateFilter = 'all' | 'live' | 'stopped' | 'problem'
 export type Route =
   | { kind: 'overview' }
   | { kind: 'instances'; query: string; state: StateFilter }
+  /**
+   * The creation wizard. A page rather than a dialog because it is five steps
+   * long and two of them start a download that outlives the click — a modal
+   * you can dismiss by pressing Escape is the wrong container for that.
+   */
+  | { kind: 'new-instance' }
   | { kind: 'instance'; id: string; section: InstanceSection }
   | {
       kind: 'library'
@@ -213,6 +219,8 @@ export function parentOf(route: Route): Route | null {
   switch (route.kind) {
     case 'instances':
       return { kind: 'overview' }
+    case 'new-instance':
+      return { kind: 'instances', query: '', state: 'all' }
     case 'instance':
       return route.section === 'console'
         ? { kind: 'instances', query: '', state: 'all' }
@@ -299,6 +307,10 @@ function readRoute(path: string, search: string): Route {
       : { kind: 'library', section, view: defaultView(section) }
   }
 
+  // Ahead of the list below, which would otherwise swallow it: /instances/…
+  // is the list with a filter, and 新建 is not a filter.
+  if (path === '/instances/new') return { kind: 'new-instance' }
+
   if (path === '/instances' || path.startsWith('/instances/')) {
     const state = params.get('state') ?? 'all'
     return {
@@ -358,6 +370,8 @@ export function pathOf(route: Route): string {
     }
     case 'settings':
       return `/settings/${route.section}`
+    case 'new-instance':
+      return '/instances/new'
     case 'instances': {
       const params = new URLSearchParams()
       if (route.query.trim() !== '') params.set('q', route.query)

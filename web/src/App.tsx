@@ -14,7 +14,7 @@ import { InstanceList } from './components/InstanceList'
 import { InstanceView } from './components/InstanceView'
 import { JavaPage } from './components/JavaPage'
 import { Login } from './components/Login'
-import { NewInstanceDialog } from './components/NewInstanceDialog'
+import { NewInstanceWizard } from './components/NewInstanceWizard'
 import { PluginLibraryPage } from './components/PluginLibraryPage'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
@@ -101,6 +101,11 @@ function crumbsFor(
   switch (route.kind) {
     case 'instances':
       return [{ label: '概览', ...link({ kind: 'overview' }) }, { label: '所有实例' }]
+    case 'new-instance':
+      return [
+        { label: '所有实例', ...link({ kind: 'instances', query: '', state: 'all' }) },
+        { label: '新建实例' },
+      ]
     case 'instance': {
       const section = labelOf(INSTANCE_SECTIONS, route.section)
       return [
@@ -154,6 +159,8 @@ function labelOfRoute(route: Route, instances: InstanceStatus[]): string {
   switch (route.kind) {
     case 'instances':
       return '所有实例'
+    case 'new-instance':
+      return '新建实例'
     case 'instance': {
       const name = instances.find((item) => item.id === route.id)?.name ?? '实例'
       return route.section === 'console'
@@ -201,7 +208,6 @@ export default function App() {
   // The page this one was opened from, for the top bar's 返回. Read from the
   // history entry, so a reload in the middle of a session keeps its answer.
   const [backTo, setBackTo] = useState<Route | null>(cameFrom)
-  const [showNew, setShowNew] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -485,7 +491,7 @@ export default function App() {
         cores={cores}
         plugins={plugins}
         terminal={terminal}
-        onCreate={() => setShowNew(true)}
+        onCreate={() => navigate({ kind: 'new-instance' })}
         onOpenPalette={() => setPaletteOpen(true)}
         sidebarRef={sidebarRef}
       />
@@ -581,6 +587,28 @@ export default function App() {
                 onOpenInstance={(id) => openInstance(id, 'plugins')}
               />
             )
+          ) : route.kind === 'new-instance' ? (
+            <NewInstanceWizard
+              cores={cores}
+              java={java}
+              system={system.info}
+              // Upsert rather than append: the wizard reports the instance
+              // twice — once when it is created, once if 立即开服 is pressed —
+              // and the second report is a state change, not a second server.
+              onCreated={(instance) =>
+                setInstances((prev) =>
+                  prev.some((item) => item.id === instance.id)
+                    ? prev.map((item) =>
+                        item.id === instance.id ? mergeState(item, instance) : item,
+                      )
+                    : [...prev, instance],
+                )
+              }
+              onOpenInstance={(id) => openInstance(id)}
+              onCancel={
+                goBack ?? (() => navigate({ kind: 'instances', query: '', state: 'all' }))
+              }
+            />
           ) : route.kind === 'instances' ? (
             <InstanceList
               instances={instances}
@@ -592,7 +620,7 @@ export default function App() {
                 navigate({ kind: 'instances', ...next }, true)
               }
               onNavigate={navigate}
-              onCreate={() => setShowNew(true)}
+              onCreate={() => navigate({ kind: 'new-instance' })}
               onImport={() => setShowImport(true)}
               onChanged={applyInstance}
             />
@@ -641,7 +669,7 @@ export default function App() {
               system={system.info}
               alerts={alerts}
               onSelect={openInstance}
-              onCreate={() => setShowNew(true)}
+              onCreate={() => navigate({ kind: 'new-instance' })}
               onNavigate={navigate}
               onChanged={applyInstance}
             />
@@ -656,27 +684,11 @@ export default function App() {
           onNavigate={navigate}
           onCreate={() => {
             setPaletteOpen(false)
-            setShowNew(true)
+            navigate({ kind: 'new-instance' })
           }}
           onImport={() => {
             setPaletteOpen(false)
             setShowImport(true)
-          }}
-        />
-      )}
-
-      {showNew && (
-        <NewInstanceDialog
-          cores={cores}
-          onCancel={() => setShowNew(false)}
-          onCreated={(created) => {
-            setShowNew(false)
-            setInstances((prev) => [...prev, created])
-            openInstance(created.id)
-          }}
-          onOpenLibrary={() => {
-            setShowNew(false)
-            openLibrary('cores', 'download')
           }}
         />
       )}
