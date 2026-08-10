@@ -62,14 +62,18 @@ export type Route =
       view: LibraryView
       pluginId?: string
       /**
-       * Which instance 获取插件 judges compatibility against.
+       * Which instances 获取插件 judges compatibility against.
        *
        * A view filter, not a destination — nothing is installed anywhere from
        * that page. It lives in the URL because "兼容" is not a property of a
        * plugin but of a plugin and a server, so a link to the discovery page
-       * without it is a link to a page of grey 未知兼容性 badges.
+       * without it is a link to a page with no badges on it at all.
+       *
+       * Plural because one operator's answer is often "does this fit the four
+       * servers I run", and because a single-server reference made the common
+       * case — a fleet on the same version — into four separate visits.
        */
-      against?: string
+      against?: string[]
     }
   | { kind: 'host'; section: HostSection }
   | { kind: 'settings'; section: SettingsSection }
@@ -248,8 +252,11 @@ export function routeFromLocation(): Route {
       if (section === 'plugins' && view === 'list' && library[3]) {
         return { kind: 'library', section, view, pluginId: decodeURIComponent(library[3]) }
       }
-      const against = params.get('against')
-      return view === 'browse' && against
+      const against = (params.get('against') ?? '')
+        .split(',')
+        .map((entry) => decodeURIComponent(entry).trim())
+        .filter((entry) => entry !== '')
+      return view === 'browse' && against.length > 0
         ? { kind: 'library', section, view, against }
         : { kind: 'library', section, view }
     }
@@ -314,8 +321,8 @@ export function pathOf(route: Route): string {
         return `/library/plugins/list/${encodeURIComponent(route.pluginId)}`
       }
       const base = `/library/${route.section}/${route.view}`
-      return route.view === 'browse' && route.against
-        ? `${base}?against=${encodeURIComponent(route.against)}`
+      return route.view === 'browse' && route.against?.length
+        ? `${base}?against=${route.against.map(encodeURIComponent).join(',')}`
         : base
     }
     case 'settings':

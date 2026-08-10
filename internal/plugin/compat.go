@@ -206,6 +206,70 @@ func Judge(target Target, loaders, gameVersions []string) Compat {
 	}
 }
 
+// NamedTarget is one server a badge is measured against, carrying the name the
+// verdict has to be able to blame.
+type NamedTarget struct {
+	Name   string
+	Target Target
+}
+
+// JudgeAcross folds one verdict per selected server into the single badge a
+// row has room for.
+//
+// Nil when nothing was selected, and that is the interesting case: with no
+// reference server there is no verdict, and the row must show no badge at all
+// rather than a grey 未知兼容性. A column where every cell reads the same thing
+// is not information — it is the most prominent position on the row, spent on
+// saying nothing. Not answering is the honest form of not knowing.
+//
+// With servers selected the fold is pessimistic on purpose. 兼容 over a fleet
+// has to mean every one of them, because what happens next is one jar copied
+// onto all of them; one bad server makes the row bad, and the detail names
+// which one so the operator can go and look.
+func JudgeAcross(targets []NamedTarget, loaders, gameVersions []string) *Compat {
+	if len(targets) == 0 {
+		return nil
+	}
+	if len(targets) == 1 {
+		verdict := Judge(targets[0].Target, loaders, gameVersions)
+		return &verdict
+	}
+
+	var bad, unknown, ok []string
+	for _, entry := range targets {
+		verdict := Judge(entry.Target, loaders, gameVersions)
+		switch verdict.State {
+		case CompatBad:
+			bad = append(bad, entry.Name+"："+verdict.Label)
+		case CompatUnknown:
+			unknown = append(unknown, entry.Name+"："+verdict.Label)
+		default:
+			ok = append(ok, entry.Name)
+		}
+	}
+
+	switch {
+	case len(bad) > 0:
+		return &Compat{
+			State:  CompatBad,
+			Label:  strconv.Itoa(len(bad)) + "/" + strconv.Itoa(len(targets)) + " 台不兼容",
+			Detail: strings.Join(bad, "；"),
+		}
+	case len(unknown) > 0:
+		return &Compat{
+			State:  CompatUnknown,
+			Label:  "未知兼容性",
+			Detail: strings.Join(unknown, "；"),
+		}
+	default:
+		return &Compat{
+			State:  CompatOK,
+			Label:  "兼容全部 " + strconv.Itoa(len(targets)) + " 台",
+			Detail: strings.Join(ok, "、") + " 都支持",
+		}
+	}
+}
+
 func labelAll(loaders []string) []string {
 	out := make([]string, 0, len(loaders))
 	for _, loader := range loaders {

@@ -43,6 +43,7 @@ export function PluginLibraryPage({
   plugins,
   view,
   against,
+  recents,
   instances,
   onOpenPlugin,
   onOpenSettings,
@@ -52,13 +53,16 @@ export function PluginLibraryPage({
 }: {
   plugins: PluginController
   view: LibraryView
-  /** Which instance 获取插件 judges compatibility against. */
-  against?: string
+  /** Which instances 获取插件 judges compatibility against. */
+  against?: string[]
+  /** Most recently opened servers, newest first — 获取插件 defaults its
+   *  compatibility reference to the first of these that still exists. */
+  recents: string[]
   instances: InstanceStatus[]
   onOpenPlugin: (id: string) => void
   onOpenSettings: () => void
   onOpenView: (view: LibraryView) => void
-  onChooseAgainst: (id: string) => void
+  onChooseAgainst: (ids: string[]) => void
   onOpenInstance: (id: string) => void
 }) {
   const [overview, setOverview] = useState<PluginOverview | null>(null)
@@ -101,10 +105,11 @@ export function PluginLibraryPage({
       <Page
         wide
         title="获取插件"
-        lead="从 Modrinth、Hangar 和 SpigotMC 里找插件，下载到面板插件库。这里不会装进任何一台服务器 —— 装到哪几台是「插件列表」和实例自己的「已装插件」上的事。左边选一台服只是为了让兼容性徽章有参照。"
+        lead="从 Modrinth、Hangar 和 SpigotMC 里找插件，下载到面板插件库。这里不会装进任何一台服务器 —— 装到哪几台是「插件列表」和实例自己的「已装插件」上的事。左边勾几台服只是为了让兼容性徽章有参照。"
       >
         <PluginBrowse
-          against={against ?? ''}
+          against={against ?? []}
+          recents={recents}
           onChooseAgainst={onChooseAgainst}
           onOpenLibrary={() => onOpenView('list')}
         />

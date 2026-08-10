@@ -42,6 +42,10 @@ type browseResponse struct {
 	// has to ask.
 	Targets  []installTarget  `json:"targets"`
 	Listings []plugin.Listing `json:"listings"`
+	// Picks is the curated shelf, sent instead of Listings when nothing has
+	// been typed. See plugin.Picks: the front page of a registry is a download
+	// chart, and a download chart on a server panel is client mods.
+	Picks []plugin.PickGroup `json:"picks,omitempty"`
 	// Notes says, per source, why it contributed nothing. Rendered as a line
 	// under the results rather than as an error: the other sources answered.
 	Notes     map[string]string `json:"notes,omitempty"`
@@ -73,47 +77,101 @@ func (s *Server) handleBrowsePlugins(w http.ResponseWriter, r *http.Request) {
 
 	query := r.URL.Query()
 	targets := s.installTargets()
-
-	var target plugin.Target
-	if id := strings.TrimSpace(query.Get("instance")); id != "" {
-		for _, candidate := range targets {
-			if candidate.ID == id {
-				target = candidate.Target
-				break
-			}
-		}
-	}
+	chosen := chosenTargets(targets, query.Get("instances"))
 
 	onlyCompatible := query.Get("onlyCompatible") != "false"
 	q := plugin.Query{
-		Text:     strings.TrimSpace(query.Get("q")),
-		Sources:  splitList(query.Get("sources")),
-		Category: strings.TrimSpace(query.Get("category")),
-		Sort:     strings.TrimSpace(query.Get("sort")),
-		Offset:   atoiOr(query.Get("offset"), 0),
+		Text:       strings.TrimSpace(query.Get("q")),
+		Sources:    splitList(query.Get("sources")),
+		Category:   strings.TrimSpace(query.Get("category")),
+		Sort:       strings.TrimSpace(query.Get("sort")),
+		Offset:     atoiOr(query.Get("offset"), 0),
+		ClientMods: query.Get("clientMods") == "true",
 	}
 	if onlyCompatible {
-		q.Loader = target.Loader
+		// One loader or none. Narrowing upstream is only sound when every
+		// selected server agrees about what a plugin has to be built for —
+		// with a Paper server and a Velocity proxy both ticked, either loader
+		// sent here would silently delete the other one's plugins from the
+		// results, which is the opposite of what ticking two servers asked
+		// for. Mixed selections fall back to judging after the fact.
+		q.Loader = commonLoader(chosen)
 	}
 
-	result := s.plugins.Client().Registry().Search(r.Context(), q)
+	registry := s.plugins.Client().Registry()
 
 	resp := browseResponse{
 		Sources:    plugin.RegistrySources(),
 		Categories: plugin.Categories(),
 		Targets:    targets,
-		Listings:   result.Listings,
-		Notes:      result.Notes,
-		Truncated:  result.Truncated,
+		Listings:   []plugin.Listing{},
 	}
-	for i := range resp.Listings {
-		verdict := plugin.Judge(target, resp.Listings[i].Loaders, resp.Listings[i].GameVersions)
-		resp.Listings[i].Compat = &verdict
-		if verdict.State == plugin.CompatBad {
-			resp.Incompatible++
+
+	// Nothing typed and nothing narrowed: the shelf, not a search. A category
+	// on its own is still a real question ("what protection plugins are
+	// there"), so that one goes upstream.
+	if q.Text == "" && q.Category == "" {
+		resp.Picks = registry.Picks(r.Context())
+		for i := range resp.Picks {
+			judgeAll(resp.Picks[i].Listings, chosen, nil)
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
+	result := registry.Search(r.Context(), q)
+	resp.Listings = result.Listings
+	resp.Notes = result.Notes
+	resp.Truncated = result.Truncated
+	judgeAll(resp.Listings, chosen, &resp.Incompatible)
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// judgeAll stamps every listing with its verdict, counting the bad ones for
+// the page's count line. A nil verdict — nothing selected to judge against —
+// is left nil, and the row draws no badge at all.
+func judgeAll(listings []plugin.Listing, against []plugin.NamedTarget, incompatible *int) {
+	for i := range listings {
+		verdict := plugin.JudgeAcross(against, listings[i].Loaders, listings[i].GameVersions)
+		listings[i].Compat = verdict
+		if incompatible != nil && verdict != nil && verdict.State == plugin.CompatBad {
+			*incompatible++
 		}
 	}
-	writeJSON(w, http.StatusOK, resp)
+}
+
+// chosenTargets resolves the rail's instance ticks, in the order the panel
+// lists them rather than the order they were ticked — a badge's detail reads
+// the same on every row that way.
+func chosenTargets(targets []installTarget, raw string) []plugin.NamedTarget {
+	wanted := map[string]bool{}
+	for _, id := range splitList(raw) {
+		wanted[id] = true
+	}
+	out := make([]plugin.NamedTarget, 0, len(wanted))
+	for _, candidate := range targets {
+		if wanted[candidate.ID] {
+			out = append(out, plugin.NamedTarget{Name: candidate.Name, Target: candidate.Target})
+		}
+	}
+	return out
+}
+
+// commonLoader is the loader every selected server runs, or "" when they do
+// not agree — or when nothing is selected at all.
+func commonLoader(targets []plugin.NamedTarget) string {
+	loader := ""
+	for _, entry := range targets {
+		if entry.Target.Loader == "" {
+			continue
+		}
+		if loader != "" && loader != entry.Target.Loader {
+			return ""
+		}
+		loader = entry.Target.Loader
+	}
+	return loader
 }
 
 type browseDetailResponse struct {
@@ -130,7 +188,7 @@ type browseDetailResponse struct {
 // browseVersion is one installable version, already judged.
 type browseVersion struct {
 	plugin.Release
-	Compat plugin.Compat `json:"compat"`
+	Compat *plugin.Compat `json:"compat,omitempty"`
 	// Held is true when the library already has this jar, so the drawer can
 	// offer "安装" rather than "下载并安装" and skip the transfer.
 	Held bool `json:"held"`
@@ -170,14 +228,14 @@ func (s *Server) handleBrowsePluginDetail(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// The same servers the rail had ticked, so the drawer's badges are the row's
+	// badges and not a second opinion. Target stays singular — it is what the
+	// drawer prints as "这台服是 Paper 1.20.4", which only means something when
+	// there is one of them.
+	chosen := chosenTargets(s.installTargets(), r.URL.Query().Get("instances"))
 	var target plugin.Target
-	if instanceID := strings.TrimSpace(r.URL.Query().Get("instance")); instanceID != "" {
-		for _, candidate := range s.installTargets() {
-			if candidate.ID == instanceID {
-				target = candidate.Target
-				break
-			}
-		}
+	if len(chosen) == 1 {
+		target = chosen[0].Target
 	}
 
 	tracked := s.trackedBy(source, id)
@@ -188,8 +246,7 @@ func (s *Server) handleBrowsePluginDetail(w http.ResponseWriter, r *http.Request
 		Versions: make([]browseVersion, 0, len(releases)),
 		Tracked:  tracked,
 	}
-	verdict := plugin.Judge(target, listing.Loaders, listing.GameVersions)
-	resp.Listing.Compat = &verdict
+	resp.Listing.Compat = plugin.JudgeAcross(chosen, listing.Loaders, listing.GameVersions)
 
 	for _, release := range releases {
 		held := false
@@ -200,7 +257,7 @@ func (s *Server) handleBrowsePluginDetail(w http.ResponseWriter, r *http.Request
 		}
 		resp.Versions = append(resp.Versions, browseVersion{
 			Release: release,
-			Compat:  plugin.Judge(target, release.Loaders, release.GameVersions),
+			Compat:  plugin.JudgeAcross(chosen, release.Loaders, release.GameVersions),
 			Held:    held,
 		})
 	}

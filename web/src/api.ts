@@ -241,17 +241,23 @@ export const api = {
   /**
    * Searches the plugin registries.
    *
-   * `instance` is the target the results are judged against, and is what makes
-   * every row's compatibility badge mean anything — without it the whole page
-   * reads 未知兼容性.
+   * `instances` are the servers the results are judged against, and are what
+   * make every row's compatibility badge mean anything — with none of them
+   * chosen the page shows no badges at all, which is the honest form of not
+   * knowing.
+   *
+   * With no `q` and no `category` this returns `picks` instead of `listings`:
+   * a registry's idea of a front page is its download chart, and on a server
+   * panel that chart is client mods.
    */
   browsePlugins: (query: {
     q?: string
     sources?: string[]
     category?: string
     sort?: string
-    instance?: string
+    instances?: string[]
     onlyCompatible?: boolean
+    clientMods?: boolean
     offset?: number
   }) => {
     const params = new URLSearchParams()
@@ -259,14 +265,17 @@ export const api = {
     if (query.sources?.length) params.set('sources', query.sources.join(','))
     if (query.category) params.set('category', query.category)
     if (query.sort) params.set('sort', query.sort)
-    if (query.instance) params.set('instance', query.instance)
+    if (query.instances?.length) params.set('instances', query.instances.join(','))
     if (query.onlyCompatible === false) params.set('onlyCompatible', 'false')
+    if (query.clientMods) params.set('clientMods', 'true')
     if (query.offset) params.set('offset', String(query.offset))
     return request<PluginBrowseResult>('GET', `/api/plugins/browse?${params}`)
   },
-  /** One plugin's full record and version list, for the drawer. */
-  browsePlugin: (source: string, id: string, instance?: string) => {
-    const params = instance ? `?instance=${encodeURIComponent(instance)}` : ''
+  /** One plugin's full record and version list, for the drawer. Judged against
+   *  the same servers the rail had ticked, so the drawer's badges are the
+   *  row's badges rather than a second opinion. */
+  browsePlugin: (source: string, id: string, instances?: string[]) => {
+    const params = instances?.length ? `?instances=${instances.map(encodeURIComponent).join(',')}` : ''
     return request<PluginBrowseDetail>(
       'GET',
       `/api/plugins/browse/${encodeURIComponent(source)}/${encodeURIComponent(id)}${params}`,

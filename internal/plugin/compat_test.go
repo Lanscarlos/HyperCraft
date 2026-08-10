@@ -3,6 +3,7 @@ package plugin
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -150,5 +151,48 @@ func TestModsGoToModsAndPluginsGoToPlugins(t *testing.T) {
 	}
 	if dir := TargetDirFor("paper"); dir != DefaultTargetDir {
 		t.Errorf("paper target dir = %q", dir)
+	}
+}
+
+func TestNoTargetsMeansNoVerdictAtAll(t *testing.T) {
+	// Not "unknown" — nil. A row with nothing to judge against draws no badge,
+	// because a column reading 未知兼容性 all the way down is the most
+	// prominent position on the row spent on saying nothing.
+	if verdict := JudgeAcross(nil, []string{"paper"}, []string{"1.20.4"}); verdict != nil {
+		t.Fatalf("expected no verdict, got %+v", verdict)
+	}
+}
+
+func TestOneTargetJudgesExactlyAsBefore(t *testing.T) {
+	paper := []NamedTarget{{Name: "生存服", Target: Target{Loader: "paper", MCVersion: "1.20.4"}}}
+
+	verdict := JudgeAcross(paper, []string{"spigot"}, []string{"1.20.1"})
+	if verdict == nil || verdict.State != CompatOK || verdict.Label != "兼容 1.20.4" {
+		t.Fatalf("single target should read like Judge: %+v", verdict)
+	}
+}
+
+func TestAcrossServersIsPessimistic(t *testing.T) {
+	fleet := []NamedTarget{
+		{Name: "生存服", Target: Target{Loader: "paper", MCVersion: "1.20.4"}},
+		{Name: "群组端", Target: Target{Loader: "velocity", MCVersion: "3.3.0"}},
+	}
+
+	// Fits the Paper server, will never load on the proxy. One bad server
+	// makes the row bad, and the detail has to name which one.
+	verdict := JudgeAcross(fleet, []string{"paper"}, []string{"1.20.4"})
+	if verdict == nil || verdict.State != CompatBad {
+		t.Fatalf("one incompatible server should sink the row: %+v", verdict)
+	}
+	if !strings.Contains(verdict.Detail, "群组端") {
+		t.Errorf("detail should blame the server that failed: %q", verdict.Detail)
+	}
+
+	both := []NamedTarget{
+		{Name: "生存服", Target: Target{Loader: "paper", MCVersion: "1.20.4"}},
+		{Name: "创造服", Target: Target{Loader: "paper", MCVersion: "1.20.1"}},
+	}
+	if verdict := JudgeAcross(both, []string{"paper"}, []string{"1.20.4", "1.20.1"}); verdict.State != CompatOK {
+		t.Errorf("both fit, so the row fits: %+v", verdict)
 	}
 }

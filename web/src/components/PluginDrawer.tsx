@@ -32,8 +32,8 @@ export function PluginDrawer({
   onOpenLibrary,
 }: {
   listing: PluginListing
-  /** Instance id the versions are judged against, or "". */
-  against: string
+  /** Instance ids the versions are judged against; empty means no badges. */
+  against: string[]
   reference: InstallTarget | null
   onClose: () => void
   onDownloaded: () => void
@@ -52,14 +52,16 @@ export function PluginDrawer({
     let live = true
     setLoading(true)
     api
-      .browsePlugin(listing.source, listing.id, against || undefined)
+      .browsePlugin(listing.source, listing.id, against)
       .then((next) => {
         if (!live) return
         setDetail(next)
         // The newest compatible version, falling back to the newest at all —
         // an operator on 1.16.5 opening a plugin whose newest release is for
         // 1.21 wants the one that will run, preselected.
-        const fit = next.versions.find((version) => version.compat.state === 'ok')
+        // With nothing to judge against there is no "compatible" to prefer,
+        // and the newest is the only sensible default.
+        const fit = next.versions.find((version) => version.compat?.state === 'ok')
         setChosen((fit ?? next.versions[0])?.tag ?? '')
         setError(null)
       })
@@ -68,7 +70,9 @@ export function PluginDrawer({
     return () => {
       live = false
     }
-  }, [listing.source, listing.id, against])
+    // Joined rather than passed as an array: a new array literal every render
+    // would refetch the drawer on every keystroke behind it.
+  }, [listing.source, listing.id, against.join(',')])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -81,10 +85,10 @@ export function PluginDrawer({
   }, [close, downloading])
 
   const version = detail?.versions.find((entry) => entry.tag === chosen) ?? null
-  const incompatible = version?.compat.state === 'bad'
+  const incompatible = version?.compat?.state === 'bad'
   // Whether the way out is picking a different version or giving up on this
   // plugin. Two very different answers, and the footer says which.
-  const anyFits = (detail?.versions ?? []).some((entry) => entry.compat.state !== 'bad')
+  const anyFits = (detail?.versions ?? []).some((entry) => entry.compat?.state !== 'bad')
 
   /**
    * Registers the source and pulls the jar into the library.
@@ -246,7 +250,7 @@ export function PluginDrawer({
               // sentence beside it is a dead end. The version list above is
               // where the way out is, so this says to look there.
               <span className="drawer__warn">
-                {version?.compat.detail ?? version?.compat.label}
+                {version?.compat?.detail ?? version?.compat?.label}
                 {anyFits ? ' —— 上面挑一个绿色的版本' : ' —— 这个插件没有适配这台服的版本'}
               </span>
             ) : (

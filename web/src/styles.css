@@ -5852,12 +5852,16 @@ button.rows__name:hover strong {
    fact that decides a plugin is text, and a card spends its area on an icon
    that identifies nothing while truncating the description.
 
-   The rail is two blocks, and the split is the point. The top one picks what
-   compatibility is measured against — it changes what every badge on the page
-   *means*, so it gets the accent surface and sits above the divider. The
-   bottom one narrows the list, and its four groups share one label style, one
-   control width and one rhythm so they read as a set rather than as four
-   controls that happened to land near each other. */
+   The rail is one block now. The reference servers used to sit above it on
+   their own accent surface, on the grounds that they change what every badge
+   *means* rather than merely narrowing the list — which is true, and was still
+   the wrong shape: a control that is not in the filter panel is a control that
+   is not looked at when the results are wrong, and the commonest wrong result
+   on this page was "no badges anywhere" caused by that box being left alone.
+   In among the filters it is found, and it answers to the same 搜索 button as
+   the rest of them. Every group shares one label style, one control width and
+   one rhythm, so they read as a set rather than as five controls that happened
+   to land near each other. */
 .browse {
   display: grid;
   grid-template-columns: 208px minmax(0, 1fr);
@@ -5886,33 +5890,6 @@ button.rows__name:hover strong {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-}
-
-/* Not one filter among four: it decides what every badge below it means. So
-   it gets a surface of its own, above the rule that separates it from the
-   things that merely narrow the list. */
-.browse__reference {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 11px;
-  background: var(--accent-soft);
-  border: 1px solid var(--border-accent);
-  border-radius: var(--radius);
-}
-
-.browse__reference-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  color: var(--text-dim);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.browse__reference-warn {
-  color: var(--caution-ink);
 }
 
 .browse__filters {
@@ -5982,6 +5959,13 @@ button.rows__name:hover strong {
   line-height: 1.6;
 }
 
+/* Why a control is off, or why a column is missing — said where the fix is,
+   which is the only place it is any use. */
+.browse__hint--warn,
+.browse__check-warn {
+  color: var(--caution-ink);
+}
+
 .browse__main {
   display: flex;
   flex-direction: column;
@@ -5989,8 +5973,78 @@ button.rows__name:hover strong {
   min-width: 0;
 }
 
+/* The box and the button that fires it, on one line. The button is not a
+   convenience — it is the page's contract: nothing goes upstream until it is
+   pressed, so it has to be beside the thing being typed. */
+.browse__search {
+  display: flex;
+  gap: 8px;
+}
+
 .browse__search .filters__search {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+}
+
+.browse__search .btn {
+  flex: none;
+}
+
+/* The rail is ahead of the results. Said plainly rather than by dimming the
+   list: a stale list that looks stale is still a list you might read. */
+.browse__pending {
+  margin: 0;
+  color: var(--caution-ink);
+  font-size: 12px;
+}
+
+.browse__more {
+  display: flex;
+  justify-content: center;
+}
+
+/* The empty state is a list of things to try, not an apology. Each line is
+   one narrowing that could be the cause, with the undo next to it. */
+.browse__advice {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.9;
+  text-align: left;
+}
+
+/* ------------------------------------------------------------------ shelf
+
+   What the page shows before anything is typed. Grouped, because the question
+   underneath "what should I install" is "what jobs does a server need doing" —
+   and because the alternative, a registry's own front page, is a download
+   chart, which on Modrinth is client rendering mods a server cannot load. */
+.browse__shelf {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.browse__shelf-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.browse__shelf-label {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 14px;
+}
+
+.browse__shelf-label small {
+  color: var(--text-faint);
+  font-size: 11.5px;
+  font-weight: 400;
 }
 
 .browse__count {
@@ -6001,7 +6055,7 @@ button.rows__name:hover strong {
 }
 
 .browse__count-note {
-  margin-left: 4px;
+  margin-left: 5px;
   color: var(--text-faint);
 }
 
@@ -6014,11 +6068,14 @@ button.rows__name:hover strong {
   background: var(--surface-1);
 }
 
+/* Tightened from three comfortable lines to three legible ones: at the old
+   height a screen held eight results, which is less than one search's worth of
+   candidates and meant scrolling to compare the third against the ninth. */
 .browse-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 7px 14px;
   border-bottom: 1px solid var(--border);
   transition: background var(--dur-1) var(--ease);
 }
@@ -6082,7 +6139,7 @@ button.rows__name:hover strong {
 .browse-row__body {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 1px;
   min-width: 0;
 }
 

@@ -590,11 +590,22 @@ export interface PluginListing {
   compat?: PluginCompat
 }
 
+/** One section of the curated shelf the empty query shows. */
+export interface PluginPickGroup {
+  id: string
+  name: string
+  note?: string
+  listings: PluginListing[]
+}
+
 export interface PluginBrowseResult {
   sources: RegistrySource[]
   categories: PluginCategory[]
   targets: InstallTarget[]
   listings: PluginListing[]
+  /** Sent instead of `listings` when nothing has been typed and no category
+   *  chosen — see api.browsePlugins. Absent for a real search. */
+  picks?: PluginPickGroup[]
   /** Per source, why it contributed nothing. A source that worked is absent. */
   notes?: Record<string, string>
   truncated: boolean
@@ -603,7 +614,8 @@ export interface PluginBrowseResult {
 }
 
 export interface BrowseVersion extends PluginRelease {
-  compat: PluginCompat
+  /** Absent when no server was chosen to judge against. */
+  compat?: PluginCompat
   /** True when the library already holds this jar, so installing skips the
    *  transfer. */
   held: boolean

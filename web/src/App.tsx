@@ -492,11 +492,12 @@ export default function App() {
                 plugins={plugins}
                 view={route.view}
                 against={route.against}
+                recents={recents}
                 instances={instances}
                 onOpenView={(view) => openLibrary('plugins', view)}
-                onChooseAgainst={(id) =>
+                onChooseAgainst={(ids) =>
                   navigate(
-                    { kind: 'library', section: 'plugins', view: 'browse', against: id },
+                    { kind: 'library', section: 'plugins', view: 'browse', against: ids },
                     true,
                   )
                 }
@@ -545,7 +546,7 @@ export default function App() {
                     kind: 'library',
                     section: 'plugins',
                     view: 'browse',
-                    against: route.id,
+                    against: [route.id],
                   })
                 }
                 onOpenCoreLibrary={() => openLibrary('cores', 'stock')}

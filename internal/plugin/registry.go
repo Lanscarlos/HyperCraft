@@ -193,6 +193,15 @@ type Query struct {
 	// rail's "仅显示兼容项" switch is applied after the fact, because a result
 	// that was filtered out upstream cannot be shown greyed out.
 	Loader string
+	// ClientMods keeps the mods a server cannot load in the results.
+	//
+	// Off by default, and that default is the fix for the worst thing this
+	// page did: Modrinth's catalogue is mostly client mods, so a search for
+	// "optimization" on a server panel came back Sodium, Iris, Lithium —
+	// renderers and shader loaders, none of which a server will ever load. The
+	// switch exists because a handful of operators do hand client mods out to
+	// their players, and for them an empty result would be the wrong answer.
+	ClientMods bool
 }
 
 // SearchResult is what one search produced, including what it failed to reach.
@@ -390,8 +399,15 @@ func (r *Registry) searchModrinth(ctx context.Context, q Query) ([]Listing, bool
 	params.Set("index", modrinthIndex(q.Sort))
 
 	// Facets are AND-ed between the outer groups and OR-ed inside each one, so
-	// this reads "a plugin or a mod, in this category, for this loader".
+	// this reads "a plugin or a mod, runnable on a server, in this category,
+	// for this loader".
 	facets := [][]string{{"project_type:plugin", "project_type:mod"}}
+	if !q.ClientMods {
+		// required and optional both stay: "optional" is the honest label for a
+		// mod that does something on the server and more on the client, and
+		// dropping it would take ViaVersion's neighbours out with the shaders.
+		facets = append(facets, []string{"server_side:required", "server_side:optional"})
+	}
 	if q.Category != "" {
 		category, ok := lookupCategory(q.Category)
 		if !ok || category.modrinth == "" {
@@ -473,6 +489,10 @@ func (r *Registry) modrinthProject(ctx context.Context, id string) (Listing, str
 	if err := r.getJSON(ctx, r.modrinthBase+"/project/"+url.PathEscape(id), &project); err != nil {
 		return Listing{}, "", sourceError("Modrinth", err)
 	}
+	return modrinthListing(project), project.Body, nil
+}
+
+func modrinthListing(project modrinthProject) Listing {
 	slug := project.Slug
 	if slug == "" {
 		slug = project.ID
@@ -491,7 +511,28 @@ func (r *Registry) modrinthProject(ctx context.Context, id string) (Listing, str
 		Categories:   cats,
 		PageURL:      "https://modrinth.com/plugin/" + slug,
 		Downloadable: true,
-	}, project.Body, nil
+	}
+}
+
+// modrinthProjects reads several projects in one request, for the shelf the
+// empty query shows. Best effort: Modrinth simply leaves out an id it does not
+// recognise, and a whole failed call costs the Modrinth half of the shelf.
+func (r *Registry) modrinthProjects(ctx context.Context, ids []string) []Listing {
+	encoded, err := json.Marshal(ids)
+	if err != nil {
+		return nil
+	}
+
+	var projects []modrinthProject
+	if err := r.getJSON(ctx, r.modrinthBase+"/projects?ids="+url.QueryEscape(string(encoded)), &projects); err != nil {
+		return nil
+	}
+
+	out := make([]Listing, 0, len(projects))
+	for _, project := range projects {
+		out = append(out, modrinthListing(project))
+	}
+	return out
 }
 
 type modrinthVersion struct {
