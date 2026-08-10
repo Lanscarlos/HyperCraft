@@ -269,6 +269,21 @@ export function PluginLibraryDrawer({
               row={row}
               busy={busy || plugins.busy || plugins.downloading}
               onDownload={(tag, asset) => void plugins.download(item.id, tag, asset)}
+              // The lock lives on the version list as well as in 更新策略,
+              // because "I want to stay on this one" is a thought you have
+              // while looking at the versions, not while reading a settings
+              // form. Same field either way — the rest of the policy is carried
+              // across untouched so locking is not also a way to silently reset
+              // the update mode.
+              onPin={(tag) =>
+                void act(async () => {
+                  await api.setPluginPolicy(item.id, { ...(item.policy ?? {}), pin: tag })
+                  const held = tag ? item.versions.find((version) => version.tag === tag) : null
+                  return tag
+                    ? `已把 ${item.name} 锁定在 ${held?.version ?? tag}，不再报更新`
+                    : `已解除 ${item.name} 的版本锁定`
+                })
+              }
               onDropArtifact={(version, artifact) =>
                 void act(async () => {
                   await api.deletePluginVersion(item.id, version.tag, artifact.sha256)
@@ -606,12 +621,15 @@ function VersionsTab({
   busy,
   onDownload,
   onDropArtifact,
+  onPin,
 }: {
   item: LibraryPlugin
   row: PluginOverviewRow
   busy: boolean
   onDownload: (tag: string, asset?: string) => void
   onDropArtifact: (version: PluginVersion, artifact: PluginArtifact) => void
+  /** A tag to lock to, or '' to unlock. */
+  onPin: (tag: string) => void
 }) {
   const [releases, setReleases] = useState<PluginRelease[] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -676,6 +694,7 @@ function VersionsTab({
             onToggle={() => setOpen(open === entry.tag ? null : entry.tag)}
             onDownload={(asset) => onDownload(entry.tag, asset)}
             onDropArtifact={(artifact) => entry.held && onDropArtifact(entry.held, artifact)}
+            onPin={() => onPin(row.pinned === entry.tag ? '' : entry.tag)}
           />
         ))}
         {rows.length === 0 && <p className="muted">还没下载过任何版本，也还没列过上游有哪些。</p>}
@@ -736,6 +755,7 @@ function VersionGroup({
   onToggle,
   onDownload,
   onDropArtifact,
+  onPin,
 }: {
   entry: VersionEntry
   open: boolean
@@ -744,6 +764,7 @@ function VersionGroup({
   onToggle: () => void
   onDownload: (asset?: string) => void
   onDropArtifact: (artifact: PluginArtifact) => void
+  onPin: () => void
 }) {
   const artifacts = entry.held ? pluginArtifacts(entry.held) : []
   const size = entry.held ? versionSize(entry.held) : (entry.release?.asset.size ?? 0)
@@ -854,6 +875,22 @@ function VersionGroup({
               <summary>发布说明</summary>
               <pre>{entry.notes.slice(0, 4000)}</pre>
             </details>
+          )}
+
+          {/* Only a version the library actually holds can be locked to: a lock
+              pointing at a release nobody has downloaded is a promise the panel
+              cannot keep the next time an instance asks for the jar. */}
+          {entry.held && (
+            <div className="vgroup__foot">
+              <button className="link" disabled={busy} onClick={onPin}>
+                {pinned ? '解除版本锁定' : '锁定在这个版本'}
+              </button>
+              <small>
+                {pinned
+                  ? '锁着的时候这个插件不报「有更新」，批量升级也会跳过它。'
+                  : '停在这一版：锁上之后不再报「有更新」，批量升级也会跳过它。'}
+              </small>
+            </div>
           )}
         </div>
       )}

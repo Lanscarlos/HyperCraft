@@ -228,17 +228,13 @@ function GlobalScope(props: Props) {
         </nav>
 
         {/* Two whole groups rather than six loose entries: a non-admin sub-user
-            gets neither, and hiding a group is one check instead of six. */}
+            gets neither, and hiding a group is one check instead of six.
+
+            The three read in the order a server actually gets built: Java runs
+            the core, the core loads the plugins. Someone setting up for the
+            first time can work straight down the group. */}
         <Group label="资源库" />
         <nav className="sidebar__nav" aria-label="资源库导航">
-          <NavLink
-            {...props}
-            icon="cores"
-            label="服务端核心"
-            target={{ kind: 'library', section: 'cores', view: 'stock' }}
-            navKey="library:cores"
-            badge={cores.downloading ? <span className="badge badge--update">下载中</span> : null}
-          />
           <NavLink
             {...props}
             icon="java"
@@ -246,6 +242,14 @@ function GlobalScope(props: Props) {
             target={{ kind: 'library', section: 'java', view: 'installed' }}
             navKey="library:java"
             badge={java.installing ? <span className="badge badge--update">安装中</span> : null}
+          />
+          <NavLink
+            {...props}
+            icon="cores"
+            label="服务端核心"
+            target={{ kind: 'library', section: 'cores', view: 'stock' }}
+            navKey="library:cores"
+            badge={cores.downloading ? <span className="badge badge--update">下载中</span> : null}
           />
           <NavLink
             {...props}

@@ -943,11 +943,15 @@ a:hover {
   transform: scale(var(--press));
 }
 
+/* 18px because that is what an .icon is, and this box holds one. At 16 the
+   glyph hung a pixel out either side and the header's text started two pixels
+   left of every nav label under it — 9+1+16+9 against 10+1+18+8 — which reads
+   as a wobble down the left edge of the rail rather than as a difference. */
 .sidebar__entity-dot {
   display: grid;
   place-items: center;
   flex: none;
-  width: 16px;
+  width: 18px;
   color: var(--text-faint);
 }
 
@@ -2951,9 +2955,14 @@ a:hover {
    that was pulled sideways. Only panels that ask for it — .panel--form — are
    laid out this way; the ones holding a chart or a table already fill the
    space with something worth having. */
+/* min(340px, 100%) rather than a bare 340px: inside a panel on a 390px phone
+   there are only ~316px to give, and a track with a hard 340px floor is 24px
+   wider than its own container — every input on 服务器配置 hung its right border
+   off the card. The min() lets the single column collapse to whatever is there
+   while still splitting into columns the moment 680px is available. */
 .panel--form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
   align-items: start;
   gap: 14px 20px;
 }
@@ -2986,7 +2995,7 @@ a:hover {
    rather than making a single list four screens long. */
 .props-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
   gap: 8px 20px;
 }
 
@@ -3303,10 +3312,16 @@ details[open]::details-content {
 
 /* A row of standalone facts. Chips rather than a comma-separated line: each
    one is a separate answer, and they stay separable when they wrap. */
+/* The row itself is capped, not only the chips in it. Without this the row is
+   as wide as its widest content wants to be, the 100% the chips measure
+   themselves against is that same runaway width, and a chip holding a deep data
+   directory carried the whole head off the right edge of a phone. */
 .meta-chips {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
   margin: 4px 0 0;
   color: var(--text-dim);
   font-size: 12px;
@@ -3429,7 +3444,12 @@ details[open]::details-content {
   gap: 9px;
 }
 
+/* The name is the only part of the head allowed to take the width it needs, so
+   it is also the only part allowed to shrink. Without min-width:0 a long
+   instance name refuses to wrap and squeezes the state label beside it into a
+   two-line stack instead. */
 .card__head strong {
+  min-width: 0;
   font-size: 15px;
   transition: color var(--dur) var(--ease);
 }
@@ -4311,6 +4331,10 @@ details[open]::details-content {
   background: none;
 }
 
+/* Cells in .data-table are nowrap, which is right for a file name and wrong for
+   the sentence that stands in for the whole listing: on a phone it ran straight
+   off the right edge of the card. A block of prose in a table cell has to opt
+   back into wrapping. */
 .file-empty {
   display: flex;
   flex-direction: column;
@@ -4319,6 +4343,7 @@ details[open]::details-content {
   padding: 30px 16px;
   color: var(--text-dim);
   text-align: center;
+  white-space: normal;
 }
 
 .file-empty p {
@@ -4344,14 +4369,25 @@ details[open]::details-content {
 }
 
 .files__root {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 5px;
+  min-width: 0;
+}
+
+/* Only the path is allowed to be cut short; the sentence beside it is short,
+   fixed and the reason the path is worth showing at all. */
+.files__root code {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-mono);
 }
 
-.files__root code {
-  font-family: var(--font-mono);
+.files__root-note {
+  white-space: nowrap;
 }
 
 /* ---- drag and drop --------------------------------------------------- */
@@ -5388,8 +5424,16 @@ input.input-slim:disabled {
 
 /* --- instance cards ---------------------------------------------------- */
 
+/* Four characters at most, and never worth breaking: a name long enough to
+   wrap must not turn 已停止 into 已停 / 止. It also sits against the first line
+   of the name rather than centred against all of them, so the dot, the name and
+   the state still read as one line when the name takes two. */
 .card__state {
+  flex: none;
+  align-self: flex-start;
   margin-left: auto;
+  padding-top: 3px;
+  white-space: nowrap;
   color: var(--text-faint);
   font-size: 11px;
 }
@@ -6406,6 +6450,11 @@ button.rows__name:hover strong {
     scroll-snap-type: x proximity;
     margin: 0 -14px;
     padding: 0 14px 4px;
+    /* Without this the snapport starts at the padding box, so the first tile
+       snaps its own left edge to x=0 — the strip arrives already scrolled 14px
+       and every tile sits a notch left of the console under it. Matching the
+       padding puts the resting position back where the eye expects it. */
+    scroll-padding: 0 14px;
   }
 
   .tiles > .tile {
@@ -6423,7 +6472,9 @@ button.rows__name:hover strong {
 
   /* Stacked rather than side by side, so the chips get the whole width. */
   .page__head .meta-chips {
-    max-width: none;
+    /* The 50% share the chips keep beside a title is gone once they are on a
+       line of their own — but the page's own width is still a ceiling. */
+    max-width: 100%;
     justify-content: flex-start;
   }
 
@@ -6906,6 +6957,24 @@ button.rows__name:hover strong {
   flex-direction: column;
   gap: 8px;
   padding: 2px 12px 12px 32px;
+}
+
+/* The lock sits at the bottom of an opened version rather than on its head row:
+   the head is one button already, and a second control inside it would be both
+   invalid markup and a way to lock a version while trying to expand it. */
+.vgroup__foot {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+
+.vgroup__foot small {
+  min-width: 0;
+  color: var(--text-faint);
+  font-size: 11px;
 }
 
 .vgroup__notes summary {
@@ -8661,7 +8730,13 @@ button.rows__name:hover strong {
   line-height: 1.6;
 }
 
-@media (max-width: 1100px) {
+/* 1300, not the 1100 this used to be. The row needs 976px for its seven tracks,
+   but it is not measuring against the window — it is measuring against what is
+   left of it after the 240px rail and the content padding, which is ~250px
+   less. At 1200 the row was 48px wider than the card holding it and the last
+   column hung off the edge. The number to compare against a breakpoint here is
+   always window minus rail. */
+@media (max-width: 1300px) {
   /* Upstream and the deploy column are the two the row can lose first: the
      first is repeated in the status word, the second in the drawer. */
   .ptable__head,
@@ -8700,6 +8775,26 @@ button.rows__name:hover strong {
 
   .matrix__head > :nth-child(2),
   .matrix__head > :nth-child(3) {
+    display: none;
+  }
+}
+
+/* One more step down the same ladder, and the one a phone actually lands on.
+   At 390 the four tracks left at 820 need 28 + 132 + ~130 for the buttons, out
+   of ~328 — which left the name column two pixels wide. A list of plugins whose
+   plugin names are invisible is not a shorter list, it is a broken one, so
+   库内最新 goes the way of 上游最新 and 部署 before it: it is on the row's own
+   drawer, one tap away, and the name is not. */
+@media (max-width: 560px) {
+  .ptable__head,
+  .ptable__row {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 0 10px;
+  }
+
+  .ptable__head > :nth-child(3),
+  .ptable__row > :nth-child(3) {
     display: none;
   }
 }

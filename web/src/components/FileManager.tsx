@@ -700,8 +700,13 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
             {files > 0 && ` · 共 ${formatBytes(totalBytes)}`}
             {query && rows.length !== entries.length && ` · 已筛选出 ${rows.length} 项`}
           </span>
+          {/* The path and the promise about it are two elements rather than one
+              line, because one line means the path's ellipsis eats the promise:
+              on a phone the whole "所有操作都被限制在这个目录内" disappeared and
+              only a truncated path was left. */}
           <span className="files__root" title={listing.root}>
-            <code>{listing.root}</code> · 所有操作都被限制在这个目录内
+            <code>{listing.root}</code>
+            <span className="files__root-note">· 所有操作都被限制在这个目录内</span>
           </span>
         </div>
 

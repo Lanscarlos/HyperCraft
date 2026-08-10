@@ -105,9 +105,12 @@ export const INSTANCE_SECTIONS: { id: InstanceSection; label: string }[] = [
   { id: 'settings', label: '实例设置' },
 ]
 
+/** In build order: Java runs the core, the core loads the plugins. The
+ *  navigation group and the command palette both read this, so someone setting
+ *  a server up for the first time meets the three in the order they need them. */
 export const LIBRARY_SECTIONS: { id: LibrarySection; label: string }[] = [
-  { id: 'cores', label: '服务端核心' },
   { id: 'java', label: 'Java 环境' },
+  { id: 'cores', label: '服务端核心' },
   { id: 'plugins', label: '插件库' },
 ]
 
