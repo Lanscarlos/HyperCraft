@@ -26,6 +26,10 @@ const (
 	eventPairFailed      = "pair-failed"
 	eventUnpaired        = "unpaired"
 	eventPasswordChanged = "password-changed"
+	// eventTokenRejected is a request that presented a device token the panel
+	// does not know. Almost always a client that was unpaired and has not been
+	// told; the row exists so that case is visible instead of silent.
+	eventTokenRejected = "token-rejected"
 )
 
 // authLogSize is how many events are kept. Two hundred rows is more history

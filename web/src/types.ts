@@ -1202,6 +1202,7 @@ export type AuthEventKind =
   | 'pair-failed'
   | 'unpaired'
   | 'password-changed'
+  | 'token-rejected'
 
 /**
  * One credential event, as kept in the panel's memory. The list is cleared by a
