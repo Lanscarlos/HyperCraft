@@ -5770,13 +5770,71 @@ button.rows__name:hover strong {
   overflow: hidden;
 }
 
+/* Wraps, because a row can grow a changelog. Everything on the first line
+   until the notes open, and the notes then take the full width underneath
+   rather than squeezing the version number. */
 .plugin-version {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 7px 10px;
   border-bottom: 1px solid var(--border);
   font-size: 12px;
+}
+
+.plugin-version__notes-toggle {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* The upstream's own words, as they wrote them. Monospace and pre-wrapped
+   because a changelog is a list with indentation in it, and reflowing one into
+   a paragraph loses the only structure it had. */
+.plugin-version__notes {
+  flex-basis: 100%;
+  max-height: 260px;
+  margin: 2px 0 4px;
+  padding: 9px 11px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ------------------------------------------------------- one plugin's page */
+
+.plugin-detail__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.plugin-detail__icon {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--surface-3);
+  font-size: 19px;
+}
+
+.plugin-detail__facts {
+  flex: 1;
+  min-width: 0;
+}
+
+.plugin-detail__users {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .plugin-version:last-child {

@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { api } from '../api'
 import { formatBytes, formatDate } from '../format'
 import type { BrowseVersion, InstallTarget, PluginBrowseDetail, PluginListing } from '../types'
+import { isLive } from '../types'
 import { useDismiss } from '../useDismiss'
 import { CompatBadge } from './PluginCompat'
 import { PluginIcon } from './PluginIcon'
@@ -99,7 +100,7 @@ export function PluginDrawer({
    * updates" and "roll it back" possible later, and it is the same record
    * whether the plugin came from a registry or from somebody's GitHub.
    */
-  const download = async () => {
+  const download = async (install?: InstallTarget) => {
     if (!version) return
     setDownloading(true)
     setError(null)
@@ -116,15 +117,21 @@ export function PluginDrawer({
 
       if (version.held) {
         setDone(`插件库里已经有 ${version.version} 了。`)
-        onDownloaded()
-        return
+      } else {
+        setProgress(`正在下载 ${version.version}…`)
+        await api.downloadPlugin(item.id, version.tag)
+        await waitForDownload(item.id, version.tag, setProgress)
+        setDone(`已下载 ${version.version} 到插件库。`)
       }
 
-      setProgress(`正在下载 ${version.version}…`)
-      await api.downloadPlugin(item.id, version.tag)
-      await waitForDownload(item.id, version.tag, setProgress)
-
-      setDone(`已下载 ${version.version} 到插件库。`)
+      if (install) {
+        setProgress(`正在复制到 ${install.name}…`)
+        await api.installInstancePlugin(install.id, item.id, version.tag)
+        setDone(
+          `已下载 ${version.version} 到插件库，并复制到 ${install.name}` +
+            (isLive(install.state) ? ' —— 重启后生效。' : '。'),
+        )
+      }
       onDownloaded()
     } catch (err) {
       setError(err instanceof Error ? err.message : '下载失败')
@@ -257,18 +264,37 @@ export function PluginDrawer({
             )}
             {progress && <span className="drawer__progress">{progress}</span>}
           </div>
+
+          {/* The two-step model is right for a fleet and it is one hop too many
+              for the person running one server: download into the library,
+              then go to another page to copy it across. With exactly one
+              reference server ticked there is no ambiguity about where it
+              would go, so that becomes the primary and the library-only path
+              stays beside it — the cache still happens either way, this only
+              collapses the trip. */}
+          {reference && !incompatible && listing.downloadable && (
+            <button
+              className="btn"
+              disabled={downloading || !version}
+              onClick={() => void download()}
+            >
+              仅下载到库
+            </button>
+          )}
           <button
             className="btn btn--primary"
             disabled={downloading || !version || !listing.downloadable || incompatible}
-            onClick={() => void download()}
+            onClick={() => void download(reference ?? undefined)}
           >
             {downloading
-              ? '下载中…'
+              ? '处理中…'
               : incompatible
                 ? '不兼容'
-                : version?.held
-                  ? '库里已有'
-                  : `下载 ${version?.version ?? ''}`}
+                : reference
+                  ? `下载并装到 ${reference.name}`
+                  : version?.held
+                    ? '库里已有'
+                    : `下载 ${version?.version ?? ''}`}
           </button>
         </footer>
       </aside>
