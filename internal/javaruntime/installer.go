@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/lanscarlos/hypercraft/internal/unpack"
 )
 
 var (
@@ -295,7 +297,7 @@ func (i *Installer) unpack(ctx context.Context, staging string, release Release,
 		return err
 	}
 	if findJava(staging) == "" {
-		return fmt.Errorf("%w: 解压后没找到 bin/%s", ErrBadArchive, javaBinary())
+		return fmt.Errorf("%w: 解压后没找到 bin/%s", unpack.ErrBadArchive, javaBinary())
 	}
 
 	final := filepath.Join(i.store.Root(), installID(release))
@@ -326,12 +328,12 @@ func extractInto(ctx context.Context, staging string, release Release, archive *
 	}
 	defer root.Close()
 
-	if err := extractArchive(ctx, release.FileName, archive, root); err != nil {
+	if err := unpack.Extract(ctx, release.FileName, archive, root, unpack.Limits{}); err != nil {
 		return err
 	}
 	// JDK archives wrap everything in one directory named after the build.
 	// Dropping it keeps the installed path predictable: <id>/bin/java.
-	return flatten(root)
+	return unpack.Flatten(root)
 }
 
 // renameInstall moves the staged runtime into place, retrying for a few seconds

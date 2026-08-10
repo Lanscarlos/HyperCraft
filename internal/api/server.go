@@ -16,6 +16,7 @@ import (
 
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
+	"github.com/lanscarlos/hypercraft/internal/dbruntime"
 	"github.com/lanscarlos/hypercraft/internal/hostterm"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/javaruntime"
@@ -76,6 +77,11 @@ type Server struct {
 	// java manages the Java runtimes servers are launched with. Optional, on
 	// the same terms as jars.
 	java *javaruntime.Installer
+	// databaseInstalls downloads database engines and databases runs the
+	// databases built on them. Optional as a pair, like the plugin services:
+	// neither half is useful without the other.
+	databaseInstalls *dbruntime.Installer
+	databases        *dbruntime.Manager
 	// plugins fetches plugin releases into the panel-wide plugin library, and
 	// instancePlugins hands copies out to servers. Optional as a pair: both
 	// nil turns plugin management off, and neither is useful without the
@@ -126,6 +132,9 @@ type Options struct {
 	Plugins         *plugin.Downloader
 	InstancePlugins *plugin.Instances
 	PendingPlugins  *plugin.Pending
+
+	DatabaseInstalls *dbruntime.Installer
+	Databases        *dbruntime.Manager
 }
 
 func NewServer(opts Options) *Server {
@@ -159,6 +168,9 @@ func NewServer(opts Options) *Server {
 
 		instancePlugins: opts.InstancePlugins,
 		pendingPlugins:  opts.PendingPlugins,
+
+		databaseInstalls: opts.DatabaseInstalls,
+		databases:        opts.Databases,
 		upgrader: websocket.Upgrader{
 			HandshakeTimeout: 10 * time.Second,
 			ReadBufferSize:   4096,
@@ -307,6 +319,25 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("POST /api/java/install", s.handleInstallJava)
 	protected.HandleFunc("POST /api/java/install/cancel", s.handleCancelJavaInstall)
 	protected.HandleFunc("DELETE /api/java/{id}", s.handleDeleteJava)
+
+	// Databases. Panel-wide like the Java runtimes and for the same reason —
+	// one download of MySQL serves every server that needs one — but with a
+	// second layer the runtimes do not have: an engine is the binaries, a
+	// service is a data directory and a process. Hence two sets of routes.
+	protected.HandleFunc("GET /api/databases", s.handleDatabaseOverview)
+	// Two segments deep on purpose, the same way the plugin config routes are:
+	// "engines" must never be reachable as a service id.
+	protected.HandleFunc("GET /api/databases/engines/{engine}/versions", s.handleListDatabaseVersions)
+	protected.HandleFunc("POST /api/databases/engines/install", s.handleInstallDatabase)
+	protected.HandleFunc("POST /api/databases/engines/install/cancel", s.handleCancelDatabaseInstall)
+	protected.HandleFunc("DELETE /api/databases/engines/{id}", s.handleDeleteDatabaseEngine)
+
+	protected.HandleFunc("POST /api/databases/services", s.handleCreateDatabase)
+	protected.HandleFunc("PUT /api/databases/services/{id}", s.handleUpdateDatabase)
+	protected.HandleFunc("DELETE /api/databases/services/{id}", s.handleDeleteDatabase)
+	protected.HandleFunc("POST /api/databases/services/{id}/start", s.handleDatabasePower(true))
+	protected.HandleFunc("POST /api/databases/services/{id}/stop", s.handleDatabasePower(false))
+	protected.HandleFunc("GET /api/databases/services/{id}/logs", s.handleDatabaseLogs)
 
 	protected.HandleFunc("GET /api/instances/{id}/console", s.handleConsoleSocket)
 

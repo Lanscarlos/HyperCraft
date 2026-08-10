@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/lanscarlos/hypercraft/internal/config"
+	"github.com/lanscarlos/hypercraft/internal/dbruntime"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 )
 
@@ -95,6 +96,46 @@ func (s *Store) SaveInstances(configs []instance.Config) error {
 		return fmt.Errorf("encode instances: %w", err)
 	}
 	return writeFileAtomic(s.paths.InstancesFile(), append(data, '\n'), 0o600)
+}
+
+// LoadDatabases reads the registry of databases the panel manages.
+func (s *Store) LoadDatabases() ([]dbruntime.Service, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	data, err := os.ReadFile(s.paths.DatabasesFile())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read databases: %w", err)
+	}
+
+	var services []dbruntime.Service
+	if err := json.Unmarshal(data, &services); err != nil {
+		return nil, fmt.Errorf("parse databases: %w", err)
+	}
+	return services, nil
+}
+
+// SaveDatabases writes the database registry. It satisfies
+// dbruntime.Persister.
+//
+// 0600 like every other file here, and for a reason that applies to this one
+// more than most: it holds the database passwords in plain text, because the
+// panel has to be able to show them to the operator. See dbruntime.Service.
+func (s *Store) SaveDatabases(services []dbruntime.Service) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if services == nil {
+		services = []dbruntime.Service{}
+	}
+	data, err := json.MarshalIndent(services, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode databases: %w", err)
+	}
+	return writeFileAtomic(s.paths.DatabasesFile(), append(data, '\n'), 0o600)
 }
 
 // SaveResume records the instances to restart after a self-update. It is

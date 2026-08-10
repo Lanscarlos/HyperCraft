@@ -4923,6 +4923,25 @@ small.field__bad {
   margin-left: 0;
 }
 
+/* The connection string on a database card.
+
+   It is the one piece of text on this page somebody actually has to read
+   character by character — it goes into a plugin's config — so it gets a line
+   of its own rather than the ellipsis treatment .asset__sub code gives a path.
+   A URI has no spaces to wrap at, so the overflow is scrolled inside this box:
+   letting it size the card would push every database row wider than the grid.
+   min-width: 0 because the card is a flex column and without it the longest
+   URI sets the width of the whole thing. */
+.asset__conn {
+  display: block;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 6px 9px;
+  color: var(--text);
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* --------------------------------------------------------------- choosers
 
    A dropdown hides the one thing that decides the click — is this version LTS,

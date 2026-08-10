@@ -6,6 +6,7 @@ import { ApiError, api } from './api'
 import { ChangePasswordDialog } from './components/ChangePasswordDialog'
 import { CommandPalette } from './components/CommandPalette'
 import { CoreLibraryPage } from './components/CoreLibraryPage'
+import { DatabasePage } from './components/DatabasePage'
 import { Dashboard } from './components/Dashboard'
 import { HostPage } from './components/HostPage'
 import { HostTerminal } from './components/HostTerminal'
@@ -40,6 +41,7 @@ import { captureScope } from './scopeMorph'
 import type { InstanceStatus, User } from './types'
 import { mergeState } from './types'
 import { useCores } from './useCores'
+import { useDatabases } from './useDatabases'
 import { useJava } from './useJava'
 import { useMediaQuery } from './useMediaQuery'
 import { usePlugins } from './usePlugins'
@@ -219,6 +221,7 @@ export default function App() {
   // and the sidebar says so while they do.
   const update = useUpdate(signedIn)
   const java = useJava(signedIn)
+  const databases = useDatabases(signedIn)
   const cores = useCores(signedIn)
   const plugins = usePlugins(signedIn)
   const system = useSystem(signedIn)
@@ -482,6 +485,7 @@ export default function App() {
         updateNotice={updateNotice}
         alertCount={alerts.length}
         java={java}
+        databases={databases}
         cores={cores}
         plugins={plugins}
         terminal={terminal}
@@ -542,6 +546,12 @@ export default function App() {
                 view={route.view}
                 onOpenView={(view) => openLibrary('java', view)}
                 onOpenCores={() => openLibrary('cores', 'stock')}
+              />
+            ) : route.section === 'database' ? (
+              <DatabasePage
+                databases={databases}
+                view={route.view}
+                onOpenView={(view) => openLibrary('database', view)}
               />
             ) : route.section === 'cores' ? (
               <CoreLibraryPage

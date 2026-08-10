@@ -247,6 +247,22 @@ func (p Paths) ServersRoot() string { return filepath.Join(p.Root, "servers") }
 // here by hand is picked up too, so it doubles as "the panel's JDK shelf".
 func (p Paths) JavaRoot() string { return filepath.Join(p.Root, "java") }
 
+// DatabaseRoot is where the panel keeps the databases it set up: engines/ holds
+// the downloaded binaries, which are shared, and services/ holds one directory
+// per database — its data files and its log. They sit together because deleting
+// this one directory is what "undo the database feature" means.
+func (p Paths) DatabaseRoot() string { return filepath.Join(p.Root, "db") }
+
+// DatabaseEnginesRoot is where downloaded database engines are unpacked.
+// Anything dropped in here by hand is picked up too, like the Java shelf.
+func (p Paths) DatabaseEnginesRoot() string { return filepath.Join(p.DatabaseRoot(), "engines") }
+
+// DatabasesFile is the registry of databases the panel manages. It sits beside
+// instances.json rather than inside the database root, so a service id can
+// never collide with it — and, more to the point, it holds the passwords, so it
+// is one of the files written 0600.
+func (p Paths) DatabasesFile() string { return filepath.Join(p.Root, "databases.json") }
+
 // CoresRoot is the panel-wide library of server jars. A core is downloaded once
 // and copied into as many instances as needed, so a new server can be created
 // offline; a jar dropped in here by hand is listed too.

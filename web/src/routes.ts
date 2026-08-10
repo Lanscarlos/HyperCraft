@@ -21,7 +21,7 @@ export type InstanceSection =
   | 'settings'
 
 /** The shared-asset pages. Stock, as opposed to what one server has chosen. */
-export type LibrarySection = 'cores' | 'java' | 'plugins'
+export type LibrarySection = 'cores' | 'java' | 'database' | 'plugins'
 
 /**
  * The pages inside one library section.
@@ -42,6 +42,8 @@ export type LibraryView =
   | 'source'
   | 'list'
   | 'browse'
+  | 'databases'
+  | 'engines'
 
 /** Pages about the machine. `terminal` is the shell and is fenced off. */
 export type HostSection = 'metrics' | 'instances' | 'disk' | 'config' | 'terminal'
@@ -108,6 +110,7 @@ export const INSTANCE_SECTIONS: { id: InstanceSection; label: string }[] = [
 export const LIBRARY_SECTIONS: { id: LibrarySection; label: string }[] = [
   { id: 'cores', label: '服务端核心' },
   { id: 'java', label: 'Java 环境' },
+  { id: 'database', label: '数据库环境' },
   { id: 'plugins', label: '插件库' },
 ]
 
@@ -122,6 +125,15 @@ export const LIBRARY_VIEWS: Record<LibrarySection, { id: LibraryView; label: str
     { id: 'installed', label: '已安装' },
     { id: 'install', label: '安装新版本' },
     { id: 'source', label: '下载源' },
+  ],
+  // Three pages, and the order is the order of the questions: what databases
+  // do I have, what engines are they built on, and how do I get another engine.
+  // The engine list comes second because after the first install it is the page
+  // you never open again — it is where you go to free disk space.
+  database: [
+    { id: 'databases', label: '我的数据库' },
+    { id: 'engines', label: '已装引擎' },
+    { id: 'install', label: '安装引擎' },
   ],
   // Two pages, and they are two questions rather than two lists: 插件列表 is
   // "what is the state of what I run", 插件市场 is "is this worth installing".
@@ -325,6 +337,9 @@ function readRoute(path: string, search: string): Route {
   }
 
   if (path === '/java') return { kind: 'library', section: 'java', view: 'installed' }
+  if (path === '/databases' || path === '/database') {
+    return { kind: 'library', section: 'database', view: 'databases' }
+  }
   if (path === '/cores') return { kind: 'library', section: 'cores', view: 'stock' }
   const legacyPlugin = path.match(/^\/plugins\/([^/]+)/)
   if (legacyPlugin) {

@@ -17,6 +17,7 @@ import { captureScope, playScope } from '../scopeMorph'
 import type { InstanceStatus, SystemInfo, User } from '../types'
 import { STATE_LABELS, isLive } from '../types'
 import type { CoreController } from '../useCores'
+import type { DatabaseController } from '../useDatabases'
 import type { JavaController } from '../useJava'
 import type { PluginController } from '../usePlugins'
 import type { TerminalController } from '../useTerminal'
@@ -42,6 +43,7 @@ interface Props {
   updateNotice: string | null
   alertCount: number
   java: JavaController
+  databases: DatabaseController
   cores: CoreController
   plugins: PluginController
   terminal: TerminalController
@@ -152,6 +154,7 @@ function GlobalScope(props: Props) {
     updateNotice,
     alertCount,
     java,
+    databases,
     cores,
     plugins,
     onCreate,
@@ -246,6 +249,18 @@ function GlobalScope(props: Props) {
             target={{ kind: 'library', section: 'java', view: 'installed' }}
             navKey="library:java"
             badge={java.installing ? <span className="badge badge--update">安装中</span> : null}
+          />
+          <NavLink
+            {...props}
+            icon="database"
+            label="数据库环境"
+            target={{ kind: 'library', section: 'database', view: 'databases' }}
+            navKey="library:database"
+            badge={
+              databases.installing ? (
+                <span className="badge badge--update">安装中</span>
+              ) : null
+            }
           />
           <NavLink
             {...props}
@@ -493,13 +508,19 @@ function resetLabel(at: string): string {
 
 /** What is on the shelf, under its name — the same job the instance header's
  *  state line does: enough to know whether you need to be here at all. */
-function libraryMeta({ java, cores, plugins }: Props, section: LibrarySection): string {
+function libraryMeta({ java, databases, cores, plugins }: Props, section: LibrarySection): string {
   switch (section) {
     case 'cores':
       return cores.cores.length > 0 ? `${cores.cores.length} 个核心` : '还没有核心'
     case 'java': {
       const count = java.overview?.runtimes.length ?? 0
       return count > 0 ? `${count} 个运行时` : '还没装 Java'
+    }
+    case 'database': {
+      const services = databases.overview?.services ?? []
+      const live = services.filter((service) => service.state === 'running').length
+      if (services.length === 0) return '还没建数据库'
+      return live > 0 ? `${services.length} 个库，${live} 个在跑` : `${services.length} 个库，都停着`
     }
     default:
       return plugins.plugins.length > 0 ? `${plugins.plugins.length} 个插件` : '还没有插件'
@@ -509,6 +530,7 @@ function libraryMeta({ java, cores, plugins }: Props, section: LibrarySection): 
 const LIBRARY_ICONS: Record<LibrarySection, IconName> = {
   cores: 'cores',
   java: 'java',
+  database: 'database',
   plugins: 'plugins',
 }
 
@@ -522,6 +544,8 @@ const LIBRARY_VIEW_ICONS: Record<string, IconName> = {
   download: 'update',
   install: 'update',
   source: 'settings',
+  databases: 'database',
+  engines: 'cores',
 }
 
 // -------------------------------------------------------------------- host

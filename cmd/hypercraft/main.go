@@ -26,6 +26,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/api"
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
+	"github.com/lanscarlos/hypercraft/internal/dbruntime"
 	"github.com/lanscarlos/hypercraft/internal/hostterm"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/javaruntime"
@@ -162,6 +163,28 @@ func run() error {
 	)
 	defer javaInstaller.Close()
 
+	// Databases sit beside the Java runtimes for the same reason: half the
+	// plugins a server runs want one, and installing MySQL by hand is a
+	// package manager and a service unit before the operator gets back to
+	// Minecraft. The engines are shared; each database is its own data
+	// directory and its own process, owned by this daemon like the servers are.
+	databaseInstaller := dbruntime.NewInstaller(
+		dbruntime.NewClient(userAgent),
+		dbruntime.NewStore(paths.DatabaseEnginesRoot()),
+		logger,
+	)
+	defer databaseInstaller.Close()
+
+	databaseConfigs, err := st.LoadDatabases()
+	if err != nil {
+		return fmt.Errorf("load databases: %w", err)
+	}
+	databases, err := dbruntime.NewManager(
+		paths.DatabaseRoot(), databaseInstaller.Store(), st, databaseConfigs, logger)
+	if err != nil {
+		return fmt.Errorf("prepare databases: %w", err)
+	}
+
 	// Plugins are a panel-wide library too, and for a stronger reason than
 	// cores: a plugin has a version history that instances pin, so the panel
 	// keeps every release it downloaded and hands out copies. Downloads have
@@ -280,6 +303,9 @@ func run() error {
 		Plugins:         pluginDownloads,
 		InstancePlugins: instancePlugins,
 		PendingPlugins:  pendingPlugins,
+
+		DatabaseInstalls: databaseInstaller,
+		Databases:        databases,
 	})
 
 	// The panel can terminate TLS itself when handed a certificate. That does
@@ -324,6 +350,11 @@ func run() error {
 	if len(resume) > 0 {
 		logger.Info("resuming servers stopped by an update", "count", len(resume))
 	}
+	// Databases first, and synchronously: a server set to start on boot is
+	// likely to be the reason a database is set to start on boot, and one that
+	// comes up to find its database still starting logs a connection failure
+	// and, for several plugins, disables itself for the session.
+	databases.StartAuto()
 	manager.StartAutoStart(resume)
 
 	serverErr := make(chan error, 1)
@@ -367,10 +398,16 @@ func run() error {
 	// and the servers deserve the whole shutdown budget.
 	downloads.Close()
 	javaInstaller.Close()
+	databaseInstaller.Close()
 	pluginDownloads.Close()
 
 	logger.Info("stopping managed servers", "grace", shutdownGrace)
 	manager.Shutdown(shutdownGrace)
+
+	// Databases go last, after the servers that were connected to them: a
+	// server shutting down flushes to its database, and pulling the database
+	// first turns a clean stop into a stack trace in the server log.
+	databases.Close()
 
 	// Only now, with no child processes left, is it safe to replace this
 	// process image: exec keeps the PID but inherits nothing else.
