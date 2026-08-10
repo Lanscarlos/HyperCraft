@@ -44,6 +44,37 @@ export function formatDate(iso: string): string {
   })
 }
 
+/**
+ * How long ago something happened, in words.
+ *
+ * A file list is read as a sequence — which of these did the server touch just
+ * now, which have not moved since the world was created — and 2026/8/9 21:44
+ * makes that a subtraction the reader has to do in their head for every row.
+ * The exact stamp is still one hover away wherever this is used; it is the
+ * ordering that belongs in the column.
+ *
+ * Past a week the elapsed form stops being the more useful of the two ("47 天
+ * 前" is not a date anybody can place), so it hands back to formatDate.
+ */
+export function formatSince(iso: string, now: number = Date.now()): string {
+  const at = new Date(iso).getTime()
+  if (Number.isNaN(at)) return ''
+
+  const elapsed = now - at
+  const minute = 60_000
+  const hour = 60 * minute
+  const day = 24 * hour
+
+  // A clock that is ahead of the panel's is a fact about the two machines, not
+  // about the file; showing "-3 分钟前" would only look broken.
+  if (elapsed < 0) return formatDate(iso)
+  if (elapsed < minute) return '刚刚'
+  if (elapsed < hour) return `${Math.floor(elapsed / minute)} 分钟前`
+  if (elapsed < day) return `${Math.floor(elapsed / hour)} 小时前`
+  if (elapsed < 7 * day) return `${Math.floor(elapsed / day)} 天前`
+  return formatDate(iso)
+}
+
 export function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('zh-CN', {
     hour: '2-digit',
