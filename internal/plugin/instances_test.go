@@ -459,6 +459,85 @@ func TestAdoptRefusesAJarTheLibraryDoesNotHave(t *testing.T) {
 	}
 }
 
+// The jar Adopt refuses is exactly the jar this takes: the library has never
+// seen it, so it is read out of the server and filed as a version of its own.
+func TestImportToLibraryTakesAJarTheLibraryHasNeverSeen(t *testing.T) {
+	instances, library, dir, _ := instanceFixture(t)
+	writeJar(t, dir, "Atalanta-1.0.0.jar", "name: Atalanta\nversion: 1.0.0\nauthor: Lanscarlos\napi-version: 1.13\n")
+
+	entry, err := instances.ImportToLibrary("inst", dir, "file:plugins/Atalanta-1.0.0.jar", 32<<20)
+	if err != nil {
+		t.Fatalf("ImportToLibrary: %v", err)
+	}
+	if !entry.Managed || entry.Version != "1.0.0" || entry.FileName != "Atalanta-1.0.0.jar" {
+		t.Fatalf("unexpected entry: %+v", entry)
+	}
+
+	// In the library under what the jar declares, not under the file name.
+	item, err := library.Get(entry.PluginID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if item.Name != "Atalanta" || len(item.Versions) != 1 {
+		t.Fatalf("unexpected library entry: %+v", item)
+	}
+
+	// And the server's own copy is untouched: same path, now one managed row
+	// rather than a jar nobody claims.
+	if !exists(t, dir, "plugins/Atalanta-1.0.0.jar") {
+		t.Error("the jar should have been left exactly where it was")
+	}
+	entries, err := instances.List("inst", dir)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(entries) != 1 || !entries[0].Managed || entries[0].Recon == ReconForeign {
+		t.Fatalf("unexpected listing: %+v", entries)
+	}
+}
+
+// One button, both cases: a jar that turns out to be a library download is
+// adopted rather than imported a second time under a version number of its own.
+func TestImportToLibraryAdoptsAJarTheLibraryAlreadyHolds(t *testing.T) {
+	library := newLibrary(t)
+	item := addPlugin(t, library, "Vault", "MilkBowl/Vault")
+	body := jarBytes(t, "plugin.yml", "name: Vault\nversion: 1.7.3\n")
+	storeJar(t, library, item.ID, "v1.7.3", "Vault-1.7.3.jar", body)
+
+	dir := t.TempDir()
+	instances := NewInstances(library, filepath.Join(t.TempDir(), "instance-plugins.json"))
+	if err := os.MkdirAll(filepath.Join(dir, "plugins"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "plugins", "vault.jar"), body, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	entry, err := instances.ImportToLibrary("inst", dir, "file:plugins/vault.jar", 32<<20)
+	if err != nil {
+		t.Fatalf("ImportToLibrary: %v", err)
+	}
+	if entry.PluginID != item.ID || entry.Tag != "v1.7.3" {
+		t.Fatalf("expected the existing library version, got %+v", entry)
+	}
+	if items := library.List(); len(items) != 1 {
+		t.Fatalf("a second entry was created for the same bytes: %+v", items)
+	}
+}
+
+func TestImportToLibraryRefusesAManagedRow(t *testing.T) {
+	instances, _, dir, item := instanceFixture(t)
+	if _, err := instances.Install("inst", dir, item.ID, "v1.0.0"); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	// It is already a library version. Importing it would file a second copy
+	// of the same bytes beside the one it came from.
+	if _, err := instances.ImportToLibrary("inst", dir, "plugin:"+item.ID, 32<<20); !errors.Is(err, ErrExists) {
+		t.Fatalf("expected ErrExists, got %v", err)
+	}
+}
+
 // writeJar puts a real, readable jar into an instance's plugins directory.
 func writeJar(t *testing.T, dir, name, descriptor string) {
 	t.Helper()

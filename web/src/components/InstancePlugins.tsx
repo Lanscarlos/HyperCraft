@@ -321,6 +321,25 @@ export function InstancePlugins({
               onAdopt={() =>
                 void act(() => api.adoptInstancePlugin(instance.id, entry.key), '接管失败')
               }
+              onImportToLibrary={() => {
+                void ask({
+                  title: `把「${entry.name}」导入插件库？`,
+                  lead: '面板会读出这个 jar，算一次校验和，把它作为一个版本存进插件库。',
+                  detail:
+                    '这台服上的文件不动，还是原来那一份在跑。进库之后它和下载来的插件一样：能装到别的服、' +
+                    '能在总览里比版本、能回滚 —— 只是没有上游，所以永远不会有更新提示。',
+                  confirmLabel: '导入插件库',
+                }).then((ok) => {
+                  if (!ok) return
+                  void act(async () => {
+                    const row = await api.importInstancePluginToLibrary(instance.id, entry.key)
+                    // The library changed, and this page is not the only thing
+                    // showing it — the picker above reads plugins.
+                    void plugins.refresh()
+                    return `已把 ${row.name} ${row.version || ''} 存进插件库`.trim()
+                  }, '导入插件库失败')
+                })
+              }}
               onRollback={() => {
                 // One card, two decisions. It used to be two stacked boxes and
                 // the second one — 确定 = 连配置一起, 取消 = 只换 jar — asked
@@ -576,6 +595,7 @@ function PluginRow({
   onSwitchVersion,
   onSetEnabled,
   onAdopt,
+  onImportToLibrary,
   onRollback,
   onRemove,
 }: {
@@ -593,6 +613,7 @@ function PluginRow({
   onSwitchVersion: (tag: string, sha?: string) => void
   onSetEnabled: (enabled: boolean) => void
   onAdopt: () => void
+  onImportToLibrary: () => void
   onRollback: () => void
   onRemove: () => void
 }) {
@@ -745,6 +766,7 @@ function PluginRow({
             onOpenDetail,
             onOpenConfig,
             onAdopt,
+            onImportToLibrary,
             onRollback,
             onRemove,
           })}
@@ -765,6 +787,7 @@ function moreActions({
   onOpenDetail,
   onOpenConfig,
   onAdopt,
+  onImportToLibrary,
   onRollback,
   onRemove,
 }: {
@@ -773,6 +796,7 @@ function moreActions({
   onOpenDetail: () => void
   onOpenConfig: () => void
   onAdopt: () => void
+  onImportToLibrary: () => void
   onRollback: () => void
   onRemove: () => void
 }): MenuItem[] {
@@ -782,8 +806,14 @@ function moreActions({
   if (entry.failure) {
     items.push({ label: '打开配置目录', onSelect: onOpenConfig })
   }
+  // The two ways a hand-placed jar stops being one, and which of them applies
+  // is not the operator's problem to work out: 接管 when the library already
+  // holds these exact bytes and only the record is missing, 导入插件库 when it
+  // has never seen them. Exactly one of the two is ever offered.
   if (entry.adoptable) {
     items.push({ label: '接管', onSelect: onAdopt, disabled: busy })
+  } else if (!entry.managed) {
+    items.push({ label: '导入插件库', onSelect: onImportToLibrary, disabled: busy })
   }
   // Why old versions are kept at all. It reads the upgrade snapshot rather than
   // the library, so it works even after a retention policy has pruned the

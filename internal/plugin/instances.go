@@ -704,6 +704,119 @@ func (m *Instances) Adopt(instanceID, directory, key string) (Entry, error) {
 	}, nil
 }
 
+// ImportToLibrary files a jar found on a server as a library plugin, and then
+// records it as this server's copy of it.
+//
+// The other half of Adopt, and the half that was missing. Adopt only works on a
+// file that is byte-for-byte one of the library's own downloads, because the
+// version number it writes into the ledger has to come from somewhere and a
+// guess off a file name is how a server ends up pinned to a version it is not
+// running. For the jars that make up most of 库外来源 — a build from a fork, a
+// marketplace plugin, a jar restored from a backup — the library has no such
+// answer, and until now the panel's only reply was to name a place to import it
+// that did not exist: 导入 jar uploads from the operator's machine, and the file
+// is already here.
+//
+// So it is read where it lies. The library gets a copy, checksummed and filed
+// as a version of its own exactly like an upload, and the instance gets the
+// ledger entry that makes 换版本, 回滚 and the cross-instance view work
+// afterwards. The one thing it does not get is update checking: an imported jar
+// has no upstream to check, whichever door it came through.
+//
+// Nothing in the instance directory moves. The file the server is already
+// loading stays where it is, under the name it already has.
+func (m *Instances) ImportToLibrary(instanceID, directory, key string, limit int64) (Entry, error) {
+	// A managed row is already a library version — importing it would file a
+	// second copy of bytes the library holds, under a version number invented
+	// beside the real one.
+	if !strings.HasPrefix(key, keyFilePrefix) {
+		return Entry{}, fmt.Errorf("%w: %q is already tracked", ErrExists, key)
+	}
+	dir, name, err := m.resolveKey(instanceID, key)
+	if err != nil {
+		return Entry{}, err
+	}
+	browser := serverfiles.New(directory)
+
+	path, enabled, ok := m.locate(browser, dir, name)
+	if !ok {
+		return Entry{}, fmt.Errorf("%w: %s/%s is not there", ErrNotInstalled, dir, name)
+	}
+	file, info, closer, err := browser.Open(path)
+	if err != nil {
+		return Entry{}, err
+	}
+	defer closer()
+
+	// The library may already hold these exact bytes — the operator clicked
+	// import on a jar that a reconciliation would have called adoptable. That
+	// is Adopt's case, and answering it here keeps one button working for both.
+	if match, _ := m.recognise(file, info.Size()); match != nil {
+		return m.Adopt(instanceID, directory, key)
+	}
+	// recognise read to the end to hash; the import starts from the top again.
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return Entry{}, err
+	}
+
+	imported, err := m.library.ImportJar("", name, file, limit)
+	if err != nil {
+		return Entry{}, err
+	}
+
+	digest, gameVersions, loaders := "", []string(nil), []string(nil)
+	if len(imported.Version.Artifacts) > 0 {
+		artifact := imported.Version.Artifacts[0]
+		digest, gameVersions, loaders = artifact.SHA256, artifact.GameVersions, artifact.Loaders
+	}
+
+	// One record per plugin per instance. Reachable when the same jar sits in
+	// the directory twice under two names: the first import created the library
+	// entry, the second one lands on it. The file is in the library either way,
+	// which is what the message has to say — the operator asked for that part
+	// and got it.
+	if existing := m.record(instanceID, imported.Plugin.ID); existing != nil &&
+		(existing.Dir != dir || existing.FileName != name) {
+		return Entry{}, fmt.Errorf("%w: %s is in the plugin library now, but this server already tracks it as %s/%s",
+			ErrExists, imported.Plugin.Name, existing.Dir, existing.FileName)
+	}
+
+	now := time.Now()
+	if err := m.put(instanceID, Installed{
+		PluginID:    imported.Plugin.ID,
+		Tag:         imported.Version.Tag,
+		Version:     imported.Version.Version,
+		FileName:    name,
+		Dir:         dir,
+		InstalledAt: now,
+		SHA256:      digest,
+		PluginName:  imported.Info.Name,
+		ObservedSHA: digest,
+		Recon:       ReconOK,
+		CheckedAt:   now,
+		// Copied from the version that was just filed, on the same terms as an
+		// install: what this jar declares does not change when the library does.
+		GameVersions: gameVersions,
+		Loaders:      loaders,
+	}); err != nil {
+		return Entry{}, err
+	}
+
+	return Entry{
+		Key:         keyPluginPrefix + imported.Plugin.ID,
+		PluginID:    imported.Plugin.ID,
+		Name:        imported.Plugin.Name,
+		FileName:    name,
+		Dir:         dir,
+		Enabled:     enabled,
+		Managed:     true,
+		Size:        info.Size(),
+		Tag:         imported.Version.Tag,
+		Version:     imported.Version.Version,
+		InstalledAt: now,
+	}, nil
+}
+
 // SetEnabled switches a plugin on or off by renaming its jar.
 func (m *Instances) SetEnabled(instanceID, directory, key string, enabled bool) error {
 	dir, name, err := m.resolveKey(instanceID, key)

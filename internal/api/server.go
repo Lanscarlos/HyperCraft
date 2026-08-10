@@ -294,6 +294,7 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("POST /api/instances/{id}/plugins", s.handleInstallInstancePlugin)
 	protected.HandleFunc("PUT /api/instances/{id}/plugins", s.handleToggleInstancePlugin)
 	protected.HandleFunc("POST /api/instances/{id}/plugins/adopt", s.handleAdoptInstancePlugin)
+	protected.HandleFunc("POST /api/instances/{id}/plugins/library", s.handleImportInstancePluginToLibrary)
 	protected.HandleFunc("POST /api/instances/{id}/plugins/reconcile", s.handleReconcileInstancePlugins)
 	protected.HandleFunc("POST /api/instances/{id}/plugins/rollback", s.handleRollbackInstancePlugin)
 	protected.HandleFunc("POST /api/instances/{id}/plugins/accept", s.handleAcceptInstancePlugin)

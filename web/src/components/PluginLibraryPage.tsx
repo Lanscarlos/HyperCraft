@@ -870,7 +870,8 @@ function ForeignSection({
       </h2>
       <p className="foreign__lead">
         这些文件在实例的插件目录里，但库里没有它们的记录 —— 手动传上去的，或者从备份还原来的。
-        面板读了它们的 plugin.yml 才知道是什么；收编进库之后就跟别的插件一样能查更新、能回滚。
+        面板读了它们的 plugin.yml 才知道是什么；收编进库之后就跟别的插件一样能装到别的服、能比版本、能回滚。
+        库里没见过的 jar 会原样存一份进去当成一个版本，文件不动；它没有上游，所以不会有更新提示。
       </p>
 
       <div className="foreign__rows">
@@ -893,7 +894,16 @@ function ForeignSection({
             ) : (
               <span className="badge badge--muted">不在库中</span>
             )}
-            <button className="btn btn--small" disabled={busy} onClick={() => onAdopt(jar)}>
+            <button
+              className="btn btn--small"
+              disabled={busy}
+              title={
+                jar.adoptable
+                  ? `记到库里的 ${jar.adoptable.name} ${jar.adoptable.version} 名下，文件不动`
+                  : '把这个 jar 从服务器上读出来，作为一个版本存进插件库，文件不动'
+              }
+              onClick={() => onAdopt(jar)}
+            >
               收编进库
             </button>
           </div>
@@ -1188,18 +1198,22 @@ async function adoptForeign(
   refresh: () => Promise<void>,
   refreshLibrary: () => Promise<void>,
 ) {
-  if (!jar.adoptable) {
-    setError(
-      `${jar.name} 不是库里任何一个版本 —— 先在 ${jar.instance} 的插件页上把它导入插件库，` +
-        '那里能把文件读出来算校验和。',
-    )
-    return
-  }
+  const key = `file:${jar.dir}/${jar.fileName}`
   setBusy(true)
   setError(null)
   try {
-    await api.adoptInstancePlugin(jar.instanceId, `file:${jar.dir}/${jar.fileName}`)
-    toast(`已把 ${jar.instance} 上的 ${jar.name} 记到 ${jar.adoptable.name} ${jar.adoptable.version} 名下`)
+    if (jar.adoptable) {
+      await api.adoptInstancePlugin(jar.instanceId, key)
+      toast(`已把 ${jar.instance} 上的 ${jar.name} 记到 ${jar.adoptable.name} ${jar.adoptable.version} 名下`)
+    } else {
+      // The half this button used to refuse. It said to go and import the jar
+      // on the instance's own page, which was a place that did not exist: the
+      // panel-wide 导入 jar uploads from the operator's machine, and the file
+      // is already on the server. So it is read where it lies — see
+      // plugin.ImportToLibrary — and the round trip is nobody's job now.
+      const row = await api.importInstancePluginToLibrary(jar.instanceId, key)
+      toast(`已把 ${jar.instance} 上的 ${row.name} ${row.version || ''} 存进插件库`.trim())
+    }
     await refresh()
     await refreshLibrary()
   } catch (err) {

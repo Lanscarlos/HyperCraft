@@ -212,7 +212,10 @@ export function InstancePluginDrawer({
             <span className="muted">
               {entry.managed
                 ? '这一行的操作在后面的表格里 —— 换版本、回滚、移除。'
-                : '面板没有装过它，所以没有版本记录可以切换或回滚。'}
+                : // Not an action — the drawer stays read-only — but the one
+                  // question this sentence used to leave hanging is "then how
+                  // do I get one", and the answer is two clicks behind it.
+                  '面板没有装过它，所以没有版本记录可以切换或回滚 —— 表格那一行的 ⋯ 里可以把它导入插件库。'}
             </span>
           </div>
           <button className="btn" onClick={onOpenConfig} title={entry.configDir}>
