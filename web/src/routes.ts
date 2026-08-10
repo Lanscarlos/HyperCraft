@@ -43,21 +43,6 @@ export type LibraryView =
   | 'list'
   | 'browse'
 
-/**
- * Which half of a plugin page is showing.
- *
- * 获取插件 is one component with two entrances — from the panel, where it asks
- * which servers to install into, and from inside a server, where that is
- * already answered. It is a tab rather than a page of its own because it is
- * the other half of a question: 已装插件 answers "what is on this server", and
- * 获取插件 answers "what should be". Splitting them across the navigation
- * would mean leaving the server to add something to it.
- *
- * A real path segment either way, so a link to the discovery page with a
- * server already selected is something you can paste to someone.
- */
-export type PluginTab = 'installed' | 'browse'
-
 /** Pages about the machine. `terminal` is the shell and is fenced off. */
 export type HostSection = 'metrics' | 'instances' | 'disk' | 'config' | 'terminal'
 
@@ -70,8 +55,22 @@ export type StateFilter = 'all' | 'live' | 'stopped' | 'problem'
 export type Route =
   | { kind: 'overview' }
   | { kind: 'instances'; query: string; state: StateFilter }
-  | { kind: 'instance'; id: string; section: InstanceSection; tab?: PluginTab }
-  | { kind: 'library'; section: LibrarySection; view: LibraryView; pluginId?: string }
+  | { kind: 'instance'; id: string; section: InstanceSection }
+  | {
+      kind: 'library'
+      section: LibrarySection
+      view: LibraryView
+      pluginId?: string
+      /**
+       * Which instance 获取插件 judges compatibility against.
+       *
+       * A view filter, not a destination — nothing is installed anywhere from
+       * that page. It lives in the URL because "兼容" is not a property of a
+       * plugin but of a plugin and a server, so a link to the discovery page
+       * without it is a link to a page of grey 未知兼容性 badges.
+       */
+      against?: string
+    }
   | { kind: 'host'; section: HostSection }
   | { kind: 'settings'; section: SettingsSection }
 
@@ -120,28 +119,16 @@ export const LIBRARY_VIEWS: Record<LibrarySection, { id: LibraryView; label: str
     { id: 'install', label: '安装新版本' },
     { id: 'source', label: '下载源' },
   ],
+  // 获取插件 is a page of this shelf, not a tab on another one. Acquiring a
+  // plugin is a panel-wide act — it downloads into the shared library and
+  // touches no server — so it belongs beside 插件列表 in the same navigation
+  // as everything else, and the panel keeps exactly one way of showing a
+  // second level.
   plugins: [
     { id: 'list', label: '插件列表' },
+    { id: 'browse', label: '获取插件' },
     { id: 'source', label: '插件源' },
   ],
-}
-
-/**
- * The two tabs a plugin page carries, in both scopes.
- *
- * Not a LIBRARY_VIEWS entry, deliberately: 获取插件 is not a third shelf beside
- * 插件列表 and 插件源, it is the other half of the first one, and the instance
- * scope has to show the same pair with no sidebar to hang it on. One strip,
- * one set of labels, both places.
- */
-export const PLUGIN_TABS: { id: PluginTab; label: string }[] = [
-  { id: 'installed', label: '已装插件' },
-  { id: 'browse', label: '获取插件' },
-]
-
-/** The tab a library plugin view is showing, so one strip drives both scopes. */
-export function pluginTabOf(view: LibraryView): PluginTab {
-  return view === 'browse' ? 'browse' : 'installed'
 }
 
 export function defaultView(section: LibrarySection): LibraryView {
@@ -213,20 +200,12 @@ export function parentOf(route: Route): Route | null {
     case 'instances':
       return { kind: 'overview' }
     case 'instance':
-      // 获取插件 goes back to the list it was opened from rather than out to
-      // the console: the operator is mid-comparison, and one press should
-      // return them to what they already have installed.
-      if (route.section === 'plugins' && route.tab === 'browse') {
-        return { kind: 'instance', id: route.id, section: 'plugins' }
-      }
       return route.section === 'console'
         ? { kind: 'instances', query: '', state: 'all' }
         : { kind: 'instance', id: route.id, section: 'console' }
     case 'library': {
       const home = defaultView(route.section)
       if (route.pluginId) return { kind: 'library', section: route.section, view: 'list' }
-      // Same rule as the instance scope: the tab goes back to its other half.
-      if (route.view === 'browse') return { kind: 'library', section: route.section, view: 'list' }
       return route.view === home
         ? { kind: 'overview' }
         : { kind: 'library', section: route.section, view: home }
@@ -248,14 +227,13 @@ export function routeFromLocation(): Route {
   const path = window.location.pathname
   const params = new URLSearchParams(window.location.search)
 
-  const instance = path.match(/^\/i\/([^/]+)(?:\/([^/]+))?(?:\/([^/]+))?/)
+  const instance = path.match(/^\/i\/([^/]+)(?:\/([^/]+))?/)
   if (instance) {
-    const section = pick(INSTANCE_SECTIONS, instance[2] ?? '', 'console')
-    // Only 插件 has a second level, and only the discovery half of it needs a
-    // segment: /i/<id>/plugins is the installed list, as it always was.
-    return section === 'plugins' && instance[3] === 'browse'
-      ? { kind: 'instance', id: decodeURIComponent(instance[1]), section, tab: 'browse' }
-      : { kind: 'instance', id: decodeURIComponent(instance[1]), section }
+    return {
+      kind: 'instance',
+      id: decodeURIComponent(instance[1]),
+      section: pick(INSTANCE_SECTIONS, instance[2] ?? '', 'console'),
+    }
   }
 
   const host = path.match(/^\/host(?:\/([^/]+))?/)
@@ -265,15 +243,14 @@ export function routeFromLocation(): Route {
   if (library) {
     const section = pick(LIBRARY_SECTIONS, library[1] ?? '', 'cores')
     const second = library[2] ?? ''
-    // 获取插件 is a tab on the plugin page rather than a sidebar row, so it is
-    // not in LIBRARY_VIEWS and has to be recognised here.
-    if (section === 'plugins' && second === 'browse') {
-      return { kind: 'library', section, view: 'browse' }
-    }
     const view = LIBRARY_VIEWS[section].find((entry) => entry.id === second)?.id
     if (view) {
-      return section === 'plugins' && view === 'list' && library[3]
-        ? { kind: 'library', section, view, pluginId: decodeURIComponent(library[3]) }
+      if (section === 'plugins' && view === 'list' && library[3]) {
+        return { kind: 'library', section, view, pluginId: decodeURIComponent(library[3]) }
+      }
+      const against = params.get('against')
+      return view === 'browse' && against
+        ? { kind: 'library', section, view, against }
         : { kind: 'library', section, view }
     }
     // A plugin used to live directly under its section — /library/plugins/<id>
@@ -329,15 +306,18 @@ export function routeFromLocation(): Route {
 export function pathOf(route: Route): string {
   switch (route.kind) {
     case 'instance':
-      return route.section === 'plugins' && route.tab === 'browse'
-        ? `/i/${encodeURIComponent(route.id)}/plugins/browse`
-        : `/i/${encodeURIComponent(route.id)}/${route.section}`
+      return `/i/${encodeURIComponent(route.id)}/${route.section}`
     case 'host':
       return `/host/${route.section}`
-    case 'library':
-      return route.pluginId
-        ? `/library/plugins/list/${encodeURIComponent(route.pluginId)}`
-        : `/library/${route.section}/${route.view}`
+    case 'library': {
+      if (route.pluginId) {
+        return `/library/plugins/list/${encodeURIComponent(route.pluginId)}`
+      }
+      const base = `/library/${route.section}/${route.view}`
+      return route.view === 'browse' && route.against
+        ? `${base}?against=${encodeURIComponent(route.against)}`
+        : base
+    }
     case 'settings':
       return `/settings/${route.section}`
     case 'instances': {
@@ -357,9 +337,7 @@ export function samePage(a: Route, b: Route): boolean {
   if (a.kind !== b.kind) return false
   switch (a.kind) {
     case 'instance':
-      return (
-        b.kind === 'instance' && a.id === b.id && a.section === b.section && a.tab === b.tab
-      )
+      return b.kind === 'instance' && a.id === b.id && a.section === b.section
     case 'host':
       return b.kind === 'host' && a.section === b.section
     case 'library':

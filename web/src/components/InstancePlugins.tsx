@@ -2,8 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '../api'
 import { formatBytes } from '../format'
-import type { InstanceSection, PluginTab } from '../routes'
-import { pathOf } from '../routes'
+import type { InstanceSection } from '../routes'
 import type {
   InstancePlugin,
   InstancePluginList,
@@ -12,9 +11,10 @@ import type {
   PendingPluginChange,
 } from '../types'
 import type { PluginController } from '../usePlugins'
-import { PluginBrowse, loaderLabel } from './PluginBrowse'
+import { Modal } from './Modal'
+import { loaderLabel } from './PluginBrowse'
 import { CompatBadge } from './PluginCompat'
-import { PluginTabs } from './PluginTabs'
+import { PluginInstallDialog } from './PluginInstallDialog'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
 /** Which rows the status chips are showing. */
@@ -41,20 +41,24 @@ type StatusFilter = 'all' | 'broken' | 'updatable'
  * the next boot. An on/off switch that flips instantly would be lying about
  * every one of them, so a disabled plugin enters 已禁用 · 待重启 and is counted
  * in the banner at the top until the server is restarted.
+ *
+ * What this page cannot do is acquire a plugin. It hands this server things
+ * the library already holds; downloading one is a panel-wide act with its own
+ * page, and 去获取插件 goes there carrying this server as the compatibility
+ * reference so the trip costs the context and nothing else.
  */
 export function InstancePlugins({
   instance,
   plugins,
-  tab,
-  onSelectTab,
+  onOpenBrowse,
   onOpenSection,
   onChanged,
 }: {
   instance: InstanceStatus
-  /** The panel-wide library, for the versions already on hand. */
+  /** The panel-wide library: what this server can be given. */
   plugins: PluginController
-  tab: PluginTab
-  onSelectTab: (tab: PluginTab) => void
+  /** Opens 获取插件, with this server as the compatibility reference. */
+  onOpenBrowse: () => void
   /** Opens another page of this server — the file manager, for a config dir. */
   onOpenSection: (section: InstanceSection, path?: string) => void
   onChanged: (instance: InstanceStatus) => void
@@ -63,7 +67,13 @@ export function InstancePlugins({
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>('all')
+  // The library plugin being handed to this server, or null. Opened from the
+  // header and from the empty state, which are the two places the thought
+  // "this server needs something" occurs.
+  const [installing, setInstalling] = useState<LibraryPlugin | null>(null)
+  const [picking, setPicking] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -98,25 +108,12 @@ export function InstancePlugins({
   const updatable = entries.filter((entry) => updateFor(entry, listing?.library ?? [])).length
   const pending = listing?.pending ?? []
 
-  if (tab === 'browse') {
-    return (
-      <div className="stack">
-        <PluginTabs
-          tab={tab}
-          onSelect={onSelectTab}
-          hrefFor={(next) =>
-            pathOf({
-              kind: 'instance',
-              id: instance.id,
-              section: 'plugins',
-              tab: next === 'browse' ? 'browse' : undefined,
-            })
-          }
-        />
-        <PluginBrowse instanceId={instance.id} />
-      </div>
-    )
-  }
+  // What the library holds that this server does not have yet, and has a jar
+  // for. A tracked plugin nobody has downloaded cannot be copied anywhere.
+  const installedIDs = new Set(entries.filter((e) => e.managed).map((e) => e.pluginId))
+  const available = (listing?.library ?? []).filter(
+    (item) => item.versions.length > 0 && !installedIDs.has(item.id),
+  )
 
   if (loading) {
     return (
@@ -140,23 +137,6 @@ export function InstancePlugins({
 
   return (
     <div className="stack">
-      <PluginTabs
-        tab={tab}
-        onSelect={onSelectTab}
-        hrefFor={(next) =>
-          pathOf({
-            kind: 'instance',
-            id: instance.id,
-            section: 'plugins',
-            tab: next === 'browse' ? 'browse' : undefined,
-          })
-        }
-        badges={{
-          installed:
-            broken > 0 ? <span className="badge badge--danger">{broken}</span> : undefined,
-        }}
-      />
-
       <header className="chart-head">
         <h2 className="panel__title">
           已装插件 <span className="muted">{entries.length}</span>
@@ -165,14 +145,26 @@ export function InstancePlugins({
           <button className="btn" onClick={() => onOpenSection('files', listing?.entries[0]?.dir)}>
             上传 jar
           </button>
-          <button className="btn btn--primary" onClick={() => onSelectTab('browse')}>
-            搜索安装
+          {/* Two different acts, and the panel keeps them apart. This one
+              copies something the library already holds; the link beside it
+              goes off to acquire one. */}
+          <button
+            className="btn btn--primary"
+            disabled={available.length === 0}
+            title={available.length === 0 ? '插件库里没有这台服还没装的插件' : undefined}
+            onClick={() => setPicking(true)}
+          >
+            从插件库安装
+          </button>
+          <button className="link" onClick={onOpenBrowse}>
+            去获取插件
           </button>
         </div>
       </header>
 
       {error && <div className="alert alert--error">{error}</div>}
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
+      {status && <div className="alert alert--ok">{status}</div>}
 
       <RestartBanner
         pending={pending}
@@ -205,8 +197,20 @@ export function InstancePlugins({
         <div className="welcome__empty">
           <p>这台服务器还没有插件。</p>
           <p className="muted">
-            用上面的「搜索安装」从 Modrinth、Hangar 或 SpigotMC 找一个装上，
-            或者把 jar 直接传进 <code>plugins/</code>，面板会认出来。
+            {available.length > 0 ? (
+              <>
+                插件库里有 {available.length} 个可以装的，用上面的「从插件库安装」挑一个。
+              </>
+            ) : (
+              <>
+                插件库还是空的，先去
+                <button className="link" onClick={onOpenBrowse}>
+                  获取插件
+                </button>
+                下载一个。
+              </>
+            )}
+            也可以把 jar 直接传进 <code>plugins/</code>，面板会认出来。
           </p>
         </div>
       ) : (
@@ -226,7 +230,17 @@ export function InstancePlugins({
               live={listing?.live ?? false}
               onOpenConfig={() => onOpenSection('files', entry.configDir)}
               onOpenConsole={() => onOpenSection('console')}
-              onFindDependency={() => onSelectTab('browse')}
+              onFindDependency={() => {
+                // The missing dependency may already be in the library, in
+                // which case installing it is two clicks away and needs no
+                // network. Only send them out to acquire one when it is not.
+                const missing = entry.failure?.missing ?? []
+                const held = available.find((item) =>
+                  missing.some((name) => name.toLowerCase() === item.name.toLowerCase()),
+                )
+                if (held) setInstalling(held)
+                else onOpenBrowse()
+              }}
               onSwitchVersion={(tag) =>
                 void act(
                   () => api.installInstancePlugin(instance.id, entry.pluginId ?? '', tag),
@@ -265,7 +279,108 @@ export function InstancePlugins({
           这台服务器自面板启动以来没跑过，读不到启动日志 —— 插件有没有加载失败，要开起来才知道。
         </p>
       )}
+
+      {picking && (
+        <LibraryPicker
+          available={available}
+          onCancel={() => setPicking(false)}
+          onPick={(item) => {
+            setPicking(false)
+            setInstalling(item)
+          }}
+          onOpenBrowse={() => {
+            setPicking(false)
+            onOpenBrowse()
+          }}
+        />
+      )}
+
+      {installing && (
+        <PluginInstallDialog
+          item={installing}
+          instances={[instance]}
+          preselect={instance.id}
+          onCancel={() => setInstalling(null)}
+          onInstalled={(summary) => {
+            setInstalling(null)
+            setStatus(summary)
+            void refresh()
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+/**
+ * Picking which library plugin this server gets.
+ *
+ * A list rather than a dropdown because the choice is made on what a plugin is
+ * — its source, how many versions are held, who else runs it — and a
+ * `<select>` of bare names makes that invisible. Only plugins with a jar on
+ * disk and not already here: a tracked source nobody has downloaded cannot be
+ * copied anywhere, and offering it would be an entry that fails on click.
+ */
+function LibraryPicker({
+  available,
+  onCancel,
+  onPick,
+  onOpenBrowse,
+}: {
+  available: LibraryPlugin[]
+  onCancel: () => void
+  onPick: (item: LibraryPlugin) => void
+  onOpenBrowse: () => void
+}) {
+  const [query, setQuery] = useState('')
+  const shown = available.filter((item) =>
+    `${item.name} ${item.source.repo}`.toLowerCase().includes(query.trim().toLowerCase()),
+  )
+
+  return (
+    <Modal onClose={onCancel} label="从插件库安装">
+      <div className="modal__card modal__card--wide">
+        <h2 className="modal__title">从插件库安装</h2>
+        <p className="modal__lead">
+          这里只列插件库里已经下载好的。想要的不在里面，就去
+          <button className="link" onClick={onOpenBrowse}>
+            获取插件
+          </button>
+          下载。
+        </p>
+
+        <input
+          className="filters__search"
+          value={query}
+          placeholder="按名称筛选"
+          onChange={(event) => setQuery(event.target.value)}
+          aria-label="按名称筛选"
+          autoFocus
+        />
+
+        <div className="pick-list pick-list--tall">
+          {shown.map((item) => (
+            <button className="pick-list__row pick-list__row--button" key={item.id} onClick={() => onPick(item)}>
+              <span className="pick-list__name">
+                <strong>{item.name}</strong>
+                <small>
+                  {item.source.repo} · 库里 {item.versions.length} 个版本
+                  {item.usedBy.length > 0 && ` · ${item.usedBy.join('、')} 在用`}
+                </small>
+              </span>
+              <span className="badge">{item.versions[0]?.version}</span>
+            </button>
+          ))}
+          {shown.length === 0 && <p className="muted">没有匹配的插件。</p>}
+        </div>
+
+        <div className="modal__actions">
+          <button className="btn" onClick={onCancel}>
+            取消
+          </button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 

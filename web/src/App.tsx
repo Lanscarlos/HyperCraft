@@ -103,7 +103,7 @@ function crumbsFor(
       return [{ label: '概览', ...link({ kind: 'overview' }) }, { label: '所有实例' }]
     case 'instance': {
       const section = labelOf(INSTANCE_SECTIONS, route.section)
-      const trail: Crumb[] = [
+      return [
         { label: '所有实例', ...link({ kind: 'instances', query: '', state: 'all' }) },
         selected
           ? {
@@ -112,17 +112,8 @@ function crumbsFor(
               ...link({ kind: 'instance', id: route.id, section: 'console' }),
             }
           : { label: '实例' },
+        { label: section },
       ]
-      // The discovery tab is a step below the list it was opened from, and the
-      // trail says so — otherwise 获取插件 and 已装插件 read as the same page.
-      if (route.section === 'plugins' && route.tab === 'browse') {
-        return [
-          ...trail,
-          { label: section, ...link({ kind: 'instance', id: route.id, section: 'plugins' }) },
-          { label: '获取插件' },
-        ]
-      }
-      return [...trail, { label: section }]
     }
     case 'library': {
       const section = labelOf(LIBRARY_SECTIONS, route.section)
@@ -134,13 +125,6 @@ function crumbsFor(
       const base: Crumb[] = [{ label: '资源库' }]
       if (pluginName) {
         return [...base, { label: section, ...link(home) }, { label: pluginName }]
-      }
-      if (route.view === 'browse') {
-        return [
-          ...base,
-          { label: section, ...link({ kind: 'library', section: route.section, view: 'list' }) },
-          { label: '获取插件' },
-        ]
       }
       const view = labelOf(LIBRARY_VIEWS[route.section], route.view)
       // The first page of a section is the section: repeating its name under
@@ -507,7 +491,15 @@ export default function App() {
               <PluginLibraryPage
                 plugins={plugins}
                 view={route.view}
+                against={route.against}
+                instances={instances}
                 onOpenView={(view) => openLibrary('plugins', view)}
+                onChooseAgainst={(id) =>
+                  navigate(
+                    { kind: 'library', section: 'plugins', view: 'browse', against: id },
+                    true,
+                  )
+                }
                 onOpenPlugin={(id) =>
                   navigate({ kind: 'library', section: 'plugins', view: 'list', pluginId: id })
                 }
@@ -536,7 +528,6 @@ export default function App() {
                 key={selected.id}
                 instance={selected}
                 section={route.section}
-                tab={route.tab}
                 cores={cores}
                 plugins={plugins}
                 onChanged={applyInstance}
@@ -545,12 +536,16 @@ export default function App() {
                   void refresh()
                 }}
                 onOpenSection={(section) => openInstance(route.id, section)}
-                onOpenPluginTab={(tab) =>
+                // Acquiring a plugin is a panel-wide act, so it happens in one
+                // place. The instance travels along as the compatibility
+                // reference, which is the context that would otherwise be lost
+                // on the way there.
+                onOpenBrowse={() =>
                   navigate({
-                    kind: 'instance',
-                    id: route.id,
+                    kind: 'library',
                     section: 'plugins',
-                    tab: tab === 'browse' ? 'browse' : undefined,
+                    view: 'browse',
+                    against: route.id,
                   })
                 }
                 onOpenCoreLibrary={() => openLibrary('cores', 'stock')}

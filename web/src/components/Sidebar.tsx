@@ -412,9 +412,7 @@ function LibraryScope(props: Props) {
       <div className="sidebar__scroll">
         <nav className="sidebar__nav" aria-label={`${entry?.label ?? '资源库'}页面`}>
           {LIBRARY_VIEWS[section].map((page) => {
-            // 获取插件 is a tab on the plugin list rather than a row of its
-            // own, so the row it belongs to stays lit while it is open.
-            const current = view === page.id || (view === 'browse' && page.id === 'list')
+            const current = view === page.id
             const badge =
               section === 'cores' && page.id === 'download' && cores.downloading ? (
                 <span className="badge badge--update">下载中</span>
@@ -472,6 +470,7 @@ const LIBRARY_VIEW_ICONS: Record<string, IconName> = {
   stock: 'cores',
   installed: 'java',
   list: 'plugins',
+  browse: 'search',
   download: 'update',
   install: 'update',
   source: 'settings',

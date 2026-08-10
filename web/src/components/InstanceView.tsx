@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { DUR } from '../motion'
-import type { InstanceSection, PluginTab } from '../routes'
+import type { InstanceSection } from '../routes'
 import type { InstanceStatus } from '../types'
 import type { CoreController } from '../useCores'
 import type { PluginController } from '../usePlugins'
@@ -16,15 +16,15 @@ import { ResourcePanel } from './ResourcePanel'
 interface Props {
   instance: InstanceStatus
   section: InstanceSection
-  /** Which half of the plugin page is showing. Only 插件 has two. */
-  tab?: PluginTab
   cores: CoreController
-  /** The panel-wide plugin library, so 已装插件 can add a source itself. */
+  /** The panel-wide plugin library: what this server can be given. */
   plugins: PluginController
   onChanged: (instance: InstanceStatus) => void
   onDeleted: () => void
   onOpenSection: (section: InstanceSection) => void
-  onOpenPluginTab: (tab: PluginTab) => void
+  /** Opens 获取插件 in the library, with this server as the compatibility
+   *  reference. Downloading is panel-wide and happens there. */
+  onOpenBrowse: () => void
   /** The panel-wide core library, for "download another one". */
   onOpenCoreLibrary: () => void
 }
@@ -46,13 +46,12 @@ interface Props {
 export function InstanceView({
   instance,
   section,
-  tab,
   cores,
   plugins,
   onChanged,
   onDeleted,
   onOpenSection,
-  onOpenPluginTab,
+  onOpenBrowse,
   onOpenCoreLibrary,
 }: Props) {
   const [visited, setVisited] = useState<Set<InstanceSection>>(
@@ -117,8 +116,7 @@ export function InstanceView({
           <InstancePlugins
             instance={instance}
             plugins={plugins}
-            tab={tab ?? 'installed'}
-            onSelectTab={onOpenPluginTab}
+            onOpenBrowse={onOpenBrowse}
             onChanged={onChanged}
             onOpenSection={(target, path) => {
               if (target === 'files' && path) {

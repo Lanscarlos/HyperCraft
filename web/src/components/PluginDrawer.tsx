@@ -17,29 +17,34 @@ import { formatDownloads, sourceLabel } from './PluginBrowse'
  * the first. Everything a comparison needs is here: the description, the
  * version list with a version actually selectable, what it depends on, and a
  * link out to the source for the things a panel should not try to reproduce.
+ *
+ * What it does is download, into the panel-wide library. It installs onto no
+ * server: that decision belongs to whoever is looking at a server, and the
+ * page for it is the plugin list or the server's own. The footer says where
+ * the jar went and offers the way there, which is the whole handoff.
  */
 export function PluginDrawer({
   listing,
-  instanceId,
-  targets,
+  against,
+  reference,
   onClose,
-  onInstalled,
-  onOpenInstance,
+  onDownloaded,
+  onOpenLibrary,
 }: {
   listing: PluginListing
-  instanceId: string
-  /** Where 安装 would put it. Several is normal from the panel-wide entry. */
-  targets: InstallTarget[]
+  /** Instance id the versions are judged against, or "". */
+  against: string
+  reference: InstallTarget | null
   onClose: () => void
-  onInstalled: () => void
-  onOpenInstance?: (id: string) => void
+  onDownloaded: () => void
+  onOpenLibrary: () => void
 }) {
   const { leaving, close } = useDismiss(onClose)
   const [detail, setDetail] = useState<PluginBrowseDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [chosen, setChosen] = useState<string>('')
-  const [installing, setInstalling] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [progress, setProgress] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
 
@@ -47,7 +52,7 @@ export function PluginDrawer({
     let live = true
     setLoading(true)
     api
-      .browsePlugin(listing.source, listing.id, instanceId || undefined)
+      .browsePlugin(listing.source, listing.id, against || undefined)
       .then((next) => {
         if (!live) return
         setDetail(next)
@@ -63,31 +68,35 @@ export function PluginDrawer({
     return () => {
       live = false
     }
-  }, [listing.source, listing.id, instanceId])
+  }, [listing.source, listing.id, against])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || installing) return
+      if (event.key !== 'Escape' || downloading) return
       event.preventDefault()
       close()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [close, installing])
+  }, [close, downloading])
 
   const version = detail?.versions.find((entry) => entry.tag === chosen) ?? null
+  const incompatible = version?.compat.state === 'bad'
+  // Whether the way out is picking a different version or giving up on this
+  // plugin. Two very different answers, and the footer says which.
+  const anyFits = (detail?.versions ?? []).some((entry) => entry.compat.state !== 'bad')
 
   /**
-   * Download once into the library, then copy into each server.
+   * Registers the source and pulls the jar into the library.
    *
-   * The library step is not ceremony: it is what makes the same jar on five
-   * servers one file with one checksum, and what makes rolling back possible
-   * afterwards. Progress is reported per phase because the download is the
-   * slow part and the copies are instant.
+   * Two steps because the library tracks where a plugin comes from as well as
+   * which of its versions are on disk — that record is what makes "check for
+   * updates" and "roll it back" possible later, and it is the same record
+   * whether the plugin came from a registry or from somebody's GitHub.
    */
-  const install = async () => {
-    if (!version || targets.length === 0) return
-    setInstalling(true)
+  const download = async () => {
+    if (!version) return
+    setDownloading(true)
     setError(null)
     setDone(null)
 
@@ -97,51 +106,31 @@ export function PluginDrawer({
         source: listing.source,
         id: listing.id,
         name: listing.name,
-        targetDir: targets[0]?.pluginDir,
       })
 
-      if (!version.held) {
-        setProgress(`正在下载 ${version.version}…`)
-        await api.downloadPlugin(item.id, version.tag)
-        await waitForDownload(item.id, version.tag, setProgress)
-      }
-
-      const failures: string[] = []
-      for (const target of targets) {
-        setProgress(`正在装入 ${target.name}…`)
-        try {
-          await api.installInstancePlugin(target.id, item.id, version.tag)
-        } catch (err) {
-          failures.push(`${target.name}：${err instanceof Error ? err.message : '安装失败'}`)
-        }
-      }
-
-      if (failures.length > 0) {
-        setError(failures.join('；'))
+      if (version.held) {
+        setDone(`插件库里已经有 ${version.version} 了。`)
+        onDownloaded()
         return
       }
-      setDone(
-        `已装入 ${targets.map((target) => target.name).join('、')}` +
-          `${targets.some((target) => target.state === 'running') ? '，重启后生效' : ''}`,
-      )
-      onInstalled()
+
+      setProgress(`正在下载 ${version.version}…`)
+      await api.downloadPlugin(item.id, version.tag)
+      await waitForDownload(item.id, version.tag, setProgress)
+
+      setDone(`已下载 ${version.version} 到插件库。`)
+      onDownloaded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : '安装失败')
+      setError(err instanceof Error ? err.message : '下载失败')
     } finally {
-      setInstalling(false)
+      setDownloading(false)
       setProgress(null)
     }
   }
 
-  const blocked = targets.length === 0
-  const incompatible = version?.compat.state === 'bad'
-  // Whether the way out is picking a different version or giving up on this
-  // plugin. Two very different answers, and the footer says which.
-  const anyFits = (detail?.versions ?? []).some((entry) => entry.compat.state !== 'bad')
-
   return createPortal(
     <div className={`drawer${leaving ? ' drawer--leaving' : ''}`}>
-      <div className="drawer__scrim" onClick={() => !installing && close()} aria-hidden="true" />
+      <div className="drawer__scrim" onClick={() => !downloading && close()} aria-hidden="true" />
       <aside className="drawer__panel" role="dialog" aria-label={listing.name}>
         <header className="drawer__head">
           <div className="drawer__title">
@@ -162,14 +151,21 @@ export function PluginDrawer({
               </p>
             </div>
           </div>
-          <button className="link" onClick={() => !installing && close()} aria-label="关闭">
+          <button className="link" onClick={() => !downloading && close()} aria-label="关闭">
             ✕
           </button>
         </header>
 
         <div className="drawer__body">
           {error && <div className="alert alert--error">{error}</div>}
-          {done && <div className="alert alert--ok">{done}</div>}
+          {done && (
+            <div className="alert alert--ok">
+              {done}
+              <button className="link" onClick={onOpenLibrary}>
+                去插件列表装到实例
+              </button>
+            </div>
+          )}
           {loading && <p className="muted">正在读取…</p>}
 
           {detail && (
@@ -217,7 +213,7 @@ export function PluginDrawer({
                     ))}
                   </ul>
                   <p className="chart-note">
-                    必需的前置装不上，服务端启动时这个插件会直接加载失败 —— 记得一起装。
+                    必需的前置装不上，服务端启动时这个插件会直接加载失败 —— 记得一起下。
                   </p>
                 </section>
               )}
@@ -245,9 +241,7 @@ export function PluginDrawer({
 
         <footer className="drawer__foot">
           <div className="drawer__foot-info">
-            {blocked ? (
-              <span className="muted">先在左边选一台服务器</span>
-            ) : incompatible ? (
+            {incompatible ? (
               // The button is greyed out, and a greyed-out button with no
               // sentence beside it is a dead end. The version list above is
               // where the way out is, so this says to look there.
@@ -256,29 +250,25 @@ export function PluginDrawer({
                 {anyFits ? ' —— 上面挑一个绿色的版本' : ' —— 这个插件没有适配这台服的版本'}
               </span>
             ) : (
-              <span>
-                装到 {targets.map((target) => target.name).join('、')}
-                {onOpenInstance && targets.length === 1 && (
-                  <button className="link" onClick={() => onOpenInstance(targets[0].id)}>
-                    打开
-                  </button>
-                )}
+              <span className="muted">
+                下载到面板插件库
+                {reference ? `，之后再装到 ${reference.name} 或别的服` : '，之后再决定装到哪台服'}
               </span>
             )}
             {progress && <span className="drawer__progress">{progress}</span>}
           </div>
           <button
             className="btn btn--primary"
-            disabled={blocked || installing || !version || !listing.downloadable || incompatible}
-            onClick={() => void install()}
+            disabled={downloading || !version || !listing.downloadable || incompatible}
+            onClick={() => void download()}
           >
-            {installing
-              ? '安装中…'
+            {downloading
+              ? '下载中…'
               : incompatible
                 ? '不兼容'
                 : version?.held
-                  ? `安装 ${version.version}`
-                  : `下载并安装 ${version?.version ?? ''}`}
+                  ? '库里已有'
+                  : `下载 ${version?.version ?? ''}`}
           </button>
         </footer>
       </aside>
@@ -332,9 +322,9 @@ function VersionRow({
  *
  * The job is matched against the plugin and tag that were asked for. There is
  * one download slot panel-wide, and the finished job left behind by whatever
- * used it last is still readable: without the check, an operator installing
- * onto a panel that downloaded something else a minute ago would see "done"
- * immediately and go on to install a jar that is not there yet.
+ * used it last is still readable: without the check, an operator downloading
+ * onto a panel that fetched something else a minute ago would see "done"
+ * immediately for a jar that is not there yet.
  */
 async function waitForDownload(
   pluginId: string,

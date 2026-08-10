@@ -12,19 +12,20 @@ import { CompatBadge } from './PluginCompat'
 import { PluginDrawer } from './PluginDrawer'
 
 /**
- * 获取插件 — one component, two entrances.
+ * 获取插件 — searching the registries, and downloading into the panel library.
  *
- * From a server, 安装到 is already answered and every badge on the page is
- * judged against that server's game version and loader. From the panel it is
- * the first thing asked, because nothing here means anything without it: "兼容"
- * is not a property of a plugin, it is a property of a plugin and a server.
+ * This page acquires; it does not deploy. What it produces is a jar in the
+ * shared library, which is then handed to as many servers as the operator
+ * wants from the plugin list or from a server's own page. Keeping the two apart
+ * is what makes "the same plugin on five servers" one file with one checksum
+ * instead of five downloads nobody can tell apart, and it is why this page has
+ * no 安装到 — there is nothing to install to from here.
  *
- * Why this is not only on the panel-wide page: nobody decides to install a
- * plugin in the abstract. The thought arrives while looking at one server —
- * someone asked for /home, the economy broke, the map needs a renderer — and a
- * panel that answers it by sending you somewhere else has put a navigation step
- * between the intent and the action, at the exact moment the operator had all
- * the context.
+ * It still asks which server, though, for a different reason: 兼容 is not a
+ * property of a plugin. It is a property of a plugin and a game version and a
+ * loader, so without a server to compare against every badge on the page reads
+ * 未知兼容性 and the whole column is decoration. The chosen server is a lens,
+ * not a destination, and the rail says so.
  *
  * Wide rows, not a card grid. Everything that decides a plugin — supported
  * versions, loader, last updated, downloads, whether it is still maintained —
@@ -33,12 +34,15 @@ import { PluginDrawer } from './PluginDrawer'
  * answers on a screen.
  */
 export function PluginBrowse({
-  /** The instance this opened from, when it opened from one. */
-  instanceId,
-  onOpenInstance,
+  against,
+  onChooseAgainst,
+  onOpenLibrary,
 }: {
-  instanceId?: string
-  onOpenInstance?: (id: string) => void
+  /** The server currently being judged against, or "" for none. */
+  against: string
+  onChooseAgainst: (id: string) => void
+  /** Where a finished download went, so the page can point at it. */
+  onOpenLibrary: () => void
 }) {
   const [text, setText] = useState('')
   const [query, setQuery] = useState('')
@@ -46,9 +50,6 @@ export function PluginBrowse({
   const [category, setCategory] = useState('')
   const [sort, setSort] = useState('relevance')
   const [onlyCompatible, setOnlyCompatible] = useState(true)
-  // The panel-scope entry can install into several servers at once; the
-  // instance-scope entry arrives with exactly one and cannot change it.
-  const [selected, setSelected] = useState<string[]>(instanceId ? [instanceId] : [])
 
   const [result, setResult] = useState<PluginBrowseResult | null>(null)
   const [loading, setLoading] = useState(true)
@@ -56,11 +57,6 @@ export function PluginBrowse({
   const [open, setOpen] = useState<PluginListing | null>(null)
   const [cursor, setCursor] = useState(-1)
   const listRef = useRef<HTMLDivElement | null>(null)
-
-  // The instance whose version and loader every badge is judged against. With
-  // several selected it is the first — a compatibility badge can only speak
-  // about one server, and the confirmation names the rest.
-  const judgedAgainst = instanceId ?? selected[0] ?? ''
 
   useEffect(() => {
     // Typing must not fire a request per keystroke at three registries.
@@ -77,7 +73,7 @@ export function PluginBrowse({
           sources,
           category,
           sort,
-          instance: judgedAgainst,
+          instance: against,
           onlyCompatible,
         }),
       )
@@ -87,19 +83,25 @@ export function PluginBrowse({
     } finally {
       setLoading(false)
     }
-  }, [query, sources, category, sort, judgedAgainst, onlyCompatible])
+  }, [query, sources, category, sort, against, onlyCompatible])
 
   useEffect(() => {
     void search()
   }, [search])
 
+  // The servers come from the search response rather than from the caller: the
+  // game version and loader are read off each server's own directory, and the
+  // rail must show exactly what the badges were computed from. A list assembled
+  // in the browser would be a second opinion nobody asked for.
   const targets = result?.targets ?? []
-  const context = targets.find((target) => target.id === judgedAgainst) ?? null
-
-  // Incompatible rows stay, dimmed. A plugin that has not been updated since
-  // 1.16.5 is exactly what someone searching for it needs to be told; hiding
-  // it produces a search that returns nothing and reads as a broken panel.
+  const reference = targets.find((target) => target.id === against) ?? null
   const listings = result?.listings ?? []
+  const allSources = result?.sources ?? []
+  // An empty selection means "every source", which is what the rail shows and
+  // what the API defaults to. Kept as empty rather than as a full list so the
+  // filter summary can tell "全部" from "I happened to tick all three".
+  const chosenSources = sources.length === 0 ? allSources.map((entry) => entry.id) : sources
+  const filtered = category !== '' || sources.length > 0 || sort !== 'relevance' || !onlyCompatible
 
   useEffect(() => {
     setCursor(-1)
@@ -125,87 +127,97 @@ export function PluginBrowse({
     }
   }
 
+  const reset = () => {
+    setSources([])
+    setCategory('')
+    setSort('relevance')
+    setOnlyCompatible(true)
+  }
+
   return (
     <div className="browse" onKeyDown={onKeyDown}>
       <aside className="browse__rail">
-        <TargetBlock
-          targets={targets}
-          selected={selected}
-          locked={Boolean(instanceId)}
-          onToggle={(id) =>
-            setSelected((current) =>
-              current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
-            )
-          }
-        />
+        <ReferenceBlock targets={targets} against={against} onChoose={onChooseAgainst} />
 
-        <RailGroup label="来源">
-          {(result?.sources ?? []).map((source) => (
-            <label className="browse__check" key={source.id} title={source.note}>
+        <div className="browse__filters">
+          <div className="browse__filters-head">
+            <h3 className="browse__group-label">筛选</h3>
+            {filtered && (
+              <button className="link" onClick={reset}>
+                重置
+              </button>
+            )}
+          </div>
+
+          <RailGroup label="来源">
+            <div className="browse__checks">
+              {allSources.map((source) => (
+                <label className="browse__check" key={source.id} title={source.note}>
+                  <input
+                    type="checkbox"
+                    checked={chosenSources.includes(source.id)}
+                    onChange={() => {
+                      const next = chosenSources.includes(source.id)
+                        ? chosenSources.filter((entry) => entry !== source.id)
+                        : [...chosenSources, source.id]
+                      setSources(next.length === allSources.length ? [] : next)
+                    }}
+                  />
+                  <span className="browse__check-body">
+                    <span>{source.name}</span>
+                    <small>{source.note}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </RailGroup>
+
+          <RailGroup label="分类">
+            <select
+              className="select select--block"
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              aria-label="分类"
+            >
+              <option value="">全部分类</option>
+              {(result?.categories ?? []).map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+            </select>
+          </RailGroup>
+
+          <RailGroup label="排序">
+            <select
+              className="select select--block"
+              value={sort}
+              onChange={(event) => setSort(event.target.value)}
+              aria-label="排序"
+            >
+              <option value="relevance">相关度</option>
+              <option value="downloads">下载量</option>
+              <option value="updated">最近更新</option>
+            </select>
+          </RailGroup>
+
+          <RailGroup label="兼容性">
+            <label className="browse__check">
               <input
                 type="checkbox"
-                checked={sources.length === 0 || sources.includes(source.id)}
-                onChange={() =>
-                  setSources((current) => {
-                    // An empty list means "everything", so the first uncheck
-                    // has to expand it before removing one.
-                    const base =
-                      current.length === 0
-                        ? (result?.sources ?? []).map((entry) => entry.id)
-                        : current
-                    const next = base.includes(source.id)
-                      ? base.filter((entry) => entry !== source.id)
-                      : [...base, source.id]
-                    return next.length === (result?.sources ?? []).length ? [] : next
-                  })
-                }
+                checked={onlyCompatible}
+                onChange={(event) => setOnlyCompatible(event.target.checked)}
+                disabled={!reference}
               />
-              <span>{source.name}</span>
+              <span className="browse__check-body">
+                <span>仅显示兼容项</span>
+                <small>
+                  只滤掉加载器不对的 —— 那些在这台服上永远装不起来。游戏版本对不上的会留着并标黄。
+                </small>
+              </span>
             </label>
-          ))}
-        </RailGroup>
-
-        <RailGroup label="分类">
-          <select
-            className="input-slim browse__select"
-            value={category}
-            onChange={(event) => setCategory(event.target.value)}
-            aria-label="分类"
-          >
-            <option value="">全部分类</option>
-            {(result?.categories ?? []).map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {entry.name}
-              </option>
-            ))}
-          </select>
-        </RailGroup>
-
-        <RailGroup label="排序">
-          <select
-            className="input-slim browse__select"
-            value={sort}
-            onChange={(event) => setSort(event.target.value)}
-            aria-label="排序"
-          >
-            <option value="relevance">相关度</option>
-            <option value="downloads">下载量</option>
-            <option value="updated">最近更新</option>
-          </select>
-        </RailGroup>
-
-        <label className="browse__check browse__check--switch">
-          <input
-            type="checkbox"
-            checked={onlyCompatible}
-            onChange={(event) => setOnlyCompatible(event.target.checked)}
-          />
-          <span>仅显示兼容项</span>
-        </label>
-        <p className="browse__hint">
-          只过滤加载器不对的插件 —— 那些在这台服上永远装不起来。游戏版本对不上的会留着并标黄，
-          「三年没更新、只支持到 1.16.5」本身就是你要的答案。
-        </p>
+          </RailGroup>
+        </div>
       </aside>
 
       <div className="browse__main">
@@ -227,12 +239,14 @@ export function PluginBrowse({
           ) : (
             <>
               <span>{listings.length} 个结果</span>
-              {(result?.incompatible ?? 0) > 0 && context?.target.mcVersion && (
+              {(result?.incompatible ?? 0) > 0 && reference?.target.mcVersion && (
                 <span className="browse__count-note">
-                  · 其中 {result?.incompatible} 项不兼容 {context.target.mcVersion}，已降透明度保留
+                  · 其中 {result?.incompatible} 项不兼容 {reference.target.mcVersion}，已降透明度保留
                 </span>
               )}
-              {result?.truncated && <span className="browse__count-note">· 还有更多，缩小范围试试</span>}
+              {result?.truncated && (
+                <span className="browse__count-note">· 还有更多，缩小范围试试</span>
+              )}
             </>
           )}
         </p>
@@ -268,14 +282,11 @@ export function PluginBrowse({
       {open && (
         <PluginDrawer
           listing={open}
-          instanceId={judgedAgainst}
-          targets={targets.filter((target) => selected.includes(target.id))}
+          against={against}
+          reference={reference}
           onClose={() => setOpen(null)}
-          onInstalled={() => {
-            setOpen(null)
-            void search()
-          }}
-          onOpenInstance={onOpenInstance}
+          onDownloaded={() => void search()}
+          onOpenLibrary={onOpenLibrary}
         />
       )}
     </div>
@@ -292,75 +303,65 @@ function RailGroup({ label, children }: { label: string; children: React.ReactNo
 }
 
 /**
- * 安装到 — the filter every other filter is relative to.
+ * Which server the badges are measured against.
  *
- * Pinned to the top and given the most contrast on the rail because it is not
- * one filter among five: it decides what "兼容" means for every row below it.
- * A discovery page whose target is a dropdown somewhere in the middle is one
- * where the badges are read without anyone knowing what they were compared to.
+ * Pinned above the filters and given the accent surface because it is not one
+ * filter among four: the other three narrow the list, this one decides what
+ * every compatibility badge in it means. Leaving it out is allowed and says
+ * what it costs, rather than silently producing a page of grey badges nobody
+ * can interpret.
  */
-function TargetBlock({
+function ReferenceBlock({
   targets,
-  selected,
-  locked,
-  onToggle,
+  against,
+  onChoose,
 }: {
   targets: InstallTarget[]
-  selected: string[]
-  locked: boolean
-  onToggle: (id: string) => void
+  against: string
+  onChoose: (id: string) => void
 }) {
-  const chosen = targets.filter((target) => selected.includes(target.id))
+  const chosen = targets.find((target) => target.id === against) ?? null
 
   return (
-    <section className="browse__target">
-      <h3 className="browse__group-label">安装到</h3>
+    <section className="browse__reference">
+      <h3 className="browse__group-label">按哪台服判断兼容性</h3>
+      <select
+        className="select select--block"
+        value={against}
+        onChange={(event) => onChoose(event.target.value)}
+        aria-label="按哪台服判断兼容性"
+      >
+        <option value="">不判断</option>
+        {targets.map((target) => (
+          <option key={target.id} value={target.id}>
+            {target.name}
+          </option>
+        ))}
+      </select>
 
-      {locked && chosen.length === 1 ? (
-        <TargetLine target={chosen[0]} />
-      ) : (
-        <>
-          {chosen.length === 0 && (
-            <p className="browse__target-empty">
-              先选一台服务器 —— 不知道装到哪，就没法判断插件兼不兼容。
-            </p>
+      {chosen ? (
+        <p className="browse__reference-meta">
+          {chosen.target.loader || chosen.target.mcVersion ? (
+            <>
+              <span className={`status__dot status__dot--${chosen.state}`} />
+              {loaderLabel(chosen.target.loader)} {chosen.target.mcVersion}
+            </>
+          ) : (
+            <span className="browse__reference-warn">
+              没认出这台服的核心和版本，判断不了兼容性
+            </span>
           )}
-          <div className="browse__target-list">
-            {targets.map((target) => (
-              <label className="browse__check" key={target.id}>
-                <input
-                  type="checkbox"
-                  checked={selected.includes(target.id)}
-                  onChange={() => onToggle(target.id)}
-                />
-                <TargetLine target={target} />
-              </label>
-            ))}
-          </div>
-        </>
+        </p>
+      ) : (
+        <p className="browse__reference-meta">
+          <span className="browse__reference-warn">不选就全是「未知兼容性」</span>
+        </p>
       )}
-    </section>
-  )
-}
 
-function TargetLine({ target }: { target: InstallTarget }) {
-  const { loader, mcVersion } = target.target
-  return (
-    <span className="browse__target-line">
-      <span className="browse__target-name">
-        <span className={`status__dot status__dot--${target.state}`} />
-        {target.name}
-      </span>
-      <small>
-        {loader || mcVersion ? (
-          <>
-            {loaderLabel(loader)} {mcVersion}
-          </>
-        ) : (
-          <span className="muted">核心和版本未知</span>
-        )}
-      </small>
-    </span>
+      <p className="browse__hint">
+        这里只决定徽章按谁算。下载到的是面板插件库，不会装进任何一台服。
+      </p>
+    </section>
   )
 }
 
@@ -438,7 +439,7 @@ function BrowseRow({
       <div className="browse-row__action">
         {listing.downloadable ? (
           <button className={bad ? 'btn' : 'btn btn--primary'} disabled={bad} onClick={onOpen}>
-            {bad ? '不兼容' : '安装'}
+            {bad ? '不兼容' : '下载'}
           </button>
         ) : (
           <a className="btn" href={listing.pageUrl} target="_blank" rel="noreferrer">
@@ -508,4 +509,3 @@ export function loaderLabel(loader?: string): string {
       return loader ?? ''
   }
 }
-

@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '../api'
 import { formatBytes } from '../format'
-import type { LibraryView, PluginTab } from '../routes'
-import { pathOf } from '../routes'
+import type { LibraryView } from '../routes'
 import type {
   BulkImpact,
+  InstanceStatus,
+  LibraryPlugin,
   PluginDownloadJob,
   PluginOverview,
   PluginOverviewRow,
@@ -16,7 +17,7 @@ import { Modal } from './Modal'
 import { Page } from './Page'
 import { PluginBrowse, sourceLabel } from './PluginBrowse'
 import { PluginDialog } from './PluginDialog'
-import { PluginTabs } from './PluginTabs'
+import { PluginInstallDialog } from './PluginInstallDialog'
 
 /**
  * The panel-wide plugin library.
@@ -41,16 +42,23 @@ import { PluginTabs } from './PluginTabs'
 export function PluginLibraryPage({
   plugins,
   view,
+  against,
+  instances,
   onOpenPlugin,
   onOpenSettings,
   onOpenView,
+  onChooseAgainst,
   onOpenInstance,
 }: {
   plugins: PluginController
   view: LibraryView
+  /** Which instance 获取插件 judges compatibility against. */
+  against?: string
+  instances: InstanceStatus[]
   onOpenPlugin: (id: string) => void
   onOpenSettings: () => void
   onOpenView: (view: LibraryView) => void
+  onChooseAgainst: (id: string) => void
   onOpenInstance: (id: string) => void
 }) {
   const [overview, setOverview] = useState<PluginOverview | null>(null)
@@ -60,6 +68,7 @@ export function PluginLibraryPage({
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const [installing, setInstalling] = useState<LibraryPlugin | null>(null)
 
   const { job, library } = plugins
 
@@ -84,36 +93,21 @@ export function PluginLibraryPage({
     void plugins.refresh()
   }, [job?.state, job?.tag, refresh, plugins])
 
-  const tab: PluginTab = view === 'browse' ? 'browse' : 'installed'
   const rows = overview?.rows ?? []
   const mixed = rows.filter((row) => row.status === 'mixed').length
 
-  const tabs = (
-    <PluginTabs
-      tab={tab}
-      onSelect={(next) => onOpenView(next === 'browse' ? 'browse' : 'list')}
-      hrefFor={(next) =>
-        pathOf({
-          kind: 'library',
-          section: 'plugins',
-          view: next === 'browse' ? 'browse' : 'list',
-        })
-      }
-      badges={{
-        installed: mixed > 0 ? <span className="badge badge--warn">{mixed}</span> : undefined,
-      }}
-    />
-  )
-
-  if (tab === 'browse') {
+  if (view === 'browse') {
     return (
       <Page
         wide
-        title="插件库"
-        lead="从 Modrinth、Hangar 和 SpigotMC 里找插件。先在左边选好装到哪台服务器 —— 兼容不兼容是插件和服务器之间的事，不选就判断不了。"
+        title="获取插件"
+        lead="从 Modrinth、Hangar 和 SpigotMC 里找插件，下载到面板插件库。这里不会装进任何一台服务器 —— 装到哪几台是「插件列表」和实例自己的「已装插件」上的事。左边选一台服只是为了让兼容性徽章有参照。"
       >
-        {tabs}
-        <PluginBrowse onOpenInstance={onOpenInstance} />
+        <PluginBrowse
+          against={against ?? ''}
+          onChooseAgainst={onChooseAgainst}
+          onOpenLibrary={() => onOpenView('list')}
+        />
       </Page>
     )
   }
@@ -138,8 +132,6 @@ export function PluginLibraryPage({
         </p>
       }
     >
-      {tabs}
-
       {error && <div className="alert alert--error">{error}</div>}
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
       {result && <div className="alert alert--ok">{result}</div>}
@@ -163,8 +155,11 @@ export function PluginLibraryPage({
               operator's own, in a private repository. That path stays here
               rather than in 获取插件: it is a source being registered, not a
               catalogue being searched. */}
-          <button className="btn btn--primary" onClick={() => setAdding(true)}>
+          <button className="btn" onClick={() => setAdding(true)}>
             + GitHub 仓库
+          </button>
+          <button className="btn btn--primary" onClick={() => onOpenView('browse')}>
+            获取插件
           </button>
         </div>
       </div>
@@ -227,6 +222,7 @@ export function PluginLibraryPage({
             <span>插件</span>
             <span>最新版本</span>
             <span>使用中的实例</span>
+            <span />
           </div>
           {rows.map((row) => (
             <OverviewRow
@@ -242,6 +238,10 @@ export function PluginLibraryPage({
               }
               onOpen={() => onOpenPlugin(row.id)}
               onOpenInstance={onOpenInstance}
+              onInstall={() => {
+                const item = plugins.plugins.find((entry) => entry.id === row.id)
+                if (item) setInstalling(item)
+              }}
               onDropCache={() =>
                 void (async () => {
                   if (!window.confirm(`删除「${row.name}」的 ${row.versions} 个已下载版本？没有实例在用它。`)) {
@@ -263,6 +263,19 @@ export function PluginLibraryPage({
             />
           ))}
         </div>
+      )}
+
+      {installing && (
+        <PluginInstallDialog
+          item={installing}
+          instances={instances}
+          onCancel={() => setInstalling(null)}
+          onInstalled={(summary) => {
+            setInstalling(null)
+            setResult(summary)
+            void refresh()
+          }}
+        />
       )}
 
       {adding && (
@@ -359,6 +372,7 @@ function OverviewRow({
   onPick,
   onOpen,
   onOpenInstance,
+  onInstall,
   onDropCache,
 }: {
   row: PluginOverviewRow
@@ -366,6 +380,7 @@ function OverviewRow({
   onPick: () => void
   onOpen: () => void
   onOpenInstance: (id: string) => void
+  onInstall: () => void
   onDropCache: () => void
 }) {
   // Expanded when the versions disagree, folded when they do not. The default
@@ -419,9 +434,24 @@ function OverviewRow({
           </button>
         )}
       </div>
+
+      {/* One of the two places a jar leaves the library for a server. The
+          other is the server's own page; both open the same dialog, because
+          it is the same decision from two directions. */}
+      <div className="overview-row__act">
+        <button
+          className="link"
+          disabled={row.versions === 0}
+          title={row.versions === 0 ? '还没下载过这个插件的任何版本' : undefined}
+          onClick={onInstall}
+        >
+          装到实例…
+        </button>
+      </div>
     </div>
   )
 }
+
 
 function StatusLine({ row }: { row: PluginOverviewRow }) {
   if (row.status === 'unused') {

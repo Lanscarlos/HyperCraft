@@ -205,11 +205,18 @@
 
   color-scheme: light;
   accent-color: var(--accent);
+
+  /* The chevron a <select> draws instead of the platform's own arrow. A
+     background image rather than a pseudo-element, because a <select> cannot
+     carry one reliably — which also means the stroke colour has to be baked
+     in, so the token is redefined in the dark block rather than derived. */
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%2353433f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
 }
 
 /* The same scheme's dark mode. Only the values move — no rule below this
    block tests for a mode. */
 :root[data-theme='dark'] {
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%23d8c2bc' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
   --primary: #ffb5a0;
   --on-primary: #561f0f;
   --primary-container: #723523;
@@ -1886,6 +1893,21 @@ a:hover {
   transition:
     border-color var(--dur) var(--ease),
     box-shadow var(--dur) var(--ease);
+}
+
+/* The rules above size a text field: full width, padded, bordered. A tick box
+   is none of those things, and inheriting them turns it into a full-width box
+   with a checkbox floating in the corner — which is exactly what a checkbox
+   inside a .field used to look like. */
+.field input[type='checkbox'],
+.field input[type='radio'] {
+  width: auto;
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .field input::placeholder,
@@ -5815,49 +5837,6 @@ button.rows__name:hover strong {
    questions. What they share is the compatibility badge and the two-tab strip
    above them. */
 
-/* --------------------------------------------------------- plugin sub-tabs
-
-   已装插件 / 获取插件. The one place in the panel with a tab strip, and it is
-   here because the pair is one page in two states rather than two
-   destinations — and because the instance scope has no second sidebar level to
-   put them in, so a sidebar row would exist in one scope and not the other. */
-.subtabs {
-  display: flex;
-  gap: 2px;
-  padding: 3px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  align-self: flex-start;
-}
-
-.subtabs__tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 16px;
-  border-radius: var(--radius-pill);
-  color: var(--text-dim);
-  font-size: 13px;
-  text-decoration: none;
-  transition:
-    background var(--dur) var(--ease),
-    color var(--dur) var(--ease);
-}
-
-.subtabs__tab:hover {
-  color: var(--text);
-}
-
-.subtabs__tab--active {
-  background: var(--surface-1);
-  border: 1px solid var(--border-strong);
-  /* The border would otherwise move the label by a pixel as it activates. */
-  padding: 4px 15px;
-  color: var(--text);
-  font-weight: 500;
-}
-
 /* A verdict nobody could reach. Grey rather than green or yellow, because
    "未知" is a third answer and painting it like either of the other two is
    exactly the mistake the three states exist to prevent. */
@@ -5871,10 +5850,17 @@ button.rows__name:hover strong {
 
    Filter rail on the left, wide rows on the right. Not a card grid: every
    fact that decides a plugin is text, and a card spends its area on an icon
-   that identifies nothing while truncating the description. */
+   that identifies nothing while truncating the description.
+
+   The rail is two blocks, and the split is the point. The top one picks what
+   compatibility is measured against — it changes what every badge on the page
+   *means*, so it gets the accent surface and sits above the divider. The
+   bottom one narrows the list, and its four groups share one label style, one
+   control width and one rhythm so they read as a set rather than as four
+   controls that happened to land near each other. */
 .browse {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
+  grid-template-columns: 208px minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
@@ -5882,7 +5868,7 @@ button.rows__name:hover strong {
 .browse__rail {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   position: sticky;
   top: 0;
 }
@@ -5890,7 +5876,7 @@ button.rows__name:hover strong {
 .browse__group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
 }
 
 .browse__group-label {
@@ -5902,59 +5888,62 @@ button.rows__name:hover strong {
   text-transform: uppercase;
 }
 
-/* 安装到 is not one filter among five: it decides what every badge below it
-   means. So it gets a surface of its own and the accent border, and it sits
-   above everything else on the rail. */
-.browse__target {
+/* Not one filter among four: it decides what every badge below it means. So
+   it gets a surface of its own, above the rule that separates it from the
+   things that merely narrow the list. */
+.browse__reference {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px;
+  padding: 11px;
   background: var(--accent-soft);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius);
 }
 
-.browse__target-empty {
-  margin: 0;
-  color: var(--caution-ink);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.browse__target-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 210px;
-  overflow-y: auto;
-}
-
-.browse__target-line {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.browse__target-name {
+.browse__reference-meta {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-  font-weight: 500;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
-.browse__target-line small {
-  color: var(--text-dim);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
+.browse__reference-warn {
+  color: var(--caution-ink);
+}
+
+.browse__filters {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 14px 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.browse__filters-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.browse__checks {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
 }
 
 .browse__check {
   display: flex;
   align-items: flex-start;
-  gap: 7px;
+  gap: 8px;
   font-size: 13px;
   cursor: pointer;
 }
@@ -5962,12 +5951,28 @@ button.rows__name:hover strong {
 .browse__check input {
   margin-top: 2px;
   flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
-.browse__check--switch {
-  padding-top: 4px;
-  border-top: 1px solid var(--border);
-  font-weight: 500;
+.browse__check input:disabled {
+  cursor: not-allowed;
+}
+
+/* The note under a checkbox is why you would tick it. Stacked rather than
+   beside, because at 208px a hint next to a label squeezes the label until it
+   wraps mid-word. */
+.browse__check-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.browse__check-body small {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.55;
 }
 
 .browse__hint {
@@ -5975,10 +5980,6 @@ button.rows__name:hover strong {
   color: var(--text-faint);
   font-size: 11px;
   line-height: 1.6;
-}
-
-.browse__select {
-  width: 100%;
 }
 
 .browse__main {
@@ -6732,4 +6733,198 @@ button.rows__name:hover strong {
 .plugin-table__name .badge {
   align-self: flex-start;
   margin-left: 0;
+}
+
+/* ================================================================= selects
+
+   Every <select> in the panel, in one place.
+ 
+   They used to be whatever the platform drew: a Chrome select on Linux next to
+   a hand-styled input is two different form languages in one row, and the
+   version pickers on the plugin pages sit directly beside inputs and buttons
+   that had all been given the panel's own treatment. `appearance: none` throws
+   the native control away and the rules below rebuild it — same height, border,
+   radius, focus ring and disabled treatment as `.field input`, plus a chevron
+   drawn from a token so it follows the theme.
+ 
+   The chevron gets its own padding on the right so a long option label stops
+   before it instead of running underneath. `background-position` is written
+   from the right edge for the same reason, and both flip under RTL only if the
+   panel ever grows one — nothing here assumes a direction that is not already
+   assumed everywhere else. */
+
+.select,
+.field select,
+select.input-slim {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 7px 30px 7px 11px;
+  background-color: var(--bg-input);
+  background-image: var(--chevron);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--inset);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  transition:
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+/* The slim variant is the one that sits inside a dense table row, so it is a
+   size down on everything and drops the inset — a shadow at that scale reads
+   as a smudge rather than as depth. */
+select.input-slim {
+  padding: 4px 26px 4px 9px;
+  background-position: right 8px center;
+  box-shadow: none;
+  font-size: 12px;
+  max-width: 100%;
+}
+
+.select--block {
+  width: 100%;
+}
+
+.select:hover:not(:disabled),
+.field select:hover:not(:disabled),
+select.input-slim:hover:not(:disabled) {
+  border-color: var(--outline);
+}
+
+.select:focus-visible,
+.field select:focus-visible,
+select.input-slim:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.select:disabled,
+.field select:disabled,
+select.input-slim:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The popup itself is the one part still drawn by the platform. Setting the
+   colours on the options at least stops a dark-mode panel from opening a white
+   list — everything past that is out of CSS's reach and not worth a
+   hand-rolled listbox, which would cost the keyboard behaviour and the mobile
+   native picker that a real <select> gets for free. */
+.select option,
+.field select option,
+select.input-slim option {
+  background: var(--surface-1);
+  color: var(--text);
+}
+
+/* -------------------------------------------------------------- pick lists
+
+   Choosing which servers, or which plugin. A list of rows rather than a
+   multi-select: the choice is made on what each entry *is* — its state, its
+   version, who else runs it — and a <select multiple> of bare names hides
+   exactly the information the decision needs. */
+.pick-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.pick-list--tall {
+  max-height: 340px;
+}
+
+.pick-list__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease);
+}
+
+.pick-list__row:last-child {
+  border-bottom: none;
+}
+
+.pick-list__row:hover {
+  background: var(--surface-2);
+}
+
+.pick-list__row input {
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.pick-list__row--button {
+  width: 100%;
+  justify-content: space-between;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.pick-list__name {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.pick-list__name small {
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick-list p.muted {
+  padding: 14px 11px;
+  margin: 0;
+  text-align: center;
+}
+
+/* The overview grew a fifth column for 装到实例. Narrow and right-aligned:
+   it is the row's one action, not something to scan down. */
+.overview-table__head,
+.overview-row {
+  grid-template-columns:
+    24px minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 2fr)
+    minmax(0, auto);
+}
+
+.overview-row__act {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .overview-row {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .overview-row__act {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
 }
