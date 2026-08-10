@@ -6607,18 +6607,33 @@ button.rows__name:hover strong {
    versions — which is why "生存服 落后两个版本" stops being something you work
    out and becomes something you see. */
 
+/* The tracks live on the table, not on each row, so that the two columns on
+   the right can be sized by what is actually in them. They used to be a fixed
+   100px and a reserved 248px on every row, which is a bill the common case
+   pays for the rare one: a plugin that is in order everywhere has no remedies
+   and no upgrade to offer, and the third of the panel held open for buttons
+   that were not there is what broke 1.0.0-snapshot.1160 across three lines
+   with empty space beside it. fit-content caps each at what the busiest row
+   needs and collapses it to nothing when no row needs any, which leaves the
+   version — the thing the column is for — with the room. */
 .matrix {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns:
+    minmax(88px, 0.8fr) minmax(140px, 1.1fr)
+    fit-content(110px) fit-content(248px);
+  column-gap: 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
 }
 
+/* Rows stay boxes — they carry the separator and the drift edge — and take
+   their columns from the table above rather than each restating them. */
 .matrix__head,
 .matrix__row {
   display: grid;
-  grid-template-columns: minmax(88px, 0.8fr) minmax(140px, 1.1fr) 100px minmax(0, 248px);
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   gap: 10px;
   align-items: center;
   padding: 8px 12px;
@@ -6654,6 +6669,26 @@ button.rows__name:hover strong {
   align-items: center;
   gap: 6px;
   min-width: 0;
+}
+
+/* Up to three things in one cell — the version, the version it could go to,
+   and the jar the first of them is — and shrinking them evenly gets all three
+   wrong at once: a file name ellipsised down to nothing next to a version
+   number broken across three lines. So version numbers never break, and the
+   file name, which corroborates them rather than being the answer, takes what
+   is left of the line or a line of its own. */
+.matrix__ver {
+  flex-wrap: wrap;
+}
+
+.matrix__ver > .ptable__num,
+.matrix__ver > .matrix__arrow {
+  flex: none;
+}
+
+.matrix__ver > .matrix__file {
+  flex: 1 1 10ch;
+  min-width: 10ch;
 }
 
 .matrix__act {
@@ -8309,9 +8344,10 @@ button.rows__name:hover strong {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .matrix__head,
-  .matrix__row {
-    grid-template-columns: minmax(0, 1fr) auto;
+  /* Two columns, and the row's remaining two cells wrap under them: at this
+     width the four abreast are four ellipses. */
+  .matrix {
+    grid-template-columns: minmax(0, 1fr) fit-content(248px);
   }
 
   .matrix__head > :nth-child(2),
