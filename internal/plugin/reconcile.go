@@ -26,6 +26,7 @@ package plugin
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -200,6 +201,77 @@ func (m *Instances) Reconcile(instanceID, directory string) (Report, error) {
 
 	book.ReconciledAt = report.At
 	return report, m.save(records)
+}
+
+// Accept takes the file on disk as the new truth for one record.
+//
+// The other half of what a drift finding offers. "Restore the library's copy"
+// is the right move when the file was tampered with; this is the right move
+// when it was not — a plugin that updated itself, a hotfix jar somebody dropped
+// in deliberately — and without it the only way to clear the finding would be
+// to overwrite a file the operator wanted.
+//
+// It re-reads the jar rather than trusting the last scan: the whole point is
+// that this file changes, and the digest and declared version recorded here are
+// what every future comparison is made against.
+func (m *Instances) Accept(instanceID, directory, pluginID string) (Entry, error) {
+	record := m.record(instanceID, pluginID)
+	if record == nil {
+		return Entry{}, fmt.Errorf("%w: %s", ErrNotInstalled, pluginID)
+	}
+
+	browser := serverfiles.New(directory)
+	path, enabled, ok := m.locate(browser, record.Dir, record.FileName)
+	if !ok {
+		return Entry{}, fmt.Errorf("%w: %s/%s 不在那儿，没有可以采纳的文件",
+			ErrNotInstalled, record.Dir, record.FileName)
+	}
+	file, info, closer, err := browser.Open(path)
+	if err != nil {
+		return Entry{}, err
+	}
+	defer closer()
+
+	digest, err := fileDigest(file)
+	if err != nil {
+		return Entry{}, err
+	}
+	updated := *record
+	updated.SHA256, updated.ObservedSHA = digest, digest
+	updated.Recon, updated.CheckedAt = ReconOK, time.Now()
+	if jar, read := ReadJarInfo(file, info.Size()); read {
+		updated.PluginName = jar.Name
+		// The version on the row now describes this file rather than the
+		// release it came from, and saying so is the difference between a
+		// number that is true and one that used to be.
+		if jar.Version != "" {
+			updated.Version = jar.Version
+		}
+	}
+	if err := m.put(instanceID, updated); err != nil {
+		return Entry{}, err
+	}
+
+	name := pluginID
+	if item, err := m.library.Get(pluginID); err == nil {
+		name = item.Name
+	}
+	return Entry{
+		Key:       keyPluginPrefix + pluginID,
+		PluginID:  pluginID,
+		Name:      name,
+		FileName:  updated.FileName,
+		Dir:       updated.Dir,
+		Enabled:   enabled,
+		Managed:   true,
+		Size:      info.Size(),
+		Tag:       updated.Tag,
+		Version:   updated.Version,
+		SHA256:    digest,
+		RecordSHA: digest,
+		Recon:     ReconOK,
+		CheckedAt: updated.CheckedAt,
+	}, nil
 }
 
 // isMissingDir reports the "this server has never started" case, which every

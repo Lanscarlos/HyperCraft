@@ -5754,15 +5754,137 @@ button.rows__name:hover strong {
   }
 }
 
-/* ----------------------------------------------------------- plugin versions
+/* -------------------------------------------------- one plugin, in a drawer
 
-   A plugin is the one asset the panel keeps a history of, so its card carries
-   a list the core and Java cards do not need: every version on disk, and what
-   upstream has published. Rows rather than cards — the difference between two
-   entries is a version string and a date, and a grid of tiles would spend a
-   lot of space saying the same word eight times. */
+   The library's detail view is a drawer over the list, not a page: the work is
+   comparative, and a page throws away the filter, the scroll position and the
+   row this one was being compared against. 740px because the deployment matrix
+   inside it is a four-column table about a fleet, and 520 — what the market
+   drawer uses for one plugin's description — folds it into unreadable wraps. */
 
-.plugin-versions {
+.drawer--wide .drawer__panel {
+  width: min(740px, 100%);
+}
+
+.drawer__step {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* A count beside a section heading is a fact about the section, not part of
+   its name, so it does not inherit the heading's size. */
+.drawer__section h3 .muted {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* Where you are in the list behind the drawer. Present so ↑↓ is discoverable
+   rather than secret, and because "3 / 24" is the thing that makes stepping
+   feel like moving through a list instead of like reopening one. */
+.drawer__step-count {
+  margin-right: 4px;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.drawer__tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.drawer__tab {
+  position: relative;
+  padding: 10px 12px 9px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  transition:
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.drawer__tab small {
+  margin-left: 4px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.drawer__tab:hover {
+  color: var(--text);
+}
+
+.drawer__tab--on {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.drawer__save {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  position: sticky;
+  bottom: 0;
+  padding: 12px 0 4px;
+  background: linear-gradient(to bottom, transparent, var(--surface-1) 40%);
+}
+
+/* Four facts, equal weight, because at this point in the page they are four
+   equally likely reasons to have opened the drawer. */
+.statgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.statgrid__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--surface-1);
+}
+
+.statgrid__cell--warn {
+  background: var(--caution-soft);
+}
+
+.statgrid__label {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.statgrid__value {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.statgrid__note {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+/* ------------------------------------------------------- deployment matrix
+
+   One plugin across every server it is on. The only view in the panel that
+   holds that shape — everything else is one server's plugins or one plugin's
+   versions — which is why "生存服 落后两个版本" stops being something you work
+   out and becomes something you see. */
+
+.matrix {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
@@ -5770,99 +5892,250 @@ button.rows__name:hover strong {
   overflow: hidden;
 }
 
-/* Wraps, because a row can grow a changelog. Everything on the first line
-   until the notes open, and the notes then take the full width underneath
-   rather than squeezing the version number. */
-.plugin-version {
-  display: flex;
+.matrix__head,
+.matrix__row {
+  display: grid;
+  grid-template-columns: minmax(88px, 0.8fr) minmax(140px, 1.1fr) 100px minmax(0, 248px);
+  gap: 10px;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 7px 10px;
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
+  padding: 8px 12px;
 }
 
-.plugin-version__notes-toggle {
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-/* The upstream's own words, as they wrote them. Monospace and pre-wrapped
-   because a changelog is a list with indentation in it, and reflowing one into
-   a paragraph loses the only structure it had. */
-.plugin-version__notes {
-  flex-basis: 100%;
-  max-height: 260px;
-  margin: 2px 0 4px;
-  padding: 9px 11px;
-  overflow: auto;
-  overscroll-behavior: contain;
+.matrix__head {
   background: var(--surface-2);
-  border-radius: var(--radius-sm);
-  color: var(--text-dim);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  line-height: 1.7;
-  white-space: pre-wrap;
-  word-break: break-word;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 11px;
 }
 
-/* ------------------------------------------------------- one plugin's page */
-
-.plugin-detail__head {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
+.matrix__row {
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  min-height: 46px;
 }
 
-.plugin-detail__icon {
-  width: 44px;
-  height: 44px;
-  flex: none;
-  border-radius: var(--radius-sm);
-  object-fit: cover;
-  background: var(--surface-3);
-  font-size: 19px;
-}
-
-.plugin-detail__facts {
-  flex: 1;
-  min-width: 0;
-}
-
-.plugin-detail__users {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.plugin-version:last-child {
+.matrix__row:last-child {
   border-bottom: none;
 }
 
-.plugin-version:hover {
-  background: var(--surface-2);
+/* The ledger not matching the disk, marked on the edge rather than as a fill:
+   a whole tinted row reads as "selected", and this is the opposite of that. */
+.matrix__row--bad {
+  box-shadow: inset 3px 0 0 var(--danger);
 }
 
-.plugin-version__name {
+.matrix__inst,
+.matrix__ver,
+.matrix__act {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.plugin-version__meta {
+.matrix__act {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+/* A second thought rather than a third button. Full width under the two that
+   matter, so a row with remedies stays two buttons wide however it wraps. */
+.matrix__recheck {
+  flex-basis: 100%;
+  text-align: right;
+  font-size: 11px;
+}
+
+.matrix__arrow {
+  color: var(--accent);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* ------------------------------------------------- versions and artifacts
+
+   Releases outside, jars inside. The nesting is the correction: flattening a
+   release that ships one build per platform into several versions is what made
+   a plugin with one release report 版本不一致. */
+
+.vlist {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.vgroup {
+  border-bottom: 1px solid var(--border);
+}
+
+.vgroup:last-child {
+  border-bottom: none;
+}
+
+.vgroup__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.vgroup__head:hover {
+  background: var(--surface-2);
+}
+
+.vgroup__caret {
+  width: 12px;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.vgroup__ver {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.vgroup__meta {
   margin-left: auto;
   color: var(--text-faint);
   font-size: 11px;
   white-space: nowrap;
 }
+
+.vgroup__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 12px 12px 32px;
+}
+
+.vgroup__notes summary {
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.vgroup__notes pre {
+  margin: 6px 0 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.alist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.arow {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 8px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+
+/* The digest first, because it is the identity — everything else on the line
+   is description. Monospace because it is one, and twelve characters because
+   that is what a reconciliation finding shows too, so the two can be compared
+   by eye. */
+.arow__sha {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.arow__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.arow__file {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arow__declared {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.arow__tags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.arow__size {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The update policy, as four mutually exclusive sentences rather than a
+   dropdown of four words. The difference between 自动入库 and 自动推送实例 is
+   the difference between a file appearing in a directory nobody is running and
+   a running fleet changing under you, and a select element cannot say that. */
+.modes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.modes__row {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.modes__row:hover {
+  background: var(--surface-2);
+}
+
+.modes__row--on {
+  background: var(--accent-soft);
+  border-color: var(--border-accent);
+}
+
+.modes__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 13px;
+}
+
+.modes__body small {
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 
 /* The version picker sits inline in a row of buttons, so it has to line up
    with them rather than with the full-width inputs in a form. */
@@ -5906,73 +6179,22 @@ button.rows__name:hover strong {
 
 /* -------------------------------------------------------------- discovery
 
-   Filter rail on the left, wide rows on the right. Not a card grid: every
-   fact that decides a plugin is text, and a card spends its area on an icon
-   that identifies nothing while truncating the description.
+   Wide rows, and nothing beside them. Not a card grid: every fact that decides
+   a plugin is text, and a card spends its area on an icon that identifies
+   nothing while truncating the description.
 
-   The rail is one block now. The reference servers used to sit above it on
-   their own accent surface, on the grounds that they change what every badge
-   *means* rather than merely narrowing the list — which is true, and was still
-   the wrong shape: a control that is not in the filter panel is a control that
-   is not looked at when the results are wrong, and the commonest wrong result
-   on this page was "no badges anywhere" caused by that box being left alone.
-   In among the filters it is found, and it answers to the same 搜索 button as
-   the rest of them. Every group shares one label style, one control width and
-   one rhythm, so they read as a set rather than as five controls that happened
-   to land near each other. */
+   The filters were a 208px rail down the left. At 1440px that left the results
+   — the thing the page is — with well under half the window, permanently, in
+   exchange for six controls touched once a session. They are a row of chips
+   above the results now: the two that actually get adjusted (which servers the
+   badges are measured against, and whether to hide what will not run on them)
+   are always visible, and the rest are behind 更多筛选, which is where a
+   control you set once belongs. The contract is unchanged — nothing goes
+   upstream until 搜索 is pressed. */
 .browse {
-  display: grid;
-  grid-template-columns: 208px minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-}
-
-.browse__rail {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  position: sticky;
-  top: 0;
-}
-
-.browse__group {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.browse__group-label {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.browse__filters {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 14px 12px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-
-.browse__filters-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
-}
-
-.browse__checks {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
+  min-width: 0;
 }
 
 .browse__check {
@@ -6010,16 +6232,8 @@ button.rows__name:hover strong {
   line-height: 1.55;
 }
 
-.browse__hint {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: 11px;
-  line-height: 1.6;
-}
-
 /* Why a control is off, or why a column is missing — said where the fix is,
    which is the only place it is any use. */
-.browse__hint--warn,
 .browse__check-warn {
   color: var(--caution-ink);
 }
@@ -6248,16 +6462,6 @@ button.rows__name:hover strong {
   flex: none;
 }
 
-@media (max-width: 860px) {
-  .browse {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .browse__rail {
-    position: static;
-  }
-}
-
 /* ----------------------------------------------------------------- drawer
 
    A plugin's detail slides over the results rather than replacing them. The
@@ -6329,6 +6533,9 @@ button.rows__name:hover strong {
 }
 
 .drawer__title h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   margin: 0;
   font-size: 17px;
 }
@@ -6629,194 +6836,725 @@ button.rows__name:hover strong {
 
 /* ------------------------------------------------------ cross-instance view
 
-   One card per plugin, each taking the whole row.
+   我的库 answers one question — is what my servers are running what I think
+   they are running — and the layout is that question's two halves in priority
+   order. Whether the panel's books describe the directories at all comes
+   first; version arithmetic second. A version number derived from a record
+   that does not match the disk is not a version number.
 
-   It was a five-column grid, and the grid was the thing that was wrong with
-   it. 使用中的实例 was carrying a status, an action and a file size as well as
-   the servers; the status was also in the column to its left; and 装到实例 —
-   the only thing on the row that does anything — was a text link in the cell a
-   table gives least weight to. None of the cells were wrong. The grid simply
-   had no way to say that some of them mattered more than others.
+   Dense rows, not cards. Cards gave every plugin the same 90px whether or not
+   it needed anything, so finding the two rows that need doing meant scrolling
+   past the twenty that do not. At 52px the whole library is on one screen, the
+   status column reads as a column, and the rows that matter are the ones that
+   are not grey.
 
-   A card says it with position and weight instead: identity and state on the
-   top line beside the plugin's own face, the facts about the download quiet
-   underneath, the servers in a block with nothing else in it, and the actions
-   at the end at the two weights they really have — one button, and the rest
-   behind ⋯.
+   The colour split is the argument, made visually. Reconciliation states —
+   文件缺失, 哈希不匹配, 库外来源 — take the danger family, because the ledger
+   being wrong is a different kind of problem from a version being old. Version
+   states take caution and the accent. Nothing about "there is a newer release"
+   should look like "the file on your server is not the file we think it is". */
 
-   Full width rather than a tile grid. What this page answers is a list per
-   plugin, and a list does not fit in a tile. */
-.plugin-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+/* One dot, seven meanings. Kept as its own element rather than as a ::before
+   on the status text so the same mark can appear on a filter chip, on a
+   deployment chip and in the matrix without three sets of rules agreeing by
+   luck. */
+.pdot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text-faint);
 }
 
-.plugin-card {
-  display: grid;
-  grid-template-columns: 20px 34px minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: start;
-  padding: 12px 14px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  transition:
-    border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease);
+.pdot--ok {
+  background: var(--ok);
 }
 
-.plugin-card:hover {
-  border-color: var(--outline);
+.pdot--update {
+  background: var(--accent);
 }
 
-/* The state the page exists to surface. A left edge rather than a tint: the
-   card already carries several colours and one more background would make the
-   badges harder to find, which are where the detail is. */
-.plugin-card--mixed {
-  box-shadow: inset 3px 0 0 var(--caution);
+.pdot--behind {
+  background: var(--caution);
 }
 
-.plugin-card--picked {
-  border-color: var(--border-accent);
-  background: var(--accent-soft);
+.pdot--unused {
+  background: var(--outline);
 }
 
-.plugin-card__pick {
-  display: flex;
-  align-items: center;
-  height: 28px;
+.pdot--drift,
+.pdot--missing,
+.pdot--foreign {
+  background: var(--danger);
 }
 
-.plugin-card__pick input {
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-
-.plugin-card__icon {
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-sm);
-  object-fit: cover;
-  background: var(--surface-3);
-}
-
-.plugin-card__body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.plugin-card__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  min-height: 28px;
-}
-
-.plugin-card__name {
-  padding: 0;
+/* 库外来源 is a hollow ring: it is the one state that is not about a file the
+   panel put somewhere, and the ring says "we did not write this" without
+   needing a seventh colour nobody could tell from the sixth. */
+.pdot--foreign {
   background: none;
-  border: none;
-  color: var(--text);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  text-align: left;
-  transition: color var(--dur-1) var(--ease);
+  box-shadow: inset 0 0 0 2px var(--danger);
 }
 
-.plugin-card__name:hover {
+.pstate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pstate--drift,
+.pstate--missing,
+.pstate--foreign {
+  color: var(--danger-ink);
+  font-weight: 500;
+}
+
+.pstate--update {
   color: var(--accent);
 }
 
-.plugin-card__repo {
-  margin: 0;
+.pstate--behind {
+  color: var(--caution-ink);
+}
+
+/* The summary and the navigation, as one row. A count that filters to what it
+   counted is the same sentence doing the obvious next thing. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.chips .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chips .chip b {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.chip--on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.chip--drift.chip--on,
+.chip--missing.chip--on,
+.chip--foreign.chip--on {
+  background: var(--danger-soft);
+  border-color: var(--danger-edge-hover);
+}
+
+.chip__label {
   color: var(--text-faint);
-  font-size: 11.5px;
+}
+
+.chips--filters {
+  margin-bottom: 14px;
+}
+
+.chips__reset {
+  margin-left: 4px;
+  font-size: 12px;
+}
+
+/* A filter chip's sheet holds checkboxes rather than actions, so unlike the ⋯
+   menu it stays open while several are ticked: three sources is one decision
+   made in three clicks. */
+.menu__sheet--filter {
+  right: auto;
+  left: 0;
+  min-width: 240px;
+  max-width: 320px;
+  padding: 8px;
+  gap: 2px;
+  transform-origin: top left;
+}
+
+.menu__note {
+  margin: 0 0 6px;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.menu__check {
+  display: flex;
+  gap: 8px;
+  padding: 6px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.menu__check:hover {
+  background: var(--surface-2);
+}
+
+.menu__check > span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.menu__check small {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.menu__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  font-size: 12px;
+}
+
+.menu__field > span {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+/* ------------------------------------------------------------- the table */
+
+.ptable {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   overflow: hidden;
+  background: var(--surface-1);
+}
+
+/* The header and the rows are separate grid containers, so every track has to
+   be sized the same way in both or the labels drift off their columns. That
+   rules out `auto` on the action column: empty in the header, 90-odd pixels in
+   a row, and the whole header slides right by the difference. */
+.ptable__head,
+.ptable__row {
+  display: grid;
+  grid-template-columns:
+    28px minmax(180px, 1.6fr) 104px 104px
+    minmax(180px, 1.5fr) 108px 116px;
+  gap: 12px;
+  align-items: center;
+  padding: 0 14px;
+}
+
+.ptable__head {
+  min-height: 34px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.ptable__row {
+  min-height: 52px;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--dur-1) var(--ease);
+}
+
+.ptable__row:last-child {
+  border-bottom: none;
+}
+
+.ptable__row:hover {
+  background: var(--surface-2);
+}
+
+/* The ledger disagreeing with the disk, on the edge. A tinted row would read
+   as selection, and this row is not selected — it is wrong. */
+.ptable__row--bad {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.ptable__row--picked {
+  background: var(--accent-soft);
+}
+
+.ptable__row--open {
+  background: var(--surface-3);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.ptable__cell {
+  min-width: 0;
+}
+
+.ptable__cell--pick {
+  display: flex;
+  align-items: center;
+}
+
+.ptable__cell--ver {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ptable__cell--status {
+  display: flex;
+  align-items: center;
+}
+
+.ptable__cell--act {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.ptable__name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  min-width: 0;
+  text-align: left;
+}
+
+.ptable__icon {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--surface-3);
+  font-size: 12px;
+}
+
+.ptable__name-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ptable__name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ptable__name-line strong {
+  overflow: hidden;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.plugin-card__facts {
+.ptable__name:hover .ptable__name-line strong {
+  color: var(--accent);
+}
+
+.ptable__sub {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Versions are compared by eye down a column, and proportional digits make
+   that harder than it needs to be. */
+.ptable__num {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.ptable__num--ahead {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.ptable__variants {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+/* The column this page is for. Its rule: say only what is not obvious. Four
+   servers agreeing is one fact and gets one line; the one that disagrees gets
+   named, with what is wrong with it. */
+.ptable__deploy {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.ptable__uses {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 14px;
-  margin: 0;
-  color: var(--text-dim);
+  align-items: center;
+  gap: 4px;
+}
+
+.ptable__agree {
+  color: var(--text-faint);
   font-size: 12px;
+  white-space: nowrap;
+}
+
+.ptable__none {
+  color: var(--outline-variant);
+}
+
+.usechip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.usechip:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.usechip__what {
   font-variant-numeric: tabular-nums;
 }
 
-.plugin-card__behind {
+.usechip--behind {
+  background: var(--caution-soft);
+  border-color: transparent;
   color: var(--caution-ink);
 }
 
-/* Servers, and nothing but servers. Boxed off so the block reads as a list
-   rather than as a third line of facts. */
-.plugin-card__uses {
-  margin-top: 3px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--border);
+.usechip--drift,
+.usechip--missing,
+.usechip--foreign {
+  background: var(--danger-soft);
+  border-color: var(--danger-edge);
+  color: var(--danger-ink);
 }
 
-/* One server per line, not a wrapped run of them. Wrapped, two servers on the
-   same line read as one phrase — 生存服 5.5.71 老版本服 5.4.98 — and the
-   thing this block exists to make obvious is precisely that they are two
-   answers that ought to match. Stacked, the versions line up under each other
-   and a mismatch is visible without reading. */
-.plugin-card__list {
+.ptable__empty {
+  padding: 22px 14px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ----------------------------------------------------------- foreign jars
+
+   Below the table rather than in it. They have no source, no history and no
+   update path, and a row in the table would be the panel claiming to know
+   something about a file it has never seen. */
+
+.foreign {
+  margin-top: 20px;
+  padding: 14px;
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-edge);
+  border-radius: var(--radius);
+}
+
+.foreign__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.foreign__lead {
+  margin: 0 0 12px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.foreign__rows {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin: 0;
+}
+
+.foreign__row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 120px minmax(160px, 1.2fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 10px;
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.foreign__what {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.foreign__where {
+  justify-self: start;
+  font-size: 12px;
+}
+
+/* A path, not a code sample. The panel's global <code> style gives it a filled
+   box, which at this size reads as a text input somebody could type into. */
+.foreign__file,
+.matrix__file {
   padding: 0;
-  list-style: none;
-  font-size: 12px;
-}
-
-.plugin-card__list li {
-  justify-content: space-between;
-  max-width: 340px;
-}
-
-.plugin-card__list li {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.plugin-card__instance {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  text-decoration: none;
-}
-
-.plugin-card__instance:hover {
-  text-decoration: underline;
-}
-
-.plugin-card__ver {
+  overflow: hidden;
+  background: none;
+  border: none;
   color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------- footer
+
+   Read-only facts at the bottom, where read-only facts belong — the storage
+   root used to be the fourth thing read on every visit and was never acted on.
+   What earns its place here is the last reconciliation: everything above is
+   computed from the ledger, and when anybody last checked the ledger is true
+   is the footnote on all of it. */
+
+.libfoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.libfoot__size {
   font-variant-numeric: tabular-nums;
 }
 
-.plugin-card__fold {
+.libfoot__reclaim {
+  color: var(--caution-ink);
+}
+
+.libfoot__spacer {
+  flex: 1;
+}
+
+.libfoot__recon {
+  color: var(--text-faint);
+}
+
+.libfoot__warn {
+  color: var(--caution-ink);
+}
+
+/* ---------------------------------------------------- GitHub API budget
+
+   Sixty calls an hour, anonymous. 检查全部更新 over twenty plugins spends
+   twenty, and running out arrives as 检查更新失败 on every row at once — which
+   reads like the plugins are broken rather than like the panel is out of
+   calls. Costs nothing to show: read off headers of calls already being made. */
+
+.apibudget {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px 10px 0;
+  padding: 9px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.apibudget__label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.apibudget__label b {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.apibudget__track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--surface-4);
+  overflow: hidden;
+}
+
+.apibudget__fill {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+  transition: width var(--dur-3) var(--ease);
+}
+
+.apibudget--low .apibudget__fill {
+  background: var(--caution);
+}
+
+.apibudget--low .apibudget__label b {
+  color: var(--caution-ink);
+}
+
+.apibudget__note {
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+/* The sidebar folds to icons; a meter with two numbers in it does not fold. */
+.sidebar--rail .apibudget {
+  display: none;
+}
+
+/* ------------------------------------------------- GitHub source preview */
+
+.srcform {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.srcform__repo {
+  min-width: 0;
+}
+
+.srcform .btn {
+  margin-top: 22px;
+}
+
+.preview {
+  padding: 11px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   font-size: 12px;
 }
 
-.plugin-card__act {
+.preview__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.preview__assets {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.preview__assets li {
   display: flex;
   align-items: center;
-  gap: 6px;
-  white-space: nowrap;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
+
+.preview__assets li span:nth-child(2) {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview__pick {
+  background: var(--ok-soft);
+  color: var(--text);
+}
+
+.preview__warn {
+  margin: 10px 0 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+@media (max-width: 1100px) {
+  /* Upstream and the deploy column are the two the row can lose first: the
+     first is repeated in the status word, the second in the drawer. */
+  .ptable__head,
+  .ptable__row {
+    grid-template-columns: 28px minmax(140px, 1.4fr) 96px minmax(150px, 1.2fr) 104px auto;
+  }
+
+  .ptable__head > :nth-child(4),
+  .ptable__row > :nth-child(4) {
+    display: none;
+  }
+}
+
+@media (max-width: 820px) {
+  .ptable__head,
+  .ptable__row {
+    grid-template-columns: 28px minmax(0, 1fr) 96px auto;
+  }
+
+  .ptable__head > :nth-child(5),
+  .ptable__row > :nth-child(5),
+  .ptable__head > :nth-child(6),
+  .ptable__row > :nth-child(6) {
+    display: none;
+  }
+
+  .foreign__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .matrix__head,
+  .matrix__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .matrix__head > :nth-child(2),
+  .matrix__head > :nth-child(3) {
+    display: none;
+  }
+}
+
 
 /* The page's facts and its one action, on the same line beside the title. The
    chips wrap among themselves; the button stays at the end of the line, which
@@ -6831,16 +7569,6 @@ button.rows__name:hover strong {
 
 .page__actions .meta-chips {
   justify-content: flex-end;
-}
-
-@media (max-width: 900px) {
-  .plugin-card {
-    grid-template-columns: 20px 34px minmax(0, 1fr);
-  }
-
-  .plugin-card__act {
-    grid-column: 2 / -1;
-  }
 }
 
 .bulkbar {

@@ -310,3 +310,37 @@ func TestOneReleaseCanHoldSeveralJars(t *testing.T) {
 		t.Errorf("opened %q, want the velocity jar", artifact.FileName)
 	}
 }
+
+func TestAcceptTakesTheFileOnDiskAsTheNewBaseline(t *testing.T) {
+	instances, _, dir, item := jarFixture(t)
+	if _, err := instances.Install("inst", dir, item.ID, "v5.5.0"); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	// The plugin rewrites itself, the way a self-updating build does.
+	target := filepath.Join(dir, "plugins", "LuckPerms-Bukkit-5.5.0.jar")
+	if err := os.WriteFile(target, jarBytes(t, "plugin.yml", "name: LuckPerms\nversion: 5.5.1\n"), 0o644); err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	if report, err := instances.Reconcile("inst", dir); err != nil || report.Drift != 1 {
+		t.Fatalf("expected a drift: %+v (%v)", report, err)
+	}
+
+	entry, err := instances.Accept("inst", dir, item.ID)
+	if err != nil {
+		t.Fatalf("Accept: %v", err)
+	}
+	// The version on the row now describes the file rather than the release it
+	// came from, which is the whole point of accepting it.
+	if entry.Version != "5.5.1" {
+		t.Errorf("version = %q, want the descriptor's 5.5.1", entry.Version)
+	}
+
+	report, err := instances.Reconcile("inst", dir)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if report.Drift != 0 || report.OK != 1 {
+		t.Fatalf("the accepted file should now be the baseline: %+v", report)
+	}
+}

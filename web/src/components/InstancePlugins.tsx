@@ -91,12 +91,16 @@ export function InstancePlugins({
     void refresh()
   }, [refresh])
 
-  const act = async (action: () => Promise<unknown>, fallback: string) => {
+  /** Runs one action, refreshes, and reports whatever it has to say. An action
+   *  that resolves to a string is one whose outcome is not visible in the list
+   *  it just refreshed — a reconciliation that found nothing, say. */
+  const act = async (action: () => Promise<unknown>, fallback = '操作失败') => {
     setBusy(true)
     setError(null)
     try {
-      await action()
+      const said = await action()
       await refresh()
+      if (typeof said === 'string') setStatus(said)
     } catch (err) {
       setError(err instanceof Error ? err.message : fallback)
     } finally {
@@ -143,6 +147,25 @@ export function InstancePlugins({
           已装插件 <span className="muted">{entries.length}</span>
         </h2>
         <div className="chart-head__actions">
+          {/* Every version number on this page comes out of the panel's own
+              records. This is the button that checks the records still
+              describe the directory — see plugin/reconcile.go. */}
+          <button
+            className="btn"
+            disabled={busy}
+            title="把插件目录逐个文件算 SHA-256，跟面板的账本比一遍"
+            onClick={() =>
+              void act(async () => {
+                const report = await api.reconcileInstancePlugins(instance.id)
+                const bad = report.drift + report.missing + report.foreign
+                return bad === 0
+                  ? `对完了 ${report.checked} 条记录，账本和目录一致`
+                  : `对完了 ${report.checked} 条记录，${bad} 处对不上`
+              })
+            }
+          >
+            对账
+          </button>
           <button className="btn" onClick={() => onOpenSection('files', listing?.entries[0]?.dir)}>
             上传 jar
           </button>
@@ -257,6 +280,21 @@ export function InstancePlugins({
               onAdopt={() =>
                 void act(() => api.adoptInstancePlugin(instance.id, entry.key), '接管失败')
               }
+              onRollback={() => {
+                // Two questions, and the second only when there is an answer
+                // worth having: the config is only restorable when the upgrade
+                // that made the snapshot managed to copy it.
+                if (!window.confirm(`把「${entry.name}」回滚到上一次升级之前的版本？`)) return
+                const withConfig = window.confirm(
+                  '配置目录也一并还原吗？\n\n' +
+                    '确定 = 连插件的配置目录一起恢复成升级前的样子，升级之后写进去的数据会丢。\n' +
+                    '取消 = 只换回旧的 jar，配置保持现状（多数情况选这个）。',
+                )
+                void act(
+                  () => api.rollbackInstancePlugin(instance.id, entry.pluginId ?? '', withConfig),
+                  '回滚失败',
+                )
+              }}
               onRemove={() => {
                 if (
                   !window.confirm(
@@ -485,6 +523,7 @@ function PluginRow({
   onSwitchVersion,
   onSetEnabled,
   onAdopt,
+  onRollback,
   onRemove,
 }: {
   entry: InstancePlugin
@@ -497,6 +536,7 @@ function PluginRow({
   onSwitchVersion: (tag: string) => void
   onSetEnabled: (enabled: boolean) => void
   onAdopt: () => void
+  onRollback: () => void
   onRemove: () => void
 }) {
   const update = updateFor(entry, library)
@@ -613,6 +653,19 @@ function PluginRow({
             接管
           </button>
         )}
+        {/* Why old versions are kept at all. It reads the upgrade snapshot
+            rather than the library, so it works even after a retention policy
+            has pruned the version it puts back. */}
+        {entry.managed && entry.pluginId && (
+          <button
+            className="link"
+            disabled={busy}
+            title="回到上一次升级之前的那个 jar。配置目录默认不动。"
+            onClick={onRollback}
+          >
+            回滚
+          </button>
+        )}
         <button className="link link--danger" disabled={busy} onClick={onRemove}>
           移除
         </button>
@@ -621,12 +674,35 @@ function PluginRow({
   )
 }
 
+/** Twelve hex characters — enough to compare two digests by eye, short enough
+ *  to fit in a tooltip beside the sentence that needs them. */
+function short(sha?: string): string {
+  return sha ? sha.slice(0, 12) : '（无）'
+}
+
 function StatusCell({ entry, live }: { entry: InstancePlugin; live: boolean }) {
   if (entry.missing) {
     return <span className="badge badge--danger">文件不见了</span>
   }
   if (entry.failure) {
     return <span className="badge badge--danger">加载失败</span>
+  }
+  // The books and the file disagree. Above every other state on this row: what
+  // is loaded is not what the record says is loaded, so "运行中 2.3.66" would
+  // be a version number about a different file.
+  if (entry.recon === 'drift') {
+    return (
+      <span
+        className={`badge ${entry.selfUpdate ? 'badge--muted' : 'badge--danger'}`}
+        title={
+          entry.selfUpdate
+            ? `这个插件被允许自更新，所以只记录不告警。磁盘上是 ${short(entry.sha256)}，账本里是 ${short(entry.recordSha)}。`
+            : `磁盘上的 jar 已经不是面板放进去的那一份了。磁盘 ${short(entry.sha256)}，账本 ${short(entry.recordSha)}。`
+        }
+      >
+        {entry.selfUpdate ? '已自更新' : '哈希不匹配'}
+      </span>
+    )
   }
   // A change the running process has not seen. Never "已停用" on its own while
   // the old jar is still loaded in memory — that is the lie the switch used to

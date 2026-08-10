@@ -262,6 +262,7 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("POST /api/plugins", s.handleAddPlugin)
 	protected.HandleFunc("POST /api/plugins/check", s.handleCheckPlugins)
 	protected.HandleFunc("POST /api/plugins/import", s.handleImportPlugins)
+	protected.HandleFunc("GET /api/plugins/source/preview", s.handlePreviewPluginSource)
 	// Discovery. Two segments deep for the same reason the config routes are:
 	// "browse" must not be reachable as a plugin id.
 	protected.HandleFunc("GET /api/plugins/browse", s.handleBrowsePlugins)
@@ -292,6 +293,7 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("POST /api/instances/{id}/plugins/adopt", s.handleAdoptInstancePlugin)
 	protected.HandleFunc("POST /api/instances/{id}/plugins/reconcile", s.handleReconcileInstancePlugins)
 	protected.HandleFunc("POST /api/instances/{id}/plugins/rollback", s.handleRollbackInstancePlugin)
+	protected.HandleFunc("POST /api/instances/{id}/plugins/accept", s.handleAcceptInstancePlugin)
 	protected.HandleFunc("DELETE /api/instances/{id}/plugins", s.handleUninstallInstancePlugin)
 
 	// Java runtimes. Panel-wide rather than per-instance: one download serves

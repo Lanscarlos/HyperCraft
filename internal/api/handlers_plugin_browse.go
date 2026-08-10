@@ -473,6 +473,17 @@ type overviewUse struct {
 	// CheckedAt is when this copy was last compared against the ledger. Zero
 	// means never, and the page says so rather than implying a clean check.
 	CheckedAt *time.Time `json:"checkedAt,omitempty"`
+	// Enabled and Present describe the file itself: a plugin switched off by
+	// renaming its jar is installed and not running, which is a third state
+	// the version column cannot express.
+	Enabled bool `json:"enabled"`
+	Present bool `json:"present"`
+	// RollbackTo names the version this instance's last snapshot would
+	// restore, empty when there is nothing to go back to. Sent so the
+	// deployment matrix can offer the button only where it would work.
+	RollbackTo   string `json:"rollbackTo,omitempty"`
+	RollbackNote string `json:"rollbackNote,omitempty"`
+	ConfigSaved  bool   `json:"configSaved,omitempty"`
 }
 
 // The row states, in the order the ladder resolves them. Six of the seven the
@@ -606,11 +617,12 @@ func (s *Server) handlePluginOverview(w http.ResponseWriter, r *http.Request) {
 	// Every instance's records, read once: the alternative is a lookup per
 	// plugin per instance, over a file that is already in memory.
 	type held struct {
-		id    string
-		name  string
-		dir   string
-		state instance.State
-		byID  map[string]plugin.Installed
+		id     string
+		name   string
+		dir    string
+		state  instance.State
+		byID   map[string]plugin.Installed
+		onDisk map[string]plugin.Deployment
 	}
 	instances := make([]held, 0)
 	for _, inst := range s.mgr.List() {
@@ -621,6 +633,7 @@ func (s *Server) handlePluginOverview(w http.ResponseWriter, r *http.Request) {
 		}
 		instances = append(instances, held{
 			id: cfg.ID, name: cfg.Name, dir: cfg.Directory, state: inst.State(), byID: byID,
+			onDisk: s.instancePlugins.Deployments(cfg.ID, cfg.Directory),
 		})
 	}
 	sort.Slice(instances, func(a, b int) bool { return instances[a].name < instances[b].name })
@@ -690,6 +703,11 @@ func (s *Server) handlePluginOverview(w http.ResponseWriter, r *http.Request) {
 			if !record.CheckedAt.IsZero() {
 				at := record.CheckedAt
 				use.CheckedAt = &at
+			}
+			if state, ok := inst.onDisk[item.ID]; ok {
+				use.Enabled, use.Present = state.Enabled, state.Present
+				use.RollbackTo, use.RollbackNote = state.RollbackTo, state.RollbackNote
+				use.ConfigSaved = state.ConfigSaved
 			}
 			row.Used = append(row.Used, use)
 		}

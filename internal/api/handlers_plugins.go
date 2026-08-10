@@ -77,6 +77,11 @@ type pluginLibraryResponse struct {
 	// page needs no second request to render the picker.
 	Mirrors []plugin.Mirror `json:"mirrors"`
 	Mirror  string          `json:"mirror"`
+	// Budget is the GitHub API quota as of the last call the panel made. It
+	// rides along with the listing rather than being asked for, because asking
+	// would spend the thing it reports on — and because the page that shows it
+	// is the page whose buttons spend it.
+	Budget plugin.Budget `json:"budget"`
 }
 
 // handlePluginLibrary answers everything the library page needs in one request.
@@ -105,6 +110,7 @@ func (s *Server) pluginLibrary() pluginLibraryResponse {
 		TokenHint:       tokenHint(token),
 		Mirrors:         plugin.Mirrors(),
 		Mirror:          s.plugins.Client().Mirror(),
+		Budget:          s.plugins.Client().Budget(),
 	}
 	for _, item := range items {
 		view := pluginView{Plugin: item, UsedBy: []string{}}
@@ -445,6 +451,121 @@ func (s *Server) handleDeletePluginVersion(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// sourcePreview is what the panel can see of a repository before anybody
+// commits to tracking it.
+//
+// Adding a GitHub source used to be a form you filled in and found out about
+// afterwards: a typo, a private repository with no token, a repository that
+// publishes source tarballs and no jar, and an asset pattern guessed from
+// nothing all failed the same way — an entry in the library that says
+// "检查更新失败" and gives no clue which of the four it was. One API call
+// answers all of them, and the operator gets to look before agreeing.
+type sourcePreview struct {
+	Repo string `json:"repo"`
+	// Reachable is the headline: could the panel read this repository at all.
+	Reachable bool   `json:"reachable"`
+	Private   bool   `json:"private"`
+	Error     string `json:"error,omitempty"`
+	// NeedsToken marks the failure a token would fix, which is the one worth
+	// offering a way out of rather than just reporting.
+	NeedsToken bool `json:"needsToken,omitempty"`
+
+	// Release is the newest one the panel would see with these settings —
+	// which is not the newest release when 包含预发布 is off.
+	Release     string `json:"release,omitempty"`
+	Version     string `json:"version,omitempty"`
+	PublishedAt string `json:"publishedAt,omitempty"`
+	// Assets are the jars in that release. More than one is the case the
+	// pattern exists for, and seeing them is what makes it fillable.
+	Assets []previewAsset `json:"assets"`
+	// Picked is the jar the panel would take today, given Pattern. Naming it
+	// is the difference between a rule you can check and a rule you hope about.
+	Picked  string `json:"picked,omitempty"`
+	Pattern string `json:"pattern,omitempty"`
+	// Suggest is a pattern the panel would propose when a release ships
+	// several jars and none was specified. A suggestion, never applied on its
+	// own — which of four platform builds you want is not the panel's call.
+	Suggest string `json:"suggest,omitempty"`
+	// Releases is how many the panel can see, so "1 个 Release" reads as the
+	// warning it is on a repository that should have twenty.
+	Releases int `json:"releases"`
+}
+
+type previewAsset struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
+// handlePreviewPluginSource looks at a repository without tracking it.
+func (s *Server) handlePreviewPluginSource(w http.ResponseWriter, r *http.Request) {
+	if !s.pluginsAvailable(w) {
+		return
+	}
+	repo := strings.TrimSpace(r.URL.Query().Get("repo"))
+	if repo == "" {
+		writeError(w, http.StatusBadRequest, "repo is required")
+		return
+	}
+
+	src := plugin.Source{
+		Kind:         plugin.SourceGitHub,
+		Repo:         repo,
+		AssetPattern: strings.TrimSpace(r.URL.Query().Get("pattern")),
+		Prerelease:   r.URL.Query().Get("prerelease") == "true",
+	}
+	normalised, err := src.Normalise()
+	if err != nil {
+		writeJSON(w, http.StatusOK, sourcePreview{Repo: repo, Error: err.Error(), Assets: []previewAsset{}})
+		return
+	}
+
+	preview := sourcePreview{Repo: normalised.Repo, Pattern: normalised.AssetPattern, Assets: []previewAsset{}}
+	if private, err := s.plugins.Client().Visibility(r.Context(), normalised.Repo); err == nil {
+		preview.Reachable, preview.Private = true, private
+	}
+
+	releases, err := s.plugins.Client().Releases(r.Context(), normalised)
+	if err != nil {
+		preview.Error = err.Error()
+		preview.NeedsToken = errors.Is(err, plugin.ErrNeedsToken)
+		writeJSON(w, http.StatusOK, preview)
+		return
+	}
+
+	preview.Reachable = true
+	preview.Releases = len(releases)
+	newest := releases[0]
+	preview.Release, preview.Version = newest.Tag, newest.Version
+	preview.PublishedAt = newest.PublishedAt.Format(time.RFC3339)
+	preview.Picked = newest.Asset.Name
+	for _, asset := range newest.Assets {
+		preview.Assets = append(preview.Assets, previewAsset{Name: asset.Name, Size: asset.Size})
+	}
+	if len(preview.Assets) > 1 && preview.Pattern == "" {
+		preview.Suggest = suggestPattern(newest.Asset.Name)
+	}
+	writeJSON(w, http.StatusOK, preview)
+}
+
+// suggestPattern turns the jar the panel would pick into a rule that keeps
+// picking it as the version number moves.
+//
+// The version is the part that changes, so it becomes the wildcard —
+// LuckPerms-Bukkit-5.5.71.jar proposes LuckPerms-Bukkit-*.jar, which goes on
+// matching next month and goes on *not* matching the velocity build beside it.
+// Only offered, never applied: which of four platform builds a server wants is
+// not something the panel can work out from the file names.
+func suggestPattern(name string) string {
+	base := strings.TrimSuffix(name, ".jar")
+	parts := strings.Split(base, "-")
+	for i := len(parts) - 1; i >= 1; i-- {
+		if strings.ContainsAny(parts[i], "0123456789") {
+			return strings.Join(parts[:i], "-") + "-*.jar"
+		}
+	}
+	return ""
 }
 
 // pluginPolicyRequest is the 设置 tab of a plugin's drawer, whole. Sent as one
@@ -790,6 +911,43 @@ func (s *Server) handleRollbackInstancePlugin(w http.ResponseWriter, r *http.Req
 	})
 	s.log.Info("instance plugin rolled back",
 		"instance", cfg.Name, "plugin", req.PluginID, "to", entry.Version, "config", req.WithConfig)
+	writeJSON(w, http.StatusOK, entry)
+}
+
+// handleAcceptInstancePlugin records the file on disk as the new baseline.
+//
+// The second of the two answers a drift finding has. "Restore the library's
+// copy" is right when the file was tampered with; this is right when it was
+// not, and a panel that only offered the first would leave an operator whose
+// anticheat updated itself with a permanent warning and no way to clear it
+// except by overwriting a file they wanted.
+func (s *Server) handleAcceptInstancePlugin(w http.ResponseWriter, r *http.Request) {
+	inst, ok := s.instanceFromPath(w, r)
+	if !ok {
+		return
+	}
+	if !s.pluginsAvailable(w) {
+		return
+	}
+
+	var req rollbackPluginRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "malformed request body")
+		return
+	}
+	if strings.TrimSpace(req.PluginID) == "" {
+		writeError(w, http.StatusBadRequest, "pluginId is required")
+		return
+	}
+
+	cfg := inst.Config()
+	entry, err := s.instancePlugins.Accept(cfg.ID, cfg.Directory, req.PluginID)
+	if err != nil {
+		s.writePluginError(w, err)
+		return
+	}
+	s.log.Info("instance plugin drift accepted",
+		"instance", cfg.Name, "plugin", req.PluginID, "sha", entry.SHA256)
 	writeJSON(w, http.StatusOK, entry)
 }
 

@@ -18,8 +18,10 @@ import type {
   InstanceInput,
   FileListing,
   InstanceMetrics,
+  InstancePlugin,
   InstancePluginList,
   InstanceStatus,
+  InstallResult,
   LibraryPlugin,
   PluginBrowseDetail,
   ImportedPlugin,
@@ -28,7 +30,10 @@ import type {
   PluginDownloadJob,
   PluginLibrary,
   PluginOverview,
+  PluginPolicy,
   PluginRelease,
+  ReconReport,
+  SourcePreview,
   PropertiesResponse,
   PropertyEntry,
   SystemInfo,
@@ -234,11 +239,14 @@ export const api = {
   downloadPlugin: (id: string, tag: string) =>
     request<PluginDownloadJob>('POST', `/api/plugins/${encodeURIComponent(id)}/download`, { tag }),
   cancelPluginDownload: () => request<void>('POST', '/api/plugins/cancel'),
-  deletePluginVersion: (id: string, tag: string) =>
-    request<void>(
-      'DELETE',
-      `/api/plugins/${encodeURIComponent(id)}/versions?tag=${encodeURIComponent(tag)}`,
-    ),
+  /** Deletes a release from the library, or one jar of it — deleting the
+   *  Velocity build of a release while keeping the Paper one is a real thing
+   *  to want on a plugin that ships both. */
+  deletePluginVersion: (id: string, tag: string, sha?: string) => {
+    const params = new URLSearchParams({ tag })
+    if (sha) params.set('sha', sha)
+    return request<void>('DELETE', `/api/plugins/${encodeURIComponent(id)}/versions?${params}`)
+  },
 
   /**
    * Searches the plugin registries.
@@ -312,11 +320,56 @@ export const api = {
   bulkUpgrade: (pluginIds: string[]) =>
     request<BulkUpgradeResult>('POST', '/api/plugins/bulk/upgrade', { pluginIds }),
 
+  /** Looks at a GitHub repository without tracking it: can the panel read it,
+   *  is it private, what does its newest release ship, and which jar would the
+   *  asset pattern pick. One call, four answers, before anybody commits. */
+  previewPluginSource: (repo: string, pattern?: string, prerelease?: boolean) => {
+    const params = new URLSearchParams({ repo })
+    if (pattern) params.set('pattern', pattern)
+    if (prerelease) params.set('prerelease', 'true')
+    return request<SourcePreview>('GET', `/api/plugins/source/preview?${params}`)
+  },
+
+  /** Stores what the panel may do with a plugin unasked: update mode, version
+   *  lock, how many releases to keep, and whether it may rewrite its own jar. */
+  setPluginPolicy: (id: string, policy: PluginPolicy) =>
+    request<LibraryPlugin>('PUT', `/api/plugins/${encodeURIComponent(id)}/policy`, {
+      update: policy.update ?? '',
+      pin: policy.pin ?? '',
+      keep: policy.keep ?? 0,
+      allowSelfUpdate: policy.allowSelfUpdate ?? false,
+    }),
+
   instancePlugins: (id: string) =>
     request<InstancePluginList>('GET', `/api/instances/${id}/plugins`),
-  /** Installs a library version, or swaps the version already installed. */
-  installInstancePlugin: (id: string, pluginId: string, tag: string) =>
-    request<void>('POST', `/api/instances/${id}/plugins`, { pluginId, tag }),
+  /**
+   * Installs a library version, or swaps the version already installed.
+   *
+   * A transaction on the far side, not a file copy: it sweeps every jar in the
+   * directory declaring the same plugin name, backs up what it removes, and
+   * returns the snapshot a rollback would read. `sha` picks which jar of the
+   * release for a plugin that ships one build per platform.
+   */
+  installInstancePlugin: (id: string, pluginId: string, tag: string, sha?: string) =>
+    request<InstallResult>('POST', `/api/instances/${id}/plugins`, { pluginId, tag, sha }),
+  /** Puts back the version this instance was on before its last upgrade,
+   *  reading the snapshot rather than the library — the version you want is
+   *  the one that was working an hour ago, whether or not it is still held. */
+  rollbackInstancePlugin: (id: string, pluginId: string, withConfig: boolean) =>
+    request<InstancePlugin>('POST', `/api/instances/${id}/plugins/rollback`, {
+      pluginId,
+      withConfig,
+    }),
+  /** Records the file on disk as the new baseline for a drifted plugin — the
+   *  right answer when the jar changed because the plugin updated itself, as
+   *  opposed to the other answer, which is to put the library's copy back. */
+  acceptInstancePlugin: (id: string, pluginId: string) =>
+    request<InstancePlugin>('POST', `/api/instances/${id}/plugins/accept`, { pluginId }),
+  /** Hashes every jar on the server and compares it with the ledger. The
+   *  expensive one — it reads each jar end to end — so it is asked for, not
+   *  done on every page load. */
+  reconcileInstancePlugins: (id: string) =>
+    request<ReconReport>('POST', `/api/instances/${id}/plugins/reconcile`),
   setInstancePluginEnabled: (id: string, key: string, enabled: boolean) =>
     request<void>('PUT', `/api/instances/${id}/plugins`, { key, enabled }),
   /** Starts tracking a jar the panel found, once it matched a library version. */

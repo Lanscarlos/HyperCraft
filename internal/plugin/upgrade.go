@@ -114,6 +114,47 @@ func (m *Instances) Snapshots(instanceID string) []Snapshot {
 	return out
 }
 
+// Deployment is one instance's copy of one plugin, as the cross-instance view
+// needs it: enough to draw a row of the deployment matrix without opening the
+// instance's own page.
+type Deployment struct {
+	Enabled bool
+	Present bool
+	// RollbackTo is the version the last snapshot would restore, empty when
+	// there is nothing to roll back to. Offering a rollback button that then
+	// says "there is no snapshot" is worse than not offering it.
+	RollbackTo string
+	// RollbackNote carries whatever the snapshot could not do — a config
+	// directory too large to copy, say — because it changes what the button
+	// will actually restore.
+	RollbackNote string
+	ConfigSaved  bool
+}
+
+// Deployments describes what one instance is running, per plugin.
+//
+// Two stat calls per record and no reads: whether the jar is there and under
+// which name is on disk, and everything else is already in the ledger. Cheap
+// enough for the library page, unlike the digest comparison — see Reconcile.
+func (m *Instances) Deployments(instanceID, directory string) map[string]Deployment {
+	browser := serverfiles.New(directory)
+	out := map[string]Deployment{}
+
+	for _, record := range m.recordsFor(instanceID) {
+		entry := Deployment{}
+		if _, enabled, ok := m.locate(browser, record.Dir, record.FileName); ok {
+			entry.Present, entry.Enabled = true, enabled
+		}
+		if snapshot, ok := m.lastSnapshot(instanceID, record.PluginID); ok && snapshot.From != nil {
+			entry.RollbackTo = snapshot.From.Version
+			entry.RollbackNote = snapshot.Note
+			entry.ConfigSaved = snapshot.ConfigSaved
+		}
+		out[record.PluginID] = entry
+	}
+	return out
+}
+
 // Install puts a library version onto an instance, as a transaction.
 //
 // Both "add" and "change version": a plugin the instance already has is

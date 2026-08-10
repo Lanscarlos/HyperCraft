@@ -47,7 +47,7 @@ export type LibraryView =
 export type HostSection = 'metrics' | 'instances' | 'disk' | 'config' | 'terminal'
 
 /** Panel-wide settings. Sections a sub-user should not see live elsewhere. */
-export type SettingsSection = 'devices' | 'security' | 'update'
+export type SettingsSection = 'devices' | 'security' | 'update' | 'plugins'
 
 /** Which states the 所有实例 list is showing. Part of the URL. */
 export type StateFilter = 'all' | 'live' | 'stopped' | 'problem'
@@ -123,15 +123,18 @@ export const LIBRARY_VIEWS: Record<LibrarySection, { id: LibraryView; label: str
     { id: 'install', label: '安装新版本' },
     { id: 'source', label: '下载源' },
   ],
-  // 获取插件 is a page of this shelf, not a tab on another one. Acquiring a
-  // plugin is a panel-wide act — it downloads into the shared library and
-  // touches no server — so it belongs beside 插件列表 in the same navigation
-  // as everything else, and the panel keeps exactly one way of showing a
-  // second level.
+  // Two pages, and they are two questions rather than two lists: 我的库 is
+  // "what is the state of what I run", 浏览市场 is "is this worth installing".
+  //
+  // 插件源 used to be a third, and it was not a page — it was two unrelated
+  // things wearing one heading. Adding a GitHub repository is an *action*, and
+  // it belongs with the other three ways a plugin gets into the library, which
+  // is the + 添加插件 menu on 我的库. The token, the download mirror and the
+  // retention default are *configuration*, panel-wide, changed once, and they
+  // belong in panel settings with the rest of the things you set once.
   plugins: [
-    { id: 'list', label: '插件列表' },
-    { id: 'browse', label: '获取插件' },
-    { id: 'source', label: '插件源' },
+    { id: 'list', label: '我的库' },
+    { id: 'browse', label: '浏览市场' },
   ],
 }
 
@@ -150,6 +153,7 @@ export const HOST_SECTIONS: { id: HostSection; label: string }[] = [
 export const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: 'devices', label: '已配对设备' },
   { id: 'security', label: '登录记录' },
+  { id: 'plugins', label: '插件源与令牌' },
   { id: 'update', label: '面板更新' },
 ]
 
@@ -247,6 +251,12 @@ export function routeFromLocation(): Route {
   if (library) {
     const section = pick(LIBRARY_SECTIONS, library[1] ?? '', 'cores')
     const second = library[2] ?? ''
+    // Bookmarks and links from before 插件源 was taken apart. Its two halves
+    // went to two different places; the configuration half is the one anybody
+    // had a link to.
+    if (section === 'plugins' && second === 'source') {
+      return { kind: 'settings', section: 'plugins' }
+    }
     const view = LIBRARY_VIEWS[section].find((entry) => entry.id === second)?.id
     if (view) {
       if (section === 'plugins' && view === 'list' && library[3]) {
@@ -287,9 +297,10 @@ export function routeFromLocation(): Route {
     if (section === 'java') return { kind: 'library', section: 'java', view: 'installed' }
     if (section === 'cores') return { kind: 'library', section: 'cores', view: 'stock' }
     if (section === 'terminal') return { kind: 'host', section: 'config' }
-    // The plugin source moved under 插件库, where the rest of the plugin
-    // machinery already was.
-    if (section === 'plugin-source') return { kind: 'library', section: 'plugins', view: 'source' }
+    // The plugin source was a page of its own twice — under 面板设置, then
+    // under 插件库 — before it turned out to be two things: an action, which
+    // is now a menu item on 我的库, and configuration, which is here.
+    if (section === 'plugin-source') return { kind: 'settings', section: 'plugins' }
     return { kind: 'settings', section: pick(SETTINGS_SECTIONS, section, 'devices') }
   }
 

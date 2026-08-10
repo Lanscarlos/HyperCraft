@@ -15,9 +15,7 @@ import { InstanceView } from './components/InstanceView'
 import { JavaPage } from './components/JavaPage'
 import { Login } from './components/Login'
 import { NewInstanceDialog } from './components/NewInstanceDialog'
-import { PluginDetailPage } from './components/PluginDetailPage'
 import { PluginLibraryPage } from './components/PluginLibraryPage'
-import { PluginSourceSettings } from './components/PluginSourceSettings'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
@@ -447,7 +445,12 @@ export default function App() {
           {loadError && <div className="alert alert--error">{loadError}</div>}
 
           {route.kind === 'settings' ? (
-            <SettingsPage section={route.section} update={update} runningNames={runningNames} />
+            <SettingsPage
+              section={route.section}
+              update={update}
+              plugins={plugins}
+              runningNames={runningNames}
+            />
           ) : route.kind === 'host' ? (
             route.section === 'terminal' ? (
               <HostTerminal
@@ -478,15 +481,6 @@ export default function App() {
                 onOpenView={(view) => openLibrary('cores', view)}
                 onOpenJava={() => openLibrary('java', 'installed')}
               />
-            ) : openedPlugin ? (
-              <PluginDetailPage
-                key={openedPlugin.id}
-                item={openedPlugin}
-                plugins={plugins}
-                onBack={() => openLibrary('plugins', 'list')}
-              />
-            ) : route.view === 'source' ? (
-              <PluginSourceSettings plugins={plugins} />
             ) : (
               <PluginLibraryPage
                 plugins={plugins}
@@ -494,6 +488,11 @@ export default function App() {
                 against={route.against}
                 recents={recents}
                 instances={instances}
+                // The plugin id stays in the URL and opens a drawer over the
+                // list rather than replacing it. A detail *page* threw away
+                // the filter, the scroll and the row you were comparing
+                // against — which is the context the comparison was made of.
+                openPluginId={openedPlugin?.id}
                 onOpenView={(view) => openLibrary('plugins', view)}
                 onChooseAgainst={(ids) =>
                   navigate(
@@ -502,9 +501,14 @@ export default function App() {
                   )
                 }
                 onOpenPlugin={(id) =>
-                  navigate({ kind: 'library', section: 'plugins', view: 'list', pluginId: id })
+                  navigate({
+                    kind: 'library',
+                    section: 'plugins',
+                    view: 'list',
+                    pluginId: id ?? undefined,
+                  })
                 }
-                onOpenSettings={() => openLibrary('plugins', 'source')}
+                onOpenSettings={() => navigate({ kind: 'settings', section: 'plugins' })}
                 onOpenInstance={(id) => openInstance(id, 'plugins')}
               />
             )

@@ -30,6 +30,7 @@ import (
 	"io"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -309,6 +310,55 @@ type Client struct {
 	// flight; everything else on this client is fixed at construction.
 	tokenMu sync.RWMutex
 	token   string
+
+	// budgetMu guards the last rate-limit headers GitHub sent back.
+	budgetMu sync.RWMutex
+	budget   Budget
+}
+
+// Budget is what GitHub last said about the panel's remaining API quota.
+//
+// Read off the headers of requests the panel was making anyway rather than
+// asked for: the whole reason this number is worth showing is that it is
+// scarce — anonymous callers get sixty an hour, and a panel with twenty
+// plugins spends that in three "check all updates" — so spending a call to
+// find out how many calls are left would be its own joke.
+//
+// Zero Limit means nothing has come back yet, which is a different statement
+// from "no quota" and is shown as one.
+type Budget struct {
+	Limit     int       `json:"limit"`
+	Remaining int       `json:"remaining"`
+	ResetAt   time.Time `json:"resetAt,omitempty"`
+	// Authenticated says which ceiling this is measured against: 60 an hour
+	// anonymous, 5000 with a token. Without it the number is unreadable.
+	Authenticated bool      `json:"authenticated"`
+	SeenAt        time.Time `json:"seenAt,omitempty"`
+}
+
+// Budget returns the last known GitHub quota.
+func (c *Client) Budget() Budget {
+	c.budgetMu.RLock()
+	defer c.budgetMu.RUnlock()
+	budget := c.budget
+	budget.Authenticated = c.authToken() != ""
+	return budget
+}
+
+// noteBudget records the rate-limit headers off a response.
+func (c *Client) noteBudget(resp *http.Response) {
+	limit, err := strconv.Atoi(resp.Header.Get("X-RateLimit-Limit"))
+	if err != nil {
+		return
+	}
+	remaining, err := strconv.Atoi(resp.Header.Get("X-RateLimit-Remaining"))
+	if err != nil {
+		return
+	}
+
+	c.budgetMu.Lock()
+	defer c.budgetMu.Unlock()
+	c.budget = Budget{Limit: limit, Remaining: remaining, ResetAt: resetTime(resp), SeenAt: time.Now()}
 }
 
 func NewClient(apiBase, userAgent string) *Client {
@@ -645,6 +695,11 @@ func (c *Client) getJSON(ctx context.Context, url string, dst any) error {
 		return fmt.Errorf("%w: %v", ErrUpstream, err)
 	}
 	defer resp.Body.Close()
+	// Recorded before the status is judged: the refusal that spends the last
+	// call is the one where the remaining count matters most.
+	if c.isAPIURL(url) {
+		c.noteBudget(resp)
+	}
 
 	switch resp.StatusCode {
 	case http.StatusOK:

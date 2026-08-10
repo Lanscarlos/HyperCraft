@@ -2,41 +2,31 @@ import { useState } from 'react'
 
 import type { PluginController } from '../usePlugins'
 import { Page } from './Page'
-import { PluginDialog } from './PluginDialog'
 
 /**
- * Where plugins come from: the credential private repositories are read with,
- * and the proxy their jars are downloaded through.
+ * The credential private repositories are read with, and the proxy their jars
+ * come through.
  *
- * A page of its own under 插件库 rather than a card on the list, and for the
- * same reason it used to live in 面板设置: it is configured once, on the day
- * the panel is set up or the day something stops working, while the list is
- * where an operator goes weekly to actually install things. A settings form
- * stacked under thirty plugin rows is a settings form in everybody's way.
- * What moved is only where it sits — beside the plugins it is about, instead
- * of three groups away in the panel's own settings.
+ * This was a page called 插件源 and it held two things that are not the same
+ * kind of thing. Registering a repository is an *action*, done whenever a new
+ * plugin turns up, and it now sits with the other three ways a plugin enters
+ * the library — the + 添加插件 menu on 我的库, where it also gets to show what
+ * it found before you agree to it. The token and the download mirror are
+ * *settings*: set on the day the panel is installed or the day something stops
+ * working, and never again. Only the second half is a page, and this is it.
  */
 export function PluginSourceSettings({ plugins }: { plugins: PluginController }) {
   const { library, busy } = plugins
-  const [adding, setAdding] = useState(false)
 
   return (
     <Page
-      title="插件源"
-      lead="三个插件站覆盖了绝大多数插件，但覆盖不了只发在作者自己 GitHub Release 上的那种 —— 包括你自己那个私有仓库。这一页管的就是这件事：登记一个仓库当插件源，配好私有仓库要用的访问令牌，以及 jar 走哪个下载源。插件本身、版本和更新在「插件列表」里管，装到某台服上则在那台服的「插件」页。"
-      aside={
-        // Registering a source, which is what this page is for. It used to sit
-        // beside 检查全部更新 on the plugin list, where it was the only button
-        // in the row that did not act on the list.
-        <button className="btn btn--primary" onClick={() => setAdding(true)}>
-          + GitHub 仓库
-        </button>
-      }
+      title="插件源与令牌"
+      lead="三个插件站覆盖了绝大多数插件，但覆盖不了只发在作者自己 GitHub Release 上的那种 —— 包括你自己那个私有仓库。这一页管两件事：读私有仓库要用的访问令牌，以及 jar 走哪个下载源。想加一个仓库当插件源，在「资源库 → 插件库」的「+ 添加插件」里。"
     >
-
       <GitHubTokenPanel
         configured={library?.tokenConfigured ?? false}
         hint={library?.tokenHint}
+        budget={library?.budget}
         busy={busy}
         onSave={(token) => plugins.setToken(token)}
       />
@@ -55,19 +45,6 @@ export function PluginSourceSettings({ plugins }: { plugins: PluginController })
       )}
 
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
-
-      {adding && (
-        <PluginDialog
-          item={null}
-          busy={busy}
-          onCancel={() => setAdding(false)}
-          onSubmit={async (input) => {
-            const ok = await plugins.add(input)
-            if (ok) setAdding(false)
-            return ok
-          }}
-        />
-      )}
     </Page>
   )
 }
@@ -83,11 +60,13 @@ export function PluginSourceSettings({ plugins }: { plugins: PluginController })
 function GitHubTokenPanel({
   configured,
   hint,
+  budget,
   busy,
   onSave,
 }: {
   configured: boolean
   hint?: string
+  budget?: { limit: number; remaining: number; authenticated: boolean }
   busy: boolean
   onSave: (token: string) => Promise<boolean>
 }) {
@@ -104,11 +83,19 @@ function GitHubTokenPanel({
       <div className="chart-head">
         <h2 className="panel__title">GitHub 访问令牌</h2>
         {configured && <span className="badge badge--ok">已配置{hint && ` ···${hint}`}</span>}
+        {/* The number the argument for a token actually rests on, rather than
+            the argument. "60 次一小时" is abstract until it is 7 左右. */}
+        {budget && budget.limit > 0 && (
+          <span className={`badge${budget.remaining <= budget.limit * 0.2 ? ' badge--warn' : ''}`}>
+            API 余额 {budget.remaining} / {budget.limit}
+          </span>
+        )}
       </div>
       <p className="chart-note">
         自己写的插件发在私有仓库里时，面板得先能证明「我是你」才看得见它 —— 填一个令牌就行，
         剩下的不用管：哪个仓库是私有的由面板自己问 GitHub，检查更新和下载会自动走带认证的 API。
-        顺带一提，就算全是公开仓库，配了令牌也值：匿名调用每小时只有 60 次，插件一多就不够用。
+        顺带一提，就算全是公开仓库，配了令牌也值：匿名调用每小时只有 60 次，
+        「检查全部更新」一次就是一个插件一次调用，插件一多就不够用。
       </p>
       <form onSubmit={(event) => void save(event)}>
         <label className="field">

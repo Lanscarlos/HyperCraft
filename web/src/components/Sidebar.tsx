@@ -438,9 +438,57 @@ function LibraryScope(props: Props) {
             )
           })}
         </nav>
+
+        {section === 'plugins' && <ApiBudget plugins={plugins} />}
       </div>
     </>
   )
+}
+
+/**
+ * How much GitHub quota is left, where the buttons that spend it are.
+ *
+ * Anonymous callers get sixty API calls an hour. 检查全部更新 across twenty
+ * plugins spends twenty of them, listing one plugin's releases spends another,
+ * and the failure when it runs out arrives as "检查更新失败" on every row at
+ * once — which reads like the plugins are broken, not like the panel is out of
+ * calls. This is the one number that turns that into something you can see
+ * coming, and it costs nothing to show: it is read off the headers of calls the
+ * panel was making anyway.
+ *
+ * Only shown once GitHub has actually said something. A meter reading 0/0 on a
+ * panel that has never called out is a warning about nothing.
+ */
+function ApiBudget({ plugins }: { plugins: PluginController }) {
+  const budget = plugins.library?.budget
+  if (!budget || budget.limit === 0) return null
+
+  const fraction = Math.max(0, Math.min(1, budget.remaining / budget.limit))
+  const low = fraction <= 0.2
+
+  return (
+    <div className={`apibudget${low ? ' apibudget--low' : ''}`}>
+      <span className="apibudget__label">
+        GitHub API
+        <b>
+          {budget.remaining} / {budget.limit}
+        </b>
+      </span>
+      <span className="apibudget__track" aria-hidden="true">
+        <span className="apibudget__fill" style={{ width: `${Math.round(fraction * 100)}%` }} />
+      </span>
+      <small className="apibudget__note">
+        {budget.authenticated ? '已用令牌' : '匿名调用，一小时 60 次'}
+        {budget.resetAt && ` · ${resetLabel(budget.resetAt)}回满`}
+      </small>
+    </div>
+  )
+}
+
+function resetLabel(at: string): string {
+  const when = new Date(at)
+  if (Number.isNaN(when.getTime())) return ''
+  return when.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
 /** What is on the shelf, under its name — the same job the instance header's

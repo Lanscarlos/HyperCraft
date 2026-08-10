@@ -1,13 +1,16 @@
 import type { SettingsSection } from '../routes'
+import type { PluginController } from '../usePlugins'
 import type { UpdateController } from '../useUpdate'
 import { DevicesPage } from './DevicesPage'
 import { Page } from './Page'
+import { PluginSourceSettings } from './PluginSourceSettings'
 import { SecurityPage } from './SecurityPage'
 import { UpdatePanel } from './UpdatePanel'
 
 interface Props {
   section: SettingsSection
   update: UpdateController
+  plugins: PluginController
   /** Instances that would be stopped by a panel update. */
   runningNames: string[]
 }
@@ -17,9 +20,15 @@ interface Props {
  *
  * Everything that turned out to be about something else has moved out. Java
  * runtimes and server cores are stock, so they are in 资源库; the host shell is
- * a property of the machine, so it is under 主机 → 节点配置; the plugin source
- * followed the plugins, and is now the second page of 插件库. What is left is
+ * a property of the machine, so it is under 主机 → 节点配置. What is left is
  * genuinely panel-wide, which is also why it is the last group in the sidebar.
+ *
+ * 插件源与令牌 arrived here going the other way, and for the same test. It was
+ * a page under 插件库 holding two unrelated things: adding a repository, which
+ * is an action and now lives in that page's + 添加插件 menu, and the access
+ * token, the download mirror and the retention default — which are settings,
+ * panel-wide, touched once. Only the second half is a page, and this is where
+ * pages like that live.
  *
  * The sections used to be a tab strip across the top of this component.
  * They are sidebar entries now (see Sidebar's settings scope), which leaves
@@ -28,10 +37,12 @@ interface Props {
  * you have to arrive at before you can navigate — and these are exactly the
  * kind of thing you want to go straight to.
  */
-export function SettingsPage({ section, update, runningNames }: Props) {
+export function SettingsPage({ section, update, plugins, runningNames }: Props) {
   switch (section) {
     case 'security':
       return <SecurityPage />
+    case 'plugins':
+      return <PluginSourceSettings plugins={plugins} />
     case 'update':
       return (
         <Page

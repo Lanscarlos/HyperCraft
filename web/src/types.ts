@@ -353,10 +353,42 @@ export interface PluginDependency {
   url?: string
 }
 
-/** One release the panel has downloaded into the library. */
+/**
+ * One jar held under a release.
+ *
+ * The primary key is `sha256` and nothing else. `fileName` is whatever the
+ * author happened to call it — the same jar arrives as LuckPerms-Bukkit-5.5.71.jar,
+ * luckperms-bukkit.jar and LuckPerms.jar depending on where it came from, and
+ * operators rename it again — so it is shown and never decided from.
+ *
+ * `pluginName` / `pluginVer` come out of the jar's own descriptor, which is the
+ * identity the server itself uses: a Bukkit server refuses to load two jars
+ * declaring the same name whatever the files are called.
+ */
+export interface PluginArtifact {
+  sha256: string
+  fileName: string
+  size: number
+  pluginName?: string
+  pluginVer?: string
+  /** bukkit / paper / velocity / bungeecord / fabric, from the descriptor read. */
+  platform?: string
+  apiVersion?: string
+  depend?: string[]
+  softDepend?: string[]
+  gameVersions?: string[]
+  loaders?: string[]
+  addedAt?: string
+}
+
+/** One release the panel has downloaded into the library, and the jars under
+ *  it. A release with several jars is one version, not several — see §1. */
 export interface PluginVersion {
   tag: string
   version: string
+  artifacts?: PluginArtifact[]
+  /** Mirrors of the primary artifact, kept for records written before the
+   *  artifact list existed. Read `artifacts` in new code. */
   fileName: string
   size: number
   sha256: string
@@ -366,6 +398,20 @@ export interface PluginVersion {
   addedAt: string
   gameVersions?: string[]
   loaders?: string[]
+}
+
+/** What the panel does with a plugin without being asked. */
+export type PluginUpdateMode = '' | 'notify' | 'fetch' | 'push'
+
+export interface PluginPolicy {
+  update?: PluginUpdateMode
+  /** Locked to one release tag. A pinned plugin reports no updates and is
+   *  skipped by bulk upgrades. */
+  pin?: string
+  /** Releases retained in the library; 0 means all of them. */
+  keep?: number
+  /** Silences the hash-mismatch alarm for plugins that rewrite their own jar. */
+  allowSelfUpdate?: boolean
 }
 
 export interface LibraryPlugin {
@@ -379,12 +425,24 @@ export interface LibraryPlugin {
   targetDir: string
   addedAt: string
   versions: PluginVersion[]
+  policy?: PluginPolicy
   /** What the last update check found upstream; cached, see checkedAt. */
   latest?: PluginRelease
   checkedAt?: string
   checkError?: string
   /** Instances that have this plugin installed. */
   usedBy: string[]
+}
+
+/** Every jar of a plugin, flattened with its release, for the 版本 tab. */
+export function pluginArtifacts(version: PluginVersion): PluginArtifact[] {
+  if (version.artifacts && version.artifacts.length > 0) return version.artifacts
+  return [{ sha256: version.sha256, fileName: version.fileName, size: version.size }]
+}
+
+/** What one release costs on disk, across every jar under it. */
+export function versionSize(version: PluginVersion): number {
+  return pluginArtifacts(version).reduce((sum, artifact) => sum + artifact.size, 0)
 }
 
 export type PluginDownloadState = 'downloading' | 'done' | 'failed' | 'cancelled'
@@ -427,6 +485,9 @@ export interface PluginLibrary {
   mirrors: PluginMirror[]
   /** The chosen mirror's id, or a custom URL prefix. */
   mirror: string
+  /** The GitHub quota, riding along with the listing rather than being asked
+   *  for — asking would spend the thing it reports on. */
+  budget: GitHubBudget
 }
 
 /** What a plugin jar says about itself, read from its own descriptor file. */
@@ -462,6 +523,122 @@ export interface AdoptablePlugin {
   name: string
   tag: string
   version: string
+  /** What the library calls this jar — often not what the file on the server
+   *  is called, and that mismatch is what a rename looks like. */
+  fileName?: string
+}
+
+// -------------------------------------------------------- reconciliation
+
+/**
+ * How one file compares with the panel's ledger.
+ *
+ * `foreign` — a jar is there that no record claims. Somebody uploaded it.
+ * `drift`   — the record's file is there and its bytes have changed. Tampered
+ *             with, or the plugin updated itself, which some genuinely do.
+ * `missing` — the record names a file that is not there. Deleted by hand.
+ *
+ * These outrank every version state on a row: 有更新 computed from a ledger
+ * that does not describe the directory is a sentence about a file that is not
+ * there.
+ */
+export type ReconState = 'ok' | 'drift' | 'missing' | 'foreign'
+
+export interface ReconFinding {
+  state: ReconState
+  dir: string
+  fileName: string
+  pluginId?: string
+  name: string
+  /** The digest the ledger holds, and the one on disk. A missing file has no
+   *  `found`; a foreign jar has no `expected`. */
+  expected?: string
+  found?: string
+  jar?: PluginJarInfo
+  adoptable?: AdoptablePlugin
+  /** True for drift on a plugin with 允许自更新 on: recorded, shown, and
+   *  deliberately not counted as a problem. */
+  allowed?: boolean
+}
+
+export interface ReconReport {
+  instanceId: string
+  at: string
+  checked: number
+  ok: number
+  drift: number
+  missing: number
+  foreign: number
+  findings: ReconFinding[]
+}
+
+/** One end of an upgrade: which release, which jar, which bytes. */
+export interface SnapshotSide {
+  tag?: string
+  version?: string
+  sha256?: string
+  fileName?: string
+}
+
+/** What an upgrade left behind, and everything a rollback reads. */
+export interface PluginSnapshot {
+  id: string
+  pluginId: string
+  pluginName?: string
+  dir: string
+  at: string
+  by?: string
+  action: string
+  /** Absent for a first install, which is what makes "there is nothing to roll
+   *  back to" a fact rather than a guess. */
+  from?: SnapshotSide
+  to: SnapshotSide
+  /** Jars swept out of the directory before the new one went in. */
+  removed?: string[]
+  configDir?: string
+  configSaved: boolean
+  /** What the snapshot could not do, in the operator's own terms. It changes
+   *  what a rollback would restore, so it goes on the rollback button. */
+  note?: string
+}
+
+export interface InstallResult {
+  entry: InstancePlugin
+  snapshot: PluginSnapshot
+}
+
+/** What the panel can see of a GitHub repository before anybody agrees to
+ *  track it. One API call answers all four of the ways adding a source fails. */
+export interface SourcePreview {
+  repo: string
+  reachable: boolean
+  private: boolean
+  error?: string
+  /** The failure a token would fix — the one worth offering a way out of. */
+  needsToken?: boolean
+  release?: string
+  version?: string
+  publishedAt?: string
+  assets: { name: string; size: number }[]
+  /** The jar the panel would take today, given `pattern`. */
+  picked?: string
+  pattern?: string
+  /** A pattern derived from that choice, offered and never applied. */
+  suggest?: string
+  releases: number
+}
+
+/** GitHub's remaining API quota, as of the last call the panel made. Read off
+ *  headers rather than asked for — the point of showing it is that it is
+ *  scarce, so spending a call to learn how many are left would be a joke. */
+export interface GitHubBudget {
+  limit: number
+  remaining: number
+  resetAt?: string
+  /** Which ceiling this is measured against: 60/hour anonymous, 5000 with a
+   *  token. Without it the number is unreadable. */
+  authenticated: boolean
+  seenAt?: string
 }
 
 // ------------------------------------------------------ compatibility
@@ -535,6 +712,17 @@ export interface InstancePlugin {
   jar?: PluginJarInfo
   /** Set when this jar is byte-for-byte a version the library holds. */
   adoptable?: AdoptablePlugin
+  /** How this row's file compares with the ledger. Outranks every version
+   *  badge on the row — see ReconState. */
+  recon?: ReconState
+  /** What is on disk now, and what the ledger expected. Both shown for a
+   *  drift, because the useful question is which one you recognise. */
+  sha256?: string
+  recordSha?: string
+  checkedAt?: string
+  /** This plugin's 允许自更新 setting, so the row can say why a drift is
+   *  reported quietly rather than as a problem. */
+  selfUpdate?: boolean
   /** Whether this jar suits the server's version and loader. */
   compat?: PluginCompat
   /** What the server said when it could not load this plugin. */
@@ -665,7 +853,7 @@ export interface PluginBrowseDetail {
 
 // -------------------------------------------------- cross-instance view
 
-/** One instance's copy of a plugin, in the global library's usage column. */
+/** One instance's copy of a plugin, in the global library's 部署 column. */
 export interface PluginUse {
   instanceId: string
   name: string
@@ -674,10 +862,50 @@ export interface PluginUse {
   tag: string
   /** Behind the newest version the library holds — the field the page is for. */
   outdated: boolean
+  /** What the last reconciliation said about this copy. Empty when the two
+   *  agree, or when nothing has looked yet. */
+  recon?: ReconState
+  fileName?: string
+  checkedAt?: string
+  /** A plugin switched off by renaming its jar is installed and not running —
+   *  a third state the version column cannot express. */
+  enabled?: boolean
+  present?: boolean
+  /** The version this instance's last snapshot would restore, absent when
+   *  there is nothing to go back to. */
+  rollbackTo?: string
+  rollbackNote?: string
+  configSaved?: boolean
 }
 
-/** What the second line of the 最新版本 column reads. */
-export type OverviewStatus = 'all' | 'mixed' | 'unused'
+/**
+ * The seven states a library row can be in, in the order they resolve.
+ *
+ * The first three are reconciliation: the ledger does not describe the disk.
+ * They come first because every state after them is a conclusion drawn from
+ * that ledger, and a conclusion drawn from a wrong ledger is not information.
+ */
+export type PluginStatus =
+  | 'missing'
+  | 'drift'
+  | 'foreign'
+  | 'unused'
+  | 'update'
+  | 'behind'
+  | 'ok'
+
+/** A jar on a server that no record claims. Not a library row: it has no
+ *  source, no history and no update path, and the one offer it gets — 收编进库
+ *  — is the act that would make it one. */
+export interface ForeignJar {
+  name: string
+  version?: string
+  instanceId: string
+  instance: string
+  dir: string
+  fileName: string
+  adoptable?: AdoptablePlugin
+}
 
 export interface PluginOverviewRow {
   id: string
@@ -689,10 +917,20 @@ export interface PluginOverviewRow {
   iconUrl?: string
   used: PluginUse[]
   newest?: string
+  newestTag?: string
   upstream?: string
-  status: OverviewStatus
+  status: PluginStatus
   size: number
+  /** Releases and jars. They differ for a plugin shipping one build per
+   *  platform, and that difference is what used to be misreported as
+   *  「2 个版本 · 版本不一致」about a plugin that had published one release. */
   versions: number
+  artifacts: number
+  /** Platforms the newest release ships separate builds for. An explanation,
+   *  never a warning: same version, different jars is what correct looks like. */
+  variants?: string[]
+  pinned?: string
+  selfUpdate?: boolean
 }
 
 export interface PluginOverview {
@@ -700,6 +938,43 @@ export interface PluginOverview {
   root: string
   unused: number
   unusedSize: number
+  totalSize: number
+  foreign: ForeignJar[]
+  /** The oldest reconciliation across instances — a fleet is as stale as its
+   *  stalest server. Absent when nothing has ever been reconciled. */
+  reconciledAt?: string
+  /** Instances that have never been reconciled at all. */
+  unchecked: number
+}
+
+/** The chips across the top of the list, which are both the summary and the
+ *  navigation. `all` is not a status, so it is spelled out separately. */
+export type PluginFilter = 'all' | PluginStatus
+
+export function statusLabel(status: PluginStatus): string {
+  switch (status) {
+    case 'missing':
+      return '文件缺失'
+    case 'drift':
+      return '哈希不匹配'
+    case 'foreign':
+      return '库外来源'
+    case 'unused':
+      return '未部署'
+    case 'update':
+      return '库有更新'
+    case 'behind':
+      return '实例落后'
+    default:
+      return '已同步'
+  }
+}
+
+/** Whether a status is the ledger disagreeing with the disk, as opposed to a
+ *  version being older than another version. The two are different kinds of
+ *  problem and the page colours them differently. */
+export function isReconStatus(status: PluginStatus): boolean {
+  return status === 'missing' || status === 'drift' || status === 'foreign'
 }
 
 /** What a bulk upgrade would touch, for the confirmation. */

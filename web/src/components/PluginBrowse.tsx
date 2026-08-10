@@ -237,125 +237,6 @@ export function PluginBrowse({
 
   return (
     <div className="browse" onKeyDown={onKeyDown}>
-      <aside className="browse__rail">
-        <div className="browse__filters">
-          <div className="browse__filters-head">
-            <h3 className="browse__group-label">筛选</h3>
-            {filtered && (
-              <button className="link" onClick={reset}>
-                重置
-              </button>
-            )}
-          </div>
-
-          <ReferenceGroup
-            targets={targets}
-            chosen={draft.against}
-            onChoose={(ids) => edit({ against: ids })}
-          />
-
-          <RailGroup label="来源">
-            <div className="browse__checks">
-              {allSources.map((source) => (
-                <label className="browse__check" key={source.id} title={source.note}>
-                  <input
-                    type="checkbox"
-                    checked={chosenSources.includes(source.id)}
-                    onChange={() => {
-                      const next = chosenSources.includes(source.id)
-                        ? chosenSources.filter((entry) => entry !== source.id)
-                        : [...chosenSources, source.id]
-                      edit({ sources: next.length === allSources.length ? [] : next })
-                    }}
-                  />
-                  <span className="browse__check-body">
-                    <span>{source.name}</span>
-                    <small>{source.note}</small>
-                    {/* The constraint belongs to the source, so it is said
-                        where the source is, not as a banner over the results
-                        it had nothing to do with. */}
-                    {source.id === 'spigot' && draft.q.trim() === '' && chosenSources.includes(source.id) && (
-                      <small className="browse__check-warn">只能按关键词搜，不输名字它就不参与</small>
-                    )}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </RailGroup>
-
-          <RailGroup label="分类">
-            <Select
-              className="select--block"
-              value={draft.category}
-              ariaLabel="分类"
-              options={[
-                { value: '', label: '全部分类' },
-                ...(result?.categories ?? []).map((entry) => ({
-                  value: entry.id,
-                  label: entry.name,
-                })),
-              ]}
-              onChange={(next) => edit({ category: next })}
-            />
-          </RailGroup>
-
-          <RailGroup label="排序">
-            <Select
-              className="select--block"
-              value={draft.sort}
-              ariaLabel="排序"
-              options={[
-                { value: 'relevance', label: '相关度' },
-                { value: 'downloads', label: '下载量' },
-                { value: 'updated', label: '最近更新' },
-              ]}
-              onChange={(next) => edit({ sort: next })}
-            />
-          </RailGroup>
-
-          <RailGroup label="范围">
-            <label className="browse__check">
-              <input
-                type="checkbox"
-                checked={draft.onlyCompatible}
-                onChange={(event) => edit({ onlyCompatible: event.target.checked })}
-                disabled={draft.against.length === 0}
-              />
-              <span className="browse__check-body">
-                <span>仅显示兼容项</span>
-                <small>
-                  只滤掉加载器不对的 —— 那些在这台服上永远装不起来。游戏版本对不上的会留着并标黄。
-                </small>
-                {/* A disabled control that does not say why is a control that
-                    looks broken. */}
-                {draft.against.length === 0 && (
-                  <small className="browse__check-warn">
-                    {targets.length === 0
-                      ? '面板里还没有实例，没有可比的服务器'
-                      : '先在上面勾一台服'}
-                  </small>
-                )}
-              </span>
-            </label>
-
-            <label className="browse__check">
-              <input
-                type="checkbox"
-                checked={draft.clientMods}
-                onChange={(event) => edit({ clientMods: event.target.checked })}
-              />
-              <span className="browse__check-body">
-                <span>包含客户端模组</span>
-                <small>
-                  默认不含。Modrinth 的目录里大半是渲染、光影一类只跑在客户端的模组，装到服务端不会加载 ——
-                  除非你是在给玩家备整合包，否则打开只会多出一堆装不了的东西。
-                </small>
-              </span>
-            </label>
-          </RailGroup>
-        </div>
-      </aside>
-
       <div className="browse__main">
         <form
           className="browse__search"
@@ -377,8 +258,65 @@ export function PluginBrowse({
           </button>
         </form>
 
+        {/* The filters, as a row rather than a rail.
+
+            They were a 260px sidebar, which at 1440px left the results — the
+            thing the page is — with less than half the window, permanently, in
+            exchange for six controls that get touched once a session. Up here
+            they take one line, and the two that are actually adjusted often
+            (which server to judge against, and whether to hide what will not
+            run on it) are the two that are always visible. The rest are behind
+            更多筛选, where a control you set once belongs. */}
+        <div className="chips chips--filters">
+          <ReferenceChip
+            targets={targets}
+            chosen={draft.against}
+            onChoose={(ids) => edit({ against: ids })}
+          />
+
+          <SourceChip
+            sources={allSources}
+            chosen={chosenSources}
+            query={draft.q}
+            onToggle={(id) => {
+              const next = chosenSources.includes(id)
+                ? chosenSources.filter((entry) => entry !== id)
+                : [...chosenSources, id]
+              edit({ sources: next.length === allSources.length ? [] : next })
+            }}
+          />
+
+          <button
+            className={`chip${draft.onlyCompatible ? ' chip--on' : ''}`}
+            aria-pressed={draft.onlyCompatible}
+            disabled={draft.against.length === 0}
+            title={
+              draft.against.length === 0
+                ? targets.length === 0
+                  ? '面板里还没有实例，没有可比的服务器'
+                  : '先选一台参照实例'
+                : '滤掉加载器不对的 —— 那些在这台服上永远装不起来。游戏版本对不上的会留着并标黄。'
+            }
+            onClick={() => edit({ onlyCompatible: !draft.onlyCompatible })}
+          >
+            仅兼容
+          </button>
+
+          <MoreFilters
+            draft={draft}
+            categories={result?.categories ?? []}
+            onEdit={edit}
+          />
+
+          {filtered && (
+            <button className="link chips__reset" onClick={reset}>
+              重置筛选
+            </button>
+          )}
+        </div>
+
         {/* The filters are only what will be searched, not what is on screen,
-            so the gap has to be visible or the rail reads as broken. */}
+            so the gap has to be visible or the chips read as broken. */}
         {dirty && !loading && (
           <p className="browse__pending">筛选条件改了，点「搜索」才会生效。</p>
         )}
@@ -486,29 +424,78 @@ export function PluginBrowse({
   )
 }
 
-function RailGroup({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * A chip that opens a small sheet of checkboxes.
+ *
+ * Written here rather than reusing Menu because Menu closes on selection,
+ * which is right for an action list and wrong for a filter: ticking three
+ * sources is one decision made in three clicks, and a sheet that shuts after
+ * each one turns it into three decisions.
+ */
+function FilterChip({
+  label,
+  summary,
+  on,
+  disabled,
+  title,
+  children,
+}: {
+  label: string
+  summary: string
+  on?: boolean
+  disabled?: boolean
+  title?: string
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  const wrap = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (event: MouseEvent) => {
+      if (!wrap.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('pointerdown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointerdown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
   return (
-    <section className="browse__group">
-      <h3 className="browse__group-label">{label}</h3>
-      {children}
-    </section>
+    <div className="menu" ref={wrap}>
+      <button
+        className={`chip${on ? ' chip--on' : ''}`}
+        aria-haspopup="true"
+        aria-expanded={open}
+        disabled={disabled}
+        title={title}
+        onClick={() => setOpen(!open)}
+      >
+        <span className="chip__label">{label}</span>
+        {summary}
+        <span aria-hidden="true"> ▾</span>
+      </button>
+      {open && <div className="menu__sheet menu__sheet--filter">{children}</div>}
+    </div>
   )
 }
 
 /**
  * Which servers the badges are measured against.
  *
- * A filter among the others now, and a multi-select, because the question an
- * operator with four servers has is "does this fit my servers" and asking it
- * one server at a time meant four visits and four sets of badges to hold in
- * the head. Ticking several means the badge answers for all of them at once,
- * pessimistically — see plugin.JudgeAcross.
- *
- * With one server in the panel there is nothing to ask: it is ticked, it
- * cannot be unticked, and the group says what it is rather than offering a
- * choice of one.
+ * Not a destination — nothing is installed anywhere from this page — but the
+ * single most consequential control on it, because 兼容 is not a property of a
+ * plugin. It is a property of a plugin, a game version and a loader, so with
+ * nothing ticked there are no badges at all. Multi-select, because the question
+ * an operator with four servers has is "does this fit my servers", and asking
+ * it one server at a time meant four visits.
  */
-function ReferenceGroup({
+function ReferenceChip({
   targets,
   chosen,
   onChoose,
@@ -519,47 +506,142 @@ function ReferenceGroup({
 }) {
   if (targets.length === 0) return null
 
-  const only = targets.length === 1
-  const toggle = (id: string) =>
-    onChoose(chosen.includes(id) ? chosen.filter((entry) => entry !== id) : [...chosen, id])
+  const picked = targets.filter((target) => chosen.includes(target.id))
+  const summary =
+    picked.length === 0 ? '未选' : picked.length === 1 ? picked[0].name : `${picked.length} 台`
 
   return (
-    <section className="browse__group">
-      <h3 className="browse__group-label">按哪几台服判断兼容性</h3>
+    <FilterChip
+      label="参照"
+      summary={summary}
+      on={picked.length > 0}
+      title="兼容性徽章按这几台服判断。只决定徽章怎么算，不决定装到哪。"
+    >
+      <p className="menu__note">兼容性徽章按这几台判断。下载到的是插件库，不会装进任何一台服。</p>
+      {targets.map((target) => (
+        <label className="menu__check" key={target.id}>
+          <input
+            type="checkbox"
+            checked={chosen.includes(target.id)}
+            onChange={() =>
+              onChoose(
+                chosen.includes(target.id)
+                  ? chosen.filter((entry) => entry !== target.id)
+                  : [...chosen, target.id],
+              )
+            }
+          />
+          <span>
+            <span className={`status__dot status__dot--${target.state}`} />
+            {target.name}
+            {target.target.loader || target.target.mcVersion ? (
+              <small>
+                {loaderLabel(target.target.loader)} {target.target.mcVersion}
+              </small>
+            ) : (
+              <small className="browse__check-warn">没认出这台服的核心和版本</small>
+            )}
+          </span>
+        </label>
+      ))}
+    </FilterChip>
+  )
+}
 
-      <div className="browse__checks">
-        {targets.map((target) => (
-          <label className="browse__check" key={target.id}>
-            <input
-              type="checkbox"
-              checked={chosen.includes(target.id)}
-              disabled={only}
-              onChange={() => toggle(target.id)}
-            />
-            <span className="browse__check-body">
-              <span>
-                <span className={`status__dot status__dot--${target.state}`} />
-                {target.name}
-              </span>
-              {target.target.loader || target.target.mcVersion ? (
-                <small>
-                  {loaderLabel(target.target.loader)} {target.target.mcVersion}
-                </small>
-              ) : (
-                <small className="browse__check-warn">没认出这台服的核心和版本，判断不了</small>
-              )}
-            </span>
-          </label>
-        ))}
-      </div>
+function SourceChip({
+  sources,
+  chosen,
+  query,
+  onToggle,
+}: {
+  sources: { id: PluginSourceKind; name: string; note: string }[]
+  chosen: PluginSourceKind[]
+  query: string
+  onToggle: (id: PluginSourceKind) => void
+}) {
+  if (sources.length === 0) return null
+  const all = chosen.length === sources.length
+  const summary = all ? '全部' : chosen.length === 1 ? sources.find((s) => s.id === chosen[0])?.name ?? '1 个' : `${chosen.length} 个`
 
-      {chosen.length === 0 && (
-        <p className="browse__hint browse__hint--warn">选一台服后才会显示兼容性徽章。</p>
-      )}
-      <p className="browse__hint">
-        这里只决定徽章按谁算。下载到的是面板插件库，不会装进任何一台服。
-      </p>
-    </section>
+  return (
+    <FilterChip label="来源" summary={summary} on={!all}>
+      {sources.map((source) => (
+        <label className="menu__check" key={source.id}>
+          <input type="checkbox" checked={chosen.includes(source.id)} onChange={() => onToggle(source.id)} />
+          <span>
+            {source.name}
+            <small>{source.note}</small>
+            {/* The constraint belongs to the source, so it is said where the
+                source is, not as a banner over results it had nothing to do
+                with. */}
+            {source.id === 'spigot' && query.trim() === '' && chosen.includes(source.id) && (
+              <small className="browse__check-warn">只能按关键词搜，不输名字它就不参与</small>
+            )}
+          </span>
+        </label>
+      ))}
+    </FilterChip>
+  )
+}
+
+/** The controls that get set once and then left. Category, sort order and
+ *  whether client-side mods count — none of them worth a permanent 260px. */
+function MoreFilters({
+  draft,
+  categories,
+  onEdit,
+}: {
+  draft: Filters
+  categories: { id: string; name: string }[]
+  onEdit: (patch: Partial<Filters>) => void
+}) {
+  const changed = draft.category !== '' || draft.sort !== 'relevance' || draft.clientMods
+
+  return (
+    <FilterChip label="更多筛选" summary={changed ? '已调整' : ''} on={changed}>
+      <label className="menu__field">
+        <span>分类</span>
+        <Select
+          className="select--block"
+          value={draft.category}
+          ariaLabel="分类"
+          options={[
+            { value: '', label: '全部分类' },
+            ...categories.map((entry) => ({ value: entry.id, label: entry.name })),
+          ]}
+          onChange={(next) => onEdit({ category: next })}
+        />
+      </label>
+
+      <label className="menu__field">
+        <span>排序</span>
+        <Select
+          className="select--block"
+          value={draft.sort}
+          ariaLabel="排序"
+          options={[
+            { value: 'relevance', label: '相关度' },
+            { value: 'downloads', label: '下载量' },
+            { value: 'updated', label: '最近更新' },
+          ]}
+          onChange={(next) => onEdit({ sort: next })}
+        />
+      </label>
+
+      <label className="menu__check">
+        <input
+          type="checkbox"
+          checked={draft.clientMods}
+          onChange={(event) => onEdit({ clientMods: event.target.checked })}
+        />
+        <span>
+          包含客户端模组
+          <small>
+            默认不含。Modrinth 的目录里大半是渲染、光影一类只跑在客户端的模组，装到服务端不会加载。
+          </small>
+        </span>
+      </label>
+    </FilterChip>
   )
 }
 

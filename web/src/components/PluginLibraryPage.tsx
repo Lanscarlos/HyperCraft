@@ -1,18 +1,21 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api'
-import { formatBytes } from '../format'
+import { formatBytes, formatDate } from '../format'
 import type { LibraryView } from '../routes'
 import type {
   BulkImpact,
+  ForeignJar,
   InstanceStatus,
   LibraryPlugin,
   PluginDownloadJob,
+  PluginFilter,
   PluginOverview,
   PluginOverviewRow,
+  PluginStatus,
   PluginUse,
 } from '../types'
-import { isLive } from '../types'
+import { isLive, isReconStatus, statusLabel } from '../types'
 import type { PluginController } from '../usePlugins'
 import { Menu } from './Menu'
 import { Modal } from './Modal'
@@ -21,27 +24,33 @@ import { PluginBrowse, sourceLabel } from './PluginBrowse'
 import { PluginIcon } from './PluginIcon'
 import { PluginImportDialog } from './PluginImportDialog'
 import { PluginInstallDialog } from './PluginInstallDialog'
+import { PluginLibraryDrawer } from './PluginLibraryDrawer'
+import { PluginSourceDialog } from './PluginSourceDialog'
 import { Toast } from './Toast'
 
 /**
- * The panel-wide plugin library.
+ * 我的库 — every plugin the panel holds, and what is actually running.
  *
- * This page exists for exactly one question: are my servers running the same
- * versions of the same plugins. Everything else it could show — the version
- * list, the source, the update check — is reachable from inside one server, and
- * a library page that could not say "生存服 is two versions behind 创造服" would
- * be a second list of the same plugins with a different heading.
+ * The page answers one question and the whole shape follows from it: *is what
+ * my servers are running what I think they are running*. That has two halves
+ * and they are not equal. The first is whether the panel's books describe the
+ * directories at all — a jar somebody uploaded by hand, a plugin that rewrote
+ * its own file, a record whose file has been deleted. The second is version
+ * arithmetic: upstream is ahead of the library, or the library is ahead of a
+ * server. The first outranks the second everywhere on this page, because a
+ * version number derived from a record that does not match the disk is not a
+ * version number, it is a guess with a decimal point in it.
  *
- * So the layout puts its weight on the last column. 使用中的实例 is nearly half
- * the row, and it expands itself when the versions disagree: that is the state
- * worth reading, and folding it away behind an arrow would hide the one thing
- * this page is for. A row where everything agrees collapses to a count,
- * because "four servers, all current" is a fact you take in and move past.
+ * So: dense rows, not cards. A card gives every plugin the same weight and the
+ * same 90px of vertical space, which is the wrong answer for a library where
+ * twenty rows are fine and two need doing — you scroll past the twenty to find
+ * the two. At 52px a screen holds the whole library, the status column reads
+ * as a column, and the two rows that need attention are the two rows that are
+ * not grey.
  *
- * The other reason it earns its place is the opposite of usage: a jar nobody
- * references. A plugin uninstalled from every server keeps its download
- * forever, and this is the only page in the panel that would ever mention it
- * again.
+ * The chips across the top are the same list, counted. They are the summary
+ * and they are the navigation: "3 有更新" is the sentence you came to read and
+ * clicking it is what you were going to do next.
  */
 export function PluginLibraryPage({
   plugins,
@@ -49,6 +58,7 @@ export function PluginLibraryPage({
   against,
   recents,
   instances,
+  openPluginId,
   onOpenPlugin,
   onOpenSettings,
   onOpenView,
@@ -57,13 +67,15 @@ export function PluginLibraryPage({
 }: {
   plugins: PluginController
   view: LibraryView
-  /** Which instances 获取插件 judges compatibility against. */
+  /** Which instances 浏览市场 judges compatibility against. */
   against?: string[]
-  /** Most recently opened servers, newest first — 获取插件 defaults its
+  /** Most recently opened servers, newest first — 浏览市场 defaults its
    *  compatibility reference to the first of these that still exists. */
   recents: string[]
   instances: InstanceStatus[]
-  onOpenPlugin: (id: string) => void
+  /** The plugin whose drawer is open, from the URL. */
+  openPluginId?: string
+  onOpenPlugin: (id: string | null) => void
   onOpenSettings: () => void
   onOpenView: (view: LibraryView) => void
   onChooseAgainst: (ids: string[]) => void
@@ -71,6 +83,7 @@ export function PluginLibraryPage({
 }) {
   const [overview, setOverview] = useState<PluginOverview | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [filter, setFilter] = useState<PluginFilter>('all')
   const [picked, setPicked] = useState<string[]>([])
   const [confirming, setConfirming] = useState<BulkImpact | null>(null)
   const [busy, setBusy] = useState(false)
@@ -78,8 +91,9 @@ export function PluginLibraryPage({
   const [installing, setInstalling] = useState<LibraryPlugin | null>(null)
   const [bulkInstall, setBulkInstall] = useState<LibraryPlugin[] | null>(null)
   const [importing, setImporting] = useState(false)
+  const [addingSource, setAddingSource] = useState(false)
 
-  const { job, library } = plugins
+  const { job } = plugins
 
   const refresh = useCallback(async () => {
     try {
@@ -94,23 +108,27 @@ export function PluginLibraryPage({
     void refresh()
   }, [refresh])
 
-  // A finished download adds a version, which can move a row from 版本不一致
-  // to 全部最新 — or the other way round.
+  // A finished download adds a version, which can move a row out of 库有更新.
   useEffect(() => {
     if (job?.state !== 'done') return
     void refresh()
     void plugins.refresh()
   }, [job?.state, job?.tag, refresh, plugins])
 
-  const rows = overview?.rows ?? []
-  const mixed = rows.filter((row) => row.status === 'mixed').length
+  const rows = useMemo(() => overview?.rows ?? [], [overview])
+  const foreign = overview?.foreign ?? []
+  const counts = useMemo(() => countStatuses(rows, foreign.length), [rows, foreign.length])
+  const shown = useMemo(
+    () => (filter === 'all' ? rows : rows.filter((row) => row.status === filter)),
+    [rows, filter],
+  )
 
   if (view === 'browse') {
     return (
       <Page
         wide
-        title="获取插件"
-        lead="从 Modrinth、Hangar 和 SpigotMC 里找插件，下载到面板插件库。这里不会装进任何一台服务器 —— 装到哪几台是「插件列表」和实例自己的「插件」页上的事。左边勾几台服只是为了让兼容性徽章有参照。"
+        title="浏览市场"
+        lead="从 Modrinth、Hangar 和 SpigotMC 里找插件。下载到的是面板插件库，不会装进任何一台服务器 —— 装到哪几台是「我的库」和实例自己的「插件」页上的事。"
       >
         <PluginBrowse
           against={against ?? []}
@@ -122,212 +140,246 @@ export function PluginLibraryPage({
     )
   }
 
-  const bulkable = picked.filter((id) => rows.find((row) => row.id === id)?.status === 'mixed')
+  /** Everything selected that a bulk upgrade would actually move. */
+  const bulkable = picked.filter((id) => {
+    const row = rows.find((entry) => entry.id === id)
+    return row?.status === 'behind' && !row.pinned
+  })
+
+  const reconcileAll = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      // One server at a time. Each pass reads every jar on that server end to
+      // end, and firing eight of those at one disk makes all eight slow.
+      let bad = 0
+      for (const instance of instances) {
+        const report = await api.reconcileInstancePlugins(instance.id)
+        bad += report.drift + report.missing + report.foreign
+      }
+      await refresh()
+      setResult(
+        bad === 0
+          ? `对完了 ${instances.length} 台实例，账本和目录一致`
+          : `对完了 ${instances.length} 台实例，${bad} 处对不上`,
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '对账失败')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <Page
       wide
-      title="插件库"
-      lead="按插件看，而不是按服务器看：哪个插件在哪几台服上、版本对不对得上、哪些下载了却没人用。单台服的增删启停在实例自己的「插件」页里。"
+      title="我的库"
+      lead="按插件看，而不是按服务器看：哪个插件在哪几台服上、版本对不对得上、账本和实例目录里的文件是不是同一份。单台服的增删启停在实例自己的「插件」页里。"
       aside={
-        // The page's own state, and the one action that leaves it. The other
-        // three buttons that used to sit by the section heading were not
-        // siblings of each other: 插件源 duplicated a sidebar entry, and
-        // + GitHub 仓库 is source management, which now lives on the 插件源
-        // page with the rest of it. What is left beside the heading is the one
-        // thing that acts on this table.
         <div className="page__actions">
-          <p className="meta-chips">
-            <span>{rows.length > 0 ? `${rows.length} 个插件` : '插件库还是空的'}</span>
-            {mixed > 0 && <span className="meta-chips__warn">{mixed} 个版本不一致</span>}
-            {(overview?.unused ?? 0) > 0 && (
-              <span>
-                {overview?.unused} 个没人用 · {formatBytes(overview?.unusedSize ?? 0)}
-              </span>
-            )}
-            {library?.root && <span title={library.root}>存放于 {library.root}</span>}
-          </p>
-          {/* The other way a plugin gets into the library, and it belongs
-              beside the first: 获取插件 covers everything the catalogues can
-              reach, and this covers what they cannot — a marketplace plugin,
-              a build from a fork, something a friend sent over. */}
-          <button className="btn" onClick={() => setImporting(true)}>
-            导入 jar
+          <button
+            className="btn"
+            disabled={plugins.busy || rows.length === 0}
+            title="逐个问上游有没有新版本。要花 GitHub API 配额 —— 匿名一小时 60 次。"
+            onClick={() => void plugins.checkAll().then(refresh)}
+          >
+            检查全部更新
           </button>
-          <button className="btn btn--primary" onClick={() => onOpenView('browse')}>
-            获取插件
-          </button>
+          {/* Every way a plugin gets into the library, in one place. They were
+              scattered across three pages and a settings tab, which meant the
+              answer to "how do I add this jar" depended on where the jar came
+              from — a distinction that matters to the panel and to nobody
+              standing in front of it. */}
+          <Menu
+            className="btn btn--primary"
+            title="添加插件"
+            ariaLabel="添加插件"
+            items={[
+              { label: '从市场搜索…', onSelect: () => onOpenView('browse') },
+              { label: '从 GitHub 仓库…', onSelect: () => setAddingSource(true) },
+              { label: '导入本地 jar…', onSelect: () => setImporting(true) },
+              {
+                label: '扫描库外来源…',
+                onSelect: () => void reconcileAll(),
+                disabled: busy || instances.length === 0,
+              },
+            ]}
+          >
+            + 添加插件 ▾
+          </Menu>
         </div>
       }
     >
       {error && <div className="alert alert--error">{error}</div>}
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
       {job && <JobStatus job={job} onCancel={() => void plugins.cancel()} busy={plugins.busy} />}
-      {/* An outcome, not a state: see Toast. A finished download comes through
-          here too — JobStatus keeps only the progress bar and the failure,
-          which are the two that are still true while you read them. */}
       {result && <Toast message={result} onDone={() => setResult(null)} />}
 
-      <div className="chart-head">
-        <h2 className="panel__title">跨实例总览</h2>
-        <div className="chart-head__actions">
-          <button
-            className="btn"
-            disabled={plugins.busy || rows.length === 0}
-            onClick={() => void plugins.checkAll().then(refresh)}
-          >
-            检查全部更新
-          </button>
-        </div>
-      </div>
-
-      {picked.length > 0 && (
-        <div className="bulkbar">
-          <span>已选 {picked.length} 项</span>
-          <span className="device-row__spacer" />
-          <button
-            className="btn btn--primary"
-            disabled={busy || bulkable.length === 0}
-            title={bulkable.length === 0 ? '选中的插件版本都是一致的，没有要升级的' : undefined}
-            onClick={() =>
-              void (async () => {
-                setBusy(true)
-                try {
-                  setConfirming(await api.bulkUpgradePreview(bulkable))
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : '读取影响范围失败')
-                } finally {
-                  setBusy(false)
-                }
-              })()
-            }
-          >
-            批量升级…
-          </button>
-          <button
-            className="btn"
-            disabled={busy || picked.length === 0}
-            onClick={() => {
-              const chosen = plugins.plugins.filter(
-                (entry) => picked.includes(entry.id) && entry.versions.length > 0,
-              )
-              if (chosen.length === 0) {
-                setError('选中的插件一个版本都还没下载，没有可以装的。')
-                return
-              }
-              setBulkInstall(chosen)
-            }}
-          >
-            批量装到实例…
-          </button>
-          <button
-            className="btn"
-            disabled={plugins.busy || picked.length === 0}
-            onClick={() =>
-              void (async () => {
-                for (const id of picked) await plugins.check(id)
-                await refresh()
-                setResult(`已检查 ${picked.length} 个插件的更新`)
-              })()
-            }
-          >
-            检查更新
-          </button>
-          <button
-            className="btn"
-            disabled={busy}
-            onClick={() => void cleanCache(picked, rows, setBusy, setError, setResult, refresh, setPicked)}
-          >
-            清理缓存
-          </button>
-          <button className="link" onClick={() => setPicked([])}>
-            取消选择
-          </button>
-        </div>
-      )}
-
-      {rows.length === 0 ? (
-        <div className="welcome__empty">
-          <p>插件库还是空的。</p>
-          <p className="muted">
-            这里是面板的公共缓存：一个 jar 下载一次，想装几台服就复制几份，
-            于是「同一个插件在五台服上」是一份文件一个校验和，而不是五份谁也认不出彼此的下载。
-          </p>
-          <p className="muted">
-            去
-            <button className="link" onClick={() => onOpenView('browse')}>
-              获取插件
-            </button>
-            找一个下载下来，
-            <button className="link" onClick={() => setImporting(true)}>
-              直接导入一个 jar
-            </button>
-            ，或者在
-            <button className="link" onClick={onOpenSettings}>
-              插件源
-            </button>
-            里加个 GitHub 仓库跟着它的 Release 走 —— 私有仓库也行。
-          </p>
-        </div>
+      {rows.length === 0 && foreign.length === 0 ? (
+        <EmptyLibrary
+          onBrowse={() => onOpenView('browse')}
+          onImport={() => setImporting(true)}
+          onAddSource={() => setAddingSource(true)}
+        />
       ) : (
-        <div className="plugin-cards">
-          {rows.map((row) => (
-            <PluginCard
-              key={row.id}
-              row={row}
+        <>
+          <FilterChips counts={counts} filter={filter} onFilter={setFilter} />
+
+          {picked.length > 0 && (
+            <BulkBar
+              picked={picked}
+              bulkable={bulkable}
               busy={busy || plugins.busy}
-              picked={picked.includes(row.id)}
-              onPick={() =>
-                setPicked((current) =>
-                  current.includes(row.id)
-                    ? current.filter((id) => id !== row.id)
-                    : [...current, row.id],
-                )
-              }
-              onOpen={() => onOpenPlugin(row.id)}
-              onOpenInstance={onOpenInstance}
-              onCheck={() =>
-                void plugins.check(row.id).then(async () => {
-                  await refresh()
-                  setResult(`已检查 ${row.name} 的更新`)
-                })
-              }
-              onInstall={() => {
-                const item = plugins.plugins.find((entry) => entry.id === row.id)
-                if (item) setInstalling(item)
-              }}
-              onDropCache={() =>
+              onClear={() => setPicked([])}
+              onUpgrade={() =>
                 void (async () => {
-                  // Says what goes and what stays. The copies already inside a
-                  // server are separate files and are not touched — which is
-                  // the whole question anyone hesitating over this button has.
-                  const kept =
-                    row.used.length > 0
-                      ? `\n\n${row.used.length} 台服上已经装好的副本不受影响 —— 那是各自目录里的另一份文件。`
-                      : ''
-                  if (
-                    !window.confirm(
-                      `从库里删掉「${row.name}」的 ${row.versions} 个已下载版本，释放 ${formatBytes(row.size)}？${kept}`,
-                    )
-                  ) {
-                    return
-                  }
                   setBusy(true)
                   try {
-                    await api.deletePlugin(row.id)
-                    setResult(`已清理 ${row.name}，释放 ${formatBytes(row.size)}`)
-                    await refresh()
-                    await plugins.refresh()
+                    setConfirming(await api.bulkUpgradePreview(bulkable))
                   } catch (err) {
-                    setError(err instanceof Error ? err.message : '清理失败')
+                    setError(err instanceof Error ? err.message : '读取影响范围失败')
                   } finally {
                     setBusy(false)
                   }
                 })()
               }
+              onInstall={() => {
+                const chosen = plugins.plugins.filter(
+                  (entry) => picked.includes(entry.id) && entry.versions.length > 0,
+                )
+                if (chosen.length === 0) {
+                  setError('选中的插件一个版本都还没下载，没有可以装的。')
+                  return
+                }
+                setBulkInstall(chosen)
+              }}
+              onCheck={() =>
+                void (async () => {
+                  for (const id of picked) await plugins.check(id)
+                  await refresh()
+                  setResult(`已检查 ${picked.length} 个插件的更新`)
+                })()
+              }
+              onClean={() =>
+                void cleanCache(picked, rows, setBusy, setError, setResult, refresh, setPicked)
+              }
             />
-          ))}
-        </div>
+          )}
+
+          <div className="ptable" role="table" aria-label="插件库">
+            <div className="ptable__head" role="row">
+              <span className="ptable__cell ptable__cell--pick" />
+              <span className="ptable__cell" role="columnheader">
+                插件
+              </span>
+              <span className="ptable__cell ptable__cell--ver" role="columnheader">
+                库内最新
+              </span>
+              <span className="ptable__cell ptable__cell--ver" role="columnheader">
+                上游最新
+              </span>
+              <span className="ptable__cell" role="columnheader">
+                部署
+              </span>
+              <span className="ptable__cell ptable__cell--status" role="columnheader">
+                状态
+              </span>
+              <span className="ptable__cell ptable__cell--act" />
+            </div>
+
+            {shown.map((row) => (
+              <PluginRow
+                key={row.id}
+                row={row}
+                busy={busy || plugins.busy}
+                picked={picked.includes(row.id)}
+                open={row.id === openPluginId}
+                onPick={() =>
+                  setPicked((current) =>
+                    current.includes(row.id)
+                      ? current.filter((id) => id !== row.id)
+                      : [...current, row.id],
+                  )
+                }
+                onOpen={() => onOpenPlugin(row.id)}
+                onOpenInstance={onOpenInstance}
+                onDownload={() =>
+                  void plugins.download(row.id, '').then(async () => {
+                    await refresh()
+                    setResult(`正在把 ${row.name} 的新版本下载到库里`)
+                  })
+                }
+                onAlign={() =>
+                  void (async () => {
+                    setBusy(true)
+                    try {
+                      setConfirming(await api.bulkUpgradePreview([row.id]))
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : '读取影响范围失败')
+                    } finally {
+                      setBusy(false)
+                    }
+                  })()
+                }
+                onInstall={() => {
+                  const item = plugins.plugins.find((entry) => entry.id === row.id)
+                  if (item) setInstalling(item)
+                }}
+                onDrop={() => void dropPlugin(row, setBusy, setError, setResult, refresh, plugins.refresh)}
+              />
+            ))}
+
+            {shown.length === 0 && (
+              <p className="ptable__empty">
+                没有「{filter === 'all' ? '' : statusLabel(filter as PluginStatus)}」状态的插件。
+                <button className="link" onClick={() => setFilter('all')}>
+                  看全部 {rows.length} 个
+                </button>
+              </p>
+            )}
+          </div>
+
+          {(filter === 'all' || filter === 'foreign') && foreign.length > 0 && (
+            <ForeignSection
+              jars={foreign}
+              busy={busy}
+              onOpenInstance={onOpenInstance}
+              onAdopt={(jar) =>
+                void adoptForeign(jar, setBusy, setError, setResult, refresh, plugins.refresh)
+              }
+            />
+          )}
+
+          <LibraryFooter
+            overview={overview}
+            instances={instances.length}
+            busy={busy}
+            onReconcile={() => void reconcileAll()}
+            onClean={() => void cleanUnused(rows, setBusy, setError, setResult, refresh, plugins.refresh)}
+            onOpenSettings={onOpenSettings}
+          />
+        </>
+      )}
+
+      {openPluginId && (
+        <PluginLibraryDrawer
+          pluginId={openPluginId}
+          rows={rows}
+          instances={instances}
+          plugins={plugins}
+          onClose={() => onOpenPlugin(null)}
+          onStep={(delta) => {
+            const index = rows.findIndex((row) => row.id === openPluginId)
+            const next = rows[index + delta]
+            if (next) onOpenPlugin(next.id)
+          }}
+          onOpenInstance={onOpenInstance}
+          onChanged={() => {
+            void refresh()
+            void plugins.refresh()
+          }}
+          onReport={setResult}
+        />
       )}
 
       {installing && (
@@ -355,6 +407,22 @@ export function PluginLibraryPage({
         />
       )}
 
+      {addingSource && (
+        <PluginSourceDialog
+          busy={plugins.busy}
+          onCancel={() => setAddingSource(false)}
+          onSubmit={async (input) => {
+            const ok = await plugins.add(input)
+            if (ok) {
+              setAddingSource(false)
+              setResult(`已把 ${input.repo} 加进库，正在跟它的 Release 走`)
+              void refresh()
+            }
+            return ok
+          }}
+        />
+      )}
+
       {bulkInstall && (
         <BulkInstallDialog
           items={bulkInstall}
@@ -378,7 +446,9 @@ export function PluginLibraryPage({
             void (async () => {
               setBusy(true)
               try {
-                const outcome = await api.bulkUpgrade(bulkable)
+                const ids =
+                  bulkable.length > 0 ? bulkable : confirming.plugins.map((entry) => entry.id)
+                const outcome = await api.bulkUpgrade(ids)
                 setResult(
                   outcome.failures.length === 0
                     ? `已升级 ${outcome.applied} 处`
@@ -398,6 +468,565 @@ export function PluginLibraryPage({
         />
       )}
     </Page>
+  )
+}
+
+// ----------------------------------------------------------------- chips
+
+/** Every chip that will ever be shown, in the order they resolve. Reconcile
+ *  states first, because that is the order the row's status is decided in. */
+const CHIPS: PluginStatus[] = ['update', 'behind', 'unused', 'drift', 'missing', 'foreign', 'ok']
+
+function countStatuses(rows: PluginOverviewRow[], foreign: number): Record<PluginFilter, number> {
+  const counts = {
+    all: rows.length,
+    ok: 0,
+    update: 0,
+    behind: 0,
+    unused: 0,
+    drift: 0,
+    missing: 0,
+    foreign,
+  } as Record<PluginFilter, number>
+  for (const row of rows) counts[row.status]++
+  return counts
+}
+
+/**
+ * The summary and the navigation, as one row of controls.
+ *
+ * They were static pills reading "24 个插件 · 3 个版本不一致". That sentence is
+ * the reason the page was opened, and it was not clickable — so reading it was
+ * followed by scrolling the whole list looking for the three. A count that
+ * filters to what it counted is the same information doing the obvious next
+ * thing.
+ *
+ * A chip that counts zero is dropped rather than greyed. An empty filter is
+ * not a state worth offering a way into, and seven permanently-present chips
+ * make the two that matter today harder to find.
+ */
+function FilterChips({
+  counts,
+  filter,
+  onFilter,
+}: {
+  counts: Record<PluginFilter, number>
+  filter: PluginFilter
+  onFilter: (filter: PluginFilter) => void
+}) {
+  const live = CHIPS.filter((status) => counts[status] > 0)
+
+  return (
+    <div className="chips" role="group" aria-label="按状态筛选">
+      <button
+        className={`chip${filter === 'all' ? ' chip--on' : ''}`}
+        aria-pressed={filter === 'all'}
+        onClick={() => onFilter('all')}
+      >
+        全部 <b>{counts.all}</b>
+      </button>
+      {live.map((status) => (
+        <button
+          key={status}
+          className={`chip chip--${status}${filter === status ? ' chip--on' : ''}`}
+          aria-pressed={filter === status}
+          onClick={() => onFilter(filter === status ? 'all' : status)}
+        >
+          <span className={`pdot pdot--${status}`} aria-hidden="true" />
+          {statusLabel(status)} <b>{counts[status]}</b>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ------------------------------------------------------------------ rows
+
+/**
+ * One plugin, at 52px.
+ *
+ * The 部署 column is where this page earns its keep, and its rule is: say only
+ * what is not obvious. Four servers all on the library's newest version is one
+ * fact — "4 台 · 一致" — and printing four identical chips to convey it wastes
+ * the row's whole width on agreement. One server behind, or one whose file no
+ * longer matches the record, is a different fact and gets named: the server,
+ * and what is wrong with it. The row is quiet exactly to the extent that
+ * nothing is wrong with it.
+ */
+function PluginRow({
+  row,
+  picked,
+  busy,
+  open,
+  onPick,
+  onOpen,
+  onOpenInstance,
+  onDownload,
+  onAlign,
+  onInstall,
+  onDrop,
+}: {
+  row: PluginOverviewRow
+  picked: boolean
+  busy: boolean
+  open: boolean
+  onPick: () => void
+  onOpen: () => void
+  onOpenInstance: (id: string) => void
+  onDownload: () => void
+  onAlign: () => void
+  onInstall: () => void
+  onDrop: () => void
+}) {
+  const bad = isReconStatus(row.status)
+
+  return (
+    <div
+      className={`ptable__row${bad ? ' ptable__row--bad' : ''}${picked ? ' ptable__row--picked' : ''}${
+        open ? ' ptable__row--open' : ''
+      }`}
+      role="row"
+    >
+      <label className="ptable__cell ptable__cell--pick">
+        <input type="checkbox" checked={picked} onChange={onPick} aria-label={`选择 ${row.name}`} />
+      </label>
+
+      <button className="ptable__cell ptable__name" onClick={onOpen} title={`打开「${row.name}」`}>
+        <PluginIcon className="ptable__icon" src={row.iconUrl} name={row.name} />
+        <span className="ptable__name-body">
+          <span className="ptable__name-line">
+            <strong>{row.name}</strong>
+            {row.pinned && (
+              <span className="badge badge--muted" title={`锁定在 ${row.pinned}，不跟上游走`}>
+                已锁定
+              </span>
+            )}
+            {row.selfUpdate && (
+              <span className="badge badge--muted" title="这个插件被允许自己改写 jar，哈希漂移只记录不告警">
+                允许自更新
+              </span>
+            )}
+          </span>
+          <span className="ptable__sub">
+            {sourceLabel(row.kind)} · {row.repo}
+          </span>
+        </span>
+      </button>
+
+      <span className="ptable__cell ptable__cell--ver" title={versionTitle(row)}>
+        <span className="ptable__num">{row.newest ?? '—'}</span>
+        {/* Same version, several jars. An explanation and never a warning:
+            one build per platform is what a correctly published release of a
+            cross-platform plugin looks like. */}
+        {row.variants && (
+          <small className="ptable__variants" title={`这个版本有 ${row.artifacts} 个 jar`}>
+            {row.variants.join(' / ')}
+          </small>
+        )}
+      </span>
+
+      <span className="ptable__cell ptable__cell--ver">
+        {row.upstream ? (
+          <span className={`ptable__num${row.status === 'update' ? ' ptable__num--ahead' : ''}`}>
+            {row.upstream}
+          </span>
+        ) : (
+          <span className="muted" title={row.kind === 'local' ? '手动导入的 jar 没有上游可查' : '还没检查过'}>
+            {row.kind === 'local' ? '无上游' : '未检查'}
+          </span>
+        )}
+      </span>
+
+      <span className="ptable__cell ptable__deploy">
+        <Deployment row={row} onOpenInstance={onOpenInstance} />
+      </span>
+
+      <span className="ptable__cell ptable__cell--status">
+        <span className={`pstate pstate--${row.status}`}>
+          <span className={`pdot pdot--${row.status}`} aria-hidden="true" />
+          {statusLabel(row.status)}
+        </span>
+      </span>
+
+      <span className="ptable__cell ptable__cell--act">
+        <PrimaryAction
+          row={row}
+          busy={busy}
+          onOpen={onOpen}
+          onDownload={onDownload}
+          onAlign={onAlign}
+          onInstall={onInstall}
+        />
+        <Menu
+          className="btn btn--icon"
+          title="更多操作"
+          ariaLabel={`${row.name} 的更多操作`}
+          items={[
+            { label: '详情与版本', onSelect: onOpen },
+            { label: '装到实例…', onSelect: onInstall, disabled: busy || row.versions === 0 },
+            { label: '从库中移除', onSelect: onDrop, danger: true, disabled: busy },
+          ]}
+        >
+          ⋯
+        </Menu>
+      </span>
+    </div>
+  )
+}
+
+function versionTitle(row: PluginOverviewRow): string {
+  const releases = `${row.versions} 个版本`
+  const jars = row.artifacts > row.versions ? ` · ${row.artifacts} 个 jar` : ''
+  return `${releases}${jars} · ${formatBytes(row.size)}`
+}
+
+/**
+ * The 部署 cell: which servers, and only what is off-nominal about them.
+ *
+ * Every copy that is on the library's newest version with a file that matches
+ * its record collapses into a count. What is left is named.
+ */
+function Deployment({
+  row,
+  onOpenInstance,
+}: {
+  row: PluginOverviewRow
+  onOpenInstance: (id: string) => void
+}) {
+  // Nothing to say. 未部署 is already the status word one column to the right,
+  // and repeating it here is how a cell ends up holding a state instead of the
+  // thing the column is for.
+  if (row.used.length === 0) {
+    return <span className="ptable__none">—</span>
+  }
+
+  const notable = row.used.filter((use) => use.outdated || (use.recon && use.recon !== 'ok'))
+  const quiet = row.used.length - notable.length
+
+  if (notable.length === 0) {
+    return (
+      <span className="ptable__agree">
+        {row.used.length} 台 · 都是 <span className="ptable__num">{row.newest}</span>
+      </span>
+    )
+  }
+
+  return (
+    <span className="ptable__uses">
+      {notable.map((use) => (
+        <UseChip key={use.instanceId} use={use} onOpen={() => onOpenInstance(use.instanceId)} />
+      ))}
+      {quiet > 0 && <span className="ptable__agree">+{quiet} 台一致</span>}
+    </span>
+  )
+}
+
+function UseChip({ use, onOpen }: { use: PluginUse; onOpen: () => void }) {
+  const trouble = use.recon && use.recon !== 'ok' ? (use.recon as PluginStatus) : null
+  return (
+    <button
+      className={`usechip${trouble ? ` usechip--${trouble}` : ' usechip--behind'}`}
+      onClick={onOpen}
+      title={
+        trouble
+          ? `${use.name}：${statusLabel(trouble)}（${use.fileName ?? ''}）`
+          : `${use.name} 上是 ${use.version}，比库里旧`
+      }
+    >
+      <span className={`status__dot status__dot--${use.state}`} />
+      {use.name}
+      <span className="usechip__what">{trouble ? statusLabel(trouble) : use.version}</span>
+    </button>
+  )
+}
+
+/**
+ * What the row's one button says.
+ *
+ * It follows the status rather than being 装到实例 everywhere, because
+ * 装到实例 is the right next step for exactly one of the seven states. On a
+ * row whose file does not match its record, offering to copy another file onto
+ * that server is the wrong offer at the wrong moment — the button there opens
+ * the drawer, where both digests and both plugin.yml versions are side by side
+ * and there is something to decide with.
+ */
+function PrimaryAction({
+  row,
+  busy,
+  onOpen,
+  onDownload,
+  onAlign,
+  onInstall,
+}: {
+  row: PluginOverviewRow
+  busy: boolean
+  onOpen: () => void
+  onDownload: () => void
+  onAlign: () => void
+  onInstall: () => void
+}) {
+  switch (row.status) {
+    case 'drift':
+    case 'missing':
+      return (
+        <button className="btn btn--primary btn--small" disabled={busy} onClick={onOpen}>
+          处理
+        </button>
+      )
+    case 'update':
+      return (
+        <button
+          className="btn btn--primary btn--small"
+          disabled={busy}
+          title={`把 ${row.upstream} 下载到库里。装到实例是下一步。`}
+          onClick={onDownload}
+        >
+          更新入库
+        </button>
+      )
+    case 'behind':
+      return (
+        <button
+          className="btn btn--primary btn--small"
+          disabled={busy}
+          title={`把落后的实例升到库内最新的 ${row.newest}`}
+          onClick={onAlign}
+        >
+          对齐
+        </button>
+      )
+    case 'unused':
+      return (
+        <button
+          className="btn btn--small"
+          disabled={busy || row.versions === 0}
+          onClick={onInstall}
+        >
+          装到实例…
+        </button>
+      )
+    default:
+      return null
+  }
+}
+
+// --------------------------------------------------------------- foreign
+
+/**
+ * Jars on servers that belong to nothing in the library.
+ *
+ * Below the table rather than in it, because they are not library rows: they
+ * have no source, no version history and no update path, and putting them in
+ * the table would be the panel claiming to know something about a file it has
+ * never seen. What it does know is what the jar declares itself to be, which
+ * is enough to decide between the two offers.
+ */
+function ForeignSection({
+  jars,
+  busy,
+  onAdopt,
+  onOpenInstance,
+}: {
+  jars: ForeignJar[]
+  busy: boolean
+  onAdopt: (jar: ForeignJar) => void
+  onOpenInstance: (id: string) => void
+}) {
+  return (
+    <section className="foreign">
+      <h2 className="foreign__title">
+        <span className="pdot pdot--foreign" aria-hidden="true" />
+        库外来源 · {jars.length} 个 jar
+      </h2>
+      <p className="foreign__lead">
+        这些文件在实例的插件目录里，但库里没有它们的记录 —— 手动传上去的，或者从备份还原来的。
+        面板读了它们的 plugin.yml 才知道是什么；收编进库之后就跟别的插件一样能查更新、能回滚。
+      </p>
+
+      <div className="foreign__rows">
+        {jars.map((jar) => (
+          <div className="foreign__row" key={`${jar.instanceId}:${jar.dir}/${jar.fileName}`}>
+            <span className="foreign__what">
+              <strong>{jar.name}</strong>
+              {jar.version && <span className="ptable__num">{jar.version}</span>}
+            </span>
+            <button className="link foreign__where" onClick={() => onOpenInstance(jar.instanceId)}>
+              {jar.instance}
+            </button>
+            <code className="foreign__file">
+              {jar.dir}/{jar.fileName}
+            </code>
+            {jar.adoptable ? (
+              <span className="badge badge--ok" title={`和库里的 ${jar.adoptable.name} ${jar.adoptable.version} 校验和一致`}>
+                是库里的 {jar.adoptable.version}
+              </span>
+            ) : (
+              <span className="badge badge--muted">不在库中</span>
+            )}
+            <button className="btn btn--small" disabled={busy} onClick={() => onAdopt(jar)}>
+              收编进库
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------- footer
+
+/**
+ * What the page is standing on, at the bottom where read-only facts belong.
+ *
+ * The storage root used to be up beside the title, where it was the fourth
+ * thing read on every visit and never once acted on. What does belong here is
+ * the last reconciliation: everything above is computed from the ledger, and
+ * how long ago anybody checked that the ledger is true is the footnote on all
+ * of it.
+ */
+function LibraryFooter({
+  overview,
+  instances,
+  busy,
+  onReconcile,
+  onClean,
+  onOpenSettings,
+}: {
+  overview: PluginOverview | null
+  instances: number
+  busy: boolean
+  onReconcile: () => void
+  onClean: () => void
+  onOpenSettings: () => void
+}) {
+  if (!overview) return null
+
+  return (
+    <footer className="libfoot">
+      <span className="libfoot__size">
+        共 {formatBytes(overview.totalSize)}
+        {overview.unusedSize > 0 && (
+          <>
+            {' · '}
+            <span className="libfoot__reclaim">可回收 {formatBytes(overview.unusedSize)}</span>
+          </>
+        )}
+      </span>
+
+      {overview.unused > 0 && (
+        <button className="link" disabled={busy} onClick={onClean}>
+          清理 {overview.unused} 个未引用的
+        </button>
+      )}
+
+      <span className="libfoot__spacer" />
+
+      <span className="libfoot__recon">
+        {overview.reconciledAt ? (
+          <>上次对账 {formatDate(overview.reconciledAt)}</>
+        ) : (
+          <>还没对过账</>
+        )}
+        {overview.unchecked > 0 && instances > 0 && (
+          <span className="libfoot__warn"> · {overview.unchecked} 台从没对过</span>
+        )}
+      </span>
+      <button
+        className="btn btn--small"
+        disabled={busy || instances === 0}
+        title="把每台实例的插件目录逐个文件算哈希，跟库里的账本比一遍"
+        onClick={onReconcile}
+      >
+        {busy ? '对账中…' : '对账'}
+      </button>
+      <button className="link" onClick={onOpenSettings}>
+        插件源与令牌
+      </button>
+    </footer>
+  )
+}
+
+function EmptyLibrary({
+  onBrowse,
+  onImport,
+  onAddSource,
+}: {
+  onBrowse: () => void
+  onImport: () => void
+  onAddSource: () => void
+}) {
+  return (
+    <div className="welcome__empty">
+      <p>插件库还是空的。</p>
+      <p className="muted">
+        这里是面板的公共缓存：一个 jar 下载一次，想装几台服就复制几份，
+        于是「同一个插件在五台服上」是一份文件一个校验和，而不是五份谁也认不出彼此的下载。
+      </p>
+      <p className="muted">
+        去
+        <button className="link" onClick={onBrowse}>
+          浏览市场
+        </button>
+        找一个，
+        <button className="link" onClick={onImport}>
+          导入一个本地 jar
+        </button>
+        ，或者
+        <button className="link" onClick={onAddSource}>
+          加个 GitHub 仓库
+        </button>
+        跟着它的 Release 走 —— 私有仓库也行。
+      </p>
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------- bulk
+
+function BulkBar({
+  picked,
+  bulkable,
+  busy,
+  onClear,
+  onUpgrade,
+  onInstall,
+  onCheck,
+  onClean,
+}: {
+  picked: string[]
+  bulkable: string[]
+  busy: boolean
+  onClear: () => void
+  onUpgrade: () => void
+  onInstall: () => void
+  onCheck: () => void
+  onClean: () => void
+}) {
+  return (
+    <div className="bulkbar">
+      <span>已选 {picked.length} 项</span>
+      <span className="device-row__spacer" />
+      <button
+        className="btn btn--primary"
+        disabled={busy || bulkable.length === 0}
+        title={bulkable.length === 0 ? '选中的插件没有落后于库的实例，没有要对齐的' : undefined}
+        onClick={onUpgrade}
+      >
+        批量对齐…
+      </button>
+      <button className="btn" disabled={busy} onClick={onInstall}>
+        批量装到实例…
+      </button>
+      <button className="btn" disabled={busy} onClick={onCheck}>
+        检查更新
+      </button>
+      <button className="btn" disabled={busy} onClick={onClean}>
+        清理缓存
+      </button>
+      <button className="link" onClick={onClear}>
+        取消选择
+      </button>
+    </div>
   )
 }
 
@@ -441,161 +1070,109 @@ async function cleanCache(
   }
 }
 
-/**
- * One plugin in the library, as a card that takes the whole row.
- *
- * It was a five-column table, and the columns were the problem. 使用中的实例
- * held three unrelated things at once — a status (未被使用), an action
- * (删除缓存) and a size (1.4 MB) — while the status also appeared one column to
- * the left, and 装到实例 was a text link sitting where a table puts its least
- * important cell. Nothing was wrong with any single cell; the grid was making
- * decisions about importance that it had no way to express.
- *
- * A card can. The identity is on the top line with its face beside it, the
- * facts about the download are one quiet line under it, the servers get a
- * block of their own with nothing else in it, and the two actions sit at the
- * end at the two weights they actually have: one button, and everything else
- * behind ⋯.
- *
- * Full width rather than a grid of tiles, for the reason the search results
- * are rows: what this page answers — which servers are on which version — is a
- * list per plugin, and a list does not fit in a tile.
- */
-function PluginCard({
-  row,
-  picked,
-  busy,
-  onPick,
-  onOpen,
-  onOpenInstance,
-  onCheck,
-  onInstall,
-  onDropCache,
-}: {
-  row: PluginOverviewRow
-  picked: boolean
-  busy: boolean
-  onPick: () => void
-  onOpen: () => void
-  onOpenInstance: (id: string) => void
-  onCheck: () => void
-  onInstall: () => void
-  onDropCache: () => void
-}) {
-  // Expanded when the versions disagree, folded when they do not. The default
-  // is the answer to "does this row need me", so the page can be scanned
-  // without opening anything.
-  const [open, setOpen] = useState(row.status === 'mixed')
-  const behind = row.upstream !== undefined && row.upstream !== row.newest
-
-  return (
-    <article
-      className={`plugin-card${row.status === 'mixed' ? ' plugin-card--mixed' : ''}${
-        picked ? ' plugin-card--picked' : ''
-      }`}
-    >
-      <label className="plugin-card__pick">
-        <input type="checkbox" checked={picked} onChange={onPick} aria-label={`选择 ${row.name}`} />
-      </label>
-
-      <PluginIcon className="plugin-card__icon" src={row.iconUrl} name={row.name} />
-
-      <div className="plugin-card__body">
-        <div className="plugin-card__head">
-          <button className="plugin-card__name" onClick={onOpen} title={`打开「${row.name}」`}>
-            {row.name}
-          </button>
-          <span className="badge">{sourceLabel(row.kind)}</span>
-          <StatusChip row={row} />
-          {behind && <span className="badge badge--update">上游 {row.upstream}</span>}
-        </div>
-
-        <p className="plugin-card__repo">
-          {row.repo}
-          {row.note && ` · ${row.note}`}
-        </p>
-
-        {/* The facts about the download itself. One line, quiet, and it is
-            where 体积 lives now — it is a property of the cache, not of the
-            servers, and it was being read as one because it shared a cell with
-            them. */}
-        <p className="plugin-card__facts">
-          <span>库里最新 {row.newest ?? '未下载'}</span>
-          <span>
-            {row.versions} 个版本 · {formatBytes(row.size)}
-          </span>
-          {behind && <span className="plugin-card__behind">上游已经到 {row.upstream}</span>}
-        </p>
-
-        {/* Servers, and nothing but servers — and nothing at all when there
-            are none, because 未被使用 is already on the line above and saying
-            it twice is how the old cell ended up holding three things. */}
-        {row.used.length > 0 && (
-        <div className="plugin-card__uses">
-          {open ? (
-            <ul className="plugin-card__list">
-              {row.used.map((use) => (
-                <UseLine
-                  key={use.instanceId}
-                  use={use}
-                  onOpen={() => onOpenInstance(use.instanceId)}
-                />
-              ))}
-              {row.status !== 'mixed' && (
-                <li>
-                  <button className="link" onClick={() => setOpen(false)}>
-                    收起
-                  </button>
-                </li>
-              )}
-            </ul>
-          ) : (
-            <button className="link plugin-card__fold" onClick={() => setOpen(true)}>
-              {row.used.length} 个实例 ▾
-            </button>
-          )}
-        </div>
-        )}
-      </div>
-
-      {/* One of the two places a jar leaves the library for a server. The
-          other is the server's own page; both open the same dialog, because
-          it is the same decision from two directions. */}
-      <div className="plugin-card__act">
-        <button
-          className="btn btn--primary"
-          disabled={row.versions === 0 || busy}
-          title={row.versions === 0 ? '还没下载过这个插件的任何版本' : undefined}
-          onClick={onInstall}
-        >
-          装到实例…
-        </button>
-        <Menu
-          className="btn btn--icon"
-          title="更多操作"
-          ariaLabel={`${row.name} 的更多操作`}
-          items={[
-            { label: '查看详情与版本', onSelect: onOpen },
-            { label: '检查更新', onSelect: onCheck, disabled: busy },
-            {
-              label: '从库中移除',
-              onSelect: onDropCache,
-              danger: true,
-              disabled: busy || row.versions === 0,
-            },
-          ]}
-        >
-          ⋯
-        </Menu>
-      </div>
-    </article>
-  )
+/** The footer's one-click version of the same thing, across every unused row. */
+async function cleanUnused(
+  rows: PluginOverviewRow[],
+  setBusy: (busy: boolean) => void,
+  setError: (error: string | null) => void,
+  setResult: (result: string | null) => void,
+  refresh: () => Promise<void>,
+  refreshLibrary: () => Promise<void>,
+) {
+  const unused = rows.filter((row) => row.status === 'unused')
+  const freed = unused.reduce((sum, row) => sum + row.size, 0)
+  if (
+    !window.confirm(
+      `删掉没有任何实例在用的 ${unused.length} 个插件的下载，释放 ${formatBytes(freed)}？\n\n` +
+        `${unused.map((row) => row.name).join('、')}\n\n` +
+        '实例目录里已经装好的副本不受影响 —— 那是各自目录里的另一份文件。',
+    )
+  ) {
+    return
+  }
+  setBusy(true)
+  setError(null)
+  try {
+    for (const row of unused) await api.deletePlugin(row.id)
+    setResult(`已清理 ${unused.length} 个插件，释放 ${formatBytes(freed)}`)
+    await refresh()
+    await refreshLibrary()
+  } catch (err) {
+    setError(err instanceof Error ? err.message : '清理失败')
+  } finally {
+    setBusy(false)
+  }
 }
 
-function StatusChip({ row }: { row: PluginOverviewRow }) {
-  if (row.status === 'unused') return <span className="badge badge--muted">未被使用</span>
-  if (row.status === 'mixed') return <span className="badge badge--warn">版本不一致</span>
-  return <span className="badge badge--ok">全部最新</span>
+async function dropPlugin(
+  row: PluginOverviewRow,
+  setBusy: (busy: boolean) => void,
+  setError: (error: string | null) => void,
+  setResult: (result: string | null) => void,
+  refresh: () => Promise<void>,
+  refreshLibrary: () => Promise<void>,
+) {
+  const kept =
+    row.used.length > 0
+      ? `\n\n${row.used.length} 台服上已经装好的副本不受影响 —— 那是各自目录里的另一份文件。`
+      : ''
+  if (
+    !window.confirm(
+      `从库里删掉「${row.name}」的 ${row.versions} 个版本，释放 ${formatBytes(row.size)}？${kept}`,
+    )
+  ) {
+    return
+  }
+  setBusy(true)
+  try {
+    await api.deletePlugin(row.id)
+    setResult(`已清理 ${row.name}，释放 ${formatBytes(row.size)}`)
+    await refresh()
+    await refreshLibrary()
+  } catch (err) {
+    setError(err instanceof Error ? err.message : '清理失败')
+  } finally {
+    setBusy(false)
+  }
+}
+
+/**
+ * Taking a foreign jar into the library.
+ *
+ * Two different acts wearing one button, and which one it is depends on what
+ * the reconciliation found. A jar that matched a library download by checksum
+ * only needs the record written — the file is already right and already
+ * loading. A jar the library has never seen has to be read out of the server
+ * and imported as a version of its own, which is what makes it updatable
+ * afterwards. The operator asked for the same thing either way.
+ */
+async function adoptForeign(
+  jar: ForeignJar,
+  setBusy: (busy: boolean) => void,
+  setError: (error: string | null) => void,
+  setResult: (result: string | null) => void,
+  refresh: () => Promise<void>,
+  refreshLibrary: () => Promise<void>,
+) {
+  if (!jar.adoptable) {
+    setError(
+      `${jar.name} 不是库里任何一个版本 —— 先在 ${jar.instance} 的插件页上把它导入插件库，` +
+        '那里能把文件读出来算校验和。',
+    )
+    return
+  }
+  setBusy(true)
+  setError(null)
+  try {
+    await api.adoptInstancePlugin(jar.instanceId, `file:${jar.dir}/${jar.fileName}`)
+    setResult(`已把 ${jar.instance} 上的 ${jar.name} 记到 ${jar.adoptable.name} ${jar.adoptable.version} 名下`)
+    await refresh()
+    await refreshLibrary()
+  } catch (err) {
+    setError(err instanceof Error ? err.message : '收编失败')
+  } finally {
+    setBusy(false)
+  }
 }
 
 /**
@@ -604,9 +1181,7 @@ function StatusChip({ row }: { row: PluginOverviewRow }) {
  * The single-plugin dialog says which servers are live and will need
  * restarting, and that warning matters more here, not less: this is the same
  * decision multiplied, and the number of servers it takes down is the number
- * the operator has to plan a window around. Each plugin goes at the newest
- * version the library holds — a bulk action is not the place to pin versions
- * one at a time, and the per-plugin dialog is one click away for that.
+ * the operator has to plan a window around.
  */
 function BulkInstallDialog({
   items,
@@ -631,7 +1206,8 @@ function BulkInstallDialog({
     setError(null)
 
     // Carries on past a failure, like every other fan-out here: the servers it
-    // already reached have the new jars either way.
+    // already reached have the new jars either way. Serial by instance, so two
+    // upgrade transactions never work on one plugins/ directory at once.
     const failures: string[] = []
     let applied = 0
     for (const instance of targets) {
@@ -640,7 +1216,9 @@ function BulkInstallDialog({
           await api.installInstancePlugin(instance.id, item.id, item.versions[0].tag)
           applied++
         } catch (err) {
-          failures.push(`${instance.name} / ${item.name}：${err instanceof Error ? err.message : '安装失败'}`)
+          failures.push(
+            `${instance.name} / ${item.name}：${err instanceof Error ? err.message : '安装失败'}`,
+          )
         }
       }
     }
@@ -721,22 +1299,6 @@ function BulkInstallDialog({
   )
 }
 
-function UseLine({ use, onOpen }: { use: PluginUse; onOpen: () => void }) {
-  return (
-    <li>
-      <button className="link plugin-card__instance" onClick={onOpen}>
-        <span className={`status__dot status__dot--${use.state}`} />
-        {use.name}
-      </button>
-      {use.outdated ? (
-        <span className="badge badge--update">{use.version} →</span>
-      ) : (
-        <span className="plugin-card__ver">{use.version}</span>
-      )}
-    </li>
-  )
-}
-
 /**
  * Confirming a bulk upgrade.
  *
@@ -744,8 +1306,7 @@ function UseLine({ use, onOpen }: { use: PluginUse; onOpen: () => void }) {
  * server, so the confirmation has to be correspondingly heavier: which servers,
  * which plugins, and — the part that actually costs something — how many of
  * those servers are live and will have to be restarted before any of it takes
- * effect. "确定要升级吗" over the top of five running servers is not a
- * confirmation, it is a formality.
+ * effect.
  */
 function BulkConfirm({
   impact,
@@ -761,7 +1322,7 @@ function BulkConfirm({
   return (
     <Modal onClose={onCancel} busy={busy} label="批量升级">
       <div className="modal__card">
-        <h2>批量升级</h2>
+        <h2>把实例对齐到库内版本</h2>
 
         <ul className="bulk-confirm__plugins">
           {impact.plugins.map((entry) => (
@@ -775,6 +1336,15 @@ function BulkConfirm({
         <p className="bulk-confirm__scope">
           影响 {impact.instances.length} 台实例：
           {impact.instances.map((entry) => entry.name).join('、')}
+        </p>
+
+        {/* What the transaction will do, said before it does it. The sweep is
+            the part nobody expects and the part that makes the upgrade safe:
+            every jar declaring this plugin's name goes, not just the one the
+            panel put there. */}
+        <p className="muted">
+          每一台都是一次事务：先备份旧 jar 和插件的配置目录，删掉目录里所有声明同一个插件名的 jar，
+          再放新的进去。任一步失败就还原，服务器停在升级前的样子。旧版本留在快照里，随时能回滚。
         </p>
 
         {impact.restarts > 0 ? (
@@ -852,10 +1422,6 @@ function JobStatus({
 /**
  * Names a mirror id for the job line. Unknown ids are custom prefixes, which
  * are already their own name.
- *
- * "源站直连" rather than "GitHub 直连": the mirrors are GitHub proxies, but a
- * download from Modrinth or Hangar is direct by construction — it never sees a
- * proxy — and reporting it as coming from GitHub would name the wrong host.
  */
 function mirrorLabel(id: string): string {
   return id === 'direct' ? '源站直连' : id
