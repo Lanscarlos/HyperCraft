@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -52,6 +53,20 @@ type Installed struct {
 	FileName    string    `json:"fileName"`
 	Dir         string    `json:"dir"`
 	InstalledAt time.Time `json:"installedAt"`
+
+	// SHA256 is the digest of the jar the panel put here, and PluginName is
+	// what that jar declares itself as. Together they are the ledger entry the
+	// reconciliation checks the directory against — the file name is not, and
+	// cannot be, because operators rename jars and plugins self-update.
+	SHA256     string `json:"sha256,omitempty"`
+	PluginName string `json:"pluginName,omitempty"`
+
+	// ObservedSHA and Recon are what the last reconciliation actually found.
+	// Empty Recon means this record has never been checked, which is a
+	// different statement from "checked and fine" and is shown as one.
+	ObservedSHA string    `json:"observedSha,omitempty"`
+	Recon       string    `json:"recon,omitempty"`
+	CheckedAt   time.Time `json:"checkedAt,omitempty"`
 	// GameVersions and Loaders are what the source said this exact jar
 	// supports, copied out of the library version at install time.
 	//
@@ -96,6 +111,25 @@ type Entry struct {
 	// byte-for-byte one of the library's downloads.
 	Adoptable *Adoptable `json:"adoptable,omitempty"`
 
+	// Recon is how this row's file compares with the ledger: ReconForeign for
+	// a jar nobody recorded, ReconDrift for one whose bytes have changed under
+	// the record, ReconMissing for a record whose file is gone. Empty means
+	// the two agree, or — for a managed row — that nothing has checked yet.
+	//
+	// This outranks every version badge on the row. "有更新" computed from a
+	// ledger that does not match the disk is a sentence about a file that is
+	// not there.
+	Recon string `json:"recon,omitempty"`
+	// SHA256 is what is on disk right now, RecordSHA what the ledger expected.
+	// Both are shown for a drift, because the useful question is which of the
+	// two the operator recognises.
+	SHA256    string    `json:"sha256,omitempty"`
+	RecordSHA string    `json:"recordSha,omitempty"`
+	CheckedAt time.Time `json:"checkedAt,omitempty"`
+	// SelfUpdate is this plugin's 允许自更新 setting, so the row can explain
+	// why a drift is being reported quietly rather than as a problem.
+	SelfUpdate bool `json:"selfUpdate,omitempty"`
+
 	// The three fields below are filled in by the API layer, which is the only
 	// place that knows what the server is running and what it printed while
 	// starting. They are on Entry rather than in a parallel list because every
@@ -133,6 +167,10 @@ type Adoptable struct {
 	Name     string `json:"name"`
 	Tag      string `json:"tag"`
 	Version  string `json:"version"`
+	// FileName is what the library calls this jar, which is often not what the
+	// file on the server is called — that mismatch is exactly what a rename
+	// looks like, and saying both names is how the operator recognises it.
+	FileName string `json:"fileName,omitempty"`
 }
 
 // Instances tracks which library plugins each server has, and applies changes
@@ -144,14 +182,60 @@ type Adoptable struct {
 type Instances struct {
 	library *Library
 	path    string
+	// backups is where an upgrade puts the jar and config it is about to
+	// replace. Outside every instance directory, because a backup kept inside
+	// the thing being changed is not a backup.
+	backups string
 
 	mu      sync.Mutex
-	records map[string][]Installed
+	records map[string]*ledger
 	loaded  bool
 }
 
 func NewInstances(library *Library, path string) *Instances {
-	return &Instances{library: library, path: path}
+	return &Instances{
+		library: library,
+		path:    path,
+		backups: filepath.Join(filepath.Dir(path), "plugin-backups"),
+	}
+}
+
+// ledger is everything the panel knows about one instance's plugin directory:
+// what it put there, when it last checked, and what it would need to undo the
+// last upgrade.
+type ledger struct {
+	Plugins      []Installed `json:"plugins"`
+	ReconciledAt time.Time   `json:"reconciledAt,omitempty"`
+	// Snapshots are the undo history, newest last. Bounded — see keepSnapshots
+	// — because this is a rollback path, not an archive.
+	Snapshots []Snapshot `json:"snapshots,omitempty"`
+}
+
+// UnmarshalJSON reads both shapes of the record file. Before the ledger it was
+// a bare array of installs per instance, and an operator upgrading the panel
+// should not have to re-record what every server has.
+func (l *ledger) UnmarshalJSON(data []byte) error {
+	var legacy []Installed
+	if err := json.Unmarshal(data, &legacy); err == nil {
+		l.Plugins = legacy
+		return nil
+	}
+	type plain ledger
+	var next plain
+	if err := json.Unmarshal(data, &next); err != nil {
+		return err
+	}
+	*l = ledger(next)
+	return nil
+}
+
+func (l *ledger) find(pluginID string) *Installed {
+	for i := range l.Plugins {
+		if l.Plugins[i].PluginID == pluginID {
+			return &l.Plugins[i]
+		}
+	}
+	return nil
 }
 
 // List returns everything in an instance's plugin directories: what the panel
@@ -225,11 +309,16 @@ func (m *Instances) List(instanceID, directory string) ([]Entry, error) {
 			Tag:          record.Tag,
 			Version:      record.Version,
 			InstalledAt:  record.InstalledAt,
+			RecordSHA:    record.SHA256,
+			SHA256:       record.ObservedSHA,
+			Recon:        record.Recon,
+			CheckedAt:    record.CheckedAt,
 			GameVersions: record.GameVersions,
 			Loaders:      record.Loaders,
 		}
 		if item, err := m.library.Get(record.PluginID); err == nil {
 			entry.Name = item.Name
+			entry.SelfUpdate = item.Policy.AllowSelfUpdate
 			// A record written before the panel started copying compatibility
 			// metadata has none. The library may still hold the version it was
 			// installed from, and reading it back is what stops every plugin
@@ -241,13 +330,22 @@ func (m *Instances) List(instanceID, directory string) ([]Entry, error) {
 				}
 			}
 		}
+		// Whether the file is there is cheap and is answered from this listing;
+		// whether it is still the same file is not, and is answered from the
+		// last reconciliation. The two are kept apart on purpose: a deletion
+		// is visible immediately, drift is only as fresh as the last check,
+		// and the page says which of those it is looking at.
 		if disk, ok := found[key]; ok {
 			claimed[key] = true
 			entry.Enabled = disk.Enabled
 			entry.Size = disk.Size
 			entry.Modified = disk.Modified
+			if entry.Recon == ReconMissing {
+				entry.Recon = "" // the file came back since the last pass
+			}
 		} else {
 			entry.Missing = true
+			entry.Recon = ReconMissing
 		}
 		out = append(out, entry)
 	}
@@ -256,6 +354,11 @@ func (m *Instances) List(instanceID, directory string) ([]Entry, error) {
 			continue
 		}
 		entry := *found[key]
+		// A jar no record claims. That is the reconciliation's 库外来源 and it
+		// is stated here rather than waiting for a scan, because unlike drift
+		// it costs nothing to see: the file is either in the ledger or it is
+		// not, and this listing has already read both sides.
+		entry.Recon = ReconForeign
 		m.identify(browser, &entry)
 		out = append(out, entry)
 	}
@@ -324,7 +427,7 @@ func (m *Instances) identify(browser *serverfiles.Browser, entry *Entry) {
 			entry.Version = jar.Version
 		}
 	}
-	entry.Adoptable = m.recognise(file, info.Size())
+	entry.Adoptable, entry.SHA256 = m.recognise(file, info.Size())
 }
 
 // recognise matches a file against the library's downloads by content.
@@ -332,38 +435,29 @@ func (m *Instances) identify(browser *serverfiles.Browser, entry *Entry) {
 // Size first, digest second: the size is already known for every version, and
 // hashing a few megabytes per jar on every page load to answer "no" for all of
 // them would be a page that gets slower with every plugin the operator keeps.
-func (m *Instances) recognise(file io.ReadSeeker, size int64) *Adoptable {
-	var candidates []Adoptable
+// The digest is returned whether or not it matched anything: a foreign jar's
+// checksum is the one thing that makes it identifiable at all, and the row
+// shows it so an operator can compare it against whatever they downloaded.
+func (m *Instances) recognise(file io.ReadSeeker, size int64) (*Adoptable, string) {
+	sized := false
 	for _, item := range m.library.List() {
 		for _, version := range item.Versions {
-			if version.Size == size && version.SHA256 != "" {
-				candidates = append(candidates, Adoptable{
-					PluginID: item.ID,
-					Name:     item.Name,
-					Tag:      version.Tag,
-					Version:  version.Version,
-				})
+			for _, artifact := range version.Artifacts {
+				if artifact.Size == size && artifact.SHA256 != "" {
+					sized = true
+				}
 			}
 		}
 	}
-	if len(candidates) == 0 {
-		return nil
+	if !sized {
+		return nil, ""
 	}
 
 	digest, err := fileDigest(file)
 	if err != nil {
-		return nil
+		return nil, ""
 	}
-	for _, candidate := range candidates {
-		item, err := m.library.Get(candidate.PluginID)
-		if err != nil {
-			continue
-		}
-		if version := item.Version(candidate.Tag); version != nil && version.SHA256 == digest {
-			return &candidate
-		}
-	}
-	return nil
+	return m.matchDigest(digest), digest
 }
 
 func fileDigest(file io.ReadSeeker) (string, error) {
@@ -401,9 +495,13 @@ func (m *Instances) Adopt(instanceID, directory, key string) (Entry, error) {
 	}
 	defer closer()
 
-	match := m.recognise(file, info.Size())
+	match, digest := m.recognise(file, info.Size())
 	if match == nil {
 		return Entry{}, fmt.Errorf("%w: %s does not match any version in the plugin library", ErrNotFound, name)
+	}
+	declared := ""
+	if jar, ok := ReadJarInfo(file, info.Size()); ok {
+		declared = jar.Name
 	}
 	// One record per plugin per instance, so adopting a second copy of a plugin
 	// the instance already tracks would silently drop the first.
@@ -413,13 +511,23 @@ func (m *Instances) Adopt(instanceID, directory, key string) (Entry, error) {
 			ErrExists, match.Name, existing.Dir, existing.FileName)
 	}
 
+	// Adopting is where a foreign jar becomes a ledger entry, so it is where
+	// the ledger's two keys get written: the digest that just matched, and the
+	// name the jar declares — which the upgrade sweep will need long before
+	// anybody thinks to run a reconciliation here.
+	now := time.Now()
 	if err := m.put(instanceID, Installed{
 		PluginID:    match.PluginID,
 		Tag:         match.Tag,
 		Version:     match.Version,
 		FileName:    name,
 		Dir:         dir,
-		InstalledAt: time.Now(),
+		InstalledAt: now,
+		SHA256:      digest,
+		PluginName:  declared,
+		ObservedSHA: digest,
+		Recon:       ReconOK,
+		CheckedAt:   now,
 	}); err != nil {
 		return Entry{}, err
 	}
@@ -436,97 +544,6 @@ func (m *Instances) Adopt(instanceID, directory, key string) (Entry, error) {
 		Tag:         match.Tag,
 		Version:     match.Version,
 		InstalledAt: time.Now(),
-	}, nil
-}
-
-// Install copies a library version into an instance, replacing whatever that
-// plugin was on before.
-//
-// This is both "add" and "switch version": a plugin the instance already has
-// is upgraded or rolled back in place, keeping whether it was switched off, so
-// changing the version of a disabled plugin does not quietly turn it back on.
-func (m *Instances) Install(instanceID, directory, pluginID, tag string) (Entry, error) {
-	source, item, version, err := m.library.Open(pluginID, tag)
-	if err != nil {
-		return Entry{}, err
-	}
-	defer source.Close()
-
-	// The instance directory may have been removed since the instance was
-	// made, and os.OpenRoot needs it to exist before anything below it does.
-	if err := os.MkdirAll(directory, 0o755); err != nil {
-		return Entry{}, err
-	}
-	browser := serverfiles.New(directory)
-	if err := browser.Mkdir(item.TargetDir); err != nil {
-		return Entry{}, err
-	}
-
-	previous := m.record(instanceID, pluginID)
-	enabled := true
-	if previous != nil {
-		// Whether the old file was enabled is on disk, not in the record: the
-		// operator may have renamed it by hand.
-		if _, on, ok := m.locate(browser, previous.Dir, previous.FileName); ok {
-			enabled = on
-		}
-	}
-
-	name := item.TargetDir + "/" + version.FileName
-	if !enabled {
-		name += disabledSuffix
-	}
-	if err := copyInto(browser, source, name); err != nil {
-		return Entry{}, err
-	}
-
-	// The old jar goes only after the new one is safely in place, and only if
-	// it is a different file — a plugin that publishes the same name every
-	// release has already been overwritten above.
-	if previous != nil {
-		old := previous.Dir + "/" + previous.FileName
-		if old != item.TargetDir+"/"+version.FileName {
-			_ = browser.Remove(old)
-			_ = browser.Remove(old + disabledSuffix)
-		}
-	}
-
-	if err := m.put(instanceID, Installed{
-		PluginID:     pluginID,
-		Tag:          version.Tag,
-		Version:      version.Version,
-		FileName:     version.FileName,
-		Dir:          item.TargetDir,
-		InstalledAt:  time.Now(),
-		GameVersions: version.GameVersions,
-		Loaders:      version.Loaders,
-	}); err != nil {
-		return Entry{}, err
-	}
-
-	// Whether this is an arrival or a version swap decides what the pending
-	// banner calls it, and the caller is the only one holding both the old
-	// state and the instance's process clock.
-	action := ActionInstall
-	if previous != nil {
-		action = ActionUpgrade
-	}
-	return Entry{
-		Key:           keyPluginPrefix + pluginID,
-		PluginID:      pluginID,
-		Name:          item.Name,
-		FileName:      version.FileName,
-		Dir:           item.TargetDir,
-		Enabled:       enabled,
-		Managed:       true,
-		Size:          version.Size,
-		Tag:           version.Tag,
-		Version:       version.Version,
-		InstalledAt:   time.Now(),
-		GameVersions:  version.GameVersions,
-		Loaders:       version.Loaders,
-		PendingAction: action,
-		ConfigDir:     item.TargetDir + "/" + item.Name,
 	}, nil
 }
 
@@ -606,8 +623,8 @@ func (m *Instances) UsedBy() map[string][]string {
 	defer m.mu.Unlock()
 
 	out := map[string][]string{}
-	for instanceID, records := range m.load() {
-		for _, record := range records {
+	for instanceID, book := range m.load() {
+		for _, record := range book.Plugins {
 			out[record.PluginID] = append(out[record.PluginID], instanceID)
 		}
 	}
@@ -674,7 +691,33 @@ func (m *Instances) record(instanceID, pluginID string) *Installed {
 func (m *Instances) recordsFor(instanceID string) []Installed {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return append([]Installed(nil), m.load()[instanceID]...)
+	book := m.load()[instanceID]
+	if book == nil {
+		return nil
+	}
+	return append([]Installed(nil), book.Plugins...)
+}
+
+// ReconciledAt is when this instance's directory was last compared with the
+// ledger. The zero time means never, which the page says out loud rather than
+// leaving a blank where a date goes.
+func (m *Instances) ReconciledAt(instanceID string) time.Time {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if book := m.load()[instanceID]; book != nil {
+		return book.ReconciledAt
+	}
+	return time.Time{}
+}
+
+// ledgerFor returns an instance's book, creating it on first write.
+func (m *Instances) ledgerFor(records map[string]*ledger, instanceID string) *ledger {
+	book := records[instanceID]
+	if book == nil {
+		book = &ledger{}
+		records[instanceID] = book
+	}
+	return book
 }
 
 func (m *Instances) put(instanceID string, record Installed) error {
@@ -682,15 +725,14 @@ func (m *Instances) put(instanceID string, record Installed) error {
 	defer m.mu.Unlock()
 
 	records := m.load()
-	list := records[instanceID]
-	for i := range list {
-		if list[i].PluginID == record.PluginID {
-			list[i] = record
-			records[instanceID] = list
+	book := m.ledgerFor(records, instanceID)
+	for i := range book.Plugins {
+		if book.Plugins[i].PluginID == record.PluginID {
+			book.Plugins[i] = record
 			return m.save(records)
 		}
 	}
-	records[instanceID] = append(list, record)
+	book.Plugins = append(book.Plugins, record)
 	return m.save(records)
 }
 
@@ -699,45 +741,51 @@ func (m *Instances) forgetPlugin(instanceID, pluginID string) error {
 	defer m.mu.Unlock()
 
 	records := m.load()
-	list := records[instanceID]
-	kept := make([]Installed, 0, len(list))
-	for _, record := range list {
+	book := records[instanceID]
+	if book == nil {
+		return nil
+	}
+	kept := make([]Installed, 0, len(book.Plugins))
+	for _, record := range book.Plugins {
 		if record.PluginID == pluginID {
 			continue
 		}
 		kept = append(kept, record)
 	}
-	if len(kept) == len(list) {
+	if len(kept) == len(book.Plugins) {
 		return nil
 	}
-	if len(kept) == 0 {
+	book.Plugins = kept
+	if len(kept) == 0 && len(book.Snapshots) == 0 {
 		delete(records, instanceID)
-	} else {
-		records[instanceID] = kept
 	}
 	return m.save(records)
 }
 
-func (m *Instances) load() map[string][]Installed {
+func (m *Instances) load() map[string]*ledger {
 	if m.loaded {
 		return m.records
 	}
 	m.loaded = true
-	m.records = map[string][]Installed{}
+	m.records = map[string]*ledger{}
 
 	data, err := os.ReadFile(m.path)
 	if err != nil {
 		return m.records
 	}
-	var stored map[string][]Installed
+	var stored map[string]*ledger
 	if err := json.Unmarshal(data, &stored); err != nil || stored == nil {
 		return m.records
 	}
-	m.records = stored
+	for id, book := range stored {
+		if book != nil {
+			m.records[id] = book
+		}
+	}
 	return m.records
 }
 
-func (m *Instances) save(records map[string][]Installed) error {
+func (m *Instances) save(records map[string]*ledger) error {
 	m.records = records
 	if err := os.MkdirAll(path.Dir(m.path), 0o755); err != nil {
 		return err

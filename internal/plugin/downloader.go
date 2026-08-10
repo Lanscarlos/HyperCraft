@@ -305,12 +305,34 @@ func (d *Downloader) run(ctx context.Context, job *Job, item Plugin, release Rel
 		err = os.Rename(temp, final)
 	}
 	if err == nil {
+		// The jar is asked what it is, now that it is whole and on disk. This
+		// is the identity everything downstream depends on: the upgrade sweep
+		// deletes by declared plugin name, and it cannot do that for a jar the
+		// panel never opened. A descriptor that will not parse is not an error
+		// — the file is still a perfectly good download — it just leaves those
+		// fields empty and the panel says so rather than guessing.
+		artifact := Artifact{
+			SHA256:       digest,
+			FileName:     release.Asset.Name,
+			Size:         release.Asset.Size,
+			GameVersions: release.GameVersions,
+			Loaders:      release.Loaders,
+			AddedAt:      time.Now(),
+		}
+		if info, size, readErr := readJar(final); readErr == nil {
+			artifact.Size = size
+			artifact.PluginName = info.Name
+			artifact.PluginVer = info.Version
+			artifact.Platform = info.Platform
+			artifact.APIVersion = info.APIVersion
+			artifact.Depend = info.Depend
+			artifact.SoftDepend = info.SoftDepend
+		}
+
 		err = d.library.record(item.ID, Version{
 			Tag:          release.Tag,
 			Version:      release.Version,
-			FileName:     release.Asset.Name,
-			Size:         release.Asset.Size,
-			SHA256:       digest,
+			Artifacts:    []Artifact{artifact},
 			Prerelease:   release.Prerelease,
 			Notes:        release.Notes,
 			PublishedAt:  release.PublishedAt,

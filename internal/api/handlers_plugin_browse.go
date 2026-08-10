@@ -461,7 +461,32 @@ type overviewUse struct {
 	// Outdated marks a copy behind the newest version the library holds. This
 	// is the field the whole page exists for.
 	Outdated bool `json:"outdated"`
+	// Recon is what the last reconciliation said about this copy: drift when
+	// the bytes have changed under the record, missing when the file is gone,
+	// empty when the two agree or nothing has looked yet. It outranks Outdated
+	// on the row — see the status ladder in overviewStatus.
+	Recon string `json:"recon,omitempty"`
+	// FileName is what the jar is called on this server, which is not always
+	// what the library calls it and is the first thing to look at when the
+	// digests disagree.
+	FileName string `json:"fileName,omitempty"`
+	// CheckedAt is when this copy was last compared against the ledger. Zero
+	// means never, and the page says so rather than implying a clean check.
+	CheckedAt *time.Time `json:"checkedAt,omitempty"`
 }
+
+// The row states, in the order the ladder resolves them. Six of the seven the
+// list page filters by; the seventh, 库外来源, belongs to no library row at all
+// and is carried separately — see overviewResponse.Foreign.
+const (
+	rowSynced   = "ok"      // every copy on the newest held version
+	rowUpdate   = "update"  // upstream has published past the library
+	rowBehind   = "behind"  // an instance is behind what the library holds
+	rowUnused   = "unused"  // held, and nobody has installed it
+	rowDrift    = "drift"   // a copy's bytes no longer match the record
+	rowMissing  = "missing" // a record whose file is gone
+	rowConflict = "foreign" // a jar on a server that no record claims
+)
 
 // overviewRow aggregates one plugin across every instance.
 type overviewRow struct {
@@ -477,16 +502,51 @@ type overviewRow struct {
 	Used    []overviewUse `json:"used"`
 	// Newest is the newest version the library holds, and Upstream is what the
 	// last update check found. They differ when there is something to download.
-	Newest   string `json:"newest,omitempty"`
-	Upstream string `json:"upstream,omitempty"`
-	// Status is what the second line of the 最新版本 column reads: "all",
-	// "mixed" or "unused". Computed here because the rule — every instance on
-	// the newest held version — needs the whole row.
+	Newest    string `json:"newest,omitempty"`
+	NewestTag string `json:"newestTag,omitempty"`
+	Upstream  string `json:"upstream,omitempty"`
+	// Status is the one word the 状态 column reads, from the ladder above.
 	Status string `json:"status"`
-	// Size is what this plugin's downloaded versions occupy, which is what
-	// makes an unused entry worth cleaning up.
-	Size     int64 `json:"size"`
-	Versions int   `json:"versions"`
+	// Size is what this plugin's downloaded jars occupy, which is what makes
+	// an unused entry worth cleaning up.
+	Size int64 `json:"size"`
+	// Versions counts releases and Artifacts counts jars. They differ for a
+	// plugin that ships one build per platform, and the difference is exactly
+	// the thing the old page reported as "2 versions, inconsistent" about a
+	// plugin that had published one.
+	Versions  int `json:"versions"`
+	Artifacts int `json:"artifacts"`
+	// Variants names the platforms the newest release ships builds for, when
+	// it ships more than one. Shown as an explanation, never as a warning:
+	// same version, different jars is what correct looks like here.
+	Variants []string `json:"variants,omitempty"`
+	// Pinned and SelfUpdate are the two policy settings that change how the
+	// row should be read — one suppresses the update badge, the other
+	// suppresses the drift alarm — so the row carries them rather than making
+	// the page fetch each plugin to find out why a badge is missing.
+	Pinned     string `json:"pinned,omitempty"`
+	SelfUpdate bool   `json:"selfUpdate,omitempty"`
+}
+
+// overviewForeign is a jar sitting on a server that no record claims.
+//
+// Not a library row: it has no source, no version history and no update path,
+// and folding it into the table as if it had would be the panel claiming to
+// know something about a file it has never seen before. It gets its own section
+// with one offer — 收编进库 — which is the act that would make it a row.
+type overviewForeign struct {
+	// Name is what the jar declares itself as, falling back to the file name
+	// for a descriptor the panel cannot read.
+	Name       string `json:"name"`
+	Version    string `json:"version,omitempty"`
+	InstanceID string `json:"instanceId"`
+	Instance   string `json:"instance"`
+	Dir        string `json:"dir"`
+	FileName   string `json:"fileName"`
+	// Adoptable is set when the jar turns out to be one of the library's own
+	// downloads that simply was not installed through the panel. Only filled
+	// in after a reconciliation, since matching it means hashing the file.
+	Adoptable *plugin.Adoptable `json:"adoptable,omitempty"`
 }
 
 // rowIcon is the artwork for a library row.
@@ -509,14 +569,6 @@ func rowIcon(item plugin.Plugin) string {
 	return "https://github.com/" + url.PathEscape(owner) + ".png?size=64"
 }
 
-// Aggregate statuses. The page is scanned down this column, so there are three
-// and no more.
-const (
-	overviewAllCurrent = "all"
-	overviewMixed      = "mixed"
-	overviewUnused     = "unused"
-)
-
 type overviewResponse struct {
 	Rows []overviewRow `json:"rows"`
 	Root string        `json:"root"`
@@ -524,6 +576,18 @@ type overviewResponse struct {
 	// references, which nothing else in the panel would ever show.
 	Unused     int   `json:"unused"`
 	UnusedSize int64 `json:"unusedSize"`
+	// TotalSize is the whole library on disk, for the footer line that reads
+	// "共 386 MB · 可回收 124 MB".
+	TotalSize int64 `json:"totalSize"`
+	// Foreign are the jars found on servers that belong to no library row.
+	Foreign []overviewForeign `json:"foreign"`
+	// ReconciledAt is the oldest reconciliation across the instances that have
+	// had one, which is the honest answer to "when was this last checked" for
+	// a fleet: the fleet is as stale as its stalest server. Nil when nothing
+	// has ever been reconciled.
+	ReconciledAt *time.Time `json:"reconciledAt,omitempty"`
+	// Unchecked counts instances that have never been reconciled at all.
+	Unchecked int `json:"unchecked"`
 }
 
 // handlePluginOverview answers the cross-instance question: are my servers
@@ -544,6 +608,7 @@ func (s *Server) handlePluginOverview(w http.ResponseWriter, r *http.Request) {
 	type held struct {
 		id    string
 		name  string
+		dir   string
 		state instance.State
 		byID  map[string]plugin.Installed
 	}
@@ -554,72 +619,123 @@ func (s *Server) handlePluginOverview(w http.ResponseWriter, r *http.Request) {
 		for _, record := range s.instancePlugins.Records(cfg.ID) {
 			byID[record.PluginID] = record
 		}
-		instances = append(instances, held{id: cfg.ID, name: cfg.Name, state: inst.State(), byID: byID})
+		instances = append(instances, held{
+			id: cfg.ID, name: cfg.Name, dir: cfg.Directory, state: inst.State(), byID: byID,
+		})
 	}
 	sort.Slice(instances, func(a, b int) bool { return instances[a].name < instances[b].name })
 
 	items := s.plugins.Library().List()
-	resp := overviewResponse{Rows: make([]overviewRow, 0, len(items)), Root: s.plugins.Library().Root()}
+	resp := overviewResponse{
+		Rows:    make([]overviewRow, 0, len(items)),
+		Root:    s.plugins.Library().Root(),
+		Foreign: []overviewForeign{},
+	}
 
 	for _, item := range items {
 		row := overviewRow{
-			ID:       item.ID,
-			Name:     item.Name,
-			Note:     item.Note,
-			Kind:     item.Source.Kind,
-			Repo:     item.Source.Repo,
-			IconURL:  rowIcon(item),
-			Used:     []overviewUse{},
-			Versions: len(item.Versions),
+			ID:         item.ID,
+			Name:       item.Name,
+			Note:       item.Note,
+			Kind:       item.Source.Kind,
+			Repo:       item.Source.Repo,
+			IconURL:    rowIcon(item),
+			Used:       []overviewUse{},
+			Versions:   len(item.Versions),
+			Pinned:     item.Policy.Pin,
+			SelfUpdate: item.Policy.AllowSelfUpdate,
 		}
 		for _, version := range item.Versions {
-			row.Size += version.Size
+			row.Size += version.TotalSize()
+			row.Artifacts += len(version.Artifacts)
 		}
 		if len(item.Versions) > 0 {
-			row.Newest = item.Versions[0].Version
+			newest := item.Versions[0]
+			row.Newest, row.NewestTag = newest.Version, newest.Tag
+			row.Variants = variantsOf(newest)
 		}
 		if item.Latest != nil {
 			row.Upstream = item.Latest.Version
 		}
 
-		newestTag := ""
-		if len(item.Versions) > 0 {
-			newestTag = item.Versions[0].Tag
-		}
 		for _, inst := range instances {
 			record, ok := inst.byID[item.ID]
 			if !ok {
 				continue
 			}
-			row.Used = append(row.Used, overviewUse{
+			use := overviewUse{
 				InstanceID: inst.id,
 				Name:       inst.name,
 				State:      inst.state,
 				Version:    record.Version,
 				Tag:        record.Tag,
+				FileName:   record.FileName,
 				// "Behind the newest jar in the library", not "behind
 				// upstream": upgrading is a copy from the library, and a
 				// version nobody has downloaded is not something this page's
 				// 批量升级 button could apply.
-				Outdated: newestTag != "" && record.Tag != newestTag,
-			})
+				Outdated: row.NewestTag != "" && record.Tag != row.NewestTag,
+				Recon:    record.Recon,
+			}
+			// Drift on a plugin allowed to update itself is normal operation.
+			// It stays visible on the plugin's own page and stops being a
+			// finding here — an alarm that fires every week on a working
+			// plugin is an alarm nobody reads on the week it matters.
+			if use.Recon == plugin.ReconDrift && item.Policy.AllowSelfUpdate {
+				use.Recon = ""
+			}
+			if use.Recon == plugin.ReconOK {
+				use.Recon = ""
+			}
+			if !record.CheckedAt.IsZero() {
+				at := record.CheckedAt
+				use.CheckedAt = &at
+			}
+			row.Used = append(row.Used, use)
 		}
 
-		switch {
-		case len(row.Used) == 0:
-			row.Status = overviewUnused
+		row.Status = overviewStatus(item, row)
+		if row.Status == rowUnused {
 			resp.Unused++
 			resp.UnusedSize += row.Size
-		case anyOutdated(row.Used):
-			row.Status = overviewMixed
-		default:
-			row.Status = overviewAllCurrent
 		}
+		resp.TotalSize += row.Size
 		resp.Rows = append(resp.Rows, row)
 	}
 
-	// Rows that need doing first. Mixed versions are the actionable state, and
-	// unused entries sink to the bottom where the cleanup link lives.
+	// Jars on servers that belong to nothing in the library. Cheap enough to
+	// answer here — a directory listing and a few kilobytes out of each zip —
+	// where saying whether they are one of our own downloads is not, and waits
+	// for a reconciliation.
+	for _, inst := range instances {
+		for _, finding := range s.instancePlugins.Foreign(inst.id, inst.dir) {
+			entry := overviewForeign{
+				Name:       finding.Name,
+				InstanceID: inst.id,
+				Instance:   inst.name,
+				Dir:        finding.Dir,
+				FileName:   finding.FileName,
+				Adoptable:  finding.Adoptable,
+			}
+			if finding.Jar != nil {
+				entry.Version = finding.Jar.Version
+			}
+			resp.Foreign = append(resp.Foreign, entry)
+		}
+		at := s.instancePlugins.ReconciledAt(inst.id)
+		if at.IsZero() {
+			resp.Unchecked++
+			continue
+		}
+		if resp.ReconciledAt == nil || at.Before(*resp.ReconciledAt) {
+			when := at
+			resp.ReconciledAt = &when
+		}
+	}
+
+	// Rows that need doing first, and the ladder decides what "first" means:
+	// a ledger that does not describe the disk outranks any version news,
+	// because a version number computed from a wrong ledger is not news.
 	sort.SliceStable(resp.Rows, func(a, b int) bool {
 		if rank := overviewRank(resp.Rows[a].Status) - overviewRank(resp.Rows[b].Status); rank != 0 {
 			return rank < 0
@@ -629,24 +745,87 @@ func (s *Server) handlePluginOverview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// overviewStatus is the one word the row reads, and the order it is decided in
+// is the whole argument.
+//
+// Reconciliation first. If the books do not describe the directory, then
+// "有更新" and "已同步" are conclusions drawn from a record about a file that
+// is not there — and a panel that reports those with confidence is worse than
+// one that reports nothing. Only once the two agree does the version ladder
+// mean anything.
+func overviewStatus(item plugin.Plugin, row overviewRow) string {
+	for _, use := range row.Used {
+		if use.Recon == plugin.ReconMissing {
+			return rowMissing
+		}
+	}
+	for _, use := range row.Used {
+		if use.Recon == plugin.ReconDrift {
+			return rowDrift
+		}
+	}
+	if len(row.Used) == 0 {
+		return rowUnused
+	}
+	// A pinned plugin is on the version somebody chose. Upstream having moved
+	// past it is not a state this row is in.
+	if item.Policy.Pin == "" && row.Upstream != "" && row.Upstream != row.Newest {
+		return rowUpdate
+	}
+	for _, use := range row.Used {
+		if use.Outdated {
+			return rowBehind
+		}
+	}
+	return rowSynced
+}
+
 func overviewRank(status string) int {
 	switch status {
-	case overviewMixed:
+	case rowMissing:
 		return 0
-	case overviewAllCurrent:
+	case rowDrift:
 		return 1
-	default:
+	case rowConflict:
 		return 2
+	case rowUpdate:
+		return 3
+	case rowBehind:
+		return 4
+	case rowSynced:
+		return 5
+	default:
+		return 6
 	}
 }
 
-func anyOutdated(uses []overviewUse) bool {
-	for _, use := range uses {
-		if use.Outdated {
-			return true
-		}
+// variantsOf names the platforms a release ships separate builds for.
+//
+// Empty for the ordinary plugin that publishes one jar — there is no variance
+// to explain — and empty again when several jars declare nothing to tell them
+// apart, because "2 个构件" with no names is a fact nobody can act on.
+func variantsOf(version plugin.Version) []string {
+	if len(version.Artifacts) < 2 {
+		return nil
 	}
-	return false
+	seen := map[string]bool{}
+	out := make([]string, 0, len(version.Artifacts))
+	for _, artifact := range version.Artifacts {
+		label := artifact.Platform
+		if label == "" && len(artifact.Loaders) > 0 {
+			label = artifact.Loaders[0]
+		}
+		if label == "" || seen[label] {
+			continue
+		}
+		seen[label] = true
+		out = append(out, label)
+	}
+	if len(out) < 2 {
+		return nil
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ------------------------------------------------------------ bulk upgrade

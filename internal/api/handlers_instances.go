@@ -131,6 +131,10 @@ func (s *Server) handleDeleteInstance(w http.ResponseWriter, r *http.Request) {
 		if err := s.instancePlugins.Forget(id); err != nil {
 			s.log.Warn("could not drop the instance's plugin records", "instance", id, "err", err)
 		}
+		// The upgrade snapshots go with them. They are full copies of jars and
+		// config for a server that no longer exists, and nothing left could
+		// ever restore them.
+		s.instancePlugins.ForgetBackups(id)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -173,8 +177,36 @@ func (s *Server) handlePower(action powerAction) http.HandlerFunc {
 			s.writeDomainError(w, err)
 			return
 		}
+		if action == powerStart || action == powerRestart {
+			s.reconcileInBackground(inst.Config().ID, inst.Config().Directory, inst.Config().Name)
+		}
 		writeJSON(w, http.StatusAccepted, inst.Status())
 	}
+}
+
+// reconcileInBackground compares the ledger with the directory a server is
+// about to read.
+//
+// A start is one of the three moments the answer can have changed — the other
+// two are an operator asking and an upgrade finishing — and it is the moment
+// that catches what happened while the panel was not looking: an SFTP upload
+// last night, a restored backup, a jar deleted by hand. Off the request,
+// because it reads every jar on the server end to end and a start button that
+// waited for that would feel broken on a server with forty plugins.
+func (s *Server) reconcileInBackground(id, directory, name string) {
+	if s.instancePlugins == nil {
+		return
+	}
+	go func() {
+		report, err := s.instancePlugins.Reconcile(id, directory)
+		switch {
+		case err != nil:
+			s.log.Warn("could not reconcile plugins at startup", "instance", name, "err", err)
+		case !report.Clean():
+			s.log.Info("plugin ledger and directory disagree", "instance", name,
+				"drift", report.Drift, "missing", report.Missing, "foreign", report.Foreign)
+		}
+	}()
 }
 
 type commandRequest struct {

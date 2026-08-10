@@ -42,15 +42,69 @@ const partSuffix = ".hypercraft-part"
 // installer hard-codes.
 const DefaultTargetDir = "plugins"
 
-// Version is one downloaded release of a plugin.
+// Artifact is one jar held under a release.
+//
+// A release is not a file. LuckPerms publishes bukkit, velocity, fabric and
+// forge builds under one release number; treating each as a version of its own
+// is what made a panel report "2 versions, inconsistent" about a plugin that
+// had shipped one. So a Version is what upstream published, and the jars under
+// it are these.
+//
+// The primary key is the digest, and it is the only thing here that identifies
+// the file. FileName is whatever the author happened to call it — the same jar
+// arrives as LuckPerms-Bukkit-5.5.71.jar, luckperms-bukkit.jar and LuckPerms.jar
+// depending on the source, and operators rename it again on the way in — so it
+// is carried for display and for landing the file on disk, and no decision is
+// ever made from it.
+//
+// PluginName and PluginVer come out of the jar's own descriptor, which is the
+// identity the server itself uses: a Bukkit server refuses to load two jars
+// declaring the same name, no matter what the files are called. That is why
+// they are stored rather than derived on demand — the upgrade sweep in
+// instances.go has to know what to delete before it can safely add anything.
+type Artifact struct {
+	SHA256   string `json:"sha256"`
+	FileName string `json:"fileName"`
+	Size     int64  `json:"size"`
+
+	// The descriptor's own account of the jar: plugin.yml for Bukkit and its
+	// descendants, velocity-plugin.json, fabric.mod.json. Empty for a jar whose
+	// descriptor the panel cannot read — a Forge mod's is TOML — which is
+	// honest rather than guessed.
+	PluginName string   `json:"pluginName,omitempty"`
+	PluginVer  string   `json:"pluginVer,omitempty"`
+	Platform   string   `json:"platform,omitempty"`
+	APIVersion string   `json:"apiVersion,omitempty"`
+	Depend     []string `json:"depend,omitempty"`
+	SoftDepend []string `json:"softDepend,omitempty"`
+
+	// GameVersions and Loaders are what the *source* said this jar supports,
+	// which is a different claim from the descriptor's api-version and is kept
+	// apart from it. See Version for why they are stored at download time.
+	GameVersions []string  `json:"gameVersions,omitempty"`
+	Loaders      []string  `json:"loaders,omitempty"`
+	AddedAt      time.Time `json:"addedAt,omitempty"`
+}
+
+// Describes reports whether this artifact is the jar with that digest.
+func (a Artifact) Describes(sha string) bool {
+	return sha != "" && strings.EqualFold(a.SHA256, sha)
+}
+
+// Version is one release of a plugin, and the jars held under it.
 type Version struct {
 	// Tag is the GitHub tag, and the id of this version everywhere else. It is
 	// what the source names, so it is what a re-download can be matched against.
 	Tag     string `json:"tag"`
 	Version string `json:"version"`
-	// FileName is the jar's name, both in the library and in the instance
-	// directory it is copied to. Keeping the published name means a plugin's
-	// own "check my version" log line matches what is on disk.
+	// Artifacts are the jars held under this release, primary first. Never
+	// empty for a version the library actually holds.
+	Artifacts []Artifact `json:"artifacts,omitempty"`
+
+	// The four fields below mirror the primary artifact. They are what every
+	// registry written before the artifact list said, so they are still read
+	// on load and still written out — a panel rolled back to an older build
+	// finds its library intact rather than empty.
 	FileName    string    `json:"fileName"`
 	Size        int64     `json:"size"`
 	SHA256      string    `json:"sha256"`
@@ -69,6 +123,100 @@ type Version struct {
 	// neither — and empty means unknown, not compatible. See Judge.
 	GameVersions []string `json:"gameVersions,omitempty"`
 	Loaders      []string `json:"loaders,omitempty"`
+}
+
+// normalise fills the artifact list from the legacy fields, and the legacy
+// fields from the artifact list, so both halves of the record agree whichever
+// one it was written by.
+func (v Version) normalise() Version {
+	if len(v.Artifacts) == 0 && v.FileName != "" {
+		v.Artifacts = []Artifact{{
+			SHA256:       v.SHA256,
+			FileName:     v.FileName,
+			Size:         v.Size,
+			GameVersions: v.GameVersions,
+			Loaders:      v.Loaders,
+			AddedAt:      v.AddedAt,
+		}}
+	}
+	if len(v.Artifacts) > 0 {
+		primary := v.Artifacts[0]
+		v.FileName, v.Size, v.SHA256 = primary.FileName, primary.Size, primary.SHA256
+		if len(v.GameVersions) == 0 {
+			v.GameVersions = primary.GameVersions
+		}
+		if len(v.Loaders) == 0 {
+			v.Loaders = primary.Loaders
+		}
+	}
+	return v
+}
+
+// Primary is the jar an install picks when nobody said which. The first one
+// downloaded, which for a plugin with an asset pattern is the one the pattern
+// chose and for everything else is the only one there is.
+func (v Version) Primary() Artifact {
+	if len(v.Artifacts) == 0 {
+		return Artifact{FileName: v.FileName, Size: v.Size, SHA256: v.SHA256}
+	}
+	return v.Artifacts[0]
+}
+
+// Artifact returns the jar with a digest, or nil.
+func (v Version) Artifact(sha string) *Artifact {
+	for i := range v.Artifacts {
+		if v.Artifacts[i].Describes(sha) {
+			return &v.Artifacts[i]
+		}
+	}
+	return nil
+}
+
+// TotalSize is what this release costs on disk, across every jar under it.
+func (v Version) TotalSize() int64 {
+	var total int64
+	for _, artifact := range v.Artifacts {
+		total += artifact.Size
+	}
+	return total
+}
+
+// UpdateMode is what the panel does on its own when a new release appears.
+type UpdateMode string
+
+const (
+	// UpdateManual is the default: nothing happens until somebody clicks.
+	UpdateManual UpdateMode = ""
+	// UpdateNotify checks on a schedule and says so, and stops there.
+	UpdateNotify UpdateMode = "notify"
+	// UpdateFetch downloads new releases into the library. Nothing on any
+	// server changes; the jar is simply there when you decide.
+	UpdateFetch UpdateMode = "fetch"
+	// UpdatePush also copies it to every instance that has this plugin, on
+	// their next restart. The only mode that touches a running fleet.
+	UpdatePush UpdateMode = "push"
+)
+
+// Policy is how one plugin is kept: what the panel may do without being asked,
+// which version it is pinned to, and how much history to hold on to.
+type Policy struct {
+	Update UpdateMode `json:"update,omitempty"`
+	// Pin locks the plugin to one release tag. A pinned plugin never reports
+	// an update and is never touched by a bulk upgrade — the escape hatch for
+	// "5.4.2 is the last build that works with our fork".
+	Pin string `json:"pin,omitempty"`
+	// Keep is how many releases to hold in the library, newest first. Zero
+	// means all of them. A version any instance is running is never pruned:
+	// see §8 — the reason to keep old jars is that a rollback needs them.
+	Keep int `json:"keep,omitempty"`
+	// AllowSelfUpdate silences the hash-mismatch alarm for this plugin.
+	//
+	// Some plugins genuinely rewrite their own jar — anticheats that pull
+	// signature updates, Geyser's self-updating builds — and reporting that as
+	// tampering every single time trains the operator to ignore the one time
+	// it is not. Drift is still recorded and still shown on the plugin's own
+	// page; it just stops counting as something wrong.
+	AllowSelfUpdate bool `json:"allowSelfUpdate,omitempty"`
 }
 
 // Plugin is one tracked plugin: where it comes from, and which of its versions
@@ -90,6 +238,11 @@ type Plugin struct {
 
 	// Versions are the downloads held in the library, newest release first.
 	Versions []Version `json:"versions"`
+
+	// Policy is what the panel may do with this plugin unasked. Zero value is
+	// "nothing, ever", which is the right default for a file that decides
+	// whether somebody's server starts.
+	Policy Policy `json:"policy,omitempty"`
 
 	// Latest is what the last update check found upstream, and CheckedAt is
 	// when it looked. Both are cached rather than fetched per page load: the
@@ -115,14 +268,54 @@ func (p Plugin) Version(tag string) *Version {
 	return nil
 }
 
+// FindArtifact locates one jar anywhere in a plugin's history, by digest.
+//
+// This is the lookup the reconciliation runs: given a file sitting in somebody's
+// plugins directory, is it one of ours, and if so which release. Nothing else
+// would do — a file name match would claim a renamed jar is a different one, and
+// claim a different jar with a familiar name is ours.
+func (p Plugin) FindArtifact(sha string) (Version, Artifact, bool) {
+	for _, version := range p.Versions {
+		if artifact := version.Artifact(sha); artifact != nil {
+			return version, *artifact, true
+		}
+	}
+	return Version{}, Artifact{}, false
+}
+
+// DeclaredNames are the plugin.yml names this plugin's jars declare, lowercased.
+//
+// Used by the upgrade sweep, which has to delete every jar in the directory
+// declaring the name the new one declares — see instances.go. Usually one name;
+// more than one when a plugin renamed itself between releases, and in that case
+// all of them have to go or the server loads both.
+func (p Plugin) DeclaredNames() []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, 2)
+	for _, version := range p.Versions {
+		for _, artifact := range version.Artifacts {
+			name := strings.ToLower(strings.TrimSpace(artifact.PluginName))
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 // UpdateAvailable reports whether the last check found a release newer than
 // everything downloaded.
 //
 // "Newer" is by tag identity, not by version arithmetic: plugin authors number
 // releases in every scheme there is, and the only claim the panel can honestly
 // make is "upstream's newest is not one you have".
+// A pinned plugin never reports one: it is pinned because somebody decided the
+// newer releases are wrong for this fleet, and a permanent "有更新" badge on
+// that decision is a badge that teaches people to stop reading badges.
 func (p Plugin) UpdateAvailable() bool {
-	return p.Latest != nil && !p.HasVersion(p.Latest.Tag)
+	return p.Policy.Pin == "" && p.Latest != nil && !p.HasVersion(p.Latest.Tag)
 }
 
 // Library owns the plugin directory, normally <data>/plugins.
@@ -180,16 +373,28 @@ func (l *Library) get(id string) (Plugin, error) {
 	return l.describe(item), nil
 }
 
-// describe drops versions whose jar has gone missing. The registry is the list
-// of what the panel tracks, but it cannot install a file that is not there, and
-// an entry that fails on click is worse than one that is honestly absent.
+// describe drops jars that have gone missing, and any release left holding
+// none. The registry is the list of what the panel tracks, but it cannot
+// install a file that is not there, and an entry that fails on click is worse
+// than one that is honestly absent.
 func (l *Library) describe(item Plugin) Plugin {
 	kept := make([]Version, 0, len(item.Versions))
 	for _, version := range item.Versions {
-		if info, err := os.Stat(l.versionFile(item.ID, version.Tag, version.FileName)); err == nil && !info.IsDir() {
-			version.Size = info.Size()
-			kept = append(kept, version)
+		version = version.normalise()
+		artifacts := make([]Artifact, 0, len(version.Artifacts))
+		for _, artifact := range version.Artifacts {
+			info, err := os.Stat(l.versionFile(item.ID, version.Tag, artifact.FileName))
+			if err != nil || info.IsDir() {
+				continue
+			}
+			artifact.Size = info.Size()
+			artifacts = append(artifacts, artifact)
 		}
+		if len(artifacts) == 0 {
+			continue
+		}
+		version.Artifacts = artifacts
+		kept = append(kept, version.normalise())
 	}
 	sort.SliceStable(kept, func(a, b int) bool {
 		if !kept[a].PublishedAt.Equal(kept[b].PublishedAt) {
@@ -395,7 +600,17 @@ func (l *Library) RecordCheck(id string, latest *Release, checkErr error) error 
 	return l.save(registry)
 }
 
-// record adds a finished download to a plugin's version list.
+// record files a finished download under its release.
+//
+// A second jar from the same release joins that release rather than replacing
+// it. This is the whole point of the artifact list: downloading LuckPerms'
+// velocity build after its bukkit build should give one version holding two
+// jars, not one version that used to be the other one.
+//
+// Within a release, a jar is identified by digest. Re-downloading the same file
+// updates it in place — that is the repair path for a corrupt jar — while the
+// same file name at a different digest is upstream having re-cut the release,
+// which replaces rather than accumulating two jars the server would both load.
 func (l *Library) record(id string, version Version) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -405,19 +620,126 @@ func (l *Library) record(id string, version Version) error {
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	replaced := false
+	version = version.normalise()
+
 	for i := range item.Versions {
-		if item.Versions[i].Tag == version.Tag {
-			item.Versions[i] = version
-			replaced = true
-			break
+		existing := item.Versions[i].normalise()
+		if existing.Tag != version.Tag {
+			continue
 		}
+		for _, incoming := range version.Artifacts {
+			existing.Artifacts = upsertArtifact(existing.Artifacts, incoming)
+		}
+		// The release's own facts are refreshed from the newer read; the
+		// artifact list is not, because it is cumulative.
+		existing.Version = version.Version
+		existing.Prerelease = version.Prerelease
+		existing.PublishedAt = version.PublishedAt
+		if version.Notes != "" {
+			existing.Notes = version.Notes
+		}
+		item.Versions[i] = existing.normalise()
+		registry[id] = item
+		return l.save(registry)
 	}
-	if !replaced {
-		item.Versions = append(item.Versions, version)
-	}
+
+	item.Versions = append(item.Versions, version)
 	registry[id] = item
 	return l.save(registry)
+}
+
+func upsertArtifact(list []Artifact, incoming Artifact) []Artifact {
+	for i := range list {
+		if list[i].Describes(incoming.SHA256) || list[i].FileName == incoming.FileName {
+			list[i] = incoming
+			return list
+		}
+	}
+	return append(list, incoming)
+}
+
+// RemoveArtifact deletes one jar, and the release with it once it is the last
+// one there.
+func (l *Library) RemoveArtifact(id, tag, sha string) error {
+	if err := validID(id); err != nil {
+		return err
+	}
+	slug, err := versionSlug(tag)
+	if err != nil {
+		return err
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	registry := l.load()
+
+	item, ok := registry[id]
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	for i := range item.Versions {
+		version := item.Versions[i].normalise()
+		if version.Tag != tag {
+			continue
+		}
+		gone := version.Artifact(sha)
+		if gone == nil {
+			return fmt.Errorf("%w: %s has no jar %s", ErrNotFound, tag, sha)
+		}
+		file := l.versionFile(id, tag, gone.FileName)
+
+		kept := make([]Artifact, 0, len(version.Artifacts))
+		for _, artifact := range version.Artifacts {
+			if !artifact.Describes(sha) {
+				kept = append(kept, artifact)
+			}
+		}
+		if len(kept) == 0 {
+			item.Versions = append(item.Versions[:i], item.Versions[i+1:]...)
+		} else {
+			version.Artifacts = kept
+			item.Versions[i] = version.normalise()
+		}
+		registry[id] = item
+		if err := l.save(registry); err != nil {
+			return err
+		}
+		if len(kept) == 0 {
+			return os.RemoveAll(filepath.Join(l.root, id, slug))
+		}
+		return os.Remove(file)
+	}
+	return fmt.Errorf("%w: %s has no version %s", ErrNotFound, id, tag)
+}
+
+// SetPolicy stores what the panel may do with a plugin unasked.
+func (l *Library) SetPolicy(id string, policy Policy) (Plugin, error) {
+	if err := validID(id); err != nil {
+		return Plugin{}, err
+	}
+	if policy.Keep < 0 {
+		policy.Keep = 0
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	registry := l.load()
+
+	item, ok := registry[id]
+	if !ok {
+		return Plugin{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	// A pin has to name a release the library actually holds, or the plugin is
+	// locked to a version nothing can install.
+	if policy.Pin != "" && !item.HasVersion(policy.Pin) {
+		return Plugin{}, fmt.Errorf("%w: %s 里没有 %s 这个版本，锁不上去", ErrNotFound, item.Name, policy.Pin)
+	}
+	item.Policy = policy
+	registry[id] = item
+	if err := l.save(registry); err != nil {
+		return Plugin{}, err
+	}
+	return l.describe(item), nil
 }
 
 // RemoveVersion deletes one downloaded version.
@@ -458,21 +780,40 @@ func (l *Library) RemoveVersion(id, tag string) error {
 	return os.RemoveAll(filepath.Join(l.root, id, slug))
 }
 
-// Open returns a version's jar for copying into an instance directory.
+// Open returns a version's primary jar for copying into an instance directory.
 func (l *Library) Open(id, tag string) (*os.File, Plugin, Version, error) {
+	file, item, version, _, err := l.OpenArtifact(id, tag, "")
+	return file, item, version, err
+}
+
+// OpenArtifact returns one specific jar of a release.
+//
+// An empty digest means the primary, which is what every caller that does not
+// care wants. A plugin that ships one build per platform is the caller that
+// does: installing LuckPerms onto a Velocity proxy and onto a Paper server are
+// the same version and two different files.
+func (l *Library) OpenArtifact(id, tag, sha string) (*os.File, Plugin, Version, Artifact, error) {
 	item, err := l.Get(id)
 	if err != nil {
-		return nil, Plugin{}, Version{}, err
+		return nil, Plugin{}, Version{}, Artifact{}, err
 	}
 	version := item.Version(tag)
 	if version == nil {
-		return nil, Plugin{}, Version{}, fmt.Errorf("%w: %s has no downloaded version %s", ErrNotFound, item.Name, tag)
+		return nil, Plugin{}, Version{}, Artifact{}, fmt.Errorf("%w: %s has no downloaded version %s", ErrNotFound, item.Name, tag)
 	}
-	file, err := os.Open(l.versionFile(id, tag, version.FileName))
+	artifact := version.Primary()
+	if sha != "" {
+		found := version.Artifact(sha)
+		if found == nil {
+			return nil, Plugin{}, Version{}, Artifact{}, fmt.Errorf("%w: %s %s has no jar %s", ErrNotFound, item.Name, version.Version, sha[:min(12, len(sha))])
+		}
+		artifact = *found
+	}
+	file, err := os.Open(l.versionFile(id, tag, artifact.FileName))
 	if err != nil {
-		return nil, Plugin{}, Version{}, fmt.Errorf("%w: %v", ErrNotFound, err)
+		return nil, Plugin{}, Version{}, Artifact{}, fmt.Errorf("%w: %v", ErrNotFound, err)
 	}
-	return file, item, *version, nil
+	return file, item, *version, artifact, nil
 }
 
 // versionFile is where one downloaded jar lives. Versions get a directory
@@ -512,6 +853,12 @@ func (l *Library) load() map[string]Plugin {
 		}
 		if item.Versions == nil {
 			item.Versions = []Version{}
+		}
+		// A registry written before the artifact list has one jar per release,
+		// spelled out in the flat fields. Migrated on read rather than by a
+		// rewrite pass, so a panel that is downgraded again still works.
+		for i := range item.Versions {
+			item.Versions[i] = item.Versions[i].normalise()
 		}
 		l.registry[id] = item
 	}

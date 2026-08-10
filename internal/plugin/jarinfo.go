@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"io"
+	"sort"
 	"strings"
 )
 
@@ -36,6 +37,13 @@ type JarInfo struct {
 	// descriptor carries one. It is the field that explains "why did this stop
 	// loading after I upgraded the server".
 	APIVersion string `json:"apiVersion,omitempty"`
+	// Depend and SoftDepend are the plugin names this jar wants loaded before
+	// it. The registries publish a dependency list of their own and it is a
+	// different list — theirs is what the author wrote on the listing page,
+	// this is what the server will actually refuse to start the plugin over.
+	// Both are shown, side by side, and neither is treated as the other.
+	Depend     []string `json:"depend,omitempty"`
+	SoftDepend []string `json:"softDepend,omitempty"`
 }
 
 // Empty reports whether nothing useful was found.
@@ -120,7 +128,12 @@ func readZipEntry(file *zip.File) ([]byte, error) {
 // stranger than that gets no answer rather than a wrong one.
 func parsePluginYAML(data []byte) JarInfo {
 	var info JarInfo
-	var inAuthors bool
+	// Which key's list is being read, when the previous line opened one. Four
+	// of the fields here — authors, depend, softdepend, loadbefore — are written
+	// either inline or as an indented list, and following the indented form is
+	// the only way to read the dependency of a plugin whose author formatted it
+	// the ordinary way.
+	var listing *[]string
 
 	for _, raw := range strings.Split(string(data), "\n") {
 		line := strings.TrimRight(raw, " \t\r")
@@ -128,12 +141,10 @@ func parsePluginYAML(data []byte) JarInfo {
 			continue
 		}
 
-		// A list item under "authors:", which is the one nested shape worth
-		// following: it is how most plugins name more than one author.
-		if inAuthors && strings.HasPrefix(line, " ") {
+		if listing != nil && strings.HasPrefix(line, " ") {
 			if item := strings.TrimSpace(line); strings.HasPrefix(item, "- ") {
 				if value := yamlScalar(strings.TrimPrefix(item, "- ")); value != "" {
-					info.Authors = append(info.Authors, value)
+					*listing = append(*listing, value)
 				}
 				continue
 			}
@@ -141,13 +152,33 @@ func parsePluginYAML(data []byte) JarInfo {
 		if line[0] == ' ' || line[0] == '\t' {
 			continue // nested under something else
 		}
-		inAuthors = false
+		listing = nil
 
 		key, rest, found := strings.Cut(line, ":")
 		if !found {
 			continue
 		}
 		value := yamlScalar(rest)
+
+		// The list-valued keys, all read the same way: inline on this line, or
+		// indented under it.
+		var into *[]string
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "authors":
+			into = &info.Authors
+		case "depend":
+			into = &info.Depend
+		case "softdepend":
+			into = &info.SoftDepend
+		}
+		if into != nil {
+			if value == "" {
+				listing = into
+				continue
+			}
+			*into = append(*into, splitInlineList(value)...)
+			continue
+		}
 
 		switch strings.ToLower(strings.TrimSpace(key)) {
 		case "name":
@@ -160,13 +191,6 @@ func parsePluginYAML(data []byte) JarInfo {
 			if value != "" {
 				info.Authors = append(info.Authors, value)
 			}
-		case "authors":
-			// Either "authors: [a, b]" on one line or a list below it.
-			if value == "" {
-				inAuthors = true
-				continue
-			}
-			info.Authors = append(info.Authors, splitInlineList(value)...)
 		}
 	}
 	return info
@@ -209,10 +233,14 @@ func splitInlineList(raw string) []string {
 
 func parseVelocity(data []byte) JarInfo {
 	var raw struct {
-		ID      string   `json:"id"`
-		Name    string   `json:"name"`
-		Version string   `json:"version"`
-		Authors []string `json:"authors"`
+		ID           string   `json:"id"`
+		Name         string   `json:"name"`
+		Version      string   `json:"version"`
+		Authors      []string `json:"authors"`
+		Dependencies []struct {
+			ID       string `json:"id"`
+			Optional bool   `json:"optional"`
+		} `json:"dependencies"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return JarInfo{}
@@ -223,7 +251,19 @@ func parseVelocity(data []byte) JarInfo {
 		// server itself calls the plugin when the name is absent.
 		name = strings.TrimSpace(raw.ID)
 	}
-	return JarInfo{Name: name, Version: strings.TrimSpace(raw.Version), Authors: raw.Authors}
+	info := JarInfo{Name: name, Version: strings.TrimSpace(raw.Version), Authors: raw.Authors}
+	for _, dep := range raw.Dependencies {
+		id := strings.TrimSpace(dep.ID)
+		if id == "" {
+			continue
+		}
+		if dep.Optional {
+			info.SoftDepend = append(info.SoftDepend, id)
+		} else {
+			info.Depend = append(info.Depend, id)
+		}
+	}
+	return info
 }
 
 func parseFabric(data []byte) JarInfo {
@@ -232,7 +272,10 @@ func parseFabric(data []byte) JarInfo {
 		Name    string `json:"name"`
 		Version string `json:"version"`
 		// Fabric allows either a plain name or an object per author.
-		Authors []json.RawMessage `json:"authors"`
+		Authors    []json.RawMessage `json:"authors"`
+		Depends    map[string]any    `json:"depends"`
+		Recommends map[string]any    `json:"recommends"`
+		Suggests   map[string]any    `json:"suggests"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return JarInfo{}
@@ -259,5 +302,26 @@ func parseFabric(data []byte) JarInfo {
 			}
 		}
 	}
+
+	// "minecraft", "java" and "fabricloader" are in every mod's depends block
+	// and are not plugins anybody installs. Listing them would turn a real
+	// dependency list into three rows of noise plus, sometimes, the answer.
+	info.Depend = modIDs(raw.Depends)
+	info.SoftDepend = append(modIDs(raw.Recommends), modIDs(raw.Suggests)...)
 	return info
+}
+
+// platformIDs are the Fabric depends entries that name the environment rather
+// than another mod.
+var platformIDs = map[string]bool{"minecraft": true, "java": true, "fabricloader": true, "fabric": true, "fabric-api": false}
+
+func modIDs(deps map[string]any) []string {
+	out := make([]string, 0, len(deps))
+	for id := range deps {
+		if id = strings.TrimSpace(id); id != "" && !platformIDs[strings.ToLower(id)] {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out) // map order is random, and a dependency list that reshuffles per read is unreadable
+	return out
 }

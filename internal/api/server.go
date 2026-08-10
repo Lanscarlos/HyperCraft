@@ -284,11 +284,14 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("POST /api/plugins/{id}/check", s.handleCheckPlugin)
 	protected.HandleFunc("POST /api/plugins/{id}/download", s.handleDownloadPlugin)
 	protected.HandleFunc("DELETE /api/plugins/{id}/versions", s.handleDeletePluginVersion)
+	protected.HandleFunc("PUT /api/plugins/{id}/policy", s.handlePluginPolicy)
 
 	protected.HandleFunc("GET /api/instances/{id}/plugins", s.handleListInstancePlugins)
 	protected.HandleFunc("POST /api/instances/{id}/plugins", s.handleInstallInstancePlugin)
 	protected.HandleFunc("PUT /api/instances/{id}/plugins", s.handleToggleInstancePlugin)
 	protected.HandleFunc("POST /api/instances/{id}/plugins/adopt", s.handleAdoptInstancePlugin)
+	protected.HandleFunc("POST /api/instances/{id}/plugins/reconcile", s.handleReconcileInstancePlugins)
+	protected.HandleFunc("POST /api/instances/{id}/plugins/rollback", s.handleRollbackInstancePlugin)
 	protected.HandleFunc("DELETE /api/instances/{id}/plugins", s.handleUninstallInstancePlugin)
 
 	// Java runtimes. Panel-wide rather than per-instance: one download serves

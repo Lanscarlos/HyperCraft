@@ -417,9 +417,12 @@ func (s *Server) handleCancelPluginDownload(w http.ResponseWriter, _ *http.Reque
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleDeletePluginVersion removes one downloaded version. The tag arrives as
-// a query parameter rather than a path segment because tags contain slashes
-// often enough ("release/1.2.0") that a segment would mangle them.
+// handleDeletePluginVersion removes one downloaded release, or one jar of it.
+//
+// The tag arrives as a query parameter rather than a path segment because tags
+// contain slashes often enough ("release/1.2.0") that a segment would mangle
+// them. An optional sha narrows it to a single artifact, which is what deleting
+// the Velocity build of a release while keeping the Paper one means.
 func (s *Server) handleDeletePluginVersion(w http.ResponseWriter, r *http.Request) {
 	if !s.pluginsAvailable(w) {
 		return
@@ -429,11 +432,63 @@ func (s *Server) handleDeletePluginVersion(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "tag is required")
 		return
 	}
-	if err := s.plugins.Library().RemoveVersion(r.PathValue("id"), tag); err != nil {
+
+	id := r.PathValue("id")
+	var err error
+	if sha := r.URL.Query().Get("sha"); sha != "" {
+		err = s.plugins.Library().RemoveArtifact(id, tag, sha)
+	} else {
+		err = s.plugins.Library().RemoveVersion(id, tag)
+	}
+	if err != nil {
 		s.writePluginError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// pluginPolicyRequest is the 设置 tab of a plugin's drawer, whole. Sent as one
+// object because these settings are read together and only make sense together
+// — a retention count means something different under 自动入库 than under 手动.
+type pluginPolicyRequest struct {
+	Update          string `json:"update"`
+	Pin             string `json:"pin"`
+	Keep            int    `json:"keep"`
+	AllowSelfUpdate bool   `json:"allowSelfUpdate"`
+}
+
+func (s *Server) handlePluginPolicy(w http.ResponseWriter, r *http.Request) {
+	if !s.pluginsAvailable(w) {
+		return
+	}
+
+	var req pluginPolicyRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "malformed request body")
+		return
+	}
+	mode := plugin.UpdateMode(strings.TrimSpace(req.Update))
+	switch mode {
+	case plugin.UpdateManual, plugin.UpdateNotify, plugin.UpdateFetch, plugin.UpdatePush:
+	default:
+		writeError(w, http.StatusBadRequest, "unknown update mode")
+		return
+	}
+
+	item, err := s.plugins.Library().SetPolicy(r.PathValue("id"), plugin.Policy{
+		Update:          mode,
+		Pin:             strings.TrimSpace(req.Pin),
+		Keep:            req.Keep,
+		AllowSelfUpdate: req.AllowSelfUpdate,
+	})
+	if err != nil {
+		s.writePluginError(w, err)
+		return
+	}
+	s.log.Info("plugin policy changed", "plugin", item.ID,
+		"update", mode, "pin", item.Policy.Pin, "keep", item.Policy.Keep,
+		"selfUpdate", item.Policy.AllowSelfUpdate)
+	writeJSON(w, http.StatusOK, item)
 }
 
 // ------------------------------------------------------- per-instance
@@ -626,6 +681,10 @@ type installPluginRequest struct {
 	// Tag is the library version to install. It is required: "whichever" is
 	// exactly the ambiguity a pinned plugin version exists to remove.
 	Tag string `json:"tag"`
+	// SHA picks which jar of that release, for a plugin that ships one build
+	// per platform. Empty means the release's primary jar, which is the right
+	// answer for the great majority that ship exactly one.
+	SHA string `json:"sha,omitempty"`
 }
 
 // handleInstallInstancePlugin copies a library version into an instance, or
@@ -653,7 +712,8 @@ func (s *Server) handleInstallInstancePlugin(w http.ResponseWriter, r *http.Requ
 	}
 
 	cfg := inst.Config()
-	entry, err := s.instancePlugins.Install(cfg.ID, cfg.Directory, req.PluginID, req.Tag)
+	entry, snapshot, err := s.instancePlugins.InstallArtifact(
+		cfg.ID, cfg.Directory, req.PluginID, req.Tag, req.SHA, actorOf(r))
 	if err != nil {
 		s.writePluginError(w, err)
 		return
@@ -667,8 +727,107 @@ func (s *Server) handleInstallInstancePlugin(w http.ResponseWriter, r *http.Requ
 		At:     time.Now(),
 	})
 	s.log.Info("plugin installed into instance",
-		"instance", cfg.Name, "plugin", req.PluginID, "tag", entry.Tag)
+		"instance", cfg.Name, "plugin", req.PluginID, "tag", entry.Tag,
+		"swept", len(snapshot.Removed), "backup", snapshot.BackupDir)
+	writeJSON(w, http.StatusOK, installResponse{Entry: entry, Snapshot: snapshot})
+}
+
+// installResponse carries the transaction alongside its result.
+//
+// The snapshot is not bookkeeping the caller can ignore: it says which jars
+// were swept out of the directory, whether the config was backed up, and
+// therefore what a rollback would and would not restore. A dialog that reported
+// "installed" without any of that would be describing a file copy, and this is
+// not one.
+type installResponse struct {
+	Entry    plugin.Entry    `json:"entry"`
+	Snapshot plugin.Snapshot `json:"snapshot"`
+}
+
+type rollbackPluginRequest struct {
+	PluginID string `json:"pluginId"`
+	// WithConfig restores the plugin's config directory as well as its jar.
+	// Off by default: a plugin that has been running since the upgrade has
+	// written data since, and throwing that away is a separate decision from
+	// going back to the old build.
+	WithConfig bool `json:"withConfig"`
+}
+
+// handleRollbackInstancePlugin puts back the version this instance was on
+// before its last upgrade.
+//
+// It reads the snapshot, not the library. The whole reason to keep old versions
+// is to be able to undo, and a rollback that depended on the library still
+// holding the old jar would fail on exactly the panel where somebody had
+// tidied up — which is the panel where a retention policy is doing its job.
+func (s *Server) handleRollbackInstancePlugin(w http.ResponseWriter, r *http.Request) {
+	inst, ok := s.instanceFromPath(w, r)
+	if !ok {
+		return
+	}
+	if !s.pluginsAvailable(w) {
+		return
+	}
+
+	var req rollbackPluginRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "malformed request body")
+		return
+	}
+	if strings.TrimSpace(req.PluginID) == "" {
+		writeError(w, http.StatusBadRequest, "pluginId is required")
+		return
+	}
+
+	cfg := inst.Config()
+	entry, err := s.instancePlugins.Rollback(cfg.ID, cfg.Directory, req.PluginID, req.WithConfig)
+	if err != nil {
+		s.writePluginError(w, err)
+		return
+	}
+	s.recordPending(cfg.ID, plugin.Change{
+		Key: entry.Key, Name: entry.Name, Action: entry.PendingAction, At: time.Now(),
+	})
+	s.log.Info("instance plugin rolled back",
+		"instance", cfg.Name, "plugin", req.PluginID, "to", entry.Version, "config", req.WithConfig)
 	writeJSON(w, http.StatusOK, entry)
+}
+
+// handleReconcileInstancePlugins hashes the server's plugin directory and
+// compares it with the panel's ledger.
+//
+// Its own route rather than part of the listing because it is the expensive
+// one: every jar on the server read end to end. That is affordable when
+// somebody asks for it, when the server starts, and after an upgrade — and it
+// is not affordable on every page load, which is what it would become if the
+// listing did it.
+func (s *Server) handleReconcileInstancePlugins(w http.ResponseWriter, r *http.Request) {
+	inst, ok := s.instanceFromPath(w, r)
+	if !ok {
+		return
+	}
+	if !s.pluginsAvailable(w) {
+		return
+	}
+
+	cfg := inst.Config()
+	report, err := s.instancePlugins.Reconcile(cfg.ID, cfg.Directory)
+	if err != nil {
+		s.writePluginError(w, err)
+		return
+	}
+	if !report.Clean() {
+		s.log.Info("plugin reconciliation found differences", "instance", cfg.Name,
+			"drift", report.Drift, "missing", report.Missing, "foreign", report.Foreign)
+	}
+	writeJSON(w, http.StatusOK, report)
+}
+
+// actorOf names whoever asked, for the upgrade log. A fleet with more than one
+// operator needs the snapshot to say which of them moved production.
+func actorOf(r *http.Request) string {
+	who, _ := principalFrom(r.Context())
+	return who.username
 }
 
 // importedResult is one uploaded jar's outcome, per file rather than per

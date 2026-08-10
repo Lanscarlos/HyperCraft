@@ -94,24 +94,35 @@ func (l *Library) ImportJar(id, fileName string, src io.Reader, limit int64) (Im
 	// Content-addressed: the same jar uploaded twice is the same version, so a
 	// re-upload repairs a corrupt file instead of growing a second entry that
 	// differs from the first in nothing an operator could see.
-	version := Version{
-		Tag:         "local-" + digest[:12],
-		Version:     importedVersion(info, fileName),
-		FileName:    fileName,
-		Size:        size,
-		SHA256:      digest,
-		PublishedAt: time.Now(),
-		AddedAt:     time.Now(),
+	artifact := Artifact{
+		SHA256:     digest,
+		FileName:   fileName,
+		Size:       size,
+		PluginName: info.Name,
+		PluginVer:  info.Version,
+		Platform:   info.Platform,
+		APIVersion: info.APIVersion,
+		Depend:     info.Depend,
+		SoftDepend: info.SoftDepend,
+		AddedAt:    time.Now(),
 	}
 	// What the descriptor declared, in the same two fields a download fills
 	// from its registry — so Judge treats an imported jar exactly like any
 	// other, and the install dialog can say "this one is for Velocity".
 	if loader := normaliseLoader(info.Platform); loader != "" {
-		version.Loaders = []string{loader}
+		artifact.Loaders = []string{loader}
 	}
 	if info.APIVersion != "" {
-		version.GameVersions = []string{info.APIVersion}
+		artifact.GameVersions = []string{info.APIVersion}
 	}
+
+	version := Version{
+		Tag:         "local-" + digest[:12],
+		Version:     importedVersion(info, fileName),
+		Artifacts:   []Artifact{artifact},
+		PublishedAt: time.Now(),
+		AddedAt:     time.Now(),
+	}.normalise()
 
 	replaced := item.HasVersion(version.Tag)
 	final := l.versionFile(item.ID, version.Tag, version.FileName)
@@ -168,6 +179,27 @@ func (l *Library) stage(src io.Reader, limit int64) (path string, size int64, di
 		return "", 0, "", err
 	}
 	return temp.Name(), written, hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// readJar opens a jar on disk and asks it what it is, reporting its size along
+// the way. Used wherever a jar has just landed — a finished download, an
+// adopted file — and the panel needs the identity out of it.
+func readJar(path string) (JarInfo, int64, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return JarInfo{}, 0, err
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return JarInfo{}, 0, err
+	}
+	info, ok := ReadJarInfo(file, stat.Size())
+	if !ok {
+		return JarInfo{}, stat.Size(), ErrNotAJar
+	}
+	return info, stat.Size(), nil
 }
 
 func readJarFile(path string, size int64) (JarInfo, error) {

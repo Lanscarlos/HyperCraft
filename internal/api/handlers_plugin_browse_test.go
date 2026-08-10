@@ -28,8 +28,8 @@ func TestOverviewNamesWhichInstancesAreBehind(t *testing.T) {
 	decodeBody(t, env.do(http.MethodGet, "/api/plugins/overview", nil), &overview)
 
 	row := findRow(t, overview, item.ID)
-	if row.Status != overviewMixed {
-		t.Errorf("status = %q, want %q", row.Status, overviewMixed)
+	if row.Status != rowBehind {
+		t.Errorf("status = %q, want %q", row.Status, rowBehind)
 	}
 	if len(row.Used) != 2 {
 		t.Fatalf("used = %+v", row.Used)
@@ -58,8 +58,8 @@ func TestOverviewSurfacesCacheNobodyIsUsing(t *testing.T) {
 	decodeBody(t, env.do(http.MethodGet, "/api/plugins/overview", nil), &overview)
 
 	row := findRow(t, overview, item.ID)
-	if row.Status != overviewUnused {
-		t.Errorf("status = %q, want %q", row.Status, overviewUnused)
+	if row.Status != rowUnused {
+		t.Errorf("status = %q, want %q", row.Status, rowUnused)
 	}
 	if overview.Unused != 1 || overview.UnusedSize != row.Size || row.Size == 0 {
 		t.Errorf("unused summary = %d/%d, row size %d", overview.Unused, overview.UnusedSize, row.Size)
@@ -123,7 +123,7 @@ func TestBulkUpgradeBringsEveryInstanceUpAndReportsWhatItDid(t *testing.T) {
 
 	var overview overviewResponse
 	decodeBody(t, env.do(http.MethodGet, "/api/plugins/overview", nil), &overview)
-	if row := findRow(t, overview, item.ID); row.Status != overviewAllCurrent {
+	if row := findRow(t, overview, item.ID); row.Status != rowSynced {
 		t.Errorf("after the upgrade the row should be all-current, got %q", row.Status)
 	}
 }
