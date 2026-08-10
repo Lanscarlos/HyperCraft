@@ -29,7 +29,7 @@ import { PluginSourceDialog } from './PluginSourceDialog'
 import { Toast } from './Toast'
 
 /**
- * 我的库 — every plugin the panel holds, and what is actually running.
+ * 插件列表 — every plugin the panel holds, and what is actually running.
  *
  * The page answers one question and the whole shape follows from it: *is what
  * my servers are running what I think they are running*. That has two halves
@@ -67,9 +67,9 @@ export function PluginLibraryPage({
 }: {
   plugins: PluginController
   view: LibraryView
-  /** Which instances 浏览市场 judges compatibility against. */
+  /** Which instances 插件市场 judges compatibility against. */
   against?: string[]
-  /** Most recently opened servers, newest first — 浏览市场 defaults its
+  /** Most recently opened servers, newest first — 插件市场 defaults its
    *  compatibility reference to the first of these that still exists. */
   recents: string[]
   instances: InstanceStatus[]
@@ -127,8 +127,8 @@ export function PluginLibraryPage({
     return (
       <Page
         wide
-        title="浏览市场"
-        lead="从 Modrinth、Hangar 和 SpigotMC 里找插件。下载到的是面板插件库，不会装进任何一台服务器 —— 装到哪几台是「我的库」和实例自己的「插件」页上的事。"
+        title="插件市场"
+        lead="从 Modrinth、Hangar 和 SpigotMC 里找插件。下载到的是面板插件库，不会装进任何一台服务器 —— 装到哪几台是「插件列表」和实例自己的「插件」页上的事。"
       >
         <PluginBrowse
           against={against ?? []}
@@ -173,7 +173,7 @@ export function PluginLibraryPage({
   return (
     <Page
       wide
-      title="我的库"
+      title="插件列表"
       lead="按插件看，而不是按服务器看：哪个插件在哪几台服上、版本对不对得上、账本和实例目录里的文件是不是同一份。单台服的增删启停在实例自己的「插件」页里。"
       aside={
         <div className="page__actions">
@@ -966,7 +966,7 @@ function EmptyLibrary({
       <p className="muted">
         去
         <button className="link" onClick={onBrowse}>
-          浏览市场
+          插件市场
         </button>
         找一个，
         <button className="link" onClick={onImport}>

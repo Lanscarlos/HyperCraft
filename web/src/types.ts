@@ -341,8 +341,8 @@ export interface PluginRelease {
   notes: string
   prerelease: boolean
   publishedAt: string
-  asset: { name: string; size: number; url: string }
-  assets: { name: string; size: number; url: string }[]
+  asset: PluginAsset
+  assets: PluginAsset[]
   /** What a registry published and a GitHub release does not. Absent means
    *  unknown, which is never treated as compatible. */
   gameVersions?: string[]
@@ -352,6 +352,28 @@ export interface PluginRelease {
   /** Compatibility metadata that describes the plugin rather than this exact
    *  version — all SpigotMC offers for anything but its newest release. */
   unverified?: boolean
+}
+
+/**
+ * One file published with a release.
+ *
+ * A release is very often not one file: Hangar publishes a paper build and a
+ * velocity build under one version, Modrinth files each platform's jar under
+ * the same version number. Those are one release packaged twice, and what
+ * tells them apart is `platform` — never the file name.
+ */
+export interface PluginAsset {
+  name: string
+  size: number
+  url: string
+  /** paper / velocity / fabric …, lowercased, as the source names it. Absent
+   *  for a GitHub release, which says nothing about its assets. */
+  platform?: string
+  /** What this jar in particular supports, which on a multi-platform release
+   *  is not what the release as a whole supports. */
+  loaders?: string[]
+  gameVersions?: string[]
+  sha256?: string
 }
 
 export interface PluginDependency {
@@ -857,15 +879,31 @@ export interface PluginBrowseResult {
  */
 export interface PluginInstallTargets {
   targets: InstallTarget[]
+  /** Keyed by version tag, then instance id: can this release go on that
+   *  server. A release's verdict is the best of its jars'. */
   verdicts: Record<string, Record<string, PluginCompat | null>>
+  /** Keyed by artifact digest, then instance id: can *this jar* go on that
+   *  server. Picking the release does not pick the file — see artifactKey. */
+  jars: Record<string, Record<string, PluginCompat | null>>
+}
+
+/** How one jar is addressed in the verdict matrix: its digest, which is its
+ *  identity, falling back to the file name for a record written before there
+ *  were digests. Mirrors plugin.ArtifactKey. */
+export function artifactKey(artifact: PluginArtifact): string {
+  return artifact.sha256 || artifact.fileName
 }
 
 export interface BrowseVersion extends PluginRelease {
   /** Absent when no server was chosen to judge against. */
   compat?: PluginCompat
-  /** True when the library already holds this jar, so installing skips the
-   *  transfer. */
+  /** True when the library already holds a jar of this release, so installing
+   *  skips the transfer. */
   held: boolean
+  /** Which jars of it, by file name. A release that ships one build per
+   *  platform can be half held — the paper jar downloaded, the velocity one
+   *  not — and installing onto a proxy then has to download after all. */
+  heldJars?: string[]
 }
 
 export interface PluginBrowseDetail {

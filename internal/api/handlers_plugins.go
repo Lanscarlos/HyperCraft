@@ -684,6 +684,13 @@ type pluginDownloadRequest struct {
 	// Tag names the release to fetch. Empty means whatever is newest, which is
 	// what the update button asks for.
 	Tag string `json:"tag"`
+	// Asset names which jar of that release, by file name. Empty means the
+	// primary one, which is what a release publishing a single jar has and
+	// what the list page's 更新入库 asks for. A release that ships one build
+	// per platform is what this is for: paper and velocity are one version and
+	// two files, and which of them you want is not something the panel can
+	// work out from the plugin alone.
+	Asset string `json:"asset,omitempty"`
 }
 
 func (s *Server) handleDownloadPlugin(w http.ResponseWriter, r *http.Request) {
@@ -697,7 +704,7 @@ func (s *Server) handleDownloadPlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, err := s.plugins.Start(r.PathValue("id"), strings.TrimSpace(req.Tag))
+	job, err := s.plugins.Start(r.PathValue("id"), strings.TrimSpace(req.Tag), strings.TrimSpace(req.Asset))
 	if err != nil {
 		s.writePluginError(w, err)
 		return
@@ -1135,7 +1142,8 @@ func (s *Server) handleInstallInstancePlugin(w http.ResponseWriter, r *http.Requ
 
 	cfg := inst.Config()
 	entry, snapshot, err := s.instancePlugins.InstallArtifact(
-		cfg.ID, cfg.Directory, req.PluginID, req.Tag, req.SHA, actorOf(r))
+		cfg.ID, cfg.Directory, req.PluginID, req.Tag, s.jarFor(cfg, req.PluginID, req.Tag, req.SHA),
+		actorOf(r))
 	if err != nil {
 		s.writePluginError(w, err)
 		return

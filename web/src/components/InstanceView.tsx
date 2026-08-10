@@ -22,7 +22,7 @@ interface Props {
   onChanged: (instance: InstanceStatus) => void
   onDeleted: () => void
   onOpenSection: (section: InstanceSection) => void
-  /** Opens 获取插件 in the library, with this server as the compatibility
+  /** Opens 插件市场 in the library, with this server as the compatibility
    *  reference. Downloading is panel-wide and happens there. */
   onOpenBrowse: () => void
   /** The panel-wide core library, for "download another one". */

@@ -257,7 +257,7 @@ export function PluginLibraryDrawer({
               item={item}
               row={row}
               busy={busy || plugins.busy || plugins.downloading}
-              onDownload={(tag) => void plugins.download(item.id, tag)}
+              onDownload={(tag, asset) => void plugins.download(item.id, tag, asset)}
               onDropArtifact={(version, artifact) =>
                 void act(async () => {
                   await api.deletePluginVersion(item.id, version.tag, artifact.sha256)
@@ -596,7 +596,7 @@ function VersionsTab({
   item: LibraryPlugin
   row: PluginOverviewRow
   busy: boolean
-  onDownload: (tag: string) => void
+  onDownload: (tag: string, asset?: string) => void
   onDropArtifact: (version: PluginVersion, artifact: PluginArtifact) => void
 }) {
   const [releases, setReleases] = useState<PluginRelease[] | null>(null)
@@ -660,7 +660,7 @@ function VersionsTab({
             pinned={row.pinned === entry.tag}
             busy={busy}
             onToggle={() => setOpen(open === entry.tag ? null : entry.tag)}
-            onDownload={() => onDownload(entry.tag)}
+            onDownload={(asset) => onDownload(entry.tag, asset)}
             onDropArtifact={(artifact) => entry.held && onDropArtifact(entry.held, artifact)}
           />
         ))}
@@ -728,11 +728,29 @@ function VersionGroup({
   pinned: boolean
   busy: boolean
   onToggle: () => void
-  onDownload: () => void
+  onDownload: (asset?: string) => void
   onDropArtifact: (artifact: PluginArtifact) => void
 }) {
   const artifacts = entry.held ? pluginArtifacts(entry.held) : []
   const size = entry.held ? versionSize(entry.held) : (entry.release?.asset.size ?? 0)
+
+  // What upstream published under this release that the library does not hold.
+  //
+  // This is where "one release, several jars" stops being a statement and
+  // becomes something to act on: a plugin that ships a paper build and a
+  // velocity build has two rows here, and a fleet with a proxy in it needs
+  // both. Matched by file name because that is what the library files them
+  // under — the digest is not known until the bytes have arrived.
+  //
+  // Only the builds whose platform the source named. A GitHub release's assets
+  // are a pile of files nobody has labelled — the jar, the sources jar, the
+  // javadoc jar — and offering to download each of them by name would be the
+  // panel presenting its own ignorance as a choice. Those keep the one button
+  // they had, which fetches whatever the asset pattern picked.
+  const held = new Set(artifacts.map((artifact) => artifact.fileName.toLowerCase()))
+  const offered = (entry.release?.assets ?? [])
+    .filter((asset) => asset.platform)
+    .filter((asset) => !held.has(asset.name.toLowerCase()))
 
   return (
     <div className={`vgroup${entry.held ? ' vgroup--held' : ''}`}>
@@ -783,10 +801,37 @@ function VersionGroup({
             <p className="muted">这个版本还没下载到库里。</p>
           )}
 
-          {!entry.held && (
-            <button className="btn btn--small" disabled={busy} onClick={onDownload}>
-              下载到库
-            </button>
+          {offered.length > 0 ? (
+            <div className="offers">
+              {offered.map((asset) => (
+                <div className="offers__row" key={asset.name}>
+                  {asset.platform ? (
+                    <span className="badge">{loaderLabel(asset.platform)}</span>
+                  ) : (
+                    <span className="badge badge--muted">未标平台</span>
+                  )}
+                  <code className="offers__file" title={asset.name}>
+                    {asset.name}
+                  </code>
+                  {asset.size > 0 && (
+                    <span className="offers__size">{formatBytes(asset.size)}</span>
+                  )}
+                  <button
+                    className="btn btn--small"
+                    disabled={busy}
+                    onClick={() => onDownload(asset.name)}
+                  >
+                    下载到库
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            !entry.held && (
+              <button className="btn btn--small" disabled={busy} onClick={() => onDownload()}>
+                下载到库
+              </button>
+            )
           )}
 
           {entry.notes?.trim() && (

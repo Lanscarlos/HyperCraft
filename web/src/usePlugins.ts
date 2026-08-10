@@ -37,7 +37,7 @@ export interface PluginController {
   remove: (id: string) => Promise<void>
   check: (id: string) => Promise<void>
   checkAll: () => Promise<void>
-  download: (id: string, tag: string) => Promise<void>
+  download: (id: string, tag: string, asset?: string) => Promise<void>
   cancel: () => Promise<void>
   removeVersion: (id: string, tag: string) => Promise<void>
   /** Adds a GitHub credential under an operator-chosen name. */
@@ -154,9 +154,9 @@ export function usePlugins(enabled: boolean): PluginController {
   )
 
   const download = useCallback(
-    (id: string, tag: string) =>
+    (id: string, tag: string, asset?: string) =>
       act(async () => {
-        const started = await api.downloadPlugin(id, tag)
+        const started = await api.downloadPlugin(id, tag, asset)
         // Show the job immediately; the poll takes over from here.
         setLibrary((prev) => (prev ? { ...prev, job: started } : prev))
       }, '下载失败').catch(() => undefined),

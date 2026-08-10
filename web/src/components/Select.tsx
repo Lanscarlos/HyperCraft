@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties, KeyboardEvent } from 'react'
 
+import { EDGE, placeVertically, useAnchor } from '../useAnchor'
 import { useDismiss } from '../useDismiss'
 import { useMediaQuery } from '../useMediaQuery'
 
@@ -35,10 +36,6 @@ interface Props {
   title?: string
 }
 
-/** Between the trigger and the sheet, and between the sheet and the viewport
- *  edge it would otherwise touch. */
-const GAP = 6
-const EDGE = 8
 /** Roughly eight rows. Past that the list scrolls rather than growing: a
  *  hundred plugin versions must not become a hundred-row wall. */
 const MAX_HEIGHT = 288
@@ -50,36 +47,15 @@ const PAGE = 8
 /** How long a typed prefix stays a prefix. */
 const TYPE_AHEAD = 700
 
-interface Anchor {
-  /** Whether the sheet opens above the trigger rather than below it. */
-  up: boolean
-  left: number
-  width: number
-  /** Distance from the viewport's top edge, or from its bottom when `up`. */
-  offset: number
-  maxHeight: number
-}
-
-/** Where the sheet goes, measured against the trigger and the viewport.
- *
- *  Below the trigger unless there is not room for a usable list down there and
- *  there is more room up — a version picker in the last row of a long table
- *  would otherwise open into two visible rows and a scrollbar. */
-function place(anchor: HTMLElement): Anchor {
-  const rect = anchor.getBoundingClientRect()
-  const below = window.innerHeight - rect.bottom - GAP - EDGE
-  const above = rect.top - GAP - EDGE
-  const up = below < Math.min(MAX_HEIGHT, 180) && above > below
-
+/** Where the sheet goes horizontally: as wide as the trigger, never narrower
+ *  than a readable list, and never hanging off either edge. The vertical half
+ *  of the decision is shared with the menus — see useAnchor.ts. */
+function place(rect: DOMRect) {
   const width = Math.min(Math.max(rect.width, MIN_WIDTH), window.innerWidth - EDGE * 2)
-  const left = Math.min(Math.max(rect.left, EDGE), window.innerWidth - width - EDGE)
-
   return {
-    up,
-    left,
+    ...placeVertically(rect, MAX_HEIGHT),
     width,
-    offset: up ? window.innerHeight - rect.top + GAP : rect.bottom + GAP,
-    maxHeight: Math.max(Math.min(MAX_HEIGHT, up ? above : below), 96),
+    left: Math.min(Math.max(rect.left, EDGE), window.innerWidth - width - EDGE),
   }
 }
 
@@ -127,7 +103,6 @@ export function Select({
 }: Props) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
-  const [anchor, setAnchor] = useState<Anchor | null>(null)
 
   const button = useRef<HTMLButtonElement | null>(null)
   const sheet = useRef<HTMLDivElement | null>(null)
@@ -179,23 +154,8 @@ export function Select({
     [options, close, onChange, value],
   )
 
-  // Follow the trigger. The sheet is fixed to the viewport, so anything that
-  // moves the trigger — a scrolled dialog body, a resized window, a table
-  // scrolled sideways — moves the sheet too, or it is left hanging in space.
-  useLayoutEffect(() => {
-    if (!open || !button.current) return
-    const anchorEl = button.current
-    const follow = () => setAnchor(place(anchorEl))
-    follow()
-    // Capture, because the scroll that matters is usually some ancestor's and
-    // scroll events do not bubble.
-    window.addEventListener('scroll', follow, true)
-    window.addEventListener('resize', follow)
-    return () => {
-      window.removeEventListener('scroll', follow, true)
-      window.removeEventListener('resize', follow)
-    }
-  }, [open])
+  // Stuck to the trigger for as long as it is open; see useAnchor.ts.
+  const anchor = useAnchor(open, button, place)
 
   // Keep the highlighted row on screen, including the one highlighted on open:
   // opening a hundred-version list scrolled to the top, with the version you
@@ -249,7 +209,7 @@ export function Select({
     /**
      * This key was the list's, and nobody else gets a turn at it.
      *
-     * Not a formality. 获取插件 drives its result list from arrow keys and
+     * Not a formality. 插件市场 drives its result list from arrow keys and
      * Enter on the surrounding div, and the rail's three dropdowns sit inside
      * it: without this, arrowing through 排序 walks the cursor down the search
      * results behind it and Enter opens whichever plugin it landed on. Escape

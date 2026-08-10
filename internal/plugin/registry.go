@@ -569,12 +569,42 @@ func (r *Registry) modrinthVersions(ctx context.Context, id string) ([]Release, 
 	// costs the names, not the version list.
 	names := r.modrinthNames(ctx, dependencyIDs(versions))
 
+	// One release per version *number*, not per Modrinth version.
+	//
+	// Modrinth files each platform's build as a version of its own — LuckPerms
+	// publishes 5.5.71 five times over, once for bukkit, once for velocity,
+	// once for fabric — with the same version number on all of them. Read one
+	// version to one release and the library ends up holding five copies of a
+	// plugin that shipped once, reports the fleet as running five different
+	// versions, and offers to "upgrade" a Velocity proxy to a Paper jar. The
+	// number is the release; the builds under it are its jars.
+	byVersion := map[string]int{}
 	out := make([]Release, 0, len(versions))
 	for _, version := range versions {
 		file, ok := primaryFile(version)
 		if !ok {
 			continue
 		}
+		asset := Asset{
+			Name:         file.FileName,
+			Size:         file.Size,
+			URL:          file.URL,
+			Platform:     firstLoader(version.Loaders),
+			Loaders:      version.Loaders,
+			GameVersions: version.GameVersions,
+		}
+
+		key := strings.TrimSpace(version.VersionNumber)
+		if key == "" {
+			// Nothing to group on. Its own release, addressed the way it
+			// always was.
+			key = version.ID
+		}
+		if at, seen := byVersion[key]; seen {
+			out[at] = mergeModrinth(out[at], version, asset)
+			continue
+		}
+
 		deps := make([]Dependency, 0, len(version.Dependencies))
 		for _, dep := range version.Dependencies {
 			if dep.DependencyType != "required" && dep.DependencyType != "optional" {
@@ -593,23 +623,129 @@ func (r *Registry) modrinthVersions(ctx context.Context, id string) ([]Release, 
 				URL:      "https://modrinth.com/plugin/" + dep.ProjectID,
 			})
 		}
+		byVersion[key] = len(out)
 		out = append(out, Release{
-			Tag:          version.ID,
+			Tag:          key,
 			Name:         version.Name,
 			Version:      version.VersionNumber,
 			Notes:        version.Changelog,
 			Prerelease:   version.VersionType != "release",
 			PublishedAt:  version.Published,
-			Asset:        Asset{Name: file.FileName, Size: file.Size, URL: file.URL},
-			Assets:       []Asset{{Name: file.FileName, Size: file.Size, URL: file.URL}},
+			Asset:        asset,
+			Assets:       []Asset{asset},
 			GameVersions: version.GameVersions,
 			Loaders:      version.Loaders,
 			Dependencies: deps,
 			Downloads:    version.Downloads,
 		})
 	}
+	for i := range out {
+		out[i] = orderAssets(out[i])
+	}
 	sortReleases(out)
 	return out, nil
+}
+
+// mergeModrinth folds another build of a version already collected into it.
+//
+// The release takes the union of what its builds support, because that is what
+// the plugin as published supports and it is what a search badge is claiming.
+// Which of those a given server can actually load is a property of one jar, and
+// that stays on the jar.
+func mergeModrinth(release Release, version modrinthVersion, asset Asset) Release {
+	for _, held := range release.Assets {
+		// The same file twice is one file. Modrinth does this when a build
+		// genuinely covers several loaders and the project lists it once per
+		// loader.
+		if strings.EqualFold(held.Name, asset.Name) && held.URL == asset.URL {
+			return release
+		}
+	}
+	if assetNames(release.Assets)[strings.ToLower(asset.Name)] {
+		asset.Name = platformName(asset.Name, asset.Platform)
+	}
+	release.Assets = append(release.Assets, asset)
+	release.GameVersions = union(release.GameVersions, version.GameVersions)
+	release.Loaders = union(release.Loaders, version.Loaders)
+	release.Downloads += version.Downloads
+	// The release is dated by its earliest build: that is when it was
+	// published, and a later platform build is the same release catching up.
+	if !version.Published.IsZero() && version.Published.Before(release.PublishedAt) {
+		release.PublishedAt = version.Published
+	}
+	// A release is a prerelease only if every build of it is one.
+	release.Prerelease = release.Prerelease && version.VersionType != "release"
+	if release.Notes == "" {
+		release.Notes = version.Changelog
+	}
+	return release
+}
+
+func assetNames(assets []Asset) map[string]bool {
+	out := make(map[string]bool, len(assets))
+	for _, asset := range assets {
+		out[strings.ToLower(asset.Name)] = true
+	}
+	return out
+}
+
+func union(into, extra []string) []string {
+	seen := make(map[string]bool, len(into))
+	for _, entry := range into {
+		seen[entry] = true
+	}
+	for _, entry := range extra {
+		if !seen[entry] {
+			seen[entry] = true
+			into = append(into, entry)
+		}
+	}
+	return into
+}
+
+func firstLoader(loaders []string) string {
+	if len(loaders) == 0 {
+		return ""
+	}
+	best := loaders[0]
+	for _, loader := range loaders[1:] {
+		if loaderRank(loader) < loaderRank(best) {
+			best = loader
+		}
+	}
+	return strings.ToLower(best)
+}
+
+// serverLoaders is the order a jar is picked in when a release ships several.
+// Plugin platforms before mod loaders, and the busiest first: whatever ends up
+// at the head of the list is what a plain "下载到库" fetches, and on this panel
+// that should be the jar a Minecraft *server* loads.
+var serverLoaders = []string{
+	"paper", "purpur", "folia", "spigot", "bukkit",
+	"velocity", "waterfall", "bungeecord", "sponge",
+}
+
+func loaderRank(loader string) int {
+	loader = strings.ToLower(strings.TrimSpace(loader))
+	for i, known := range serverLoaders {
+		if known == loader {
+			return i
+		}
+	}
+	return len(serverLoaders)
+}
+
+// orderAssets puts the jar a plain download should take first, and points the
+// release's primary at it.
+func orderAssets(release Release) Release {
+	if len(release.Assets) < 2 {
+		return release
+	}
+	sort.SliceStable(release.Assets, func(a, b int) bool {
+		return loaderRank(release.Assets[a].Platform) < loaderRank(release.Assets[b].Platform)
+	})
+	release.Asset = release.Assets[0]
+	return release
 }
 
 func primaryFile(version modrinthVersion) (struct {
@@ -828,15 +964,7 @@ type hangarVersion struct {
 	Channel     struct {
 		Name string `json:"name"`
 	} `json:"channel"`
-	Downloads map[string]struct {
-		FileInfo struct {
-			Name      string `json:"name"`
-			SizeBytes int64  `json:"sizeBytes"`
-			SHA256    string `json:"sha256Hash"`
-		} `json:"fileInfo"`
-		ExternalURL string `json:"externalUrl"`
-		DownloadURL string `json:"downloadUrl"`
-	} `json:"downloads"`
+	Downloads          map[string]hangarDownload `json:"downloads"`
 	PluginDependencies map[string][]struct {
 		Name        string `json:"name"`
 		Required    bool   `json:"required"`
@@ -846,6 +974,17 @@ type hangarVersion struct {
 	Stats                struct {
 		TotalDownloads int64 `json:"totalDownloads"`
 	} `json:"stats"`
+}
+
+// hangarDownload is one platform's file under a Hangar version.
+type hangarDownload struct {
+	FileInfo struct {
+		Name      string `json:"name"`
+		SizeBytes int64  `json:"sizeBytes"`
+		SHA256    string `json:"sha256Hash"`
+	} `json:"fileInfo"`
+	ExternalURL string `json:"externalUrl"`
+	DownloadURL string `json:"downloadUrl"`
 }
 
 type hangarVersions struct {
@@ -861,8 +1000,8 @@ func (r *Registry) hangarVersions(ctx context.Context, id string) ([]Release, er
 
 	out := make([]Release, 0, len(page.Result))
 	for _, version := range page.Result {
-		platform, download, ok := pickHangarDownload(version)
-		if !ok {
+		assets := hangarAssets(id, version)
+		if len(assets) == 0 {
 			continue
 		}
 		var loaders, versions []string
@@ -880,78 +1019,94 @@ func (r *Registry) hangarVersions(ctx context.Context, id string) ([]Release, er
 			}
 		}
 
-		asset := Asset{
-			Name: download.FileInfo.Name,
-			Size: download.FileInfo.SizeBytes,
-			URL:  download.DownloadURL,
-		}
-		if asset.URL == "" {
-			asset.URL = download.ExternalURL
-		}
-		if asset.Name == "" {
-			asset.Name = sanitiseFileName(id + "-" + version.Name + ".jar")
-		}
 		out = append(out, Release{
-			// Hangar addresses a version by its name within the project, and
-			// the platform decides which file that name resolves to. Both are
-			// needed to fetch it again later, so the tag carries the pair.
-			Tag:          version.Name + "@" + platform,
+			// The version's name within the project, and nothing else. It used
+			// to carry the platform too — "1.2.3@PAPER" — which made one
+			// release look like as many releases as it has builds, and made
+			// the panel report a plugin published once as inconsistent across
+			// a fleet. The platform belongs to the jar, and it is on the jar.
+			Tag:          version.Name,
 			Name:         version.Name,
 			Version:      version.Name,
 			Notes:        version.Description,
 			Prerelease:   !strings.EqualFold(version.Channel.Name, "release"),
 			PublishedAt:  version.CreatedAt,
-			Asset:        asset,
-			Assets:       []Asset{asset},
+			Asset:        assets[0],
+			Assets:       assets,
 			GameVersions: versions,
 			Loaders:      loaders,
 			Dependencies: deps,
 			Downloads:    version.Stats.TotalDownloads,
-			SHA256:       download.FileInfo.SHA256,
+			SHA256:       assets[0].SHA256,
 		})
 	}
 	sortReleases(out)
 	return out, nil
 }
 
-// pickHangarDownload chooses which platform's file a version means.
+// hangarAssets is every platform build under one Hangar version.
 //
-// A Hangar version can publish a different jar per platform. Paper first
-// because that is what almost every server here runs, then whatever else is
-// on offer in a stable order — an arbitrary map iteration would otherwise make
-// the same version resolve to a different file on different page loads.
-func pickHangarDownload(version hangarVersion) (string, struct {
-	FileInfo struct {
-		Name      string `json:"name"`
-		SizeBytes int64  `json:"sizeBytes"`
-		SHA256    string `json:"sha256Hash"`
-	} `json:"fileInfo"`
-	ExternalURL string `json:"externalUrl"`
-	DownloadURL string `json:"downloadUrl"`
-}, bool) {
-	for _, preferred := range []string{"PAPER", "VELOCITY", "WATERFALL"} {
-		if download, ok := version.Downloads[preferred]; ok {
-			return preferred, download, true
-		}
-	}
+// Paper first, because that is what almost every server here runs and the
+// first asset is what a plain "download this version" fetches; then whatever
+// else is on offer, in a stable order — an arbitrary map iteration would
+// otherwise make the same version resolve to a different file on different
+// page loads.
+func hangarAssets(id string, version hangarVersion) []Asset {
 	names := make([]string, 0, len(version.Downloads))
 	for name := range version.Downloads {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	if len(names) > 0 {
-		return names[0], version.Downloads[names[0]], true
+	sort.SliceStable(names, func(a, b int) bool {
+		return loaderRank(names[a]) < loaderRank(names[b])
+	})
+
+	out := make([]Asset, 0, len(names))
+	taken := map[string]bool{}
+	for _, platform := range names {
+		download := version.Downloads[platform]
+		asset := Asset{
+			Name:     download.FileInfo.Name,
+			Size:     download.FileInfo.SizeBytes,
+			URL:      download.DownloadURL,
+			Platform: strings.ToLower(platform),
+			Loaders:  []string{strings.ToLower(platform)},
+			SHA256:   download.FileInfo.SHA256,
+		}
+		if asset.URL == "" {
+			asset.URL = download.ExternalURL
+		}
+		if asset.URL == "" {
+			continue
+		}
+		if supported, ok := version.PlatformDependencies[platform]; ok {
+			asset.GameVersions = supported
+		}
+		if asset.Name == "" {
+			asset.Name = sanitiseFileName(id + "-" + version.Name + "-" + asset.Platform + ".jar")
+		}
+		// Two platforms publishing the same file name would land on one file
+		// on disk, and the release would look like it holds one jar because it
+		// would. The platform is what tells them apart, so it goes in the name.
+		if taken[strings.ToLower(asset.Name)] {
+			asset.Name = platformName(asset.Name, asset.Platform)
+		}
+		taken[strings.ToLower(asset.Name)] = true
+		out = append(out, asset)
 	}
-	var zero struct {
-		FileInfo struct {
-			Name      string `json:"name"`
-			SizeBytes int64  `json:"sizeBytes"`
-			SHA256    string `json:"sha256Hash"`
-		} `json:"fileInfo"`
-		ExternalURL string `json:"externalUrl"`
-		DownloadURL string `json:"downloadUrl"`
+	return out
+}
+
+// platformName spells the platform into a file name, for the rare release
+// whose builds are all called the same thing.
+func platformName(name, platform string) string {
+	if platform == "" {
+		return name
 	}
-	return "", zero, false
+	if ext := strings.LastIndex(name, "."); ext > 0 {
+		return name[:ext] + "-" + platform + name[ext:]
+	}
+	return name + "-" + platform
 }
 
 // ------------------------------------------------------------------ spigot

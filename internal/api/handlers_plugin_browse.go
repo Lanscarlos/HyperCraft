@@ -190,9 +190,14 @@ type browseDetailResponse struct {
 type browseVersion struct {
 	plugin.Release
 	Compat *plugin.Compat `json:"compat,omitempty"`
-	// Held is true when the library already has this jar, so the drawer can
-	// offer "安装" rather than "下载并安装" and skip the transfer.
+	// Held is true when the library already has a jar of this release, so the
+	// drawer can offer "安装" rather than "下载并安装" and skip the transfer.
 	Held bool `json:"held"`
+	// HeldJars names which of them, by file name. On a release that ships one
+	// build per platform "have we got this version" is not one question: the
+	// library can hold the paper jar and not the velocity one, and installing
+	// onto a proxy then has to download after all.
+	HeldJars []string `json:"heldJars,omitempty"`
 }
 
 // pluginViewLight says the panel already tracks this plugin, and under which
@@ -254,17 +259,26 @@ func (s *Server) handleBrowsePluginDetail(w http.ResponseWriter, r *http.Request
 	}
 	resp.Listing.Compat = plugin.JudgeAcross(chosen, listing.Loaders, listing.GameVersions)
 
+	var library *plugin.Plugin
+	if tracked != nil {
+		if item, err := s.plugins.Library().Get(tracked.ID); err == nil {
+			library = &item
+		}
+	}
 	for _, release := range releases {
-		held := false
-		if tracked != nil {
-			if item, err := s.plugins.Library().Get(tracked.ID); err == nil {
-				held = item.HasVersion(release.Tag)
+		var jars []string
+		if library != nil {
+			if version := library.Version(release.Tag); version != nil {
+				for _, artifact := range version.Artifacts {
+					jars = append(jars, artifact.FileName)
+				}
 			}
 		}
 		resp.Versions = append(resp.Versions, browseVersion{
-			Release: release,
-			Compat:  plugin.JudgeAcross(chosen, release.Loaders, release.GameVersions),
-			Held:    held,
+			Release:  release,
+			Compat:   plugin.JudgeAcross(chosen, release.Loaders, release.GameVersions),
+			Held:     len(jars) > 0,
+			HeldJars: jars,
 		})
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -388,7 +402,16 @@ type installMatrixResponse struct {
 	// the honest answer for a jar whose source published no metadata — every
 	// GitHub release, and Hangar until its versions are read — and the UI shows
 	// no badge for it rather than a green one.
+	//
+	// A release's verdict is the best of its jars': "can this version go on
+	// that server" is answered yes by one build fitting, even when the other
+	// three do not. Which build that is, is the next field.
 	Verdicts map[string]map[string]*plugin.Compat `json:"verdicts"`
+	// Jars is the same judgement one level down: keyed by artifact digest,
+	// then by instance id. This is what an install actually reads — a release
+	// with a paper jar and a velocity jar has a different right answer per
+	// server, and picking the release does not pick the file.
+	Jars map[string]map[string]*plugin.Compat `json:"jars"`
 }
 
 // handlePluginInstallTargets judges every downloaded version of one plugin
@@ -413,19 +436,80 @@ func (s *Server) handlePluginInstallTargets(w http.ResponseWriter, r *http.Reque
 	resp := installMatrixResponse{
 		Targets:  targets,
 		Verdicts: make(map[string]map[string]*plugin.Compat, len(item.Versions)),
+		Jars:     map[string]map[string]*plugin.Compat{},
 	}
 	for _, version := range item.Versions {
-		row := make(map[string]*plugin.Compat, len(targets))
-		for _, target := range targets {
-			row[target.ID] = plugin.JudgeAcross(
-				[]plugin.NamedTarget{{Name: target.Name, Target: target.Target}},
-				version.Loaders,
-				version.GameVersions,
-			)
+		release := make(map[string]*plugin.Compat, len(targets))
+		for _, artifact := range version.Artifacts {
+			loaders, gameVersions := plugin.Claims(version, artifact)
+			jar := make(map[string]*plugin.Compat, len(targets))
+			for _, target := range targets {
+				verdict := plugin.JudgeAcross(
+					[]plugin.NamedTarget{{Name: target.Name, Target: target.Target}},
+					loaders,
+					gameVersions,
+				)
+				jar[target.ID] = verdict
+				release[target.ID] = better(release[target.ID], verdict)
+			}
+			resp.Jars[plugin.ArtifactKey(artifact)] = jar
 		}
-		resp.Verdicts[version.Tag] = row
+		resp.Verdicts[version.Tag] = release
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// jarFor is which jar of a release this server should be given, when whoever
+// asked did not say.
+//
+// Nobody outside this file should have to: "upgrade 生存服 to 5.5.71" and
+// "upgrade 群组端 to 5.5.71" are the same sentence about the same release, and
+// on a plugin that ships one build per platform they are two different files.
+// A digest the caller *did* supply is honoured as-is — the install dialog
+// picks per server and says which jar each one gets, and a resolved choice
+// must not be second-guessed here.
+func (s *Server) jarFor(cfg instance.Config, pluginID, tag, sha string) string {
+	if strings.TrimSpace(sha) != "" {
+		return sha
+	}
+	item, err := s.plugins.Library().Get(pluginID)
+	if err != nil {
+		return ""
+	}
+	version := item.Version(tag)
+	if version == nil || len(version.Artifacts) < 2 {
+		// One jar, or none the panel holds: there is nothing to choose and
+		// the empty digest already means "the primary".
+		return ""
+	}
+	return plugin.PickFor(*version, s.detectTarget(cfg)).SHA256
+}
+
+// better keeps the more encouraging of two verdicts, which is how a release is
+// judged from its jars: one build fitting is the release fitting, and an
+// unknown beats a refusal because unknown means the source said nothing.
+func better(held, next *plugin.Compat) *plugin.Compat {
+	if held == nil {
+		return next
+	}
+	if next == nil {
+		return held
+	}
+	if compatRank(next.State) < compatRank(held.State) {
+		return next
+	}
+	return held
+}
+
+func compatRank(state string) int {
+	switch state {
+	case plugin.CompatOK:
+		return 0
+	case plugin.CompatUnknown:
+		return 1
+	default:
+		return 2
+	}
 }
 
 // detectTarget works out an instance's game version and loader, using the core
@@ -1005,7 +1089,9 @@ func (s *Server) handleBulkUpgrade(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			if _, err := s.instancePlugins.Install(cfg.ID, cfg.Directory, item.ID, newest.Tag); err != nil {
+			_, _, err := s.instancePlugins.InstallArtifact(cfg.ID, cfg.Directory, item.ID, newest.Tag,
+				s.jarFor(cfg, item.ID, newest.Tag, ""), "")
+			if err != nil {
 				result.Failures = append(result.Failures, bulkFailure{
 					Instance: cfg.Name, Plugin: item.Name, Error: err.Error(),
 				})

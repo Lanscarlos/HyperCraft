@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -192,13 +193,20 @@ func (d *Downloader) CheckAll(ctx context.Context) []Plugin {
 	return out
 }
 
-// Start downloads one release of a tracked plugin into the library.
+// Start downloads one jar of one release of a tracked plugin into the library.
+//
+// `asset` names which jar, by file name, and empty means the release's primary
+// — which is the right answer for the great majority of releases, because they
+// publish one. A release that ships a build per platform is the reason this is
+// a parameter at all: the paper jar and the velocity jar are the same version,
+// and a panel that could only ever fetch the first of them would be a panel
+// that cannot put this plugin on a proxy.
 //
 // It returns once the transfer is under way; everything reportable as a bad
 // request — unknown plugin, unknown tag, release with no jar — is resolved
 // first, so the operator gets a real error rather than a job that fails a
 // second later.
-func (d *Downloader) Start(pluginID, tag string) (Job, error) {
+func (d *Downloader) Start(pluginID, tag, asset string) (Job, error) {
 	item, err := d.library.Get(pluginID)
 	if err != nil {
 		return Job{}, err
@@ -234,6 +242,10 @@ func (d *Downloader) Start(pluginID, tag string) (Job, error) {
 	item = d.syncVisibility(ctx, item)
 
 	release, err := d.resolve(ctx, item, tag)
+	var want Asset
+	if err == nil {
+		want, err = pickNamed(release, asset)
+	}
 	if err != nil {
 		cancel()
 		close(done)
@@ -244,20 +256,46 @@ func (d *Downloader) Start(pluginID, tag string) (Job, error) {
 	d.mu.Lock()
 	job.Tag = release.Tag
 	job.Version = release.Version
-	job.FileName = release.Asset.Name
-	job.Total = release.Asset.Size
+	job.FileName = want.Name
+	job.Total = want.Size
 	snapshot := *job
 	d.mu.Unlock()
 
 	d.log.Info("plugin download started",
-		"plugin", item.ID, "tag", release.Tag, "file", release.Asset.Name, "size", release.Asset.Size)
+		"plugin", item.ID, "tag", release.Tag, "file", want.Name, "size", want.Size)
 
 	go func() {
 		defer cancel()
 		defer close(done)
-		d.run(ctx, job, item, release)
+		d.run(ctx, job, item, release, want)
 	}()
 	return snapshot, nil
+}
+
+// firstOf is the first list that says anything. Used where an asset's own
+// claim outranks its release's, and the release's is the fallback rather than
+// nothing.
+func firstOf(preferred, fallback []string) []string {
+	if len(preferred) > 0 {
+		return preferred
+	}
+	return fallback
+}
+
+// pickNamed finds the jar a download asked for. An empty name is the release's
+// primary; a name that is not on the release is an error rather than a silent
+// fallback, because the fallback would be the wrong platform's jar.
+func pickNamed(release Release, name string) (Asset, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return release.Asset, nil
+	}
+	for _, asset := range release.Assets {
+		if strings.EqualFold(asset.Name, name) {
+			return asset, nil
+		}
+	}
+	return Asset{}, fmt.Errorf("%w: %s 里没有名为 %s 的文件", ErrNotFound, release.Tag, name)
 }
 
 // resolve finds the release to fetch. An empty tag means "whatever is newest",
@@ -281,21 +319,21 @@ func (d *Downloader) resolve(ctx context.Context, item Plugin, tag string) (Rele
 // run streams the jar to a .part file and only then moves it into place, so a
 // failed or cancelled download never leaves something that looks like an
 // installable plugin in the library.
-func (d *Downloader) run(ctx context.Context, job *Job, item Plugin, release Release) {
+func (d *Downloader) run(ctx context.Context, job *Job, item Plugin, release Release, want Asset) {
 	slug, err := versionSlug(release.Tag)
 	if err != nil {
 		d.finish(job, JobFailed, err)
 		return
 	}
 	dir := filepath.Join(d.library.Root(), item.ID, slug)
-	temp := filepath.Join(dir, release.Asset.Name+partSuffix)
-	final := filepath.Join(dir, release.Asset.Name)
+	temp := filepath.Join(dir, want.Name+partSuffix)
+	final := filepath.Join(dir, want.Name)
 
 	var digest string
 	if err = os.MkdirAll(dir, 0o755); err == nil {
 		// A previous attempt may have died with the panel and left its part file.
 		_ = os.Remove(temp)
-		digest, err = d.transfer(ctx, job, temp, item.Source, release.Asset)
+		digest, err = d.transfer(ctx, job, temp, item.Source, want)
 	}
 	if err == nil {
 		// Re-downloading a version the operator already has is the repair path
@@ -311,19 +349,26 @@ func (d *Downloader) run(ctx context.Context, job *Job, item Plugin, release Rel
 		// panel never opened. A descriptor that will not parse is not an error
 		// — the file is still a perfectly good download — it just leaves those
 		// fields empty and the panel says so rather than guessing.
+		//
+		// What the *jar* supports, not what the release does: on a release
+		// that ships one build per platform those are different claims, and
+		// the one an install has to be judged against is this file's.
 		artifact := Artifact{
 			SHA256:       digest,
-			FileName:     release.Asset.Name,
-			Size:         release.Asset.Size,
-			GameVersions: release.GameVersions,
-			Loaders:      release.Loaders,
+			FileName:     want.Name,
+			Size:         want.Size,
+			Platform:     want.Platform,
+			GameVersions: firstOf(want.GameVersions, release.GameVersions),
+			Loaders:      firstOf(want.Loaders, release.Loaders),
 			AddedAt:      time.Now(),
 		}
 		if info, size, readErr := readJar(final); readErr == nil {
 			artifact.Size = size
 			artifact.PluginName = info.Name
 			artifact.PluginVer = info.Version
-			artifact.Platform = info.Platform
+			if info.Platform != "" {
+				artifact.Platform = info.Platform
+			}
 			artifact.APIVersion = info.APIVersion
 			artifact.Depend = info.Depend
 			artifact.SoftDepend = info.SoftDepend
@@ -350,15 +395,15 @@ func (d *Downloader) run(ctx context.Context, job *Job, item Plugin, release Rel
 	switch {
 	case err == nil:
 		d.finish(job, JobDone, nil)
-		d.log.Info("plugin download finished", "plugin", item.ID, "file", release.Asset.Name)
+		d.log.Info("plugin download finished", "plugin", item.ID, "file", want.Name)
 	case ctx.Err() != nil:
 		_ = os.Remove(temp)
 		d.finish(job, JobCancelled, ErrCancelled)
-		d.log.Info("plugin download cancelled", "plugin", item.ID, "file", release.Asset.Name)
+		d.log.Info("plugin download cancelled", "plugin", item.ID, "file", want.Name)
 	default:
 		_ = os.Remove(temp)
 		d.finish(job, JobFailed, err)
-		d.log.Warn("plugin download failed", "plugin", item.ID, "file", release.Asset.Name, "err", err)
+		d.log.Warn("plugin download failed", "plugin", item.ID, "file", want.Name, "err", err)
 	}
 }
 

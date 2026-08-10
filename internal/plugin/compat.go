@@ -270,6 +270,44 @@ func JudgeAcross(targets []NamedTarget, loaders, gameVersions []string) *Compat 
 	}
 }
 
+// PickFor chooses which jar of a release goes onto one server.
+//
+// The question only has a wrong answer once releases are read correctly: a
+// release that ships a paper build and a velocity build is one version, and
+// "install 5.5.71 here" has to resolve to a different file on a proxy than on
+// a game server. Best fit wins — a jar that fits beats one nothing is known
+// about, which beats one that does not fit — and ties go to the earlier jar,
+// which is the release's primary.
+//
+// A jar that does not fit is still returned when none of them do: refusing the
+// install would be the panel overruling an operator who can read their own
+// server's logs, and the dialogs say so loudly before it gets this far.
+func PickFor(version Version, target Target) Artifact {
+	if len(version.Artifacts) == 0 {
+		return version.Primary()
+	}
+	best, rank := version.Artifacts[0], -1
+	for _, artifact := range version.Artifacts {
+		loaders, gameVersions := Claims(version, artifact)
+		next := fitRank(Judge(target, loaders, gameVersions).State)
+		if rank < 0 || next < rank {
+			best, rank = artifact, next
+		}
+	}
+	return best
+}
+
+func fitRank(state string) int {
+	switch state {
+	case CompatOK:
+		return 0
+	case CompatUnknown:
+		return 1
+	default:
+		return 2
+	}
+}
+
 func labelAll(loaders []string) []string {
 	out := make([]string, 0, len(loaders))
 	for _, loader := range loaders {
