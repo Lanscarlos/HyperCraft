@@ -1436,15 +1436,25 @@ a:hover {
   display: inline-flex;
 }
 
+/* Fixed rather than absolute, and portalled to <body>: a sheet positioned
+   inside its trigger belongs to whatever box the trigger is in, and in a table
+   that draws its rounded corners with `overflow: hidden` that means the last
+   row's menu is clipped away to nothing. Placed against the trigger's viewport
+   rect instead — see useAnchor.ts, which also decides top from bottom. */
 .menu__sheet {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 40;
+  position: fixed;
+  /* Over the modal and the drawer, under the command palette: menus open from
+     inside dialogs, and nothing that opens from inside a dialog may be painted
+     behind it. Same rung as the select sheet, for the same reason. */
+  z-index: 70;
   display: flex;
   flex-direction: column;
   min-width: 150px;
   padding: 4px;
+  overflow-y: auto;
+  /* A sheet scrolled to its end must not hand the rest of the gesture to the
+     page behind it. */
+  overscroll-behavior: contain;
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1456,11 +1466,18 @@ a:hover {
   animation: pop var(--dur-3) var(--ease) both;
 }
 
+/* Flipped when there was no room below. The same gesture mirrored — it still
+   unfolds away from the control it belongs to. */
+.menu__sheet[data-dir='up'] {
+  transform-origin: bottom right;
+  animation-name: pop-above;
+}
+
 /* Menu owns the leaving state and holds the sheet mounted for exactly as long
    as this takes; see useDismiss.ts. A sheet on its way out is scenery — it has
    to stop taking clicks, or the last tenth of a second of a dismissal is a
    window in which 强制结束 is still a live target. */
-.menu[data-state='out'] .menu__sheet {
+.menu__sheet[data-state='out'] {
   animation: pop-out var(--dur) var(--ease-in) both;
   pointer-events: none;
 }
@@ -6836,7 +6853,7 @@ button.rows__name:hover strong {
 
 /* ------------------------------------------------------ cross-instance view
 
-   我的库 answers one question — is what my servers are running what I think
+   插件列表 answers one question — is what my servers are running what I think
    they are running — and the layout is that question's two halves in priority
    order. Whether the panel's books describe the directories at all comes
    first; version arithmetic second. A version number derived from a record
@@ -6971,13 +6988,17 @@ button.rows__name:hover strong {
    menu it stays open while several are ticked: three sources is one decision
    made in three clicks. */
 .menu__sheet--filter {
-  right: auto;
-  left: 0;
   min-width: 240px;
+  /* Kept in step with FILTER_WIDTH in PluginBrowse.tsx, which is what the
+     placement clamps against. */
   max-width: 320px;
   padding: 8px;
   gap: 2px;
   transform-origin: top left;
+}
+
+.menu__sheet--filter[data-dir='up'] {
+  transform-origin: bottom left;
 }
 
 .menu__note {

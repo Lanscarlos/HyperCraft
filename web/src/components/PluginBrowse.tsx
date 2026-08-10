@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { api } from '../api'
 import { formatDate } from '../format'
@@ -8,13 +9,14 @@ import type {
   PluginListing,
   PluginSourceKind,
 } from '../types'
+import { EDGE, placeVertically, useAnchor } from '../useAnchor'
 import { CompatBadge } from './PluginCompat'
 import { PluginDrawer } from './PluginDrawer'
 import { PluginIcon } from './PluginIcon'
 import { Select } from './Select'
 
 /**
- * 获取插件 — searching the registries, and downloading into the panel library.
+ * 插件市场 — searching the registries, and downloading into the panel library.
  *
  * This page acquires; it does not deploy. What it produces is a jar in the
  * shared library, which is then handed to as many servers as the operator
@@ -424,6 +426,11 @@ export function PluginBrowse({
   )
 }
 
+/** The filter sheet's width and height caps, kept in step with the
+ *  `.menu__sheet--filter` rule so the placement math is placing what is drawn. */
+const FILTER_WIDTH = 320
+const FILTER_MAX_HEIGHT = 360
+
 /**
  * A chip that opens a small sheet of checkboxes.
  *
@@ -448,12 +455,22 @@ function FilterChip({
   children: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
-  const wrap = useRef<HTMLDivElement | null>(null)
+  const button = useRef<HTMLButtonElement | null>(null)
+  const sheet = useRef<HTMLDivElement | null>(null)
+
+  // Portalled and placed like every other sheet in the panel — the rail it
+  // sits in scrolls, and a sheet positioned inside it scrolls away with it.
+  const anchor = useAnchor(open, button, (rect) => ({
+    ...placeVertically(rect, FILTER_MAX_HEIGHT),
+    left: Math.min(Math.max(rect.left, EDGE), window.innerWidth - FILTER_WIDTH - EDGE),
+  }))
 
   useEffect(() => {
     if (!open) return
-    const onDown = (event: MouseEvent) => {
-      if (!wrap.current?.contains(event.target as Node)) setOpen(false)
+    const onDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (button.current?.contains(target) || sheet.current?.contains(target)) return
+      setOpen(false)
     }
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false)
@@ -467,8 +484,9 @@ function FilterChip({
   }, [open])
 
   return (
-    <div className="menu" ref={wrap}>
+    <div className="menu">
       <button
+        ref={button}
         className={`chip${on ? ' chip--on' : ''}`}
         aria-haspopup="true"
         aria-expanded={open}
@@ -480,7 +498,23 @@ function FilterChip({
         {summary}
         <span aria-hidden="true"> ▾</span>
       </button>
-      {open && <div className="menu__sheet menu__sheet--filter">{children}</div>}
+      {open &&
+        anchor &&
+        createPortal(
+          <div
+            ref={sheet}
+            className="menu__sheet menu__sheet--filter"
+            data-dir={anchor.up ? 'up' : 'down'}
+            style={{
+              left: anchor.left,
+              maxHeight: anchor.maxHeight,
+              ...(anchor.up ? { bottom: anchor.offset } : { top: anchor.offset }),
+            }}
+          >
+            {children}
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }
