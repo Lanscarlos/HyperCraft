@@ -206,6 +206,35 @@ func Judge(target Target, loaders, gameVersions []string) Compat {
 	}
 }
 
+// AssetClaims is what one jar of an upstream release says it supports.
+//
+// The registry-side twin of Claims, which does the same job for a jar the
+// library already holds, and it exists for the same reason: a release's own
+// Loaders field is the union across its assets, so it is true of the release
+// and false of every file under it. Judging a velocity build by "paper,
+// velocity" is how a proxy jar gets a green badge on a Paper server — and on
+// the market page that badge is the last thing an operator sees before the
+// download.
+//
+// The jar's own claim first, its platform next — a build Hangar labelled
+// "velocity" and said nothing else about is still known to be a Velocity jar —
+// and the release's only as a fallback, which is the honest answer for a
+// source that never broke its metadata down per file.
+func AssetClaims(release Release, asset Asset) (loaders, gameVersions []string) {
+	loaders = asset.Loaders
+	if len(loaders) == 0 && asset.Platform != "" {
+		loaders = []string{asset.Platform}
+	}
+	if len(loaders) == 0 {
+		loaders = release.Loaders
+	}
+	gameVersions = asset.GameVersions
+	if len(gameVersions) == 0 {
+		gameVersions = release.GameVersions
+	}
+	return loaders, gameVersions
+}
+
 // NamedTarget is one server a badge is measured against, carrying the name the
 // verdict has to be able to blame.
 type NamedTarget struct {

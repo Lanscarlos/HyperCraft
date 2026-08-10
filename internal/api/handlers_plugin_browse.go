@@ -198,6 +198,15 @@ type browseVersion struct {
 	// library can hold the paper jar and not the velocity one, and installing
 	// onto a proxy then has to download after all.
 	HeldJars []string `json:"heldJars,omitempty"`
+	// Builds is one verdict per jar, keyed by file name.
+	//
+	// Compat above is the release's, folded optimistically: one build fitting
+	// makes the release worth showing, which is the right answer for a row in
+	// a version list. It is the wrong answer for the jar that actually comes
+	// down — LuckPerms is compatible with a Velocity proxy and its Bukkit
+	// build is not — so the drawer's platform picker gets its own verdicts
+	// rather than inheriting a badge that was never about one file.
+	Builds map[string]*plugin.Compat `json:"builds,omitempty"`
 }
 
 // pluginViewLight says the panel already tracks this plugin, and under which
@@ -274,11 +283,24 @@ func (s *Server) handleBrowsePluginDetail(w http.ResponseWriter, r *http.Request
 				}
 			}
 		}
+		// Only for a release that ships several labelled builds: that is the
+		// case where which jar is a question, and the case the picker appears
+		// for. One jar, or a pile of unlabelled GitHub assets, and there is
+		// nothing here the release's own verdict does not already say.
+		var builds map[string]*plugin.Compat
+		if labelled := labelledAssets(release); len(labelled) > 1 {
+			builds = make(map[string]*plugin.Compat, len(labelled))
+			for _, asset := range labelled {
+				loaders, gameVersions := plugin.AssetClaims(release, asset)
+				builds[asset.Name] = plugin.JudgeAcross(chosen, loaders, gameVersions)
+			}
+		}
 		resp.Versions = append(resp.Versions, browseVersion{
 			Release:  release,
 			Compat:   plugin.JudgeAcross(chosen, release.Loaders, release.GameVersions),
 			Held:     len(jars) > 0,
 			HeldJars: jars,
+			Builds:   builds,
 		})
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -912,6 +934,23 @@ func overviewRank(status string) int {
 	default:
 		return 6
 	}
+}
+
+// labelledAssets is the jars of a release whose platform the source named.
+//
+// The unlabelled ones are dropped rather than judged, and that is the whole
+// point of the filter: a GitHub release's assets are a pile of files nobody
+// broke down — the jar, the sources jar, the javadoc jar — and attaching a
+// per-platform verdict to each would be the panel dressing up a guess as one
+// more thing it knows.
+func labelledAssets(release plugin.Release) []plugin.Asset {
+	out := make([]plugin.Asset, 0, len(release.Assets))
+	for _, asset := range release.Assets {
+		if asset.Platform != "" {
+			out = append(out, asset)
+		}
+	}
+	return out
 }
 
 // variantsOf names the platforms a release ships separate builds for.

@@ -3,12 +3,18 @@ import { createPortal } from 'react-dom'
 
 import { api } from '../api'
 import { formatBytes, formatDate } from '../format'
-import type { BrowseVersion, InstallTarget, PluginBrowseDetail, PluginListing } from '../types'
+import type {
+  BrowseVersion,
+  InstallTarget,
+  PluginAsset,
+  PluginBrowseDetail,
+  PluginListing,
+} from '../types'
 import { isLive } from '../types'
 import { useDismiss } from '../useDismiss'
 import { CompatBadge } from './PluginCompat'
 import { PluginIcon } from './PluginIcon'
-import { formatDownloads, sourceLabel } from './PluginBrowse'
+import { formatDownloads, loaderLabel, sourceLabel } from './PluginBrowse'
 
 /**
  * One plugin's detail, slid in from the right over the results.
@@ -46,6 +52,10 @@ export function PluginDrawer({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [chosen, setChosen] = useState<string>('')
+  // Which platform build of the chosen version, by file name. Empty means
+  // "whatever the default works out to" — see `picked` below, which is where
+  // that default lives, so switching versions never carries a stale pick over.
+  const [build, setBuild] = useState<string>('')
   const [downloading, setDownloading] = useState(false)
   const [progress, setProgress] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -87,10 +97,34 @@ export function PluginDrawer({
   }, [close, downloading])
 
   const version = detail?.versions.find((entry) => entry.tag === chosen) ?? null
-  const incompatible = version?.compat?.state === 'bad'
   // Whether the way out is picking a different version or giving up on this
   // plugin. Two very different answers, and the footer says which.
   const anyFits = (detail?.versions ?? []).some((entry) => entry.compat?.state !== 'bad')
+
+  // The platform builds this release ships, and which of them a download would
+  // take. A release is not a file — LuckPerms publishes bukkit, velocity,
+  // fabric and forge under one version number — and a jar built for one of
+  // them will not load on any of the others. So when there is more than one,
+  // which one is a decision, and a decision the operator has to be able to see
+  // and change: the panel picking silently is how somebody downloads LuckPerms
+  // for a Velocity proxy and gets the Paper build.
+  const builds = buildsOf(version)
+  const picked = version
+    ? (builds.find((asset) => asset.name === build)?.name ??
+      defaultBuild(version, reference, builds))
+    : ''
+  const pickedBuild = builds.find((asset) => asset.name === picked)
+  const heldNames = new Set((version?.heldJars ?? []).map((name) => name.toLowerCase()))
+  // What the footer and the download button answer to. The picked build's
+  // verdict where there is one, because that is the file: the release-level
+  // badge is folded so that any one build fitting makes the release fit, and
+  // reading it here is how a Velocity proxy gets offered a Bukkit jar under a
+  // green 兼容.
+  const compat = (picked ? version?.builds?.[picked] : undefined) ?? version?.compat
+  const incompatible = compat?.state === 'bad'
+  // The release has a jar that fits and the selected one is not it — so the
+  // way out is the picker above, not the version list.
+  const otherBuildFits = incompatible && version?.compat?.state !== 'bad'
 
   /**
    * Registers the source and pulls the jar into the library.
@@ -119,25 +153,38 @@ export function PluginDrawer({
       // not a file: installing onto a Velocity proxy and onto a Paper server
       // are the same version and two different downloads, and "already held"
       // is a different answer for each of them.
-      const wanted = assetFor(version, install)
+      //
+      // The picker's answer, whenever there is a picker, and that includes the
+      // 仅下载到库 path — which used to fall through to the release's primary
+      // jar even with a proxy ticked, so an operator who asked for LuckPerms
+      // next to their Velocity server got the Paper build with no sign that a
+      // choice had been made at all.
+      const wanted = builds.length > 0 ? picked : assetFor(version, install)
       const heldJar = wanted
         ? (version.heldJars ?? []).some((name) => name.toLowerCase() === wanted.toLowerCase())
         : version.held
 
+      // What the sentences call it. On a single-build release the version
+      // number is the whole answer; on a multi-build one it is half of it, and
+      // the half that was missing is the one that decides whether the jar runs.
+      const what = pickedBuild?.platform
+        ? `${version.version} 的 ${loaderLabel(pickedBuild.platform)} 构建`
+        : version.version
+
       if (heldJar) {
-        setDone(`插件库里已经有 ${version.version} 了。`)
+        setDone(`插件库里已经有 ${what} 了。`)
       } else {
-        setProgress(`正在下载 ${version.version}…`)
+        setProgress(`正在下载 ${what}…`)
         await api.downloadPlugin(item.id, version.tag, wanted)
         await waitForDownload(item.id, version.tag, setProgress)
-        setDone(`已下载 ${version.version} 到插件库。`)
+        setDone(`已下载 ${what} 到插件库。`)
       }
 
       if (install) {
         setProgress(`正在复制到 ${install.name}…`)
         await api.installInstancePlugin(install.id, item.id, version.tag)
         setDone(
-          `已下载 ${version.version} 到插件库，并复制到 ${install.name}` +
+          `已下载 ${what} 到插件库，并复制到 ${install.name}` +
             (isLive(install.state) ? ' —— 重启后生效。' : '。'),
         )
       }
@@ -215,6 +262,39 @@ export function PluginDrawer({
                 )}
               </section>
 
+              {builds.length > 0 && (
+                <section className="drawer__section">
+                  <h3>构建</h3>
+                  <div className="drawer__builds">
+                    {builds.map((asset) => (
+                      <button
+                        key={asset.name}
+                        className={`drawer__build${asset.name === picked ? ' drawer__build--chosen' : ''}`}
+                        onClick={() => setBuild(asset.name)}
+                        aria-pressed={asset.name === picked}
+                        title={asset.name}
+                      >
+                        <span className="drawer__build-name">
+                          {loaderLabel(asset.platform)}
+                          <CompatBadge compat={version?.builds?.[asset.name]} />
+                        </span>
+                        <span className="drawer__build-meta">
+                          {asset.size > 0 && formatBytes(asset.size)}
+                          {heldNames.has(asset.name.toLowerCase()) && ' · 库里已有'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="chart-note">
+                    这个版本上游发了 {builds.length} 个平台的 jar，一个 jar 只能装一个平台 —— 装到
+                    Paper 的和装到 Velocity 的不是同一个文件。
+                    {reference?.target.loader
+                      ? `已按 ${reference.name} 的核心（${loaderLabel(reference.target.loader)}）选好。`
+                      : '没有选参照服务器，默认下的是第一个（游戏服的构建）；要代理端的记得在这儿改。'}
+                  </p>
+                </section>
+              )}
+
               {version?.dependencies && version.dependencies.length > 0 && (
                 <section className="drawer__section">
                   <h3>依赖</h3>
@@ -262,12 +342,18 @@ export function PluginDrawer({
               // sentence beside it is a dead end. The version list above is
               // where the way out is, so this says to look there.
               <span className="drawer__warn">
-                {version?.compat?.detail ?? version?.compat?.label}
-                {anyFits ? ' —— 上面挑一个绿色的版本' : ' —— 这个插件没有适配这台服的版本'}
+                {compat?.detail ?? compat?.label}
+                {otherBuildFits
+                  ? ' —— 上面挑一个对得上的构建'
+                  : anyFits
+                    ? ' —— 上面挑一个绿色的版本'
+                    : ' —— 这个插件没有适配这台服的版本'}
               </span>
             ) : (
               <span className="muted">
-                下载到面板插件库
+                下载
+                {pickedBuild?.platform && ` ${loaderLabel(pickedBuild.platform)} 构建`}
+                到面板插件库
                 {reference ? `，之后再装到 ${reference.name} 或别的服` : '，之后再决定装到哪台服'}
               </span>
             )}
@@ -321,6 +407,10 @@ function VersionRow({
   chosen: boolean
   onChoose: () => void
 }) {
+  // Said on the row rather than only in the picker below it, because the row
+  // is where "this is one release" is claimed, and on these plugins that is
+  // true of the release and not of the file the operator ends up with.
+  const builds = buildsOf(version)
   return (
     <button
       className={`drawer__version${chosen ? ' drawer__version--chosen' : ''}`}
@@ -341,6 +431,7 @@ function VersionRow({
         {formatDate(version.publishedAt)}
         {version.asset.size > 0 && ` · ${formatBytes(version.asset.size)}`}
         {version.gameVersions?.length ? ` · ${version.gameVersions.slice(0, 4).join('、')}` : ''}
+        {builds.length > 0 && ` · ${builds.length} 个平台构建`}
         {version.held && ' · 库里已有'}
       </span>
     </button>
@@ -381,6 +472,47 @@ async function waitForDownload(
     throw new Error(job.error || '下载失败')
   }
   throw new Error('下载超时')
+}
+
+/**
+ * The platform builds a release ships, when picking between them is a real
+ * choice.
+ *
+ * Only the jars whose platform the source named, and only when there are
+ * several. A GitHub release's assets are a pile of files nobody labelled — the
+ * jar, the sources jar, the javadoc jar — and offering those as "builds" would
+ * be the panel presenting its own ignorance as a choice. Same rule the library
+ * drawer's 补下别的平台 list uses, for the same reason.
+ */
+function buildsOf(version: BrowseVersion | null): PluginAsset[] {
+  if (!version) return []
+  const labelled = version.assets.filter((asset) => asset.platform)
+  return labelled.length > 1 ? labelled : []
+}
+
+/**
+ * Which build is selected before anybody touches the picker.
+ *
+ * The reference server's, when there is one and it matches — that is the jar
+ * the operator came here for. Otherwise the release's primary, which the
+ * backend ordered game-server-first, and which the note beside the picker
+ * says out loud rather than leaving to be discovered after the install fails.
+ *
+ * The primary is a labelled build on every source that labels anything, since
+ * the ordering puts unlabelled jars last — but if it is not, the picker has to
+ * open on one of the chips it drew rather than on nothing.
+ */
+function defaultBuild(
+  version: BrowseVersion,
+  reference: InstallTarget | null,
+  builds: PluginAsset[],
+): string {
+  const matched = assetFor(version, reference ?? undefined)
+  if (matched) return matched
+  if (builds.length === 0 || builds.some((asset) => asset.name === version.asset.name)) {
+    return version.asset.name
+  }
+  return builds[0].name
 }
 
 /**

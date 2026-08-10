@@ -277,3 +277,63 @@ func TestUpdateForStillOffersUnjudgeableReleases(t *testing.T) {
 		t.Fatalf("offered %+v, want v2.21.0", offer)
 	}
 }
+
+// The market page's version of the same bug.
+//
+// A release's Loaders is the union across its builds, so judging every jar by
+// it makes the Bukkit build of LuckPerms look compatible with a Velocity
+// proxy — which is exactly the badge somebody reads right before downloading
+// the wrong file. Each jar has to be judged by its own claim.
+func TestAssetClaimsJudgeEachBuildOnItsOwn(t *testing.T) {
+	release := Release{
+		Tag:     "v5.5.71",
+		Version: "5.5.71",
+		// What the release says, which is true of the release and of no file
+		// under it.
+		Loaders:      []string{"bukkit", "paper", "spigot", "velocity"},
+		GameVersions: []string{"1.20.4"},
+		Assets: []Asset{
+			{Name: "LuckPerms-Bukkit-5.5.71.jar", Platform: "bukkit", Loaders: []string{"bukkit", "paper", "spigot"}},
+			{Name: "LuckPerms-Velocity-5.5.71.jar", Platform: "velocity", Loaders: []string{"velocity"}},
+			// Hangar labels the platform and leaves the loader list empty;
+			// the label is still enough to know what the jar is.
+			{Name: "LuckPerms-Fabric-5.5.71.jar", Platform: "fabric"},
+		},
+	}
+	proxy := Target{MCVersion: "1.20.4", Loader: "velocity"}
+
+	// The release as a whole passes for a proxy — one of its builds fits —
+	// and that is what makes the per-jar verdict necessary rather than
+	// redundant.
+	if state := Judge(proxy, release.Loaders, release.GameVersions).State; state != CompatOK {
+		t.Fatalf("the release judges %q against a proxy, want ok", state)
+	}
+
+	want := map[string]string{
+		"LuckPerms-Bukkit-5.5.71.jar":   CompatBad,
+		"LuckPerms-Velocity-5.5.71.jar": CompatOK,
+		"LuckPerms-Fabric-5.5.71.jar":   CompatBad,
+	}
+	for _, asset := range release.Assets {
+		loaders, gameVersions := AssetClaims(release, asset)
+		if state := Judge(proxy, loaders, gameVersions).State; state != want[asset.Name] {
+			t.Errorf("%s judges %q against a proxy, want %q", asset.Name, state, want[asset.Name])
+		}
+	}
+}
+
+// A source that never broke its metadata down per file must not end up with
+// every jar judged as unknown: the release's own claim is the best answer
+// available, and falling back to it is what keeps a single-jar plugin's badge
+// working.
+func TestAssetClaimsFallsBackToTheRelease(t *testing.T) {
+	release := Release{
+		Loaders:      []string{"paper"},
+		GameVersions: []string{"1.20.4"},
+		Assets:       []Asset{{Name: "EssentialsX-2.21.0.jar"}},
+	}
+	loaders, gameVersions := AssetClaims(release, release.Assets[0])
+	if state := Judge(Target{MCVersion: "1.20.4", Loader: "paper"}, loaders, gameVersions).State; state != CompatOK {
+		t.Errorf("judged %q, want ok", state)
+	}
+}
