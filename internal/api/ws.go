@@ -71,6 +71,17 @@ func (s *Server) handleConsoleSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Claimed before the upgrade so a refusal comes back as a plain HTTP error
+	// the fetch layer already renders, rather than as a socket that opens and
+	// closes for no visible reason — the same order handleTerminalSocket uses
+	// for its own session cap.
+	release, ok := s.consoleSockets.enter(s.clientAddr(r) + "|" + inst.ID())
+	if !ok {
+		writeError(w, http.StatusConflict, "这个实例的控制台连接太多了，先关掉一个再试")
+		return
+	}
+	defer release()
+
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		// Upgrade already wrote an error response.

@@ -59,6 +59,11 @@ type Server struct {
 	// both are expensive; see ratelimit.go.
 	loginLimit *rateLimiter
 	kdf        *kdfGate
+	// consoleSockets bounds how many console websockets one client may hold on
+	// one instance at a time. Unlike the two above it guards an authenticated
+	// endpoint: what it stops is a client that reconnects without closing,
+	// piling up subscriptions on a server process that must keep running.
+	consoleSockets *streamGate
 	// authLog is the in-memory view of recent credential events behind
 	// GET /api/auth/events. The slog lines remain the system of record; see
 	// authlog.go.
@@ -153,6 +158,7 @@ func NewServer(opts Options) *Server {
 
 		loginLimit:     newRateLimiter(loginBurst, loginRefill),
 		kdf:            newKDFGate(defaultKDFSlots(), kdfWait),
+		consoleSockets: newStreamGate(maxConsoleSockets),
 		authLog:        newAuthLog(),
 		trustedProxies: trusted,
 
@@ -400,6 +406,14 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 		if token, ok := bearerToken(r); ok {
 			dev, valid := s.devices.Validate(token)
 			if !valid {
+				// Worth recording even though guessing a device token is
+				// hopeless — 32 bytes from crypto/rand has no shorter path than
+				// exhaustion. What this catches is the other case: an app still
+				// presenting a token the operator revoked, which looks exactly
+				// like an intrusion attempt from the outside and is the one
+				// thing the credential trail could not previously tell them
+				// apart from silence.
+				s.recordAuth(r, eventTokenRejected, "", "")
 				writeError(w, http.StatusUnauthorized, "invalid or revoked device token")
 				return
 			}

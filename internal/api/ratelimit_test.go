@@ -399,3 +399,122 @@ func TestDefaultKDFSlotsLeavesHeadroom(t *testing.T) {
 		t.Errorf("defaultKDFSlots = %d, the floor is 2", got)
 	}
 }
+
+// Changing the password checks the same credential login does, and behind a
+// session is not the same as out of reach: a borrowed session would otherwise
+// be an unmetered oracle for the panel password while the front door was
+// throttled.
+func TestPasswordChangeSharesTheLoginBudget(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	change := func(current string) *http.Response {
+		return env.do(http.MethodPost, "/api/auth/password",
+			changePasswordRequest{CurrentPassword: current, NewPassword: "a-new-password"})
+	}
+
+	for i := range loginBurst {
+		resp := change("wrong")
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: expected 401, got %d", i, resp.StatusCode)
+		}
+	}
+
+	resp := change("wrong")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("expected 429 once the budget is spent, got %d", resp.StatusCode)
+	}
+	if resp.Header.Get("Retry-After") == "" {
+		t.Error("a throttled response must say when to come back")
+	}
+
+	// And the budget really is shared: the front door is closed too.
+	login := env.failLogin(nil)
+	login.Body.Close()
+	if login.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("expected login to be throttled as well, got %d", login.StatusCode)
+	}
+}
+
+// The right current password is not an attack, so it must clear the history the
+// typos before it left behind.
+func TestSuccessfulPasswordChangeClearsTheThrottle(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	for range loginBurst - 1 {
+		resp := env.do(http.MethodPost, "/api/auth/password",
+			changePasswordRequest{CurrentPassword: "wrong", NewPassword: "a-new-password"})
+		resp.Body.Close()
+	}
+
+	resp := env.do(http.MethodPost, "/api/auth/password",
+		changePasswordRequest{CurrentPassword: testPass, NewPassword: "a-new-password"})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected the change to go through, got %d", resp.StatusCode)
+	}
+
+	// The change signed every session out, so login is the only thing left to
+	// prove the address is no longer being counted against.
+	login := env.failLogin(nil)
+	login.Body.Close()
+	if login.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected the throttle to have been reset, got %d", login.StatusCode)
+	}
+}
+
+// ------------------------------------------------------------- stream gate
+
+func TestStreamGateCapsAndReleases(t *testing.T) {
+	gate := newStreamGate(2)
+
+	first, ok := gate.enter("a")
+	if !ok {
+		t.Fatal("the first slot was refused")
+	}
+	second, ok := gate.enter("a")
+	if !ok {
+		t.Fatal("the second slot was refused")
+	}
+	if _, ok := gate.enter("a"); ok {
+		t.Error("the third slot should have been refused")
+	}
+	// A different key has its own budget.
+	if _, ok := gate.enter("b"); !ok {
+		t.Error("an unrelated key was refused")
+	}
+
+	first()
+	if _, ok := gate.enter("a"); !ok {
+		t.Error("releasing a slot did not free it")
+	}
+	second()
+
+	// Releasing twice must not hand out a slot that is still held, which is
+	// what a handler that both defers the release and calls it early would do.
+	second()
+	second()
+	if gate.active() != 2 {
+		t.Errorf("active = %d, want 2 after the double releases", gate.active())
+	}
+}
+
+func TestStreamGateForgetsIdleKeys(t *testing.T) {
+	gate := newStreamGate(1)
+
+	release, ok := gate.enter("a")
+	if !ok {
+		t.Fatal("the first slot was refused")
+	}
+	release()
+
+	gate.mu.Lock()
+	held := len(gate.held)
+	gate.mu.Unlock()
+	if held != 0 {
+		t.Errorf("the table kept %d entries after everything closed", held)
+	}
+}

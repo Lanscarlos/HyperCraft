@@ -228,15 +228,37 @@ type changePasswordRequest struct {
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	who, _ := principalFrom(r.Context())
 
+	// Throttled and gated on the same budget as login, for the two reasons
+	// handleCreateDevice is. Being behind requireAuth does not exempt it: this
+	// endpoint checks the same password, so leaving it open would give anyone
+	// holding a borrowed session an unmetered oracle for the credential while
+	// the front door was throttled — locked out of one door, free to knock on
+	// the other. And the check costs the same tenth of a second of CPU whoever
+	// asks for it, which is CPU the Minecraft servers on this machine are not
+	// getting.
+	key, ok := s.beginCredentialCheck(w, r)
+	if !ok {
+		return
+	}
+
 	var req changePasswordRequest
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "malformed request body")
 		return
 	}
-	if err := s.credential().Verify(who.username, req.CurrentPassword); err != nil {
+
+	switch err := s.verifyCredential(r.Context(), who.username, req.CurrentPassword); {
+	case errors.Is(err, errDerivationBusy):
+		writeBusy(w)
+		return
+	case err != nil:
+		s.loginLimit.penalise(key)
+		s.log.Warn("failed password change", "username", who.username, "remote", r.RemoteAddr, "client", key)
+		s.recordAuth(r, eventSignInFailed, who.username, "修改密码")
 		writeError(w, http.StatusUnauthorized, "当前密码不正确")
 		return
 	}
+	s.loginLimit.reset(key)
 
 	cred, err := auth.NewCredential(who.username, req.NewPassword)
 	if err != nil {
