@@ -92,13 +92,13 @@ func offered(t *testing.T, u *Updater) (version string, available, downgrade boo
 
 func TestStableChannelNeverSeesASnapshot(t *testing.T) {
 	repo := newFakeRepo(t,
-		publishedRelease{version: "1.2.1-snapshot.431", prerelease: true},
-		publishedRelease{version: "1.2.0"},
+		publishedRelease{version: "0.3-snapshot.86", prerelease: true},
+		publishedRelease{version: "0.2.0"},
 	)
 
-	version, available, _ := offered(t, repo.updater("v1.2.0", ChannelStable))
-	if version != "1.2.0" {
-		t.Errorf("stable channel offered %q, want the release 1.2.0", version)
+	version, available, _ := offered(t, repo.updater("v0.2.0", ChannelStable))
+	if version != "0.2.0" {
+		t.Errorf("stable channel offered %q, want the release 0.2.0", version)
 	}
 	if available {
 		t.Error("stable channel offered an update to a panel already on the latest release")
@@ -107,14 +107,14 @@ func TestStableChannelNeverSeesASnapshot(t *testing.T) {
 
 func TestSnapshotChannelOffersTheNewestSnapshot(t *testing.T) {
 	repo := newFakeRepo(t,
-		publishedRelease{version: "1.2.1-snapshot.431", prerelease: true},
-		publishedRelease{version: "1.2.1-snapshot.428", prerelease: true},
-		publishedRelease{version: "1.2.0"},
+		publishedRelease{version: "0.3-snapshot.86", prerelease: true},
+		publishedRelease{version: "0.3-snapshot.84", prerelease: true},
+		publishedRelease{version: "0.2.0"},
 	)
 
-	version, available, downgrade := offered(t, repo.updater("v1.2.0", ChannelSnapshot))
-	if version != "1.2.1-snapshot.431" {
-		t.Errorf("offered %q, want the highest snapshot 1.2.1-snapshot.431", version)
+	version, available, downgrade := offered(t, repo.updater("v0.2.0", ChannelSnapshot))
+	if version != "0.3-snapshot.86" {
+		t.Errorf("offered %q, want the highest snapshot 0.3-snapshot.86", version)
 	}
 	if !available || downgrade {
 		t.Errorf("offer of %q: available=%v downgrade=%v, want true/false", version, available, downgrade)
@@ -126,14 +126,14 @@ func TestSnapshotChannelPrefersAReleaseThatOvertookTheSnapshots(t *testing.T) {
 	// the snapshot channel must move onto it rather than sitting on a snapshot
 	// of code that is now released.
 	repo := newFakeRepo(t,
-		publishedRelease{version: "1.2.1"},
-		publishedRelease{version: "1.2.1-snapshot.431", prerelease: true},
-		publishedRelease{version: "1.2.0"},
+		publishedRelease{version: "0.3.0"},
+		publishedRelease{version: "0.3-snapshot.86", prerelease: true},
+		publishedRelease{version: "0.2.0"},
 	)
 
-	version, available, _ := offered(t, repo.updater("v1.2.1-snapshot.431", ChannelSnapshot))
-	if version != "1.2.1" {
-		t.Errorf("offered %q, want the release 1.2.1", version)
+	version, available, _ := offered(t, repo.updater("v0.3-snapshot.86", ChannelSnapshot))
+	if version != "0.3.0" {
+		t.Errorf("offered %q, want the release 0.3.0", version)
 	}
 	if !available {
 		t.Error("a panel on a superseded snapshot was not offered the release")
@@ -142,11 +142,11 @@ func TestSnapshotChannelPrefersAReleaseThatOvertookTheSnapshots(t *testing.T) {
 
 func TestSnapshotChannelDoesNotGoBackwards(t *testing.T) {
 	repo := newFakeRepo(t,
-		publishedRelease{version: "1.2.1-snapshot.428", prerelease: true},
-		publishedRelease{version: "1.2.0"},
+		publishedRelease{version: "0.3-snapshot.84", prerelease: true},
+		publishedRelease{version: "0.2.0"},
 	)
 
-	_, available, _ := offered(t, repo.updater("v1.2.1-snapshot.431", ChannelSnapshot))
+	_, available, _ := offered(t, repo.updater("v0.3-snapshot.86", ChannelSnapshot))
 	if available {
 		t.Error("offered an older snapshot to a panel running a newer one")
 	}
@@ -157,16 +157,16 @@ func TestStableChannelOffersTheWayBackFromASnapshot(t *testing.T) {
 	// release is older than what they are running, and offering it anyway is
 	// the only way off the snapshot track short of replacing the binary.
 	repo := newFakeRepo(t,
-		publishedRelease{version: "1.2.1-snapshot.431", prerelease: true},
-		publishedRelease{version: "1.2.0"},
+		publishedRelease{version: "0.3-snapshot.86", prerelease: true},
+		publishedRelease{version: "0.2.0"},
 	)
 
-	version, available, downgrade := offered(t, repo.updater("v1.2.1-snapshot.431", ChannelStable))
-	if version != "1.2.0" {
-		t.Fatalf("offered %q, want the release 1.2.0", version)
+	version, available, downgrade := offered(t, repo.updater("v0.3-snapshot.86", ChannelStable))
+	if version != "0.2.0" {
+		t.Fatalf("offered %q, want the release 0.2.0", version)
 	}
 	if !available || !downgrade {
-		t.Errorf("offer of 1.2.0: available=%v downgrade=%v, want true/true", available, downgrade)
+		t.Errorf("offer of 0.2.0: available=%v downgrade=%v, want true/true", available, downgrade)
 	}
 }
 
@@ -174,12 +174,12 @@ func TestSnapshotChannelSkipsDraftsAndUncomparableTags(t *testing.T) {
 	repo := newFakeRepo(t,
 		publishedRelease{version: "9.9.9", draft: true},
 		publishedRelease{version: "nightly-20260808", prerelease: true},
-		publishedRelease{version: "1.2.1-snapshot.431", prerelease: true},
-		publishedRelease{version: "1.2.0"},
+		publishedRelease{version: "0.3-snapshot.86", prerelease: true},
+		publishedRelease{version: "0.2.0"},
 	)
 
-	version, _, _ := offered(t, repo.updater("v1.2.0", ChannelSnapshot))
-	if version != "1.2.1-snapshot.431" {
+	version, _, _ := offered(t, repo.updater("v0.2.0", ChannelSnapshot))
+	if version != "0.3-snapshot.86" {
 		t.Errorf("offered %q; a draft or an uncomparable tag was treated as publishable", version)
 	}
 }
@@ -189,10 +189,10 @@ func TestSwitchingChannelDiscardsTheCachedCheck(t *testing.T) {
 	// would show a panel a snapshot as "available" immediately after it asked
 	// to stop being offered them.
 	repo := newFakeRepo(t,
-		publishedRelease{version: "1.2.1-snapshot.431", prerelease: true},
-		publishedRelease{version: "1.2.0"},
+		publishedRelease{version: "0.3-snapshot.86", prerelease: true},
+		publishedRelease{version: "0.2.0"},
 	)
-	svc := NewService("owner/repo", "v1.2.0", "", ChannelSnapshot, Hooks{},
+	svc := NewService("owner/repo", "v0.2.0", "", ChannelSnapshot, Hooks{},
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	svc.up.apiBase = repo.server.URL
 
@@ -217,8 +217,8 @@ func TestSwitchingChannelDiscardsTheCachedCheck(t *testing.T) {
 	if _, err := svc.Check(context.Background()); err != nil {
 		t.Fatalf("Check after the switch: %v", err)
 	}
-	if st := svc.Status(); st.LatestVersion != "1.2.0" || st.UpdateAvailable {
-		t.Errorf("stable status = %+v, want 1.2.0 with no update available", st)
+	if st := svc.Status(); st.LatestVersion != "0.2.0" || st.UpdateAvailable {
+		t.Errorf("stable status = %+v, want 0.2.0 with no update available", st)
 	}
 }
 
@@ -227,9 +227,9 @@ func TestStatusMarksASnapshotBuildAsOne(t *testing.T) {
 		version string
 		want    bool
 	}{
-		{"v1.2.0", false},
-		{"v1.2.1-snapshot.431", true},
-		{"v1.2.1-rc.1", true},
+		{"v0.2.0", false},
+		{"v0.3-snapshot.86", true},
+		{"v0.3.0-rc.1", true},
 		// A dev build is not a snapshot; it has no version at all, and the UI
 		// already reports that through Eligible.
 		{"dev", false},

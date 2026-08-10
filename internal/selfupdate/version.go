@@ -6,7 +6,7 @@ import (
 )
 
 // NormalizeVersion strips the leading "v" that tags carry but release names and
-// asset filenames do not, so "v1.2.0" and "1.2.0" compare equal.
+// asset filenames do not, so "v0.3.0" and "0.3.0" compare equal.
 func NormalizeVersion(v string) string {
 	return strings.TrimPrefix(strings.TrimSpace(v), "v")
 }
@@ -14,6 +14,12 @@ func NormalizeVersion(v string) string {
 // IsReleaseVersion reports whether v looks like a version this package can
 // reason about. A binary built outside the release workflow reports "dev", and
 // offering to "update" that would overwrite someone's local build.
+//
+// Releases carry all three fields (0.3.0). Snapshots are named after the minor
+// release they lead to and carry only two (0.4-snapshot.86): while the project
+// is on 0.x the minor is the release unit, so a third field there would name a
+// patch release that is never going to be cut. Two fields compare as three with
+// a trailing zero — see compareNumeric.
 func IsReleaseVersion(v string) bool {
 	v = NormalizeVersion(v)
 	if v == "" || v == "dev" {
@@ -21,7 +27,7 @@ func IsReleaseVersion(v string) bool {
 	}
 	core, _, _ := strings.Cut(v, "-")
 	parts := strings.Split(core, ".")
-	if len(parts) != 3 {
+	if len(parts) != 2 && len(parts) != 3 {
 		return false
 	}
 	for _, p := range parts {
@@ -36,14 +42,14 @@ func IsReleaseVersion(v string) bool {
 }
 
 // IsStableVersion reports whether v is a final release rather than something
-// leading up to one — 1.2.0 rather than 1.2.0-rc.1 or 1.2.1-snapshot.431.
+// leading up to one — 0.3.0 rather than 0.3.0-rc.1 or 0.4-snapshot.86.
 func IsStableVersion(v string) bool {
 	return IsReleaseVersion(v) && !strings.Contains(NormalizeVersion(v), "-")
 }
 
 // CompareVersions orders two semantic versions, returning -1 if a sorts before
 // b, 0 if they are equal, and 1 if a sorts after b. A pre-release sorts before
-// the release it leads to, so 1.2.0-rc.1 < 1.2.0.
+// the release it leads to, so 0.3.0-rc.1 < 0.3.0.
 func CompareVersions(a, b string) int {
 	aCore, aPre, _ := strings.Cut(NormalizeVersion(a), "-")
 	bCore, bPre, _ := strings.Cut(NormalizeVersion(b), "-")
@@ -63,10 +69,14 @@ func CompareVersions(a, b string) int {
 	return comparePreRelease(aPre, bPre)
 }
 
-// compareNumeric compares dot-separated numeric cores field by field. A field
-// that is not a number sorts as 0 rather than failing: this runs against a
-// version already accepted by IsReleaseVersion, and a panic here would take the
-// update check down over a malformed tag.
+// compareNumeric compares dot-separated numeric cores field by field. A missing
+// field counts as 0, so a two-field snapshot core sorts exactly where the
+// release it is named after will land: 0.4 == 0.4.0, and therefore
+// 0.4-snapshot.86 sits between 0.3.0 and 0.4.0.
+//
+// A field that is not a number sorts as 0 rather than failing: this runs
+// against a version already accepted by IsReleaseVersion, and a panic here
+// would take the update check down over a malformed tag.
 func compareNumeric(a, b string) int {
 	aParts := strings.Split(a, ".")
 	bParts := strings.Split(b, ".")
