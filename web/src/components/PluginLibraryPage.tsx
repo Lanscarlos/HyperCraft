@@ -12,12 +12,15 @@ import type {
   PluginOverviewRow,
   PluginUse,
 } from '../types'
+import { isLive } from '../types'
 import type { PluginController } from '../usePlugins'
+import { Menu } from './Menu'
 import { Modal } from './Modal'
 import { Page } from './Page'
 import { PluginBrowse, sourceLabel } from './PluginBrowse'
-import { PluginDialog } from './PluginDialog'
+import { PluginIcon } from './PluginIcon'
 import { PluginInstallDialog } from './PluginInstallDialog'
+import { Toast } from './Toast'
 
 /**
  * The panel-wide plugin library.
@@ -71,8 +74,8 @@ export function PluginLibraryPage({
   const [confirming, setConfirming] = useState<BulkImpact | null>(null)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<string | null>(null)
-  const [adding, setAdding] = useState(false)
   const [installing, setInstalling] = useState<LibraryPlugin | null>(null)
+  const [bulkInstall, setBulkInstall] = useState<LibraryPlugin[] | null>(null)
 
   const { job, library } = plugins
 
@@ -125,46 +128,46 @@ export function PluginLibraryPage({
       title="插件库"
       lead="按插件看，而不是按服务器看：哪个插件在哪几台服上、版本对不对得上、哪些下载了却没人用。单台服的增删启停在实例自己的「已装插件」里。"
       aside={
-        <p className="meta-chips">
-          <span>{rows.length > 0 ? `${rows.length} 个插件` : '插件库还是空的'}</span>
-          {mixed > 0 && <span className="meta-chips__warn">{mixed} 个版本不一致</span>}
-          {(overview?.unused ?? 0) > 0 && (
-            <span>
-              {overview?.unused} 个没人用 · {formatBytes(overview?.unusedSize ?? 0)}
-            </span>
-          )}
-          {library?.root && <span title={library.root}>存放于 {library.root}</span>}
-        </p>
+        // The page's own state, and the one action that leaves it. The other
+        // three buttons that used to sit by the section heading were not
+        // siblings of each other: 插件源 duplicated a sidebar entry, and
+        // + GitHub 仓库 is source management, which now lives on the 插件源
+        // page with the rest of it. What is left beside the heading is the one
+        // thing that acts on this table.
+        <div className="page__actions">
+          <p className="meta-chips">
+            <span>{rows.length > 0 ? `${rows.length} 个插件` : '插件库还是空的'}</span>
+            {mixed > 0 && <span className="meta-chips__warn">{mixed} 个版本不一致</span>}
+            {(overview?.unused ?? 0) > 0 && (
+              <span>
+                {overview?.unused} 个没人用 · {formatBytes(overview?.unusedSize ?? 0)}
+              </span>
+            )}
+            {library?.root && <span title={library.root}>存放于 {library.root}</span>}
+          </p>
+          <button className="btn btn--primary" onClick={() => onOpenView('browse')}>
+            获取插件
+          </button>
+        </div>
       }
     >
       {error && <div className="alert alert--error">{error}</div>}
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
-      {result && <div className="alert alert--ok">{result}</div>}
       {job && <JobStatus job={job} onCancel={() => void plugins.cancel()} busy={plugins.busy} />}
+      {/* An outcome, not a state: see Toast. A finished download comes through
+          here too — JobStatus keeps only the progress bar and the failure,
+          which are the two that are still true while you read them. */}
+      {result && <Toast message={result} onDone={() => setResult(null)} />}
 
       <div className="chart-head">
         <h2 className="panel__title">跨实例总览</h2>
         <div className="chart-head__actions">
-          <button className="btn" onClick={onOpenSettings}>
-            插件源
-          </button>
           <button
             className="btn"
             disabled={plugins.busy || rows.length === 0}
             onClick={() => void plugins.checkAll().then(refresh)}
           >
             检查全部更新
-          </button>
-          {/* The three registries cover almost everything, but not a plugin
-              published only to its author's GitHub releases — including the
-              operator's own, in a private repository. That path stays here
-              rather than in 获取插件: it is a source being registered, not a
-              catalogue being searched. */}
-          <button className="btn" onClick={() => setAdding(true)}>
-            + GitHub 仓库
-          </button>
-          <button className="btn btn--primary" onClick={() => onOpenView('browse')}>
-            获取插件
           </button>
         </div>
       </div>
@@ -194,6 +197,35 @@ export function PluginLibraryPage({
           </button>
           <button
             className="btn"
+            disabled={busy || picked.length === 0}
+            onClick={() => {
+              const chosen = plugins.plugins.filter(
+                (entry) => picked.includes(entry.id) && entry.versions.length > 0,
+              )
+              if (chosen.length === 0) {
+                setError('选中的插件一个版本都还没下载，没有可以装的。')
+                return
+              }
+              setBulkInstall(chosen)
+            }}
+          >
+            批量装到实例…
+          </button>
+          <button
+            className="btn"
+            disabled={plugins.busy || picked.length === 0}
+            onClick={() =>
+              void (async () => {
+                for (const id of picked) await plugins.check(id)
+                await refresh()
+                setResult(`已检查 ${picked.length} 个插件的更新`)
+              })()
+            }
+          >
+            检查更新
+          </button>
+          <button
+            className="btn"
             disabled={busy}
             onClick={() => void cleanCache(picked, rows, setBusy, setError, setResult, refresh, setPicked)}
           >
@@ -209,30 +241,28 @@ export function PluginLibraryPage({
         <div className="welcome__empty">
           <p>插件库还是空的。</p>
           <p className="muted">
+            这里是面板的公共缓存：一个 jar 下载一次，想装几台服就复制几份，
+            于是「同一个插件在五台服上」是一份文件一个校验和，而不是五份谁也认不出彼此的下载。
+          </p>
+          <p className="muted">
             去
             <button className="link" onClick={() => onOpenView('browse')}>
               获取插件
             </button>
-            找一个装上，或者在
+            找一个下载下来，或者在
             <button className="link" onClick={onOpenSettings}>
               插件源
             </button>
-            里加个 GitHub 仓库跟着它的 Release 走。
+            里加个 GitHub 仓库跟着它的 Release 走 —— 私有仓库也行。
           </p>
         </div>
       ) : (
-        <div className="overview-table">
-          <div className="overview-table__head">
-            <span />
-            <span>插件</span>
-            <span>最新版本</span>
-            <span>使用中的实例</span>
-            <span />
-          </div>
+        <div className="plugin-cards">
           {rows.map((row) => (
-            <OverviewRow
+            <PluginCard
               key={row.id}
               row={row}
+              busy={busy || plugins.busy}
               picked={picked.includes(row.id)}
               onPick={() =>
                 setPicked((current) =>
@@ -243,13 +273,30 @@ export function PluginLibraryPage({
               }
               onOpen={() => onOpenPlugin(row.id)}
               onOpenInstance={onOpenInstance}
+              onCheck={() =>
+                void plugins.check(row.id).then(async () => {
+                  await refresh()
+                  setResult(`已检查 ${row.name} 的更新`)
+                })
+              }
               onInstall={() => {
                 const item = plugins.plugins.find((entry) => entry.id === row.id)
                 if (item) setInstalling(item)
               }}
               onDropCache={() =>
                 void (async () => {
-                  if (!window.confirm(`删除「${row.name}」的 ${row.versions} 个已下载版本？没有实例在用它。`)) {
+                  // Says what goes and what stays. The copies already inside a
+                  // server are separate files and are not touched — which is
+                  // the whole question anyone hesitating over this button has.
+                  const kept =
+                    row.used.length > 0
+                      ? `\n\n${row.used.length} 台服上已经装好的副本不受影响 —— 那是各自目录里的另一份文件。`
+                      : ''
+                  if (
+                    !window.confirm(
+                      `从库里删掉「${row.name}」的 ${row.versions} 个已下载版本，释放 ${formatBytes(row.size)}？${kept}`,
+                    )
+                  ) {
                     return
                   }
                   setBusy(true)
@@ -283,18 +330,16 @@ export function PluginLibraryPage({
         />
       )}
 
-      {adding && (
-        <PluginDialog
-          item={null}
-          busy={plugins.busy}
-          onCancel={() => setAdding(false)}
-          onSubmit={async (input) => {
-            const ok = await plugins.add(input)
-            if (ok) {
-              setAdding(false)
-              await refresh()
-            }
-            return ok
+      {bulkInstall && (
+        <BulkInstallDialog
+          items={bulkInstall}
+          instances={instances}
+          onCancel={() => setBulkInstall(null)}
+          onInstalled={(summary) => {
+            setBulkInstall(null)
+            setResult(summary)
+            setPicked([])
+            void refresh()
           }}
         />
       )}
@@ -371,114 +416,297 @@ async function cleanCache(
   }
 }
 
-function OverviewRow({
+/**
+ * One plugin in the library, as a card that takes the whole row.
+ *
+ * It was a five-column table, and the columns were the problem. 使用中的实例
+ * held three unrelated things at once — a status (未被使用), an action
+ * (删除缓存) and a size (1.4 MB) — while the status also appeared one column to
+ * the left, and 装到实例 was a text link sitting where a table puts its least
+ * important cell. Nothing was wrong with any single cell; the grid was making
+ * decisions about importance that it had no way to express.
+ *
+ * A card can. The identity is on the top line with its face beside it, the
+ * facts about the download are one quiet line under it, the servers get a
+ * block of their own with nothing else in it, and the two actions sit at the
+ * end at the two weights they actually have: one button, and everything else
+ * behind ⋯.
+ *
+ * Full width rather than a grid of tiles, for the reason the search results
+ * are rows: what this page answers — which servers are on which version — is a
+ * list per plugin, and a list does not fit in a tile.
+ */
+function PluginCard({
   row,
   picked,
+  busy,
   onPick,
   onOpen,
   onOpenInstance,
+  onCheck,
   onInstall,
   onDropCache,
 }: {
   row: PluginOverviewRow
   picked: boolean
+  busy: boolean
   onPick: () => void
   onOpen: () => void
   onOpenInstance: (id: string) => void
+  onCheck: () => void
   onInstall: () => void
   onDropCache: () => void
 }) {
   // Expanded when the versions disagree, folded when they do not. The default
-  // is the answer to "does this row need me", so the page can be scanned down
-  // its last column without opening anything.
+  // is the answer to "does this row need me", so the page can be scanned
+  // without opening anything.
   const [open, setOpen] = useState(row.status === 'mixed')
+  const behind = row.upstream !== undefined && row.upstream !== row.newest
 
   return (
-    <div className={`overview-row${row.status === 'mixed' ? ' overview-row--mixed' : ''}`}>
-      <label className="overview-row__pick">
+    <article
+      className={`plugin-card${row.status === 'mixed' ? ' plugin-card--mixed' : ''}${
+        picked ? ' plugin-card--picked' : ''
+      }`}
+    >
+      <label className="plugin-card__pick">
         <input type="checkbox" checked={picked} onChange={onPick} aria-label={`选择 ${row.name}`} />
       </label>
 
-      <button className="overview-row__name" onClick={onOpen} title={`打开「${row.name}」`}>
-        <strong>{row.name}</strong>
-        <small>
-          {sourceLabel(row.kind)} · {row.repo}
-        </small>
-      </button>
+      <PluginIcon className="plugin-card__icon" src={row.iconUrl} name={row.name} />
 
-      <div className="overview-row__version">
-        <span>{row.newest ?? '未下载'}</span>
-        <StatusLine row={row} />
-      </div>
-
-      <div className="overview-row__uses">
-        {row.used.length === 0 ? (
-          <span className="overview-row__unused">
-            未被使用
-            <button className="link link--danger" onClick={onDropCache}>
-              删除缓存
-            </button>
-            <small>{formatBytes(row.size)}</small>
-          </span>
-        ) : open ? (
-          <ul className="overview-row__list">
-            {row.used.map((use) => (
-              <UseLine key={use.instanceId} use={use} onOpen={() => onOpenInstance(use.instanceId)} />
-            ))}
-            {row.status !== 'mixed' && (
-              <li>
-                <button className="link" onClick={() => setOpen(false)}>
-                  收起
-                </button>
-              </li>
-            )}
-          </ul>
-        ) : (
-          <button className="link overview-row__fold" onClick={() => setOpen(true)}>
-            {row.used.length} 个实例 ▾
+      <div className="plugin-card__body">
+        <div className="plugin-card__head">
+          <button className="plugin-card__name" onClick={onOpen} title={`打开「${row.name}」`}>
+            {row.name}
           </button>
+          <span className="badge">{sourceLabel(row.kind)}</span>
+          <StatusChip row={row} />
+          {behind && <span className="badge badge--update">上游 {row.upstream}</span>}
+        </div>
+
+        <p className="plugin-card__repo">
+          {row.repo}
+          {row.note && ` · ${row.note}`}
+        </p>
+
+        {/* The facts about the download itself. One line, quiet, and it is
+            where 体积 lives now — it is a property of the cache, not of the
+            servers, and it was being read as one because it shared a cell with
+            them. */}
+        <p className="plugin-card__facts">
+          <span>库里最新 {row.newest ?? '未下载'}</span>
+          <span>
+            {row.versions} 个版本 · {formatBytes(row.size)}
+          </span>
+          {behind && <span className="plugin-card__behind">上游已经到 {row.upstream}</span>}
+        </p>
+
+        {/* Servers, and nothing but servers — and nothing at all when there
+            are none, because 未被使用 is already on the line above and saying
+            it twice is how the old cell ended up holding three things. */}
+        {row.used.length > 0 && (
+        <div className="plugin-card__uses">
+          {open ? (
+            <ul className="plugin-card__list">
+              {row.used.map((use) => (
+                <UseLine
+                  key={use.instanceId}
+                  use={use}
+                  onOpen={() => onOpenInstance(use.instanceId)}
+                />
+              ))}
+              {row.status !== 'mixed' && (
+                <li>
+                  <button className="link" onClick={() => setOpen(false)}>
+                    收起
+                  </button>
+                </li>
+              )}
+            </ul>
+          ) : (
+            <button className="link plugin-card__fold" onClick={() => setOpen(true)}>
+              {row.used.length} 个实例 ▾
+            </button>
+          )}
+        </div>
         )}
       </div>
 
       {/* One of the two places a jar leaves the library for a server. The
           other is the server's own page; both open the same dialog, because
           it is the same decision from two directions. */}
-      <div className="overview-row__act">
+      <div className="plugin-card__act">
         <button
-          className="link"
-          disabled={row.versions === 0}
+          className="btn btn--primary"
+          disabled={row.versions === 0 || busy}
           title={row.versions === 0 ? '还没下载过这个插件的任何版本' : undefined}
           onClick={onInstall}
         >
           装到实例…
         </button>
+        <Menu
+          className="btn btn--icon"
+          title="更多操作"
+          ariaLabel={`${row.name} 的更多操作`}
+          items={[
+            { label: '查看详情与版本', onSelect: onOpen },
+            { label: '检查更新', onSelect: onCheck, disabled: busy },
+            {
+              label: '从库中移除',
+              onSelect: onDropCache,
+              danger: true,
+              disabled: busy || row.versions === 0,
+            },
+          ]}
+        >
+          ⋯
+        </Menu>
       </div>
-    </div>
+    </article>
   )
 }
 
+function StatusChip({ row }: { row: PluginOverviewRow }) {
+  if (row.status === 'unused') return <span className="badge badge--muted">未被使用</span>
+  if (row.status === 'mixed') return <span className="badge badge--warn">版本不一致</span>
+  return <span className="badge badge--ok">全部最新</span>
+}
 
-function StatusLine({ row }: { row: PluginOverviewRow }) {
-  if (row.status === 'unused') {
-    return <small className="overview-row__status overview-row__status--idle">未被使用</small>
+/**
+ * Handing several library plugins to several servers at once.
+ *
+ * The single-plugin dialog says which servers are live and will need
+ * restarting, and that warning matters more here, not less: this is the same
+ * decision multiplied, and the number of servers it takes down is the number
+ * the operator has to plan a window around. Each plugin goes at the newest
+ * version the library holds — a bulk action is not the place to pin versions
+ * one at a time, and the per-plugin dialog is one click away for that.
+ */
+function BulkInstallDialog({
+  items,
+  instances,
+  onCancel,
+  onInstalled,
+}: {
+  items: LibraryPlugin[]
+  instances: InstanceStatus[]
+  onCancel: () => void
+  onInstalled: (summary: string) => void
+}) {
+  const [chosen, setChosen] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const targets = instances.filter((instance) => chosen.includes(instance.id))
+  const live = targets.filter((instance) => isLive(instance.state))
+
+  const install = async () => {
+    setBusy(true)
+    setError(null)
+
+    // Carries on past a failure, like every other fan-out here: the servers it
+    // already reached have the new jars either way.
+    const failures: string[] = []
+    let applied = 0
+    for (const instance of targets) {
+      for (const item of items) {
+        try {
+          await api.installInstancePlugin(instance.id, item.id, item.versions[0].tag)
+          applied++
+        } catch (err) {
+          failures.push(`${instance.name} / ${item.name}：${err instanceof Error ? err.message : '安装失败'}`)
+        }
+      }
+    }
+    setBusy(false)
+
+    if (failures.length > 0) {
+      setError(failures.join('；'))
+      return
+    }
+    onInstalled(
+      `已把 ${items.length} 个插件装到 ${targets.map((target) => target.name).join('、')}，共 ${applied} 处` +
+        (live.length > 0 ? '，重启后生效' : ''),
+    )
   }
-  if (row.status === 'mixed') {
-    return <small className="overview-row__status overview-row__status--warn">版本不一致</small>
-  }
-  return <small className="overview-row__status overview-row__status--ok">全部最新</small>
+
+  return (
+    <Modal onClose={onCancel} busy={busy} label="批量装到实例">
+      <div className="modal__card">
+        <h2 className="modal__title">把 {items.length} 个插件装到实例</h2>
+
+        <ul className="bulk-confirm__plugins">
+          {items.map((item) => (
+            <li key={item.id}>
+              <strong>{item.name}</strong>
+              <small>装 {item.versions[0]?.version ?? '未下载'} —— 库里最新的那个</small>
+            </li>
+          ))}
+        </ul>
+
+        <div className="field">
+          <span>装到哪几台</span>
+          <div className="pick-list pick-list--tall">
+            {instances.map((instance) => (
+              <label className="pick-list__row" key={instance.id}>
+                <input
+                  type="checkbox"
+                  checked={chosen.includes(instance.id)}
+                  disabled={busy}
+                  onChange={() =>
+                    setChosen((current) =>
+                      current.includes(instance.id)
+                        ? current.filter((id) => id !== instance.id)
+                        : [...current, instance.id],
+                    )
+                  }
+                />
+                <span className={`status__dot status__dot--${instance.state}`} />
+                <span>{instance.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {live.length > 0 && (
+          <div className="alert alert--warn">
+            选中的 {live.length} 台正在运行，
+            <strong>装完必须重启才会生效</strong> —— 重启期间在线玩家会被断开。
+            面板不会自动重启，装完之后请自己挑时间。
+          </div>
+        )}
+
+        {error && <div className="alert alert--error">{error}</div>}
+
+        <div className="modal__actions">
+          <button className="btn" disabled={busy} onClick={onCancel}>
+            取消
+          </button>
+          <button
+            className="btn btn--primary"
+            disabled={busy || targets.length === 0}
+            onClick={() => void install()}
+          >
+            {busy ? '安装中…' : `装到 ${targets.length} 台`}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
 }
 
 function UseLine({ use, onOpen }: { use: PluginUse; onOpen: () => void }) {
   return (
     <li>
-      <button className="link overview-row__instance" onClick={onOpen}>
+      <button className="link plugin-card__instance" onClick={onOpen}>
         <span className={`status__dot status__dot--${use.state}`} />
         {use.name}
       </button>
       {use.outdated ? (
         <span className="badge badge--update">{use.version} →</span>
       ) : (
-        <span className="overview-row__ver">{use.version}</span>
+        <span className="plugin-card__ver">{use.version}</span>
       )}
     </li>
   )
@@ -583,18 +811,10 @@ function JobStatus({
     )
   }
 
-  if (job.state === 'done') {
-    return (
-      <div className="alert alert--ok">
-        已下载 {job.pluginName} {job.version}
-        {job.mirror && `（来自 ${mirrorLabel(job.mirror)}）`}。
-      </div>
-    )
-  }
-
-  if (job.state === 'cancelled') {
-    return <div className="alert alert--ok">已取消下载 {job.fileName}，未写入任何文件。</div>
-  }
+  // Done and cancelled are both finished news. They are reported by the toast
+  // the page raises when the job flips, not by a block that then sits on top
+  // of the list it was about until the next navigation.
+  if (job.state === 'done' || job.state === 'cancelled') return null
 
   return (
     <div className="alert alert--error">

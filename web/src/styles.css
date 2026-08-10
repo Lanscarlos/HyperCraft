@@ -6128,12 +6128,16 @@ button.rows__name:hover strong {
   background: var(--surface-3);
 }
 
-.browse-row__icon--blank {
+/* The fallback face, wherever PluginIcon is used: the initial, on the same
+   square the image would have filled. Sized off the box it is standing in so
+   one rule covers a 34px card icon and a 32px search result. */
+.plugin-icon--blank {
   display: grid;
   place-items: center;
   color: var(--text-faint);
   font-size: 15px;
   font-weight: 600;
+  user-select: none;
 }
 
 .browse-row__body {
@@ -6567,158 +6571,208 @@ button.rows__name:hover strong {
 
 /* ------------------------------------------------------ cross-instance view
 
-   The weight is on the last column on purpose. This page exists to answer
-   "are my servers on the same versions", and 使用中的实例 is where that answer
-   lives — so it takes nearly half the row and expands itself when the versions
-   disagree. */
-.overview-table {
+   One card per plugin, each taking the whole row.
+
+   It was a five-column grid, and the grid was the thing that was wrong with
+   it. 使用中的实例 was carrying a status, an action and a file size as well as
+   the servers; the status was also in the column to its left; and 装到实例 —
+   the only thing on the row that does anything — was a text link in the cell a
+   table gives least weight to. None of the cells were wrong. The grid simply
+   had no way to say that some of them mattered more than others.
+
+   A card says it with position and weight instead: identity and state on the
+   top line beside the plugin's own face, the facts about the download quiet
+   underneath, the servers in a block with nothing else in it, and the actions
+   at the end at the two weights they really have — one button, and the rest
+   behind ⋯.
+
+   Full width rather than a tile grid. What this page answers is a list per
+   plugin, and a list does not fit in a tile. */
+.plugin-cards {
   display: flex;
   flex-direction: column;
+  gap: 10px;
+}
+
+.plugin-card {
+  display: grid;
+  grid-template-columns: 20px 34px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--surface-1);
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
 }
 
-.overview-table__head,
-.overview-row {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1.7fr) minmax(0, 1.1fr) minmax(0, 2.2fr);
-  gap: 12px;
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--border);
+.plugin-card:hover {
+  border-color: var(--outline);
 }
 
-.overview-table__head {
-  padding-top: 6px;
-  padding-bottom: 6px;
-  align-items: center;
-  background: var(--surface-2);
-  color: var(--text-faint);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+/* The state the page exists to surface. A left edge rather than a tint: the
+   card already carries several colours and one more background would make the
+   badges harder to find, which are where the detail is. */
+.plugin-card--mixed {
+  box-shadow: inset 3px 0 0 var(--caution);
 }
 
-.overview-row {
-  align-items: start;
+.plugin-card--picked {
+  border-color: var(--border-accent);
+  background: var(--accent-soft);
 }
 
-.overview-row:last-child {
-  border-bottom: none;
-}
-
-.overview-row:hover {
-  background: var(--surface-2);
-}
-
-.overview-row--mixed {
-  box-shadow: inset 2px 0 0 var(--caution);
-}
-
-.overview-row__pick {
+.plugin-card__pick {
   display: flex;
   align-items: center;
-  padding-top: 3px;
+  height: 28px;
 }
 
-.overview-row__name {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  padding: 0;
-  background: none;
-  border: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
+.plugin-card__pick input {
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
-.overview-row__name strong {
-  font-size: 13.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.plugin-card__icon {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--surface-3);
 }
 
-.overview-row__name small,
-.overview-row__version small {
-  color: var(--text-faint);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.overview-row__version {
+.plugin-card__body {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* The line the column is scanned down. Three states, three colours, no
-   further reading required to know which rows need doing. */
-.overview-row__status--ok {
-  color: var(--ok-ink);
-}
-
-.overview-row__status--warn {
-  color: var(--caution-ink);
-  font-weight: 600;
-}
-
-.overview-row__status--idle {
-  color: var(--text-faint);
-}
-
-.overview-row__uses {
+  gap: 4px;
   min-width: 0;
-  font-size: 12px;
 }
 
-.overview-row__list {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.overview-row__list li {
+.plugin-card__head {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  min-height: 28px;
 }
 
-.overview-row__instance {
+.plugin-card__name {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  transition: color var(--dur-1) var(--ease);
+}
+
+.plugin-card__name:hover {
+  color: var(--accent);
+}
+
+.plugin-card__repo {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-card__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.plugin-card__behind {
+  color: var(--caution-ink);
+}
+
+/* Servers, and nothing but servers. Boxed off so the block reads as a list
+   rather than as a third line of facts. */
+.plugin-card__uses {
+  margin-top: 3px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.plugin-card__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.plugin-card__list li {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.overview-row__ver {
+.plugin-card__instance {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.plugin-card__instance:hover {
+  text-decoration: underline;
+}
+
+.plugin-card__ver {
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
 }
 
-.overview-row__fold {
-  color: var(--text-dim);
+.plugin-card__fold {
+  font-size: 12px;
 }
 
-/* A downloaded jar nobody references. This page is the only place in the
-   panel that would ever mention it again, which is why the cleanup link is
-   here rather than anywhere else. */
-.overview-row__unused {
+.plugin-card__act {
   display: flex;
   align-items: center;
-  gap: 10px;
-  color: var(--text-faint);
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* The page's facts and its one action, on the same line beside the title. The
+   chips wrap among themselves; the button stays at the end of the line, which
+   is where the eye goes back to after reading them. */
+.page__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.page__actions .meta-chips {
+  justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+  .plugin-card {
+    grid-template-columns: 20px 34px minmax(0, 1fr);
+  }
+
+  .plugin-card__act {
+    grid-column: 2 / -1;
+  }
 }
 
 .bulkbar {
@@ -6770,22 +6824,6 @@ button.rows__name:hover strong {
 
 .meta-chips__warn {
   color: var(--caution-ink);
-}
-
-@media (max-width: 900px) {
-  .overview-table__head {
-    display: none;
-  }
-
-  .overview-row {
-    grid-template-columns: 24px minmax(0, 1fr);
-    gap: 6px 12px;
-  }
-
-  .overview-row__version,
-  .overview-row__uses {
-    grid-column: 2;
-  }
 }
 
 /* A badge in a stacked cell would otherwise take the column's full width: it
@@ -7178,29 +7216,87 @@ select.input-slim option {
   text-align: center;
 }
 
-/* The overview grew a fifth column for 装到实例. Narrow and right-aligned:
-   it is the row's one action, not something to scan down. */
-.overview-table__head,
-.overview-row {
-  grid-template-columns:
-    24px minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 2fr)
-    minmax(0, auto);
-}
 
-.overview-row__act {
+/* ================================================================== toast
+
+   Something that already happened, said in the corner and then gone.
+
+   The plugin pages used to report outcomes as alert blocks in the flow of the
+   page — 已下载 LuckPerms v5.5.71 sitting above the list it was about, pushing
+   it half a screen down until the next navigation. A block is the right shape
+   for a *state*: 版本不一致, 下载失败, 这台服认不出核心 are all still true
+   while you read them, and they are worth the room. An outcome is finished
+   news, and finished news gets four and a half seconds and a corner.
+
+   Errors deliberately do not come through here. Something that failed has to
+   stay until it is read. */
+.toast {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 85;
   display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  white-space: nowrap;
+  align-items: center;
+  gap: 12px;
+  max-width: min(420px, calc(100vw - 36px));
+  padding: 11px 12px 11px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-accent);
+  border-left: 3px solid var(--ok);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.6;
+  animation: toast-in var(--dur-3) var(--ease) both;
 }
 
-@media (max-width: 900px) {
-  .overview-row {
-    grid-template-columns: 24px minmax(0, 1fr);
-  }
+.toast[data-state='out'] {
+  animation: toast-out var(--dur-3) var(--ease-in) both;
+  pointer-events: none;
+}
 
-  .overview-row__act {
-    grid-column: 2;
-    justify-content: flex-start;
+.toast__body {
+  min-width: 0;
+}
+
+.toast__close {
+  flex: none;
+  padding: 0 2px;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 17px;
+  line-height: 1;
+  transition: color var(--dur-1) var(--ease);
+}
+
+.toast__close:hover {
+  color: var(--text);
+}
+
+/* In from the edge it will leave by, rather than up from nowhere: the corner
+   is where it lives and the motion should say so. */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(14px);
   }
 }

@@ -284,7 +284,13 @@ export const api = {
   /** Makes a registry listing into a library entry, or returns the existing
    *  one. Installing always goes through the library — download once, copy
    *  into as many servers as asked — so this is step one of every install. */
-  trackPlugin: (input: { source: string; id: string; name?: string; targetDir?: string }) =>
+  trackPlugin: (input: {
+    source: string
+    id: string
+    name?: string
+    targetDir?: string
+    iconUrl?: string
+  }) =>
     request<LibraryPlugin>('POST', '/api/plugins/browse/track', input),
 
   /** The cross-instance view: which servers run which version of what. */

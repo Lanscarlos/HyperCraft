@@ -373,6 +373,8 @@ export interface LibraryPlugin {
   name: string
   note?: string
   source: PluginSource
+  /** The registry's own artwork, kept from when the plugin was tracked. */
+  iconUrl?: string
   /** Directory inside the instance a copy lands in — "plugins", or "mods". */
   targetDir: string
   addedAt: string
@@ -652,6 +654,8 @@ export interface PluginOverviewRow {
   note?: string
   kind: PluginSourceKind
   repo: string
+  /** Registry artwork, or the repository owner's avatar for a GitHub source. */
+  iconUrl?: string
   used: PluginUse[]
   newest?: string
   upstream?: string

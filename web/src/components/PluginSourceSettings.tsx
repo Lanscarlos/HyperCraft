@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import type { PluginController } from '../usePlugins'
 import { Page } from './Page'
+import { PluginDialog } from './PluginDialog'
 
 /**
  * Where plugins come from: the credential private repositories are read with,
@@ -17,11 +18,20 @@ import { Page } from './Page'
  */
 export function PluginSourceSettings({ plugins }: { plugins: PluginController }) {
   const { library, busy } = plugins
+  const [adding, setAdding] = useState(false)
 
   return (
     <Page
       title="插件源"
-      lead="插件都来自 GitHub Release。这里管两件事：私有仓库要用的访问令牌，以及 jar 走哪个下载源 —— 两个都只影响下载。插件本身、版本和更新在「插件列表」里管，装到某台服上则在那台服的「已装插件」页。"
+      lead="三个插件站覆盖了绝大多数插件，但覆盖不了只发在作者自己 GitHub Release 上的那种 —— 包括你自己那个私有仓库。这一页管的就是这件事：登记一个仓库当插件源，配好私有仓库要用的访问令牌，以及 jar 走哪个下载源。插件本身、版本和更新在「插件列表」里管，装到某台服上则在那台服的「已装插件」页。"
+      aside={
+        // Registering a source, which is what this page is for. It used to sit
+        // beside 检查全部更新 on the plugin list, where it was the only button
+        // in the row that did not act on the list.
+        <button className="btn btn--primary" onClick={() => setAdding(true)}>
+          + GitHub 仓库
+        </button>
+      }
     >
 
       <GitHubTokenPanel
@@ -45,6 +55,19 @@ export function PluginSourceSettings({ plugins }: { plugins: PluginController })
       )}
 
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
+
+      {adding && (
+        <PluginDialog
+          item={null}
+          busy={busy}
+          onCancel={() => setAdding(false)}
+          onSubmit={async (input) => {
+            const ok = await plugins.add(input)
+            if (ok) setAdding(false)
+            return ok
+          }}
+        />
+      )}
     </Page>
   )
 }

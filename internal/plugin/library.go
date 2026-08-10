@@ -81,6 +81,12 @@ type Plugin struct {
 	Source    Source    `json:"source"`
 	TargetDir string    `json:"targetDir"`
 	AddedAt   time.Time `json:"addedAt"`
+	// IconURL is the artwork the registry publishes for this plugin, kept so
+	// the library page can show the same face 获取插件 showed. Recorded when
+	// the plugin is tracked rather than fetched per page load: it is a URL on
+	// somebody else's CDN and looking it up again would mean a registry call
+	// per row to learn something that does not change.
+	IconURL string `json:"iconUrl,omitempty"`
 
 	// Versions are the downloads held in the library, newest release first.
 	Versions []Version `json:"versions"`
@@ -239,6 +245,29 @@ func (l *Library) Add(name string, src Source, targetDir, note string) (Plugin, 
 		return Plugin{}, err
 	}
 	return item, nil
+}
+
+// SetIcon records the registry's artwork for a plugin, if it has none yet.
+//
+// Separate from Add and from Edit because it is neither: it is a detail the
+// panel happens to learn — when the plugin is first tracked, and again every
+// time its page is opened — about an entry that is already correct without it.
+// Best effort by design; a plugin with no icon is a plugin with an initial in
+// a square, which is what every row falls back to anyway.
+func (l *Library) SetIcon(id, iconURL string) {
+	if iconURL == "" {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	registry := l.load()
+	item, ok := registry[id]
+	if !ok || item.IconURL == iconURL {
+		return
+	}
+	item.IconURL = iconURL
+	registry[id] = item
+	_ = l.save(registry)
 }
 
 // Edit changes what a tracked plugin is called and where it comes from. The

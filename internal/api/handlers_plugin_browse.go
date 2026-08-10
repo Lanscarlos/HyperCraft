@@ -9,6 +9,7 @@ package api
 
 import (
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -239,6 +240,11 @@ func (s *Server) handleBrowsePluginDetail(w http.ResponseWriter, r *http.Request
 	}
 
 	tracked := s.trackedBy(source, id)
+	// Backfills the artwork for a plugin tracked before the panel started
+	// keeping it — opening its page is the one moment the icon is in hand.
+	if tracked != nil {
+		s.plugins.Library().SetIcon(tracked.ID, listing.IconURL)
+	}
 	resp := browseDetailResponse{
 		Listing:  listing,
 		Body:     body,
@@ -271,6 +277,9 @@ type trackRequest struct {
 	// TargetDir overrides where copies land. Empty lets the loader decide:
 	// mods for Fabric and Forge, plugins for everything else.
 	TargetDir string `json:"targetDir"`
+	// IconURL is the registry's artwork, passed along so the library page can
+	// show the same face the search result had.
+	IconURL string `json:"iconUrl"`
 }
 
 // handleTrackPlugin makes a registry listing into a library entry, or returns
@@ -317,6 +326,8 @@ func (s *Server) handleTrackPlugin(w http.ResponseWriter, r *http.Request) {
 		s.writePluginError(w, err)
 		return
 	}
+	s.plugins.Library().SetIcon(item.ID, strings.TrimSpace(req.IconURL))
+	item.IconURL = strings.TrimSpace(req.IconURL)
 	s.log.Info("plugin tracked from registry", "plugin", item.ID, "source", source, "id", id)
 	writeJSON(w, http.StatusCreated, item)
 }
@@ -398,12 +409,16 @@ type overviewUse struct {
 
 // overviewRow aggregates one plugin across every instance.
 type overviewRow struct {
-	ID   string        `json:"id"`
-	Name string        `json:"name"`
-	Note string        `json:"note,omitempty"`
-	Kind string        `json:"kind"`
-	Repo string        `json:"repo"`
-	Used []overviewUse `json:"used"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Note string `json:"note,omitempty"`
+	Kind string `json:"kind"`
+	Repo string `json:"repo"`
+	// IconURL is what the row shows beside the name — the registry's own
+	// artwork where there is any, and the repository owner's avatar for a
+	// GitHub source, which is the closest thing GitHub publishes to one.
+	IconURL string        `json:"iconUrl,omitempty"`
+	Used    []overviewUse `json:"used"`
 	// Newest is the newest version the library holds, and Upstream is what the
 	// last update check found. They differ when there is something to download.
 	Newest   string `json:"newest,omitempty"`
@@ -416,6 +431,26 @@ type overviewRow struct {
 	// makes an unused entry worth cleaning up.
 	Size     int64 `json:"size"`
 	Versions int   `json:"versions"`
+}
+
+// rowIcon is the artwork for a library row.
+//
+// Registry plugins carry theirs from the moment they were tracked. A GitHub
+// source never had one — releases have no artwork — but the owner does, and
+// an owner avatar is a better answer than a grey square: it is stable, it is
+// recognisable, and for the private repository case it is the operator's own.
+func rowIcon(item plugin.Plugin) string {
+	if item.IconURL != "" {
+		return item.IconURL
+	}
+	if item.Source.Kind != plugin.SourceGitHub {
+		return ""
+	}
+	owner, _, found := strings.Cut(item.Source.Repo, "/")
+	if !found || owner == "" {
+		return ""
+	}
+	return "https://github.com/" + url.PathEscape(owner) + ".png?size=64"
 }
 
 // Aggregate statuses. The page is scanned down this column, so there are three
@@ -477,6 +512,7 @@ func (s *Server) handlePluginOverview(w http.ResponseWriter, r *http.Request) {
 			Note:     item.Note,
 			Kind:     item.Source.Kind,
 			Repo:     item.Source.Repo,
+			IconURL:  rowIcon(item),
 			Used:     []overviewUse{},
 			Versions: len(item.Versions),
 		}

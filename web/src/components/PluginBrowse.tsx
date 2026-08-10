@@ -10,6 +10,7 @@ import type {
 } from '../types'
 import { CompatBadge } from './PluginCompat'
 import { PluginDrawer } from './PluginDrawer'
+import { PluginIcon } from './PluginIcon'
 import { Select } from './Select'
 
 /**
@@ -639,12 +640,6 @@ function BrowseRow({
   // a fact about the source, so it goes in the meta line with the other facts
   // about the source rather than into the badge slot.
   const unjudgeable = judged && listing.compat?.state === 'unknown'
-  // A registry icon is a request to a third-party CDN, which is exactly the
-  // host an operator behind a restrictive network cannot reach. A broken image
-  // placeholder is worse than no icon, so a failed load falls back to the
-  // initial the row would have had anyway.
-  const [iconBroken, setIconBroken] = useState(false)
-  const icon = listing.iconUrl && !iconBroken
 
   return (
     <article
@@ -652,19 +647,7 @@ function BrowseRow({
       role="listitem"
     >
       <button className="browse-row__open" onClick={onOpen} title={`查看「${listing.name}」`}>
-        {icon ? (
-          <img
-            className="browse-row__icon"
-            src={listing.iconUrl}
-            alt=""
-            loading="lazy"
-            onError={() => setIconBroken(true)}
-          />
-        ) : (
-          <span className="browse-row__icon browse-row__icon--blank">
-            {listing.name.slice(0, 1).toUpperCase()}
-          </span>
-        )}
+        <PluginIcon className="browse-row__icon" src={listing.iconUrl} name={listing.name} />
 
         <span className="browse-row__body">
           <span className="browse-row__head">

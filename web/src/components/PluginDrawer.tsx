@@ -6,6 +6,7 @@ import { formatBytes, formatDate } from '../format'
 import type { BrowseVersion, InstallTarget, PluginBrowseDetail, PluginListing } from '../types'
 import { useDismiss } from '../useDismiss'
 import { CompatBadge } from './PluginCompat'
+import { PluginIcon } from './PluginIcon'
 import { formatDownloads, sourceLabel } from './PluginBrowse'
 
 /**
@@ -110,6 +111,7 @@ export function PluginDrawer({
         source: listing.source,
         id: listing.id,
         name: listing.name,
+        iconUrl: listing.iconUrl,
       })
 
       if (version.held) {
@@ -138,13 +140,7 @@ export function PluginDrawer({
       <aside className="drawer__panel" role="dialog" aria-label={listing.name}>
         <header className="drawer__head">
           <div className="drawer__title">
-            {listing.iconUrl ? (
-              <img className="browse-row__icon" src={listing.iconUrl} alt="" />
-            ) : (
-              <span className="browse-row__icon browse-row__icon--blank">
-                {listing.name.slice(0, 1).toUpperCase()}
-              </span>
-            )}
+            <PluginIcon className="browse-row__icon" src={listing.iconUrl} name={listing.name} />
             <div>
               <h2>{listing.name}</h2>
               <p className="drawer__sub">
