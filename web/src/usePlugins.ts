@@ -36,7 +36,9 @@ export interface PluginController {
   edit: (id: string, input: PluginInput) => Promise<boolean>
   remove: (id: string) => Promise<void>
   check: (id: string) => Promise<void>
-  checkAll: () => Promise<void>
+  /** Asks upstream about every tracked plugin, and hands back the library it
+   *  got — the caller is the one that has to say what the check found. */
+  checkAll: () => Promise<PluginLibrary | null>
   download: (id: string, tag: string, asset?: string) => Promise<void>
   cancel: () => Promise<void>
   removeVersion: (id: string, tag: string) => Promise<void>
@@ -148,8 +150,10 @@ export function usePlugins(enabled: boolean): PluginController {
   const checkAll = useCallback(
     () =>
       act(async () => {
-        setLibrary(await api.checkPlugins())
-      }, '检查更新失败').catch(() => undefined),
+        const next = await api.checkPlugins()
+        setLibrary(next)
+        return next
+      }, '检查更新失败').catch(() => null),
     [act],
   )
 

@@ -18,6 +18,7 @@ import { NewInstanceDialog } from './components/NewInstanceDialog'
 import { PluginLibraryPage } from './components/PluginLibraryPage'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
+import { ToastStack } from './components/Toast'
 import { TopBar } from './components/TopBar'
 import type { Crumb } from './components/TopBar'
 import {
@@ -700,6 +701,12 @@ export default function App() {
           }}
         />
       )}
+
+      {/* One corner for every outcome in the panel. It lives at the root
+          rather than on the pages that report things, because the reports
+          outlive the page: a bulk upgrade started in 插件列表 and finished
+          after navigating away used to have nowhere to land. */}
+      <ToastStack />
     </div>
   )
 }
