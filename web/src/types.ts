@@ -920,6 +920,14 @@ export interface BrowseVersion extends PluginRelease {
    *  platform can be half held — the paper jar downloaded, the velocity one
    *  not — and installing onto a proxy then has to download after all. */
   heldJars?: string[]
+  /** One verdict per platform build, keyed by file name, and only for a
+   *  release that ships several labelled ones.
+   *
+   *  `compat` above is the release's, folded so that one build fitting makes
+   *  the release fit — right for the version list, wrong for the jar that
+   *  actually comes down. LuckPerms is compatible with a Velocity proxy and
+   *  its Bukkit build is not. */
+  builds?: Record<string, PluginCompat | undefined>
 }
 
 export interface PluginBrowseDetail {

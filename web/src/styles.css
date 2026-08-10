@@ -7378,6 +7378,53 @@ button.rows__name:hover strong {
   font-variant-numeric: tabular-nums;
 }
 
+/* One release, several jars — the picker for which one comes down.
+   Chips rather than a select: there are three or four of them, the platform
+   name is the whole content of each, and what separates them is not a
+   preference but whether the file the operator ends up with loads at all. */
+.drawer__builds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.drawer__build {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.drawer__build:hover {
+  border-color: var(--accent);
+}
+
+.drawer__build--chosen {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.drawer__build-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.drawer__build-meta {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
 .drawer__deps {
   display: flex;
   flex-direction: column;
