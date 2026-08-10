@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api'
+import { ask } from '../confirm'
 import { formatBytes, formatDate } from '../format'
 import type { LibraryView } from '../routes'
 import type {
@@ -1049,13 +1050,18 @@ async function cleanCache(
     return
   }
   const freed = unused.reduce((sum, row) => sum + row.size, 0)
-  if (
-    !window.confirm(
-      `删除 ${unused.map((row) => row.name).join('、')} 的下载，释放 ${formatBytes(freed)}？`,
-    )
-  ) {
-    return
-  }
+  const ok = await ask({
+    title: `清理 ${unused.length} 个插件的下载？`,
+    lead: (
+      <>
+        {unused.map((row) => row.name).join('、')} —— 共 {formatBytes(freed)}。
+      </>
+    ),
+    detail: '这些插件目前没有任何实例在用，删掉的是库里的 jar。',
+    confirmLabel: `清理 ${formatBytes(freed)}`,
+    danger: true,
+  })
+  if (!ok) return
 
   setBusy(true)
   setError(null)
@@ -1082,15 +1088,18 @@ async function cleanUnused(
 ) {
   const unused = rows.filter((row) => row.status === 'unused')
   const freed = unused.reduce((sum, row) => sum + row.size, 0)
-  if (
-    !window.confirm(
-      `删掉没有任何实例在用的 ${unused.length} 个插件的下载，释放 ${formatBytes(freed)}？\n\n` +
-        `${unused.map((row) => row.name).join('、')}\n\n` +
-        '实例目录里已经装好的副本不受影响 —— 那是各自目录里的另一份文件。',
-    )
-  ) {
-    return
-  }
+  const ok = await ask({
+    title: `清理 ${unused.length} 个没人在用的插件？`,
+    lead: (
+      <>
+        {unused.map((row) => row.name).join('、')} —— 共 {formatBytes(freed)}。
+      </>
+    ),
+    detail: '实例目录里已经装好的副本不受影响 —— 那是各自目录里的另一份文件。',
+    confirmLabel: `清理 ${formatBytes(freed)}`,
+    danger: true,
+  })
+  if (!ok) return
   setBusy(true)
   setError(null)
   try {
@@ -1113,17 +1122,17 @@ async function dropPlugin(
   refresh: () => Promise<void>,
   refreshLibrary: () => Promise<void>,
 ) {
-  const kept =
-    row.used.length > 0
-      ? `\n\n${row.used.length} 台服上已经装好的副本不受影响 —— 那是各自目录里的另一份文件。`
-      : ''
-  if (
-    !window.confirm(
-      `从库里删掉「${row.name}」的 ${row.versions} 个版本，释放 ${formatBytes(row.size)}？${kept}`,
-    )
-  ) {
-    return
-  }
+  const ok = await ask({
+    title: `从库里移除「${row.name}」？`,
+    lead: `会删掉库里的 ${row.versions} 个版本，释放 ${formatBytes(row.size)}。`,
+    detail:
+      row.used.length > 0
+        ? `${row.used.length} 台服上已经装好的副本不受影响 —— 那是各自目录里的另一份文件。`
+        : '没有实例在用它，删掉不影响任何一台服。',
+    confirmLabel: '移除',
+    danger: true,
+  })
+  if (!ok) return
   setBusy(true)
   try {
     await api.deletePlugin(row.id)

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactElement, ReactNode } from 'react'
+import type { ReactElement } from 'react'
 
 import { ApiError, api, downloadURL, previewURL, uploadFiles } from '../api'
+import { ask } from '../confirm'
 import { formatBytes, formatDate, formatSince } from '../format'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
 import { Modal } from './Modal'
@@ -33,16 +34,7 @@ export interface FileJump {
   token: number
 }
 
-/** A pending yes/no, waiting on the dialog that will answer it. */
-interface ConfirmState {
-  title: string
-  lead?: ReactNode
-  confirmLabel: string
-  danger?: boolean
-  resolve: (ok: boolean) => void
-}
-
-/** A pending "type a name", same idea. */
+/** A pending "type a name", waiting on the dialog that will answer it. */
 interface NameState {
   title: string
   lead?: string
@@ -75,7 +67,6 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
   const [sort, setSort] = useState<Sort>({ key: 'name', asc: true })
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
-  const [confirm, setConfirm] = useState<ConfirmState | null>(null)
   const [naming, setNaming] = useState<NameState | null>(null)
   const [preview, setPreview] = useState<FileEntry | null>(null)
 
@@ -137,31 +128,22 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
   const refresh = () => void load(dir)
 
   /**
-   * The two questions this pane has to ask, as promises.
+   * "Type a name", as a promise — the same shape as `ask` in confirm.ts, and
+   * for the same reason. window.prompt cannot tell a name that is already
+   * taken from one that is free until the request comes back a 409, and on a
+   * phone it arrives as browser chrome with the panel's own address above it.
    *
-   * They replace window.confirm and window.prompt, which is not a cosmetic
-   * change: the native boxes cannot say *which* five files are about to be
-   * deleted, cannot tell a name that is already taken from one that is free
-   * until the request comes back a 409, and on a phone they arrive as a bare
-   * browser chrome dialog with the panel's own name at the top of it. What is
-   * kept from them is the shape — call it, await the answer — so the flows
-   * below still read top to bottom.
+   * It stays local while the yes/no half moved out: a confirmation is the same
+   * card everywhere, whereas this one is the file pane's, down to the list of
+   * names already in the directory and the way it selects around a file
+   * extension.
    */
-  const ask = useCallback(
-    (request: Omit<ConfirmState, 'resolve'>) =>
-      new Promise<boolean>((resolve) => setConfirm({ ...request, resolve })),
-    [],
-  )
   const askName = useCallback(
     (request: Omit<NameState, 'resolve'>) =>
       new Promise<string | null>((resolve) => setNaming({ ...request, resolve })),
     [],
   )
 
-  const settleConfirm = (ok: boolean) => {
-    confirm?.resolve(ok)
-    setConfirm(null)
-  }
   const settleName = (name: string | null) => {
     naming?.resolve(name)
     setNaming(null)
@@ -462,9 +444,6 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
     <>
       {status && (
         <Toast key={status.id} message={status.text} onDone={() => setStatus(null)} />
-      )}
-      {confirm && (
-        <ConfirmDialog request={confirm} onAnswer={settleConfirm} />
       )}
       {naming && <NameDialog request={naming} onAnswer={settleName} />}
       {preview && (
@@ -1042,35 +1021,6 @@ function FileEditor({
 }
 
 /* --------------------------------------------------------------- dialogs */
-
-function ConfirmDialog({
-  request,
-  onAnswer,
-}: {
-  request: ConfirmState
-  onAnswer: (ok: boolean) => void
-}) {
-  return (
-    <Modal onClose={() => onAnswer(false)} label={request.title}>
-      <div className="modal__card">
-        <h2 className="modal__title">{request.title}</h2>
-        {request.lead && <div className="modal__lead">{request.lead}</div>}
-        <div className="modal__actions">
-          <button className="btn" onClick={() => onAnswer(false)}>
-            取消
-          </button>
-          <button
-            className={request.danger ? 'btn btn--danger' : 'btn btn--primary'}
-            onClick={() => onAnswer(true)}
-            autoFocus
-          >
-            {request.confirmLabel}
-          </button>
-        </div>
-      </div>
-    </Modal>
-  )
-}
 
 function NameDialog({
   request,

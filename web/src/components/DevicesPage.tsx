@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '../api'
+import { ask } from '../confirm'
 import type { Device } from '../types'
 import { Page } from './Page'
 
@@ -33,13 +34,14 @@ export function DevicesPage() {
   }, [load])
 
   const unpair = async (device: Device) => {
-    if (
-      !window.confirm(
-        `解除「${device.name}」的配对？该设备上的客户端会立刻退出登录，需要重新配对才能再连上。`,
-      )
-    ) {
-      return
-    }
+    const ok = await ask({
+      title: `解除「${device.name}」的配对？`,
+      lead: '该设备上的客户端会立刻退出登录。',
+      detail: '要再连上得重新配对一次，这台设备之后不会自动回来。',
+      confirmLabel: '解除配对',
+      danger: true,
+    })
+    if (!ok) return
     setBusyID(device.id)
     setError(null)
     try {

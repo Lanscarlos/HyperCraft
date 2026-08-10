@@ -42,7 +42,15 @@ interface Props {
    * only take away the one place its result can be reported.
    */
   busy?: boolean
-  children: ReactNode
+  /**
+   * The card. Given as a function when the card has its own way out — a 取消
+   * button, a 确定 that has to answer *and* leave — it is handed the same
+   * `close` Escape uses, so a decision made on a button plays the exit
+   * animation instead of blinking the dialog out of existence. Dialogs whose
+   * buttons already call their own onCancel pass a plain node and are
+   * unaffected.
+   */
+  children: ReactNode | ((close: () => void) => ReactNode)
 }
 
 export function Modal({ onClose, label, busy, children }: Props) {
@@ -98,7 +106,7 @@ export function Modal({ onClose, label, busy, children }: Props) {
       aria-label={label}
       onMouseDown={onBackdrop}
     >
-      {children}
+      {typeof children === 'function' ? children(busy ? () => {} : close) : children}
     </div>,
     document.body,
   )

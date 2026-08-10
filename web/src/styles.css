@@ -3490,6 +3490,44 @@ details[open]::details-content {
   margin-top: 4px;
 }
 
+/* --------------------------------------------------------- confirmations
+
+   The card behind ask() — see confirm.ts for why the native box had to go.
+   It is a plain modal card with one addition: a block for the consequence,
+   which in the browser's version was another paragraph of the same grey text
+   and got skipped for it. Here it is a panel of its own, tinted red when the
+   answer destroys something, so "已经装到实例里的副本不受影响" is read rather
+   than scrolled past on the way to the button. */
+
+.confirm {
+  width: min(430px, 100%);
+}
+
+.confirm__note {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-3);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.confirm[data-tone='danger'] .confirm__note {
+  border-color: var(--danger-edge);
+  background: var(--danger-soft);
+}
+
+/* A checkbox on a confirmation is a second question, not a form field, so it
+   sits in the same tinted well as the note rather than loose above the
+   buttons. */
+.confirm .checkbox {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-3);
+}
+
 /* ------------------------------------------------------------------ charts
 
    Series colours are not the brand's. A chart's job is to keep CPU apart from

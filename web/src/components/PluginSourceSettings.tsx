@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { ask } from '../confirm'
 import type { PluginTokenInfo } from '../types'
 import type { PluginController } from '../usePlugins'
 import { Page } from './Page'
@@ -247,11 +248,18 @@ function TokenRow({
           type="button"
           disabled={busy}
           onClick={() => {
-            const warning =
-              token.usedBy > 0
-                ? `有 ${token.usedBy} 个插件在用这个令牌，删掉之后它们会读不到仓库，得改成别的令牌。确定吗？`
-                : '删掉这个令牌？'
-            if (window.confirm(warning)) void onRemove(token.id)
+            void ask({
+              title: '删掉这个令牌？',
+              lead: '面板不再保存它，之后要用得重新填一次。',
+              detail:
+                token.usedBy > 0
+                  ? `有 ${token.usedBy} 个插件在用它，删掉之后它们会读不到仓库，得改成别的令牌。`
+                  : '目前没有插件在用它。',
+              confirmLabel: '删除',
+              danger: true,
+            }).then((ok) => {
+              if (ok) void onRemove(token.id)
+            })
           }}
         >
           删除

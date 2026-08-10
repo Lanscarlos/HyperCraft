@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { ApiError, api } from '../api'
+import { ask } from '../confirm'
 import { formatBytes } from '../format'
 import type { InstanceStatus, ServerCore } from '../types'
 import type { CoreController } from '../useCores'
@@ -63,7 +64,14 @@ export function InstanceCorePicker({ instance, cores, onApplied, onOpenLibrary }
       // silently to the file a running server was launched from.
       if (err instanceof ApiError && err.status === 409 && !overwrite) {
         const name = available.find((core) => core.id === coreId)?.fileName ?? '该文件'
-        if (window.confirm(`${name} 已经在实例目录里了，要覆盖吗？`)) {
+        const overwriteIt = await ask({
+          title: '实例目录里已经有同名文件',
+          lead: `${name} 已经在 ${instance.name} 的目录里了。`,
+          detail: '覆盖会用库里的这份替换掉它。如果服务器正开着，换掉的是它启动时读的那个 jar。',
+          confirmLabel: '覆盖',
+          danger: true,
+        })
+        if (overwriteIt) {
           setBusy(false)
           await apply(true)
           return

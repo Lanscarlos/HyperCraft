@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { ask } from '../confirm'
 import { formatBytes, formatDate } from '../format'
 import type { LibraryView } from '../routes'
 import type { JavaInstallJob, JavaRuntime, JavaSource, SystemJava } from '../types'
@@ -92,11 +93,17 @@ export function JavaPage({
   }, [remembered])
 
   const remove = async (runtime: JavaRuntime) => {
-    const warning =
-      runtime.usedBy.length > 0
-        ? `实例「${runtime.usedBy.join('、')}」还在用 ${runtime.version}，删掉后它们下次启动会失败。确定删除吗？`
-        : `确定要删除 Java ${runtime.version}（${formatBytes(runtime.size)}）吗？`
-    if (!window.confirm(warning)) return
+    const ok = await ask({
+      title: `删除 Java ${runtime.version}？`,
+      lead: `会从面板的运行时目录里删掉它，释放 ${formatBytes(runtime.size)}。`,
+      detail:
+        runtime.usedBy.length > 0
+          ? `实例「${runtime.usedBy.join('、')}」还在用它，删掉之后它们下次启动会失败，得先改到别的 Java。`
+          : '没有实例在用它，系统自带的 Java 也不受影响。',
+      confirmLabel: '删除',
+      danger: true,
+    })
+    if (!ok) return
     await java.remove(runtime.id)
   }
 
