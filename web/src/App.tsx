@@ -31,6 +31,7 @@ import {
   parentOf,
   pathOf,
   routeFromLocation,
+  routeFromPath,
   scopeOf,
 } from './routes'
 import type { InstanceSection, LibrarySection, LibraryView, Route, StateFilter } from './routes'
@@ -144,22 +145,51 @@ function crumbsFor(
 }
 
 /** What the back button says it goes to. The trail already names every step;
- *  this is the one step that has to fit in a tooltip. */
+ *  this is the one step that has to fit in a tooltip. Named down to the page,
+ *  not just the scope: now that the button goes back to where you came from,
+ *  where you came from is often a sibling page of the one you are on, and
+ *  "返回<实例名>" twice over says nothing about which. */
 function labelOfRoute(route: Route, instances: InstanceStatus[]): string {
   switch (route.kind) {
     case 'instances':
       return '所有实例'
-    case 'instance':
-      return instances.find((item) => item.id === route.id)?.name ?? '实例'
-    case 'library':
-      return labelOf(LIBRARY_SECTIONS, route.section)
+    case 'instance': {
+      const name = instances.find((item) => item.id === route.id)?.name ?? '实例'
+      return route.section === 'console'
+        ? name
+        : `${name} · ${labelOf(INSTANCE_SECTIONS, route.section)}`
+    }
+    case 'library': {
+      const section = labelOf(LIBRARY_SECTIONS, route.section)
+      if (route.pluginId) return section
+      return route.view === defaultView(route.section)
+        ? section
+        : `${section} · ${labelOf(LIBRARY_VIEWS[route.section], route.view)}`
+    }
     case 'host':
-      return '主机'
+      return route.section === 'metrics' ? '主机' : `主机 · ${labelOf(HOST_SECTIONS, route.section)}`
     case 'settings':
-      return '面板设置'
+      return `面板设置 · ${labelOf(SETTINGS_SECTIONS, route.section)}`
     default:
       return '概览'
   }
+}
+
+/**
+ * Where the current history entry was reached from.
+ *
+ * Stashed on the entry itself rather than kept in a stack of our own, because
+ * the browser already owns that stack and is the only one who knows what the
+ * forward button, a reload or a restored tab did to it. `history.state`
+ * survives all three; an array in a ref survives none of them.
+ */
+interface Entry {
+  from?: string
+}
+
+function cameFrom(): Route | null {
+  const from = (window.history.state as Entry | null)?.from
+  return typeof from === 'string' ? routeFromPath(from) : null
 }
 
 export default function App() {
@@ -167,6 +197,9 @@ export default function App() {
   const [checkingSession, setCheckingSession] = useState(true)
   const [instances, setInstances] = useState<InstanceStatus[]>([])
   const [route, setRoute] = useState<Route>(routeFromLocation)
+  // The page this one was opened from, for the top bar's 返回. Read from the
+  // history entry, so a reload in the middle of a session keeps its answer.
+  const [backTo, setBackTo] = useState<Route | null>(cameFrom)
   const [showNew, setShowNew] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -202,16 +235,35 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const onPop = () => setRoute(routeFromLocation())
+    const onPop = () => {
+      setRoute(routeFromLocation())
+      setBackTo(cameFrom())
+    }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
   const navigate = useCallback((next: Route, replace = false) => {
-    setRoute(next)
+    // Read back out of the URL rather than off `route`, so this callback keeps
+    // the identity it has had since mount and every child holding it is spared
+    // a re-render per navigation. Normalised through pathOf so that the two
+    // spellings of one page — /instances and /instances?state=all — compare
+    // equal below instead of pushing a second copy of the page you are on.
+    const here = pathOf(routeFromLocation())
     const path = pathOf(next)
-    if (replace) window.history.replaceState(null, '', path)
-    else window.history.pushState(null, '', path)
+    // Landing on the page you are already on is not a move — clicking the
+    // active sidebar row, or a breadcrumb step for the page it ends on. Pushing
+    // it would put this page in the stack twice and make the next 返回 look
+    // broken by doing nothing visible.
+    if (replace || path === here) {
+      // Keeps whatever `from` this entry already carries: a filter typed into
+      // the search box changes the page you are on, not the one you came from.
+      window.history.replaceState(window.history.state, '', path)
+    } else {
+      window.history.pushState({ from: here } satisfies Entry, '', path)
+      setBackTo(routeFromPath(here))
+    }
+    setRoute(next)
     // A drawer covers what you just navigated to, so picking something is also
     // how you dismiss it. On a rail there is nothing to dismiss.
     setNavOpen(false)
@@ -370,18 +422,34 @@ export default function App() {
   }))
   const scope = scopeOf(route)
 
-  // One step up the trail, for the top bar's back button. When that step leaves
-  // the scope it is exactly the movement 返回上级 in the sidebar makes, so it
-  // is captured the same way and the header shrinks back into the row it came
-  // from — the button being somewhere else does not make it a different act.
-  const parent = parentOf(route)
-  const goBack = parent
+  // The top bar's back button: the page you came from.
+  //
+  // It sits where every browser and every phone puts 返回, so it has to mean
+  // what it means there — undo the last move — rather than climb the route
+  // tree. Those two agree most of the time, because most of the time you got
+  // here from one level up; where they disagree, the tree was the wrong
+  // answer. Arriving at 插件市场 from a server's 插件 page and being sent
+  // "back" to 插件列表, a page you had never seen, is the whole complaint.
+  //
+  // Going back is handed to the browser rather than pushed as a new entry, so
+  // the stack shortens the way it should and the forward button still works.
+  // The climb survives as the fallback for an entry with nothing before it —
+  // a pasted link, a new tab, the first page of a session — where there is no
+  // last move to undo and the tree is the only thing left that knows the way
+  // out.
+  const backRoute = backTo ?? parentOf(route)
+  // Leaving the scope is exactly the movement 返回上级 in the sidebar makes, so
+  // it is captured the same way and the header shrinks back into the row it
+  // came from — the button being somewhere else does not make it a different
+  // act.
+  const goBack = backRoute
     ? () => {
-        if (scopeOf(parent) !== scope) {
+        if (scopeOf(backRoute) !== scope) {
           const key = navKeyOf(route)
           if (key) captureScope(key)
         }
-        navigate(parent)
+        if (backTo) window.history.back()
+        else navigate(backRoute)
       }
     : null
 
@@ -434,8 +502,8 @@ export default function App() {
           onToggleNav={() => setNavOpen((open) => !open)}
           toggleRef={navToggle}
           onBack={goBack}
-          backHref={parent ? pathOf(parent) : null}
-          backLabel={parent ? labelOfRoute(parent, instances) : null}
+          backHref={backRoute ? pathOf(backRoute) : null}
+          backLabel={backRoute ? labelOfRoute(backRoute, instances) : null}
           onOpenPalette={() => setPaletteOpen(true)}
           onChangePassword={() => setShowPassword(true)}
           onSignOut={() => void signOut()}

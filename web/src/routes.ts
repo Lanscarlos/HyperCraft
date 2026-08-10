@@ -201,14 +201,13 @@ export function navKeyOf(route: Route): string | null {
 }
 
 /**
- * One step up, as the trail in the top bar reads it.
+ * One step up the trail.
  *
- * Every scope has a first page that stands for the whole thing — the console,
- * the shelf, 监控 — so going up from anywhere inside one lands there first and
- * leaves the scope on the next press. Two presses out of a file listing rather
- * than one, deliberately: the alternative is a button that sometimes moves you
- * one page and sometimes throws away the whole context you were in, with
- * nothing on screen saying which it will be this time.
+ * Not what the top bar's 返回 does — that undoes your last move — but where it
+ * points when there is no last move to undo: a pasted link, a fresh tab, the
+ * first page after a reload. Every scope has a first page that stands for the
+ * whole thing — the console, the shelf, 监控 — so climbing out of one lands
+ * there first and leaves the scope on the next press.
  */
 export function parentOf(route: Route): Route | null {
   switch (route.kind) {
@@ -239,8 +238,22 @@ export function parentOf(route: Route): Route | null {
 }
 
 export function routeFromLocation(): Route {
-  const path = window.location.pathname
-  const params = new URLSearchParams(window.location.search)
+  return readRoute(window.location.pathname, window.location.search)
+}
+
+/**
+ * The same reading, for a path the browser is not currently at.
+ *
+ * Used for the entry you came from, which the top bar's 返回 has to be able to
+ * name and link to while you are still standing somewhere else.
+ */
+export function routeFromPath(href: string): Route {
+  const cut = href.indexOf('?')
+  return cut === -1 ? readRoute(href, '') : readRoute(href.slice(0, cut), href.slice(cut))
+}
+
+function readRoute(path: string, search: string): Route {
+  const params = new URLSearchParams(search)
 
   const instance = path.match(/^\/i\/([^/]+)(?:\/([^/]+))?/)
   if (instance) {
