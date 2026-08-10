@@ -1418,6 +1418,45 @@ func (s *Server) handleAdoptInstancePlugin(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, entry)
 }
 
+// handleImportInstancePluginToLibrary takes a jar sitting on this server into
+// the panel-wide library, and then tracks it here.
+//
+// The way in for a jar the library has never seen. 导入 jar uploads from the
+// operator's own machine, which is the wrong end of the wire when the file is
+// already on the server — this reads it where it lies, so a hand-placed jar can
+// become an ordinary library plugin without a download-then-upload round trip.
+//
+// Nothing in the instance directory changes; see plugin.ImportToLibrary.
+func (s *Server) handleImportInstancePluginToLibrary(w http.ResponseWriter, r *http.Request) {
+	inst, ok := s.instanceFromPath(w, r)
+	if !ok {
+		return
+	}
+	if !s.pluginsAvailable(w) {
+		return
+	}
+
+	var req adoptPluginRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "malformed request body")
+		return
+	}
+	if strings.TrimSpace(req.Key) == "" {
+		writeError(w, http.StatusBadRequest, "key is required")
+		return
+	}
+
+	cfg := inst.Config()
+	entry, err := s.instancePlugins.ImportToLibrary(cfg.ID, cfg.Directory, req.Key, s.maxUploadBytes())
+	if err != nil {
+		s.writePluginError(w, err)
+		return
+	}
+	s.log.Info("instance plugin imported into the library",
+		"instance", cfg.Name, "plugin", entry.PluginID, "version", entry.Version, "file", entry.FileName)
+	writeJSON(w, http.StatusCreated, entry)
+}
+
 type togglePluginRequest struct {
 	Key     string `json:"key"`
 	Enabled bool   `json:"enabled"`

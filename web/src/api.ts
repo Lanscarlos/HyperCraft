@@ -408,6 +408,11 @@ export const api = {
   /** Starts tracking a jar the panel found, once it matched a library version. */
   adoptInstancePlugin: (id: string, key: string) =>
     request<void>('POST', `/api/instances/${id}/plugins/adopt`, { key }),
+  /** Files a jar found on this server as a library plugin, and then tracks it
+   *  here. The way in for the jars 接管 cannot take — the ones the library has
+   *  never seen, which is most of 库外来源. Returns the row it became. */
+  importInstancePluginToLibrary: (id: string, key: string) =>
+    request<InstancePlugin>('POST', `/api/instances/${id}/plugins/library`, { key }),
   uninstallInstancePlugin: (id: string, key: string) =>
     request<void>('DELETE', `/api/instances/${id}/plugins?key=${encodeURIComponent(key)}`),
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { api } from '../api'
@@ -251,49 +251,56 @@ export function PluginDrawer({
                 ) : (
                   <div className="drawer__versions">
                     {detail.versions.slice(0, 12).map((entry) => (
-                      <VersionRow
-                        key={entry.tag}
-                        version={entry}
-                        chosen={entry.tag === chosen}
-                        onChoose={() => setChosen(entry.tag)}
-                      />
+                      <Fragment key={entry.tag}>
+                        <VersionRow
+                          version={entry}
+                          chosen={entry.tag === chosen}
+                          onChoose={() => setChosen(entry.tag)}
+                        />
+                        {/* Which jar of this release, under the release it
+                            belongs to. It used to be a 构建 section of its own
+                            below the list — twelve rows below it, past the fold
+                            on every screen — so the row said "3 个平台构建" and
+                            the way to act on that was somewhere an operator
+                            scrolling versions never arrived at. The choice
+                            belongs where the release is picked, because it is
+                            the second half of the same decision. */}
+                        {entry.tag === chosen && builds.length > 0 && (
+                          <div className="drawer__version-builds">
+                            <div className="drawer__builds">
+                              {builds.map((asset) => (
+                                <button
+                                  key={asset.name}
+                                  className={`drawer__build${asset.name === picked ? ' drawer__build--chosen' : ''}`}
+                                  onClick={() => setBuild(asset.name)}
+                                  aria-pressed={asset.name === picked}
+                                  title={asset.name}
+                                >
+                                  <span className="drawer__build-name">
+                                    {loaderLabel(asset.platform)}
+                                    <CompatBadge compat={version?.builds?.[asset.name]} />
+                                  </span>
+                                  <span className="drawer__build-meta">
+                                    {asset.size > 0 && formatBytes(asset.size)}
+                                    {heldNames.has(asset.name.toLowerCase()) && ' · 库里已有'}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                            <p className="chart-note">
+                              这个版本上游发了 {builds.length} 个平台的 jar，一个 jar 只能装一个平台
+                              —— 装到 Paper 的和装到 Velocity 的不是同一个文件。
+                              {reference?.target.loader
+                                ? `已按 ${reference.name} 的核心（${loaderLabel(reference.target.loader)}）选好。`
+                                : '没有选参照服务器，默认下的是第一个（游戏服的构建）；要代理端的记得在这儿改。'}
+                            </p>
+                          </div>
+                        )}
+                      </Fragment>
                     ))}
                   </div>
                 )}
               </section>
-
-              {builds.length > 0 && (
-                <section className="drawer__section">
-                  <h3>构建</h3>
-                  <div className="drawer__builds">
-                    {builds.map((asset) => (
-                      <button
-                        key={asset.name}
-                        className={`drawer__build${asset.name === picked ? ' drawer__build--chosen' : ''}`}
-                        onClick={() => setBuild(asset.name)}
-                        aria-pressed={asset.name === picked}
-                        title={asset.name}
-                      >
-                        <span className="drawer__build-name">
-                          {loaderLabel(asset.platform)}
-                          <CompatBadge compat={version?.builds?.[asset.name]} />
-                        </span>
-                        <span className="drawer__build-meta">
-                          {asset.size > 0 && formatBytes(asset.size)}
-                          {heldNames.has(asset.name.toLowerCase()) && ' · 库里已有'}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="chart-note">
-                    这个版本上游发了 {builds.length} 个平台的 jar，一个 jar 只能装一个平台 —— 装到
-                    Paper 的和装到 Velocity 的不是同一个文件。
-                    {reference?.target.loader
-                      ? `已按 ${reference.name} 的核心（${loaderLabel(reference.target.loader)}）选好。`
-                      : '没有选参照服务器，默认下的是第一个（游戏服的构建）；要代理端的记得在这儿改。'}
-                  </p>
-                </section>
-              )}
 
               {version?.dependencies && version.dependencies.length > 0 && (
                 <section className="drawer__section">
