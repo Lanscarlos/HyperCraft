@@ -29,6 +29,7 @@ export type IconName =
   | 'back'
   | 'devices'
   | 'update'
+  | 'github'
 
 const PATHS: Record<IconName, ReactElement> = {
   dashboard: (
@@ -145,6 +146,18 @@ const PATHS: Record<IconName, ReactElement> = {
     <>
       <path d="M12 3.5v11m0 0 4-4m-4 4-4-4" />
       <path d="M4.5 17.5v1a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-1" />
+    </>
+  ),
+  // A branch off a trunk, rather than the Octocat: the mark is a filled shape
+  // and everything else here is one stroke weight in currentColor, so a silhouette
+  // would read as a smudge at 18px beside the others.
+  github: (
+    <>
+      <circle cx="6.5" cy="6" r="2.5" />
+      <circle cx="6.5" cy="18" r="2.5" />
+      <circle cx="17.5" cy="12" r="2.5" />
+      <path d="M6.5 8.5v7" />
+      <path d="M15 12h-2.5a6 6 0 0 1-6-6" />
     </>
   ),
 }

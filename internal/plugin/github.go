@@ -17,9 +17,12 @@
 // A repository does not have to be public. An operator who publishes their own
 // plugin to a private repository can give the panel a GitHub access token, and
 // a source marked Private is then read and downloaded through the authenticated
-// API. The token is only ever sent to the API host this client was built with —
-// never to a download mirror, which is a third party the operator's credential
-// has no business reaching.
+// API. There can be several tokens — a source names the one it is read with, so
+// a personal repository and an organisation's private fork are reachable at the
+// same time without either credential being widened to cover the other. See
+// tokens.go. Whichever token is chosen is only ever sent to the API host this
+// client was built with — never to a download mirror, which is a third party the
+// operator's credential has no business reaching.
 package plugin
 
 import (
@@ -113,6 +116,17 @@ type Source struct {
 	// which would otherwise be handed the name of a repository the operator has
 	// deliberately kept off the public internet.
 	Private bool `json:"private,omitempty"`
+	// TokenID names which of the panel's GitHub tokens this source is read
+	// with, by Token.ID. Empty means the default one, which is what every
+	// source stored before there could be more than one token says, and what a
+	// public repository wants — there the token buys rate limit, not access.
+	//
+	// Stored per source rather than worked out from the repository's owner: a
+	// fine-grained token is scoped to a list of repositories the panel cannot
+	// see, so "which credential can read this" is knowledge only the operator
+	// has. Guessing it would mean trying each token in turn, which is a
+	// credential handed to a host on the chance it might be the right one.
+	TokenID string `json:"tokenId,omitempty"`
 }
 
 // IsRegistry reports whether this source is one of the plugin catalogues
@@ -152,6 +166,7 @@ func (s Source) Normalise() (Source, error) {
 		s.Private = false
 		s.AssetPattern = ""
 		s.Prerelease = false
+		s.TokenID = ""
 		return s, nil
 	case SourceModrinth, SourceHangar, SourceSpigot:
 		// A registry addresses a plugin by an id of its own choosing — a
@@ -167,6 +182,7 @@ func (s Source) Normalise() (Source, error) {
 		// for, and Private is what routes a download through the GitHub API.
 		s.Private = false
 		s.AssetPattern = ""
+		s.TokenID = ""
 		return s, nil
 	default:
 		return Source{}, fmt.Errorf("%w: unknown source kind %q", ErrInvalidRepo, s.Kind)
@@ -177,6 +193,7 @@ func (s Source) Normalise() (Source, error) {
 		return Source{}, err
 	}
 	s.Repo = repo
+	s.TokenID = strings.TrimSpace(s.TokenID)
 	s.AssetPattern = strings.TrimSpace(s.AssetPattern)
 	if s.AssetPattern != "" {
 		// path.Match only reports a bad pattern when it is actually matched
@@ -302,18 +319,16 @@ type Client struct {
 	// while a check is in flight.
 	mirrorMu sync.RWMutex
 	mirror   string
-	// token authenticates API requests. Panel-wide rather than per plugin: it
-	// is the operator's own GitHub account either way, and a token per
-	// repository would be a secret to rotate per repository.
-	//
-	// Guarded because the settings page can replace it while a check is in
-	// flight; everything else on this client is fixed at construction.
-	tokenMu sync.RWMutex
-	token   string
+	// tokens authenticate API requests, one per credential the operator has
+	// given the panel. A source picks one by Source.TokenID; see tokens.go for
+	// why there is more than one.
+	tokens tokenSet
 
-	// budgetMu guards the last rate-limit headers GitHub sent back.
+	// budgetMu guards the last rate-limit headers GitHub sent back, kept per
+	// token: each credential has its own quota, so one number for the panel
+	// would report whichever token happened to call last.
 	budgetMu sync.RWMutex
-	budget   Budget
+	budgets  map[string]Budget
 }
 
 // Budget is what GitHub last said about the panel's remaining API quota.
@@ -336,17 +351,30 @@ type Budget struct {
 	SeenAt        time.Time `json:"seenAt,omitempty"`
 }
 
-// Budget returns the last known GitHub quota.
+// Budget returns the last known GitHub quota for the default token, or for
+// anonymous requests when the panel holds no token at all.
 func (c *Client) Budget() Budget {
+	token, _ := c.tokens.fallback()
+	return c.BudgetOf(token.ID)
+}
+
+// BudgetOf is the quota last seen for one token, by id. The empty id is the
+// anonymous budget — the 60 an hour a panel with no token is measured against.
+//
+// Per token because the quotas are per token: a panel with three credentials
+// has three separate 5000-an-hour allowances, and the settings page showing one
+// figure beside three tokens would be right about at most one of them.
+func (c *Client) BudgetOf(id string) Budget {
 	c.budgetMu.RLock()
 	defer c.budgetMu.RUnlock()
-	budget := c.budget
-	budget.Authenticated = c.authToken() != ""
+	budget := c.budgets[id]
+	budget.Authenticated = id != ""
 	return budget
 }
 
-// noteBudget records the rate-limit headers off a response.
-func (c *Client) noteBudget(resp *http.Response) {
+// noteBudget records the rate-limit headers off a response, against the token
+// that made the request.
+func (c *Client) noteBudget(resp *http.Response, tokenID string) {
 	limit, err := strconv.Atoi(resp.Header.Get("X-RateLimit-Limit"))
 	if err != nil {
 		return
@@ -358,7 +386,7 @@ func (c *Client) noteBudget(resp *http.Response) {
 
 	c.budgetMu.Lock()
 	defer c.budgetMu.Unlock()
-	c.budget = Budget{Limit: limit, Remaining: remaining, ResetAt: resetTime(resp), SeenAt: time.Now()}
+	c.budgets[tokenID] = Budget{Limit: limit, Remaining: remaining, ResetAt: resetTime(resp), SeenAt: time.Now()}
 }
 
 func NewClient(apiBase, userAgent string) *Client {
@@ -370,6 +398,7 @@ func NewClient(apiBase, userAgent string) *Client {
 		apiBase:   strings.TrimSuffix(apiBase, "/"),
 		userAgent: userAgent,
 		registry:  NewRegistry(userAgent),
+		budgets:   make(map[string]Budget),
 	}
 }
 
@@ -402,28 +431,23 @@ func (c *Client) Mirror() string {
 	return c.mirror
 }
 
-// SetToken stores the GitHub access token, or "" to go back to anonymous
-// requests. It takes effect on the next request rather than needing a restart:
-// an operator pasting a token into the settings page is usually looking at the
+// SetTokens replaces the panel's GitHub credentials, most-default first: the
+// head of the list is what a source naming no token is read with, and an empty
+// list is a panel back on anonymous requests.
+//
+// It takes effect on the next request rather than needing a restart: an
+// operator pasting a token into the settings page is usually looking at the
 // repository that would not load, and expects to retry it immediately.
-func (c *Client) SetToken(token string) {
-	c.tokenMu.Lock()
-	defer c.tokenMu.Unlock()
-	c.token = strings.TrimSpace(token)
-}
+func (c *Client) SetTokens(tokens []Token) { c.tokens.set(tokens) }
 
-// Authenticated reports whether a token is configured, which is what decides
-// whether asking GitHub about a repository's visibility can tell the truth. The
-// token itself is deliberately not readable back out.
-func (c *Client) Authenticated() bool { return c.authToken() != "" }
-
-// authToken is read internally only. There is deliberately no exported getter:
-// nothing in the panel needs to show the token back, and a getter is how a
-// secret ends up in a JSON response by accident.
-func (c *Client) authToken() string {
-	c.tokenMu.RLock()
-	defer c.tokenMu.RUnlock()
-	return c.token
+// HasTokenFor reports whether this source has a credential to be read with,
+// which is what decides whether asking GitHub about a repository's visibility
+// can tell the truth. The tokens themselves are deliberately not readable back
+// out: nothing in the panel needs to show one, and a getter is how a secret
+// ends up in a JSON response by accident.
+func (c *Client) HasTokenFor(src Source) bool {
+	token, err := c.tokens.resolve(src.TokenID)
+	return err == nil && token.Secret != ""
 }
 
 // attempt is one place to try fetching an asset from.
@@ -433,9 +457,9 @@ type attempt struct {
 	// with the automatic order in play, "it downloaded" and "it downloaded from
 	// the one you would have picked" are different facts.
 	mirror string
-	// auth carries the token and asks the API for raw bytes. It is only ever
-	// set for a URL on this client's own API host — see downloadOrder.
-	auth bool
+	// token carries the credential and asks the API for raw bytes. It is only
+	// ever set for a URL on this client's own API host — see downloadOrder.
+	token Token
 }
 
 // downloadOrder is where to fetch an asset from, most preferred first.
@@ -472,7 +496,11 @@ func (c *Client) downloadOrder(src Source, asset Asset) ([]attempt, error) {
 		return out, nil
 	}
 
-	if c.authToken() == "" {
+	token, err := c.tokens.resolve(src.TokenID)
+	if err != nil {
+		return nil, err
+	}
+	if token.Secret == "" {
 		return nil, fmt.Errorf("%w: %s is marked private, so downloading from it needs a token", ErrNeedsToken, src.Repo)
 	}
 	if !c.isAPIURL(asset.APIURL) {
@@ -482,7 +510,7 @@ func (c *Client) downloadOrder(src Source, asset Asset) ([]attempt, error) {
 			ErrNoAsset, asset.Name)
 	}
 	// "direct" is the honest name here: a private download never sees a proxy.
-	return []attempt{{url: asset.APIURL, mirror: MirrorDirect, auth: true}}, nil
+	return []attempt{{url: asset.APIURL, mirror: MirrorDirect, token: token}}, nil
 }
 
 // isAPIURL reports whether a URL belongs to the API host this client talks to.
@@ -528,9 +556,13 @@ func (c *Client) Releases(ctx context.Context, src Source) ([]Release, error) {
 		return releases, nil
 	}
 
+	token, err := c.tokens.resolve(src.TokenID)
+	if err != nil {
+		return nil, err
+	}
 	url := fmt.Sprintf("%s/repos/%s/releases?per_page=%d", c.apiBase, src.Repo, releasePage)
 	var raw []githubRelease
-	if err := c.getJSON(ctx, url, &raw); err != nil {
+	if err := c.getJSON(ctx, url, token, &raw); err != nil {
 		return nil, err
 	}
 
@@ -577,16 +609,22 @@ func (c *Client) Releases(ctx context.Context, src Source) ([]Release, error) {
 // repository URL should not have to know that.
 //
 // Only useful with a token: without one, a private repository is a 404 here for
-// the same reason it is everywhere else.
-func (c *Client) Visibility(ctx context.Context, repo string) (bool, error) {
-	repo, err := ParseRepo(repo)
+// the same reason it is everywhere else. It takes the whole source rather than
+// a repository name because which token to ask with is part of the question —
+// a repository is private-or-missing depending on who is looking.
+func (c *Client) Visibility(ctx context.Context, src Source) (bool, error) {
+	repo, err := ParseRepo(src.Repo)
+	if err != nil {
+		return false, err
+	}
+	token, err := c.tokens.resolve(src.TokenID)
 	if err != nil {
 		return false, err
 	}
 	var info struct {
 		Private bool `json:"private"`
 	}
-	if err := c.getJSON(ctx, fmt.Sprintf("%s/repos/%s", c.apiBase, repo), &info); err != nil {
+	if err := c.getJSON(ctx, fmt.Sprintf("%s/repos/%s", c.apiBase, repo), token, &info); err != nil {
 		return false, err
 	}
 	return info.Private, nil
@@ -624,7 +662,7 @@ func (c *Client) Fetch(ctx context.Context, src Source, asset Asset) (io.ReadClo
 		}
 		lastErr = err
 	}
-	if !src.Private && c.authToken() != "" {
+	if !src.Private && c.HasTokenFor(src) {
 		// The release listing was readable but no download link was. With a
 		// token in play the likely cause is a private repository the visibility
 		// check could not reach, and that is worth naming: the bare transport
@@ -641,14 +679,14 @@ func (c *Client) open(ctx context.Context, next attempt) (io.ReadCloser, error) 
 		return nil, err
 	}
 	req.Header.Set("User-Agent", c.userAgent)
-	if next.auth {
+	if next.token.Secret != "" {
 		// The API answers an asset request with its metadata unless this header
 		// says otherwise, and it redirects to a signed storage URL rather than
 		// serving the bytes itself. Go drops the Authorization header on a
 		// cross-host redirect, which is both what storage wants — a signed URL
 		// carrying a second credential is rejected — and what the panel wants.
 		req.Header.Set("Accept", "application/octet-stream")
-		c.authorize(req)
+		c.authorize(req, next.token)
 	}
 
 	resp, err := c.http.Do(req)
@@ -657,9 +695,9 @@ func (c *Client) open(ctx context.Context, next attempt) (io.ReadCloser, error) 
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		if next.auth && (resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnauthorized) {
-			return nil, fmt.Errorf("%w: GitHub refused the download (HTTP %d) — check that the token is valid and can read this repository",
-				ErrNeedsToken, resp.StatusCode)
+		if next.token.Secret != "" && (resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnauthorized) {
+			return nil, fmt.Errorf("%w: GitHub refused the download (HTTP %d) — check that the token %q is valid and can read this repository",
+				ErrNeedsToken, resp.StatusCode, tokenLabel(next.token))
 		}
 		return nil, fmt.Errorf("%w: %s returned HTTP %d", ErrUpstream, next.url, resp.StatusCode)
 	}
@@ -668,13 +706,25 @@ func (c *Client) open(ctx context.Context, next attempt) (io.ReadCloser, error) 
 
 // authorize attaches the token. Callers must have established that the request
 // is going to this client's own API host first.
-func (c *Client) authorize(req *http.Request) {
-	if token := c.authToken(); token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+func (c *Client) authorize(req *http.Request, token Token) {
+	if token.Secret != "" {
+		req.Header.Set("Authorization", "Bearer "+token.Secret)
 	}
 }
 
-func (c *Client) getJSON(ctx context.Context, url string, dst any) error {
+// tokenLabel is what an error calls a token: the operator's own name for it,
+// falling back to its id for one stored before names existed. Never the secret.
+func tokenLabel(token Token) string {
+	if token.Name != "" {
+		return token.Name
+	}
+	return token.ID
+}
+
+// getJSON reads one API document, authenticated as token — the zero Token being
+// an anonymous request, which is what a public repository needs and all a panel
+// with no credentials can make.
+func (c *Client) getJSON(ctx context.Context, url string, token Token, dst any) error {
 	ctx, cancel := context.WithTimeout(ctx, metadataTimeout)
 	defer cancel()
 
@@ -687,7 +737,7 @@ func (c *Client) getJSON(ctx context.Context, url string, dst any) error {
 	// Every metadata URL is built from apiBase, so this is the API host by
 	// construction; the check is here so it stays true if that ever changes.
 	if c.isAPIURL(url) {
-		c.authorize(req)
+		c.authorize(req, token)
 	}
 
 	resp, err := c.http.Do(req)
@@ -698,7 +748,7 @@ func (c *Client) getJSON(ctx context.Context, url string, dst any) error {
 	// Recorded before the status is judged: the refusal that spends the last
 	// call is the one where the remaining count matters most.
 	if c.isAPIURL(url) {
-		c.noteBudget(resp)
+		c.noteBudget(resp, token.ID)
 	}
 
 	switch resp.StatusCode {
@@ -706,12 +756,14 @@ func (c *Client) getJSON(ctx context.Context, url string, dst any) error {
 	case http.StatusNotFound, http.StatusUnauthorized:
 		// GitHub answers "not found" for a repository the caller may not see, so
 		// this status cannot tell a typo from a private repository. Which of the
-		// two is worth suggesting depends on whether a token was sent at all.
-		if c.authToken() == "" {
+		// two is worth suggesting depends on whether a token was sent at all —
+		// and with several to choose from, which one was sent is half the answer.
+		if token.Secret == "" {
 			return fmt.Errorf("%w: repository not found — if it is private, configure a GitHub access token in the plugin library",
 				ErrNeedsToken)
 		}
-		return fmt.Errorf("%w: repository not found, or the configured token cannot read it", ErrNeedsToken)
+		return fmt.Errorf("%w: repository not found, or the token %q cannot read it — try another one",
+			ErrNeedsToken, tokenLabel(token))
 	case http.StatusForbidden, http.StatusTooManyRequests:
 		// 403 is not automatically a rate limit: a blocked repository, an
 		// org-level restriction and a proxy in the way all answer with it too,

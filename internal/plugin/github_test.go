@@ -304,7 +304,7 @@ func TestFetchReportsWhichMirrorServedTheJar(t *testing.T) {
 func TestPrivateDownloadsGoStraightToTheAPIWithNoMirror(t *testing.T) {
 	client := NewClient("", "test")
 	client.SetMirror("https://ghfast.top")
-	client.SetToken("ghp_secret")
+	client.SetTokens([]Token{{ID: "t1", Name: "mine", Secret: "ghp_secret"}})
 
 	private := Source{Repo: "me/mine", Private: true}
 	asset := Asset{
@@ -320,11 +320,11 @@ func TestPrivateDownloadsGoStraightToTheAPIWithNoMirror(t *testing.T) {
 	// One route, and it is the API: the public link cannot serve a private
 	// asset, and the mirror must never be told this repository exists — it is a
 	// third party the operator hid the repository from.
-	if len(order) != 1 || order[0].url != asset.APIURL || !order[0].auth {
+	if len(order) != 1 || order[0].url != asset.APIURL || order[0].token.Secret != "ghp_secret" {
 		t.Fatalf("unexpected order: %+v", order)
 	}
 
-	client.SetToken("")
+	client.SetTokens(nil)
 	if _, err := client.downloadOrder(private, asset); !errors.Is(err, ErrNeedsToken) {
 		t.Fatalf("a private source without a token should be refused, got %v", err)
 	}
@@ -349,7 +349,7 @@ func TestTokenGoesToTheAPIAndNowhereElse(t *testing.T) {
 	defer origin.Close()
 
 	client := NewClient(origin.URL, "test")
-	client.SetToken("ghp_secret")
+	client.SetTokens([]Token{{ID: "t1", Name: "mine", Secret: "ghp_secret"}})
 
 	// A private asset: authenticated, and the bytes come back.
 	body, _, err := client.Fetch(context.Background(),
@@ -395,7 +395,7 @@ func TestReleasesAuthenticatesAndKeepsThePrivateAssetURL(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, "test")
-	client.SetToken("ghp_secret")
+	client.SetTokens([]Token{{ID: "t1", Name: "mine", Secret: "ghp_secret"}})
 
 	releases, err := client.Releases(context.Background(), Source{Repo: "me/mine", Private: true})
 	if err != nil {
@@ -413,9 +413,9 @@ func TestReleasesAuthenticatesAndKeepsThePrivateAssetURL(t *testing.T) {
 
 func TestVisibilityReportsWhatGitHubSaysRatherThanWhatWasTicked(t *testing.T) {
 	client := githubStub(t, `{"private":true}`, http.StatusOK)
-	client.SetToken("ghp_secret")
+	client.SetTokens([]Token{{ID: "t1", Name: "mine", Secret: "ghp_secret"}})
 
-	private, err := client.Visibility(context.Background(), "https://github.com/me/mine")
+	private, err := client.Visibility(context.Background(), Source{Repo: "https://github.com/me/mine"})
 	if err != nil {
 		t.Fatalf("Visibility: %v", err)
 	}
@@ -426,14 +426,14 @@ func TestVisibilityReportsWhatGitHubSaysRatherThanWhatWasTicked(t *testing.T) {
 	// Without a token GitHub answers about a private repository the same way it
 	// answers about one that does not exist, so there is no truth to be had.
 	blind := githubStub(t, "", http.StatusNotFound)
-	if _, err := blind.Visibility(context.Background(), "me/mine"); !errors.Is(err, ErrNeedsToken) {
+	if _, err := blind.Visibility(context.Background(), Source{Repo: "me/mine"}); !errors.Is(err, ErrNeedsToken) {
 		t.Fatalf("expected ErrNeedsToken, got %v", err)
 	}
 }
 
 func TestReleasesSaysTheTokenIsTheProblemWhenOneIsConfigured(t *testing.T) {
 	client := githubStub(t, "", http.StatusNotFound)
-	client.SetToken("ghp_secret")
+	client.SetTokens([]Token{{ID: "t1", Name: "mine", Secret: "ghp_secret"}})
 
 	_, err := client.Releases(context.Background(), Source{Repo: "me/mine", Private: true})
 	if !errors.Is(err, ErrNeedsToken) {
@@ -480,5 +480,101 @@ func TestFetchFallsBackToGitHubWhenTheMirrorFails(t *testing.T) {
 
 	if _, _, err := client.Fetch(context.Background(), Source{Repo: "o/r"}, Asset{URL: origin.URL + "/broken.jar"}); !errors.Is(err, ErrUpstream) {
 		t.Fatalf("expected ErrUpstream, got %v", err)
+	}
+}
+
+// The point of holding several credentials: two repositories, two accounts, and
+// each request carries the one token its source named — not both, and not
+// whichever happened to be first.
+func TestEachSourceIsReadWithTheTokenItNames(t *testing.T) {
+	var seen []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+		  {"tag_name":"v1.0.0","draft":false,"prerelease":false,
+		   "published_at":"2026-01-01T00:00:00Z",
+		   "assets":[{"name":"Mine-1.0.jar","size":10,
+		              "url":"https://example.com/Mine-1.0.jar"}]}
+		]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test")
+	client.SetTokens([]Token{
+		{ID: "personal", Name: "我的私库", Secret: "ghp_personal"},
+		{ID: "work", Name: "公司 org", Secret: "ghp_work"},
+	})
+
+	for _, src := range []Source{
+		{Repo: "me/mine", TokenID: "personal"},
+		{Repo: "acme/plugin", TokenID: "work"},
+		// Names none, so it is read with the default — the head of the list.
+		{Repo: "someone/public"},
+	} {
+		if _, err := client.Releases(context.Background(), src); err != nil {
+			t.Fatalf("Releases(%s): %v", src.Repo, err)
+		}
+	}
+
+	want := []string{"Bearer ghp_personal", "Bearer ghp_work", "Bearer ghp_personal"}
+	if len(seen) != len(want) {
+		t.Fatalf("expected %d requests, got %v", len(want), seen)
+	}
+	for i, header := range want {
+		if seen[i] != header {
+			t.Errorf("request %d carried %q, want %q", i, seen[i], header)
+		}
+	}
+}
+
+// A token a source names and the panel no longer holds is an error, and
+// deliberately not a quiet fall back to the default: the operator paired that
+// repository with that account, and sending the other one would answer with a
+// 404 that reads like the repository is gone.
+func TestASourceNamingAMissingTokenIsRefusedRatherThanRetargeted(t *testing.T) {
+	client := githubStub(t, "[]", http.StatusOK)
+	client.SetTokens([]Token{{ID: "personal", Name: "我的私库", Secret: "ghp_personal"}})
+
+	_, err := client.Releases(context.Background(), Source{Repo: "acme/plugin", TokenID: "gone"})
+	if !errors.Is(err, ErrNeedsToken) {
+		t.Fatalf("expected ErrNeedsToken, got %v", err)
+	}
+	if _, err := client.downloadOrder(
+		Source{Repo: "acme/plugin", Private: true, TokenID: "gone"},
+		Asset{Name: "a.jar", APIURL: client.apiBase + "/repos/acme/plugin/releases/assets/1"},
+	); !errors.Is(err, ErrNeedsToken) {
+		t.Fatalf("expected the download to be refused too, got %v", err)
+	}
+}
+
+// Quotas are per credential, so the panel keeps one budget per token. One
+// figure for the whole panel would report whichever token called last.
+func TestBudgetIsKeptPerToken(t *testing.T) {
+	remaining := map[string]string{"Bearer ghp_a": "4000", "Bearer ghp_b": "10"}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-RateLimit-Limit", "5000")
+		w.Header().Set("X-RateLimit-Remaining", remaining[r.Header.Get("Authorization")])
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test")
+	client.SetTokens([]Token{{ID: "a", Secret: "ghp_a"}, {ID: "b", Secret: "ghp_b"}})
+	// Releases refuses an empty listing; the budget is recorded either way,
+	// which is the point — a refusal is exactly when the number matters.
+	_, _ = client.Releases(context.Background(), Source{Repo: "o/a", TokenID: "a"})
+	_, _ = client.Releases(context.Background(), Source{Repo: "o/b", TokenID: "b"})
+
+	if got := client.BudgetOf("a"); got.Remaining != 4000 || !got.Authenticated {
+		t.Errorf("token a: %+v", got)
+	}
+	if got := client.BudgetOf("b"); got.Remaining != 10 {
+		t.Errorf("token b: %+v", got)
+	}
+	// Budget() is the default token's, which is the head of the list.
+	if got := client.Budget(); got.Remaining != 4000 {
+		t.Errorf("default budget: %+v", got)
 	}
 }

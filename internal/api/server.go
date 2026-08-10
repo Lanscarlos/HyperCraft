@@ -276,6 +276,9 @@ func (s *Server) routes() http.Handler {
 	// single-segment shape, and a plugin an operator happened to name "token"
 	// would otherwise become the one plugin nobody can edit.
 	protected.HandleFunc("PUT /api/plugins/config/token", s.handlePluginToken)
+	protected.HandleFunc("POST /api/plugins/config/tokens", s.handlePluginTokens)
+	protected.HandleFunc("PUT /api/plugins/config/tokens/{tokenId}", s.handleUpdatePluginToken)
+	protected.HandleFunc("DELETE /api/plugins/config/tokens/{tokenId}", s.handleDeletePluginToken)
 	protected.HandleFunc("PUT /api/plugins/config/mirror", s.handlePluginMirror)
 	protected.HandleFunc("POST /api/plugins/cancel", s.handleCancelPluginDownload)
 	protected.HandleFunc("PUT /api/plugins/{id}", s.handleUpdatePlugin)

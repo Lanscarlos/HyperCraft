@@ -13,6 +13,8 @@ export interface PluginInput {
   assetPattern?: string
   prerelease?: boolean
   private?: boolean
+  /** Which stored GitHub token reads this repository. Empty is the default. */
+  tokenId?: string
   targetDir?: string
   note?: string
 }
@@ -38,8 +40,15 @@ export interface PluginController {
   download: (id: string, tag: string) => Promise<void>
   cancel: () => Promise<void>
   removeVersion: (id: string, tag: string) => Promise<void>
-  /** Stores the GitHub token, or clears it with an empty string. */
-  setToken: (token: string) => Promise<boolean>
+  /** Adds a GitHub credential under an operator-chosen name. */
+  addToken: (name: string, token: string) => Promise<boolean>
+  /** Renames a token, replaces its secret, or makes it the default one. */
+  updateToken: (
+    id: string,
+    input: { name?: string; token?: string; default?: boolean },
+  ) => Promise<boolean>
+  /** Forgets a token. The plugins naming it start saying so. */
+  removeToken: (id: string) => Promise<boolean>
   /** Chooses the download mirror, by id or as a custom URL prefix. */
   setMirror: (mirror: string) => Promise<boolean>
 }
@@ -172,14 +181,32 @@ export function usePlugins(enabled: boolean): PluginController {
     [act, refresh],
   )
 
-  const setToken = useCallback(
-    (token: string) =>
+  // All three answer with the library as it looks afterwards, so the token list
+  // updates without a second round trip.
+  const addToken = useCallback(
+    (name: string, token: string) =>
       act(async () => {
-        // The response is the library as it looks with the new token, so the
-        // "已配置" line updates without a second round trip.
-        setLibrary(await api.setPluginToken(token))
+        setLibrary(await api.addPluginToken(name, token))
         return true
       }, '保存访问令牌失败').catch(() => false),
+    [act],
+  )
+
+  const updateToken = useCallback(
+    (id: string, input: { name?: string; token?: string; default?: boolean }) =>
+      act(async () => {
+        setLibrary(await api.updatePluginToken(id, input))
+        return true
+      }, '保存访问令牌失败').catch(() => false),
+    [act],
+  )
+
+  const removeToken = useCallback(
+    (id: string) =>
+      act(async () => {
+        setLibrary(await api.deletePluginToken(id))
+        return true
+      }, '删除访问令牌失败').catch(() => false),
     [act],
   )
 
@@ -210,7 +237,9 @@ export function usePlugins(enabled: boolean): PluginController {
     download,
     cancel,
     removeVersion,
-    setToken,
+    addToken,
+    updateToken,
+    removeToken,
     setMirror,
   }
 }

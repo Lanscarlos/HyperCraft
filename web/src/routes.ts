@@ -150,10 +150,17 @@ export const HOST_SECTIONS: { id: HostSection; label: string }[] = [
   { id: 'terminal', label: 'SSH 终端' },
 ]
 
-export const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
+export const SETTINGS_SECTIONS: {
+  id: SettingsSection
+  label: string
+  /** Extra terms the command palette matches on, for a page people look for
+   *  under a word that is not in its name — nobody hunting for where the
+   *  access token lives searches for "集成". */
+  keywords?: string
+}[] = [
   { id: 'devices', label: '已配对设备' },
   { id: 'security', label: '登录记录' },
-  { id: 'plugins', label: '插件源与令牌' },
+  { id: 'plugins', label: 'GitHub 集成', keywords: 'github token 令牌 私有仓库 下载源 镜像' },
   { id: 'update', label: '面板更新' },
 ]
 

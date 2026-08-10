@@ -23,12 +23,12 @@ interface Props {
  * a property of the machine, so it is under 主机 → 节点配置. What is left is
  * genuinely panel-wide, which is also why it is the last group in the sidebar.
  *
- * 插件源与令牌 arrived here going the other way, and for the same test. It was
- * a page under 插件库 holding two unrelated things: adding a repository, which
- * is an action and now lives in that page's + 添加插件 menu, and the access
- * token, the download mirror and the retention default — which are settings,
- * panel-wide, touched once. Only the second half is a page, and this is where
- * pages like that live.
+ * GitHub 集成 arrived here going the other way, and for the same test. It was
+ * a page under 插件库 called 插件源 holding two unrelated things: adding a
+ * repository, which is an action and now lives in that page's + 添加插件 menu,
+ * and the access tokens, the download mirror and the retention default — which
+ * are settings, panel-wide, touched once. Only the second half is a page, and
+ * this is where pages like that live.
  *
  * The sections used to be a tab strip across the top of this component.
  * They are sidebar entries now (see Sidebar's settings scope), which leaves

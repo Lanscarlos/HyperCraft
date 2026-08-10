@@ -111,7 +111,7 @@ export function CommandPalette({
         id: `p:set:${section.id}`,
         group: '页面',
         label: `面板设置 · ${section.label}`,
-        keywords: `settings ${section.id}`,
+        keywords: `settings ${section.id} ${section.keywords ?? ''}`,
         run: go({ kind: 'settings', section: section.id }),
       })
     }

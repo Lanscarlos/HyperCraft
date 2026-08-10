@@ -105,16 +105,16 @@ func (d *Downloader) Releases(ctx context.Context, id string) ([]Release, error)
 // the release is gone, and it hands the plugin's name to the download mirror on
 // the way. Both are avoided by asking the one party that knows.
 //
-// It only asks when a token is configured — an anonymous panel gets the same
-// 404 for a private repository here as everywhere else, so the call could only
-// spend quota to learn nothing. A failure is not an error: the stored flag is
-// still the best answer available, and a visibility probe must never be the
-// reason an update check or a download does not happen.
+// It only asks when this source has a token to ask with — an anonymous panel
+// gets the same 404 for a private repository here as everywhere else, so the
+// call could only spend quota to learn nothing. A failure is not an error: the
+// stored flag is still the best answer available, and a visibility probe must
+// never be the reason an update check or a download does not happen.
 func (d *Downloader) syncVisibility(ctx context.Context, item Plugin) Plugin {
-	if item.Source.Kind != SourceGitHub || !d.client.Authenticated() {
+	if item.Source.Kind != SourceGitHub || !d.client.HasTokenFor(item.Source) {
 		return item
 	}
-	private, err := d.client.Visibility(ctx, item.Source.Repo)
+	private, err := d.client.Visibility(ctx, item.Source)
 	if err != nil {
 		d.log.Debug("could not read repository visibility", "plugin", item.ID, "err", err)
 		return item

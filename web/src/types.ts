@@ -319,11 +319,18 @@ export interface PluginSource {
   /** Include GitHub prereleases in the version list. */
   prerelease?: boolean
   /**
-   * A repository only the panel's GitHub token can see. Its releases are read
+   * A repository only an authenticated account can see. Its releases are read
    * and downloaded through the API instead of the public download host, and
    * never through the mirror.
    */
   private?: boolean
+  /**
+   * Which of the panel's GitHub tokens this source is read with. Empty means
+   * the default one — what every source added before there could be more than
+   * one says, and what a public repository wants, where a token buys rate limit
+   * rather than access.
+   */
+  tokenId?: string
 }
 
 /** One release upstream offers, whether or not it has been downloaded. */
@@ -473,13 +480,32 @@ export interface PluginMirror {
   default?: boolean
 }
 
+/**
+ * One GitHub credential the panel holds, as much of it as the panel is willing
+ * to describe. The secret itself has no route out of the panel.
+ */
+export interface PluginTokenInfo {
+  id: string
+  name: string
+  /** Last four characters, enough to recognise which token this is. */
+  hint?: string
+  /** The token every source that names none is read with. */
+  default?: boolean
+  /** How many tracked plugins this token answers for. */
+  usedBy: number
+  /** This token's own quota — each credential has its own ceiling. */
+  budget: GitHubBudget
+}
+
 export interface PluginLibrary {
   root: string
   plugins: LibraryPlugin[]
   job: PluginDownloadJob | null
-  /** Whether the panel holds a GitHub access token. The token never travels. */
+  /** The GitHub credentials the panel holds, default first. */
+  tokens: PluginTokenInfo[]
+  /** Whether the panel holds any token at all, and the default one's tail.
+   *  Both are what `tokens` says, kept for older clients. */
   tokenConfigured: boolean
-  /** Last four characters of that token, enough to recognise which one it is. */
   tokenHint?: string
   /** Download proxies to choose between, automatic first. */
   mirrors: PluginMirror[]

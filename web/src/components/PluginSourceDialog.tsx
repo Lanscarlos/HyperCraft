@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { api } from '../api'
 import { formatBytes, formatDate } from '../format'
-import type { SourcePreview } from '../types'
+import type { PluginTokenInfo, SourcePreview } from '../types'
 import type { PluginInput } from '../usePlugins'
 import { Modal } from './Modal'
 
@@ -26,10 +26,13 @@ import { Modal } from './Modal'
  */
 export function PluginSourceDialog({
   busy,
+  tokens,
   onCancel,
   onSubmit,
 }: {
   busy: boolean
+  /** The panel's GitHub credentials, default first. Empty on a panel with none. */
+  tokens: PluginTokenInfo[]
   onCancel: () => void
   onSubmit: (input: PluginInput) => Promise<boolean>
 }) {
@@ -37,6 +40,7 @@ export function PluginSourceDialog({
   const [name, setName] = useState('')
   const [assetPattern, setAssetPattern] = useState('')
   const [prerelease, setPrerelease] = useState(false)
+  const [tokenId, setTokenId] = useState('')
   const [targetDir, setTargetDir] = useState('plugins')
   const [note, setNote] = useState('')
 
@@ -57,7 +61,7 @@ export function PluginSourceDialog({
     setLooking(true)
     setLookError(null)
     try {
-      setPreview(await api.previewPluginSource(repo, assetPattern, prerelease))
+      setPreview(await api.previewPluginSource(repo, assetPattern, prerelease, tokenId))
     } catch (err) {
       setLookError(err instanceof Error ? err.message : '看不了这个仓库')
     } finally {
@@ -67,7 +71,7 @@ export function PluginSourceDialog({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    await onSubmit({ name, repo, assetPattern, prerelease, targetDir, note })
+    await onSubmit({ name, repo, assetPattern, prerelease, tokenId, targetDir, note })
   }
 
   const usable = preview?.reachable && !preview.error
@@ -77,7 +81,7 @@ export function PluginSourceDialog({
       <form className="modal__card" onSubmit={(event) => void submit(event)}>
         <h2 className="modal__title">从 GitHub 仓库添加</h2>
         <p className="modal__lead">
-          面板会跟着这个仓库的 Release 走。私有仓库也可以 —— 令牌在「面板设置 → 插件源与令牌」里配。
+          面板会跟着这个仓库的 Release 走。私有仓库也可以 —— 令牌在「面板设置 → GitHub 集成」里配。
         </p>
 
         <div className="srcform">
@@ -102,6 +106,35 @@ export function PluginSourceDialog({
             {looking ? '查看中…' : '查看'}
           </button>
         </div>
+
+        {/* Only worth asking when there is a choice: with one token, or none,
+            the answer is the default and a picker would be a question with a
+            single answer. Changing it invalidates the preview for the same
+            reason changing the repository does — a repository one token cannot
+            see is a 404, and the preview's whole job is to find that out now. */}
+        {tokens.length > 1 && (
+          <label className="field">
+            <span>用哪个令牌读</span>
+            <select
+              value={tokenId}
+              onChange={(event) => {
+                setTokenId(event.target.value)
+                setPreview(null)
+              }}
+            >
+              <option value="">默认（{tokens[0].name}）</option>
+              {tokens.map((token) => (
+                <option key={token.id} value={token.id}>
+                  {token.name}
+                  {token.hint ? ` ···${token.hint}` : ''}
+                </option>
+              ))}
+            </select>
+            <small>
+              私有仓库只有能看见它的那个账号的令牌读得到。公开仓库随便挑，令牌在这里只起提额度的作用。
+            </small>
+          </label>
+        )}
 
         {lookError && <div className="alert alert--error">{lookError}</div>}
         {preview && <Preview preview={preview} onUsePattern={setAssetPattern} />}
@@ -209,8 +242,8 @@ function Preview({
         <p>{preview.error || '仓库不存在，或者面板没有权限。'}</p>
         {preview.needsToken && (
           <p>
-            如果它是私有仓库，去「面板设置 → 插件源与令牌」配一个有 <code>repo</code> 权限的
-            GitHub 令牌，再回来查看一次。
+            如果它是私有仓库，去「面板设置 → GitHub 集成」配一个读得到它的令牌 —— fine-grained
+            的给这个仓库 <code>Contents: Read-only</code> 就够 —— 再回来用它查看一次。
           </p>
         )}
       </div>

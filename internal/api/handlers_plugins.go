@@ -1,13 +1,17 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/plugin"
 )
@@ -64,14 +68,17 @@ type pluginLibraryResponse struct {
 	Root    string       `json:"root"`
 	Plugins []pluginView `json:"plugins"`
 	Job     *plugin.Job  `json:"job"`
-	// TokenConfigured says whether the panel holds a GitHub access token, which
-	// is what private repositories and a higher API rate limit both need. The
-	// token itself never travels: the page only has to say whether one is there.
-	TokenConfigured bool `json:"tokenConfigured"`
-	// TokenHint is the last few characters of the stored token, so an operator
-	// looking at two accounts' tokens can tell which one this panel holds
-	// without being shown anything that could be replayed.
-	TokenHint string `json:"tokenHint,omitempty"`
+	// Tokens are the GitHub credentials the panel holds, default first. The
+	// secrets never travel — an entry is a name, a four-character tail and what
+	// the panel knows about that token's quota, which is everything the settings
+	// page and the source pickers need and nothing that could be replayed.
+	Tokens []pluginTokenView `json:"tokens"`
+	// TokenConfigured says whether the panel holds any GitHub access token,
+	// which is what private repositories and a higher API rate limit both need,
+	// and TokenHint is the default one's tail. Both are what Tokens says, kept
+	// for clients written when there could only be one.
+	TokenConfigured bool   `json:"tokenConfigured"`
+	TokenHint       string `json:"tokenHint,omitempty"`
 	// Mirrors are the download proxies to choose between, and Mirror is the one
 	// in use. Static per build, but they travel with the listing so the settings
 	// page needs no second request to render the picker.
@@ -102,15 +109,18 @@ func (s *Server) pluginLibrary() pluginLibraryResponse {
 	users := s.instancePlugins.UsedBy()
 
 	items := s.plugins.Library().List()
-	token := s.githubToken()
+	tokens := s.tokenViews(items)
 	resp := pluginLibraryResponse{
 		Root:            s.plugins.Library().Root(),
 		Plugins:         make([]pluginView, 0, len(items)),
-		TokenConfigured: token != "",
-		TokenHint:       tokenHint(token),
+		Tokens:          tokens,
+		TokenConfigured: len(tokens) > 0,
 		Mirrors:         plugin.Mirrors(),
 		Mirror:          s.plugins.Client().Mirror(),
 		Budget:          s.plugins.Client().Budget(),
+	}
+	if len(tokens) > 0 {
+		resp.TokenHint = tokens[0].Hint
 	}
 	for _, item := range items {
 		view := pluginView{Plugin: item, UsedBy: []string{}}
@@ -129,12 +139,78 @@ func (s *Server) pluginLibrary() pluginLibraryResponse {
 	return resp
 }
 
-// githubToken is the stored access token, read under the panel lock like every
-// other piece of panel config.
-func (s *Server) githubToken() string {
+// pluginTokenView is one stored credential as the panel is willing to describe
+// it: what it is called, which four characters it ends in, how many plugins
+// point at it, and what GitHub last said about its quota. The secret is not
+// here and has no route out of the panel.
+type pluginTokenView struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Hint string `json:"hint,omitempty"`
+	// Default marks the token every source that names none is read with. It is
+	// the head of the list rather than a flag on the config, so there is no
+	// second copy of the answer to keep true.
+	Default bool `json:"default,omitempty"`
+	// UsedBy counts the tracked plugins that name this token, which is what
+	// makes deleting one a decision rather than a click.
+	UsedBy int `json:"usedBy"`
+	// Budget is this token's own remaining API quota. Per token because the
+	// quotas are: three credentials are three separate 5000-an-hour ceilings.
+	Budget plugin.Budget `json:"budget"`
+}
+
+// PluginTokens converts stored credentials into what the plugin client reads
+// sources with. Exported because the daemon does the same wiring at boot.
+func PluginTokens(tokens []config.GitHubToken) []plugin.Token {
+	out := make([]plugin.Token, 0, len(tokens))
+	for _, token := range tokens {
+		out = append(out, plugin.Token{ID: token.ID, Name: token.Name, Secret: token.Token})
+	}
+	return out
+}
+
+// githubTokens is the stored credential list, read under the panel lock like
+// every other piece of panel config. The copy matters: callers edit the slice
+// they get back and hand it to applyGitHubTokens.
+func (s *Server) githubTokens() []config.GitHubToken {
 	s.panelMu.RLock()
 	defer s.panelMu.RUnlock()
-	return s.panel.GitHubToken
+	return append([]config.GitHubToken(nil), s.panel.GitHubTokens...)
+}
+
+// tokenViews describes the stored tokens for the library page, counting how
+// many of the tracked plugins each one is answerable for.
+func (s *Server) tokenViews(items []plugin.Plugin) []pluginTokenView {
+	stored := s.githubTokens()
+	used := make(map[string]int, len(stored))
+	for _, item := range items {
+		if item.Source.Kind == plugin.SourceGitHub && item.Source.TokenID != "" {
+			used[item.Source.TokenID]++
+		}
+	}
+
+	out := make([]pluginTokenView, 0, len(stored))
+	for i, token := range stored {
+		view := pluginTokenView{
+			ID:      token.ID,
+			Name:    token.Name,
+			Hint:    tokenHint(token.Token),
+			Default: i == 0,
+			UsedBy:  used[token.ID],
+			Budget:  s.plugins.Client().BudgetOf(token.ID),
+		}
+		if view.Default {
+			// A default token also answers for everything that names none,
+			// which is most of a library upgraded from the single-token panel.
+			for _, item := range items {
+				if item.Source.Kind == plugin.SourceGitHub && item.Source.TokenID == "" {
+					view.UsedBy++
+				}
+			}
+		}
+		out = append(out, view)
+	}
+	return out
 }
 
 // tokenHint is the tail of a token, enough to recognise one already stored and
@@ -147,16 +223,169 @@ func tokenHint(token string) string {
 	return token[len(token)-4:]
 }
 
-type pluginTokenRequest struct {
-	// Token is a GitHub personal access token, or "" to forget the one stored.
-	Token string `json:"token"`
+// applyGitHubTokens puts a new credential list into effect and saves it.
+//
+// The client goes first, so a token pasted to fix a failing repository works on
+// the retry that follows even if writing panel.json goes wrong. It reports
+// whether the response has already been written.
+func (s *Server) applyGitHubTokens(w http.ResponseWriter, tokens []config.GitHubToken) bool {
+	s.plugins.Client().SetTokens(PluginTokens(tokens))
+
+	s.panelMu.Lock()
+	panel := s.panel
+	panel.GitHubTokens = tokens
+	// A panel upgraded mid-session may still be carrying the pre-list field.
+	// Leaving it would resurrect the old token on the next boot, on top of
+	// whatever the operator has just done here.
+	panel.GitHubToken = ""
+	s.panel = panel
+	s.panelMu.Unlock()
+
+	if err := s.persistPanel(); err != nil {
+		s.log.Error("could not persist the GitHub tokens", "err", err)
+		writeError(w, http.StatusInternalServerError, "令牌已生效，但保存失败，重启面板后会丢失")
+		return false
+	}
+	return true
 }
 
-// handlePluginToken stores the credential private repositories are read with.
+type pluginTokenRequest struct {
+	// Name is the operator's label for this credential — which account or
+	// organisation it speaks for. It is what error messages call the token.
+	Name string `json:"name"`
+	// Token is a GitHub personal access token. Empty when renaming an existing
+	// entry, and — on the single-token route — a request to forget the default.
+	Token string `json:"token"`
+	// Default asks for this token to become the one sources that name none are
+	// read with. Only meaningful on an update.
+	Default bool `json:"default"`
+}
+
+// handlePluginTokens adds a credential to the panel's list.
 //
-// The token is write-only across this API: it goes in here and is never sent
+// Tokens are write-only across this API: they go in here and are never sent
 // back, so a panel session that is later hijacked cannot lift the operator's
-// GitHub account out of it. Replacing it is how a wrong one gets fixed.
+// GitHub account out of it. Replacing a wrong one is a write over the top of it.
+func (s *Server) handlePluginTokens(w http.ResponseWriter, r *http.Request) {
+	if !s.pluginsAvailable(w) {
+		return
+	}
+
+	var req pluginTokenRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "malformed request body")
+		return
+	}
+	token := strings.TrimSpace(req.Token)
+	if token == "" {
+		writeError(w, http.StatusBadRequest, "请粘贴一个访问令牌")
+		return
+	}
+	if err := validateGitHubToken(token); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	name, err := tokenName(req.Name)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	tokens := s.githubTokens()
+	if name == "" {
+		name = fmt.Sprintf("令牌 %d", len(tokens)+1)
+	}
+	entry := config.GitHubToken{ID: newTokenID(tokens), Name: name, Token: token}
+	if !s.applyGitHubTokens(w, append(tokens, entry)) {
+		return
+	}
+	s.log.Info("GitHub token added", "token", entry.ID, "name", entry.Name)
+	writeJSON(w, http.StatusCreated, s.pluginLibrary())
+}
+
+// handleUpdatePluginToken renames a credential, replaces its secret, or makes
+// it the default — the three things that can be done to a token that is already
+// stored without detaching the plugins pointing at it, which is why they all
+// keep the id.
+func (s *Server) handleUpdatePluginToken(w http.ResponseWriter, r *http.Request) {
+	if !s.pluginsAvailable(w) {
+		return
+	}
+
+	var req pluginTokenRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "malformed request body")
+		return
+	}
+	secret := strings.TrimSpace(req.Token)
+	if err := validateGitHubToken(secret); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	name, err := tokenName(req.Name)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	id := r.PathValue("tokenId")
+	tokens := s.githubTokens()
+	at := indexOfToken(tokens, id)
+	if at < 0 {
+		writeError(w, http.StatusNotFound, "没有这个令牌")
+		return
+	}
+	if name != "" {
+		tokens[at].Name = name
+	}
+	if secret != "" {
+		tokens[at].Token = secret
+	}
+	if req.Default && at != 0 {
+		// The default is the head of the list, so promoting one is a move
+		// rather than a flag — and the order of the rest is left alone.
+		promoted := tokens[at]
+		tokens = append(tokens[:at], tokens[at+1:]...)
+		tokens = append([]config.GitHubToken{promoted}, tokens...)
+	}
+
+	if !s.applyGitHubTokens(w, tokens) {
+		return
+	}
+	s.log.Info("GitHub token updated", "token", id, "rotated", secret != "", "default", req.Default)
+	writeJSON(w, http.StatusOK, s.pluginLibrary())
+}
+
+// handleDeletePluginToken forgets a credential.
+//
+// The plugins that named it keep naming it, and start failing with "这个插件
+// 指定的访问令牌已经不在了" until they are pointed at another. That is on
+// purpose: quietly re-pointing them at whatever token is left would send one
+// account's credential to a repository the operator had deliberately paired
+// with another, and a 404 is a much worse way to find that out.
+func (s *Server) handleDeletePluginToken(w http.ResponseWriter, r *http.Request) {
+	if !s.pluginsAvailable(w) {
+		return
+	}
+
+	id := r.PathValue("tokenId")
+	tokens := s.githubTokens()
+	at := indexOfToken(tokens, id)
+	if at < 0 {
+		writeError(w, http.StatusNotFound, "没有这个令牌")
+		return
+	}
+	if !s.applyGitHubTokens(w, append(tokens[:at], tokens[at+1:]...)) {
+		return
+	}
+	s.log.Info("GitHub token removed", "token", id)
+	writeJSON(w, http.StatusOK, s.pluginLibrary())
+}
+
+// handlePluginToken is the single-token route the panel had before it could
+// hold several, kept working for clients that still speak it: it writes the
+// default token, and an empty body forgets it. Everything else about the list
+// is left alone.
 func (s *Server) handlePluginToken(w http.ResponseWriter, r *http.Request) {
 	if !s.pluginsAvailable(w) {
 		return
@@ -173,19 +402,18 @@ func (s *Server) handlePluginToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The client first, so a token pasted to fix a failing repository works on
-	// the retry that follows even if writing panel.json goes wrong.
-	s.plugins.Client().SetToken(token)
+	tokens := s.githubTokens()
+	switch {
+	case token == "" && len(tokens) > 0:
+		tokens = tokens[1:]
+	case token == "":
+	case len(tokens) > 0:
+		tokens[0].Token = token
+	default:
+		tokens = []config.GitHubToken{{ID: config.LegacyTokenID, Name: "默认令牌", Token: token}}
+	}
 
-	s.panelMu.Lock()
-	panel := s.panel
-	panel.GitHubToken = token
-	s.panel = panel
-	s.panelMu.Unlock()
-
-	if err := s.persistPanel(); err != nil {
-		s.log.Error("could not persist the GitHub token", "err", err)
-		writeError(w, http.StatusInternalServerError, "令牌已生效，但保存失败，重启面板后会丢失")
+	if !s.applyGitHubTokens(w, tokens) {
 		return
 	}
 	if token == "" {
@@ -194,6 +422,59 @@ func (s *Server) handlePluginToken(w http.ResponseWriter, r *http.Request) {
 		s.log.Info("GitHub token configured")
 	}
 	writeJSON(w, http.StatusOK, s.pluginLibrary())
+}
+
+// knownTokenID reports whether a source may name this credential. The empty id
+// — "read it with the default" — is always allowed, including on a panel with
+// no tokens at all, where it means anonymous.
+func (s *Server) knownTokenID(id string) bool {
+	id = strings.TrimSpace(id)
+	return id == "" || indexOfToken(s.githubTokens(), id) >= 0
+}
+
+func indexOfToken(tokens []config.GitHubToken, id string) int {
+	if id == "" {
+		return -1
+	}
+	for i, token := range tokens {
+		if token.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// newTokenID mints an id no stored token is using. Random rather than derived
+// from the name, which the operator may reuse or change.
+func newTokenID(tokens []config.GitHubToken) string {
+	for {
+		raw := make([]byte, 6)
+		if _, err := rand.Read(raw); err != nil {
+			// crypto/rand failing is unrecoverable, and a time-based id would
+			// quietly collide instead of saying so.
+			panic(fmt.Sprintf("hypercraft: crypto/rand unavailable: %v", err))
+		}
+		id := hex.EncodeToString(raw)
+		if indexOfToken(tokens, id) < 0 {
+			return id
+		}
+	}
+}
+
+// tokenName checks the label. It is shown on the settings page and inside error
+// messages, so what is rejected is what would break either: control characters,
+// and a length that is a paragraph rather than a name.
+func tokenName(raw string) (string, error) {
+	name := strings.TrimSpace(raw)
+	if len([]rune(name)) > 40 {
+		return "", errors.New("令牌名字太长了，40 个字以内")
+	}
+	for _, r := range name {
+		if r < ' ' || r == 0x7f {
+			return "", errors.New("令牌名字里不能有控制字符")
+		}
+	}
+	return name, nil
 }
 
 type pluginMirrorRequest struct {
@@ -267,8 +548,11 @@ type pluginRequest struct {
 	AssetPattern string `json:"assetPattern"`
 	Prerelease   bool   `json:"prerelease"`
 	Private      bool   `json:"private"`
-	TargetDir    string `json:"targetDir"`
-	Note         string `json:"note"`
+	// TokenID names which stored credential this repository is read with.
+	// Empty is the default token, which is what a public repository wants.
+	TokenID   string `json:"tokenId"`
+	TargetDir string `json:"targetDir"`
+	Note      string `json:"note"`
 }
 
 func (req pluginRequest) source() plugin.Source {
@@ -278,6 +562,7 @@ func (req pluginRequest) source() plugin.Source {
 		AssetPattern: strings.TrimSpace(req.AssetPattern),
 		Prerelease:   req.Prerelease,
 		Private:      req.Private,
+		TokenID:      strings.TrimSpace(req.TokenID),
 	}
 }
 
@@ -292,6 +577,10 @@ func (s *Server) handleAddPlugin(w http.ResponseWriter, r *http.Request) {
 	var req pluginRequest
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "malformed request body")
+		return
+	}
+	if !s.knownTokenID(req.TokenID) {
+		writeError(w, http.StatusBadRequest, "没有这个令牌")
 		return
 	}
 
@@ -322,6 +611,10 @@ func (s *Server) handleUpdatePlugin(w http.ResponseWriter, r *http.Request) {
 	var req pluginRequest
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "malformed request body")
+		return
+	}
+	if !s.knownTokenID(req.TokenID) {
+		writeError(w, http.StatusBadRequest, "没有这个令牌")
 		return
 	}
 
@@ -514,6 +807,14 @@ func (s *Server) handlePreviewPluginSource(w http.ResponseWriter, r *http.Reques
 		Repo:         repo,
 		AssetPattern: strings.TrimSpace(r.URL.Query().Get("pattern")),
 		Prerelease:   r.URL.Query().Get("prerelease") == "true",
+		// Which credential to look with is part of the question: a repository
+		// one token cannot see is a 404, and the whole point of the preview is
+		// to find that out before the source is added rather than after.
+		TokenID: strings.TrimSpace(r.URL.Query().Get("tokenId")),
+	}
+	if !s.knownTokenID(src.TokenID) {
+		writeError(w, http.StatusBadRequest, "没有这个令牌")
+		return
 	}
 	normalised, err := src.Normalise()
 	if err != nil {
@@ -522,7 +823,7 @@ func (s *Server) handlePreviewPluginSource(w http.ResponseWriter, r *http.Reques
 	}
 
 	preview := sourcePreview{Repo: normalised.Repo, Pattern: normalised.AssetPattern, Assets: []previewAsset{}}
-	if private, err := s.plugins.Client().Visibility(r.Context(), normalised.Repo); err == nil {
+	if private, err := s.plugins.Client().Visibility(r.Context(), normalised); err == nil {
 		preview.Reachable, preview.Private = true, private
 	}
 

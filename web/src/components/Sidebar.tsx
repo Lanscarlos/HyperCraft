@@ -650,6 +650,7 @@ function SettingsScope(props: Props) {
 const SETTINGS_ICONS: Record<string, IconName> = {
   devices: 'devices',
   security: 'lock',
+  plugins: 'github',
   update: 'update',
 }
 
