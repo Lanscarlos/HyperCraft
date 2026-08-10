@@ -4,6 +4,7 @@ import { api } from '../api'
 import { ask } from '../confirm'
 import { formatBytes, formatDate } from '../format'
 import type { LibraryView } from '../routes'
+import { toast } from '../toast'
 import type {
   BulkImpact,
   ForeignJar,
@@ -16,7 +17,7 @@ import type {
   PluginStatus,
   PluginUse,
 } from '../types'
-import { isLive, isReconStatus, statusLabel } from '../types'
+import { hasPluginUpdate, isLive, isReconStatus, statusLabel } from '../types'
 import type { PluginController } from '../usePlugins'
 import { Menu } from './Menu'
 import { Modal } from './Modal'
@@ -27,7 +28,6 @@ import { PluginImportDialog } from './PluginImportDialog'
 import { PluginInstallDialog } from './PluginInstallDialog'
 import { PluginLibraryDrawer } from './PluginLibraryDrawer'
 import { PluginSourceDialog } from './PluginSourceDialog'
-import { Toast } from './Toast'
 
 /**
  * 插件列表 — every plugin the panel holds, and what is actually running.
@@ -88,7 +88,6 @@ export function PluginLibraryPage({
   const [picked, setPicked] = useState<string[]>([])
   const [confirming, setConfirming] = useState<BulkImpact | null>(null)
   const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState<string | null>(null)
   const [installing, setInstalling] = useState<LibraryPlugin | null>(null)
   const [bulkInstall, setBulkInstall] = useState<LibraryPlugin[] | null>(null)
   const [importing, setImporting] = useState(false)
@@ -159,7 +158,7 @@ export function PluginLibraryPage({
         bad += report.drift + report.missing + report.foreign
       }
       await refresh()
-      setResult(
+      toast(
         bad === 0
           ? `对完了 ${instances.length} 台实例，账本和目录一致`
           : `对完了 ${instances.length} 台实例，${bad} 处对不上`,
@@ -178,11 +177,21 @@ export function PluginLibraryPage({
       lead="按插件看，而不是按服务器看：哪个插件在哪几台服上、版本对不对得上、账本和实例目录里的文件是不是同一份。单台服的增删启停在实例自己的「插件」页里。"
       aside={
         <div className="page__actions">
+          {/* The one button on this page whose whole result is "nothing
+              changed" most of the time. Without something said out loud, a
+              check that found no new releases and a check that never ran look
+              identical from in front of the screen — which is how it came to
+              be pressed three times in a row. */}
           <button
             className="btn"
             disabled={plugins.busy || rows.length === 0}
             title="逐个问上游有没有新版本。要花 GitHub API 配额 —— 匿名一小时 60 次。"
-            onClick={() => void plugins.checkAll().then(refresh)}
+            onClick={() =>
+              void plugins.checkAll().then(async (library) => {
+                await refresh()
+                if (library) toast(checkSummary(library.plugins))
+              })
+            }
           >
             检查全部更新
           </button>
@@ -214,7 +223,6 @@ export function PluginLibraryPage({
       {error && <div className="alert alert--error">{error}</div>}
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
       {job && <JobStatus job={job} onCancel={() => void plugins.cancel()} busy={plugins.busy} />}
-      {result && <Toast message={result} onDone={() => setResult(null)} />}
 
       {rows.length === 0 && foreign.length === 0 ? (
         <EmptyLibrary
@@ -258,12 +266,10 @@ export function PluginLibraryPage({
                 void (async () => {
                   for (const id of picked) await plugins.check(id)
                   await refresh()
-                  setResult(`已检查 ${picked.length} 个插件的更新`)
+                  toast(`已检查 ${picked.length} 个插件的更新`)
                 })()
               }
-              onClean={() =>
-                void cleanCache(picked, rows, setBusy, setError, setResult, refresh, setPicked)
-              }
+              onClean={() => void cleanCache(picked, rows, setBusy, setError, refresh, setPicked)}
             />
           )}
 
@@ -307,7 +313,7 @@ export function PluginLibraryPage({
                 onDownload={() =>
                   void plugins.download(row.id, '').then(async () => {
                     await refresh()
-                    setResult(`正在把 ${row.name} 的新版本下载到库里`)
+                    toast(`正在把 ${row.name} 的新版本下载到库里`)
                   })
                 }
                 onAlign={() =>
@@ -326,7 +332,7 @@ export function PluginLibraryPage({
                   const item = plugins.plugins.find((entry) => entry.id === row.id)
                   if (item) setInstalling(item)
                 }}
-                onDrop={() => void dropPlugin(row, setBusy, setError, setResult, refresh, plugins.refresh)}
+                onDrop={() => void dropPlugin(row, setBusy, setError, refresh, plugins.refresh)}
               />
             ))}
 
@@ -345,9 +351,7 @@ export function PluginLibraryPage({
               jars={foreign}
               busy={busy}
               onOpenInstance={onOpenInstance}
-              onAdopt={(jar) =>
-                void adoptForeign(jar, setBusy, setError, setResult, refresh, plugins.refresh)
-              }
+              onAdopt={(jar) => void adoptForeign(jar, setBusy, setError, refresh, plugins.refresh)}
             />
           )}
 
@@ -356,7 +360,7 @@ export function PluginLibraryPage({
             instances={instances.length}
             busy={busy}
             onReconcile={() => void reconcileAll()}
-            onClean={() => void cleanUnused(rows, setBusy, setError, setResult, refresh, plugins.refresh)}
+            onClean={() => void cleanUnused(rows, setBusy, setError, refresh, plugins.refresh)}
             onOpenSettings={onOpenSettings}
           />
         </>
@@ -379,7 +383,7 @@ export function PluginLibraryPage({
             void refresh()
             void plugins.refresh()
           }}
-          onReport={setResult}
+          onReport={toast}
         />
       )}
 
@@ -390,7 +394,7 @@ export function PluginLibraryPage({
           onCancel={() => setInstalling(null)}
           onInstalled={(summary) => {
             setInstalling(null)
-            setResult(summary)
+            toast(summary)
             void refresh()
           }}
         />
@@ -401,7 +405,7 @@ export function PluginLibraryPage({
           onCancel={() => setImporting(false)}
           onImported={(summary) => {
             setImporting(false)
-            setResult(summary)
+            toast(summary)
             void refresh()
             void plugins.refresh()
           }}
@@ -417,7 +421,7 @@ export function PluginLibraryPage({
             const ok = await plugins.add(input)
             if (ok) {
               setAddingSource(false)
-              setResult(`已把 ${input.repo} 加进库，正在跟它的 Release 走`)
+              toast(`已把 ${input.repo} 加进库，正在跟它的 Release 走`)
               void refresh()
             }
             return ok
@@ -432,7 +436,7 @@ export function PluginLibraryPage({
           onCancel={() => setBulkInstall(null)}
           onInstalled={(summary) => {
             setBulkInstall(null)
-            setResult(summary)
+            toast(summary)
             setPicked([])
             void refresh()
           }}
@@ -451,7 +455,7 @@ export function PluginLibraryPage({
                 const ids =
                   bulkable.length > 0 ? bulkable : confirming.plugins.map((entry) => entry.id)
                 const outcome = await api.bulkUpgrade(ids)
-                setResult(
+                toast(
                   outcome.failures.length === 0
                     ? `已升级 ${outcome.applied} 处`
                     : `升级了 ${outcome.applied} 处，${outcome.failures.length} 处失败：` +
@@ -492,6 +496,30 @@ function countStatuses(rows: PluginOverviewRow[], foreign: number): Record<Plugi
   } as Record<PluginFilter, number>
   for (const row of rows) counts[row.status]++
   return counts
+}
+
+/**
+ * What 检查全部更新 found, as a sentence.
+ *
+ * Counted over the plugins that have an upstream at all — an imported jar has
+ * nobody to ask, and including it would make the number disagree with the
+ * quota the check just spent. Failures are named separately rather than folded
+ * into "都是最新的", because a plugin whose check errored is not up to date; it
+ * is unknown, and the rate limit is the usual reason.
+ */
+function checkSummary(plugins: LibraryPlugin[]): string {
+  const asked = plugins.filter((item) => item.source.kind !== 'local')
+  const failed = asked.filter((item) => item.checkError).length
+  const ahead = asked.filter(hasPluginUpdate).length
+
+  if (asked.length === 0) return '库里没有能问上游的插件'
+  const head = `检查完 ${asked.length} 个插件`
+  if (failed > 0) {
+    return ahead > 0
+      ? `${head}：${ahead} 个有新版本，${failed} 个没问到`
+      : `${head}：${failed} 个没问到，其余都是最新的`
+  }
+  return ahead > 0 ? `${head}，${ahead} 个有新版本` : `${head}，都是最新的`
 }
 
 /**
@@ -1040,7 +1068,6 @@ async function cleanCache(
   rows: PluginOverviewRow[],
   setBusy: (busy: boolean) => void,
   setError: (error: string | null) => void,
-  setResult: (result: string | null) => void,
   refresh: () => Promise<void>,
   setPicked: (picked: string[]) => void,
 ) {
@@ -1067,7 +1094,7 @@ async function cleanCache(
   setError(null)
   try {
     for (const row of unused) await api.deletePlugin(row.id)
-    setResult(`已清理 ${unused.length} 个插件，释放 ${formatBytes(freed)}`)
+    toast(`已清理 ${unused.length} 个插件，释放 ${formatBytes(freed)}`)
     setPicked([])
     await refresh()
   } catch (err) {
@@ -1082,7 +1109,6 @@ async function cleanUnused(
   rows: PluginOverviewRow[],
   setBusy: (busy: boolean) => void,
   setError: (error: string | null) => void,
-  setResult: (result: string | null) => void,
   refresh: () => Promise<void>,
   refreshLibrary: () => Promise<void>,
 ) {
@@ -1104,7 +1130,7 @@ async function cleanUnused(
   setError(null)
   try {
     for (const row of unused) await api.deletePlugin(row.id)
-    setResult(`已清理 ${unused.length} 个插件，释放 ${formatBytes(freed)}`)
+    toast(`已清理 ${unused.length} 个插件，释放 ${formatBytes(freed)}`)
     await refresh()
     await refreshLibrary()
   } catch (err) {
@@ -1118,7 +1144,6 @@ async function dropPlugin(
   row: PluginOverviewRow,
   setBusy: (busy: boolean) => void,
   setError: (error: string | null) => void,
-  setResult: (result: string | null) => void,
   refresh: () => Promise<void>,
   refreshLibrary: () => Promise<void>,
 ) {
@@ -1136,7 +1161,7 @@ async function dropPlugin(
   setBusy(true)
   try {
     await api.deletePlugin(row.id)
-    setResult(`已清理 ${row.name}，释放 ${formatBytes(row.size)}`)
+    toast(`已清理 ${row.name}，释放 ${formatBytes(row.size)}`)
     await refresh()
     await refreshLibrary()
   } catch (err) {
@@ -1160,7 +1185,6 @@ async function adoptForeign(
   jar: ForeignJar,
   setBusy: (busy: boolean) => void,
   setError: (error: string | null) => void,
-  setResult: (result: string | null) => void,
   refresh: () => Promise<void>,
   refreshLibrary: () => Promise<void>,
 ) {
@@ -1175,7 +1199,7 @@ async function adoptForeign(
   setError(null)
   try {
     await api.adoptInstancePlugin(jar.instanceId, `file:${jar.dir}/${jar.fileName}`)
-    setResult(`已把 ${jar.instance} 上的 ${jar.name} 记到 ${jar.adoptable.name} ${jar.adoptable.version} 名下`)
+    toast(`已把 ${jar.instance} 上的 ${jar.name} 记到 ${jar.adoptable.name} ${jar.adoptable.version} 名下`)
     await refresh()
     await refreshLibrary()
   } catch (err) {

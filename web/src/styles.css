@@ -6607,18 +6607,33 @@ button.rows__name:hover strong {
    versions — which is why "生存服 落后两个版本" stops being something you work
    out and becomes something you see. */
 
+/* The tracks live on the table, not on each row, so that the two columns on
+   the right can be sized by what is actually in them. They used to be a fixed
+   100px and a reserved 248px on every row, which is a bill the common case
+   pays for the rare one: a plugin that is in order everywhere has no remedies
+   and no upgrade to offer, and the third of the panel held open for buttons
+   that were not there is what broke 1.0.0-snapshot.1160 across three lines
+   with empty space beside it. fit-content caps each at what the busiest row
+   needs and collapses it to nothing when no row needs any, which leaves the
+   version — the thing the column is for — with the room. */
 .matrix {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns:
+    minmax(88px, 0.8fr) minmax(140px, 1.1fr)
+    fit-content(110px) fit-content(248px);
+  column-gap: 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
 }
 
+/* Rows stay boxes — they carry the separator and the drift edge — and take
+   their columns from the table above rather than each restating them. */
 .matrix__head,
 .matrix__row {
   display: grid;
-  grid-template-columns: minmax(88px, 0.8fr) minmax(140px, 1.1fr) 100px minmax(0, 248px);
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   gap: 10px;
   align-items: center;
   padding: 8px 12px;
@@ -6654,6 +6669,26 @@ button.rows__name:hover strong {
   align-items: center;
   gap: 6px;
   min-width: 0;
+}
+
+/* Up to three things in one cell — the version, the version it could go to,
+   and the jar the first of them is — and shrinking them evenly gets all three
+   wrong at once: a file name ellipsised down to nothing next to a version
+   number broken across three lines. So version numbers never break, and the
+   file name, which corroborates them rather than being the answer, takes what
+   is left of the line or a line of its own. */
+.matrix__ver {
+  flex-wrap: wrap;
+}
+
+.matrix__ver > .ptable__num,
+.matrix__ver > .matrix__arrow {
+  flex: none;
+}
+
+.matrix__ver > .matrix__file {
+  flex: 1 1 10ch;
+  min-width: 10ch;
 }
 
 .matrix__act {
@@ -8356,9 +8391,10 @@ button.rows__name:hover strong {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .matrix__head,
-  .matrix__row {
-    grid-template-columns: minmax(0, 1fr) auto;
+  /* Two columns, and the row's remaining two cells wrap under them: at this
+     width the four abreast are four ellipses. */
+  .matrix {
+    grid-template-columns: minmax(0, 1fr) fit-content(248px);
   }
 
   .matrix__head > :nth-child(2),
@@ -8834,29 +8870,68 @@ select.input-slim option {
    it half a screen down until the next navigation. A block is the right shape
    for a *state*: 版本不一致, 下载失败, 这台服认不出核心 are all still true
    while you read them, and they are worth the room. An outcome is finished
-   news, and finished news gets four and a half seconds and a corner.
+   news, and finished news gets a few seconds and a corner.
 
    Errors deliberately do not come through here. Something that failed has to
    stay until it is read. */
-.toast {
+
+/* The column is pinned by its bottom edge and grows upward, which is what
+   makes a second outcome legible: the new one arrives in the corner where the
+   last one was and the older ones step up, rather than the corner being one
+   slot that whatever finished most recently wins. It also means expiry costs
+   nothing — the oldest leaves from the top, the column shortens from the top,
+   and the message someone is mid-way through reading does not move. */
+.toasts {
   position: fixed;
   right: 18px;
   bottom: 18px;
   z-index: 85;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  max-width: min(420px, calc(100vw - 36px));
-  padding: 11px 12px 11px 14px;
+  flex-direction: column;
+  gap: 10px;
+  /* Only the cards take the pointer; the gaps between them are still page. */
+  pointer-events: none;
+}
+
+/* Deliberately not sized to its sentence. A box that shrinks to fit "已检查 2
+   个插件" is a small grey thing a thousand pixels from the button that caused
+   it, and the honest report on that was people pressing things twice because
+   they never saw the first press land. */
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: min(420px, calc(100vw - 36px));
+  padding: 13px 12px 13px 15px;
   background: var(--surface-1);
   border: 1px solid var(--border-accent);
-  border-left: 3px solid var(--ok);
+  border-left: 4px solid var(--ok);
   border-radius: var(--radius);
   box-shadow: var(--shadow-lg);
   color: var(--text);
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.55;
   animation: toast-in var(--dur-3) var(--ease) both;
+}
+
+/* Says which of the two kinds of news this is before the sentence is read. */
+.toast__mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  background: var(--ok-soft);
+  border-radius: 50%;
+  color: var(--ok-ink);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.toast__mark::before {
+  content: '✓';
 }
 
 .toast[data-state='out'] {
@@ -8865,23 +8940,30 @@ select.input-slim option {
 }
 
 .toast__body {
+  flex: 1;
   min-width: 0;
 }
 
 .toast__close {
   flex: none;
-  padding: 0 2px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
   background: none;
   border: none;
+  border-radius: var(--radius-sm);
   color: var(--text-faint);
   cursor: pointer;
   font-family: inherit;
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1;
-  transition: color var(--dur-1) var(--ease);
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
 }
 
 .toast__close:hover {
+  background: var(--surface-3);
   color: var(--text);
 }
 

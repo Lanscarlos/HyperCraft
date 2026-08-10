@@ -4,10 +4,10 @@ import type { ReactElement } from 'react'
 import { ApiError, api, downloadURL, previewURL, uploadFiles } from '../api'
 import { ask } from '../confirm'
 import { formatBytes, formatDate, formatSince } from '../format'
+import { toast } from '../toast'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
 import { Modal } from './Modal'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
-import { Toast } from './Toast'
 
 interface EditorState {
   path: string
@@ -55,7 +55,6 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
   const [listing, setListing] = useState<FileListing | null>(null)
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [status, setStatus] = useState<{ text: string; id: number } | null>(null)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -84,8 +83,6 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
   // screen is still correct until the new one lands, so it stays where it is
   // and only says it is on its way out.
   const [pending, setPending] = useState(false)
-
-  const say = useCallback((text: string) => setStatus({ text, id: Date.now() }), [])
 
   const load = useCallback(
     async (target: string) => {
@@ -178,13 +175,13 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
           danger: true,
         })
         if (!replace) {
-          say('已取消上传')
+          toast('已取消上传')
           return
         }
         setProgress(0)
         await uploadFiles(instance.id, dir, files, setProgress, true)
       }
-      say(files.length === 1 ? `已上传 ${files[0].name}` : `已上传 ${files.length} 个文件`)
+      toast(files.length === 1 ? `已上传 ${files[0].name}` : `已上传 ${files.length} 个文件`)
       await load(dir)
     } catch (err) {
       setError(err instanceof Error ? err.message : '上传失败')
@@ -199,7 +196,7 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
     setError(null)
     try {
       await action()
-      say(done)
+      toast(done)
       await load(dir)
     } catch (err) {
       setError(err instanceof Error ? err.message : '操作失败')
@@ -241,7 +238,7 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
       await api.writeFile(instance.id, path, '')
       await load(dir)
       setEditor({ path, content: '', original: '' })
-      say(`已创建 ${name}`)
+      toast(`已创建 ${name}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建失败')
     } finally {
@@ -315,7 +312,7 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
     }
     const done = targets.length - failed.length
     if (failed.length > 0) setError(`${failed.length} 项删除失败：${failed.join('、')}`)
-    if (done > 0) say(`已删除 ${done} 项`)
+    if (done > 0) toast(`已删除 ${done} 项`)
     setBusy(false)
     await load(dir)
   }
@@ -340,7 +337,7 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
         await new Promise((resolve) => window.setTimeout(resolve, DOWNLOAD_GAP))
       }
     }
-    say(`已开始下载 ${files.length} 个文件`)
+    toast(`已开始下载 ${files.length} 个文件`)
   }
 
   const openEntry = async (entry: FileEntry) => {
@@ -370,7 +367,7 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
     try {
       await api.writeFile(instance.id, editor.path, editor.content)
       setEditor({ ...editor, original: editor.content })
-      say(`已保存 ${baseName(editor.path)}`)
+      toast(`已保存 ${baseName(editor.path)}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')
     } finally {
@@ -442,9 +439,6 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
 
   const dialogs = (
     <>
-      {status && (
-        <Toast key={status.id} message={status.text} onDone={() => setStatus(null)} />
-      )}
       {naming && <NameDialog request={naming} onAnswer={settleName} />}
       {preview && (
         <ImagePreview

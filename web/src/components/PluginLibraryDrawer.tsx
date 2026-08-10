@@ -468,7 +468,13 @@ function MatrixRow({
       <span className="matrix__ver">
         <span className="ptable__num">{use.version}</span>
         {use.update && <span className="matrix__arrow">→ {use.update.version}</span>}
-        {use.fileName && <code className="matrix__file">{use.fileName}</code>}
+        {/* Ellipsised the moment a row has an upgrade to offer as well, so the
+            whole name has to be reachable somewhere. */}
+        {use.fileName && (
+          <code className="matrix__file" title={use.fileName}>
+            {use.fileName}
+          </code>
+        )}
       </span>
 
       <span className="matrix__recon">
