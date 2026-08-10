@@ -203,14 +203,9 @@ export function CoreLibraryPage({
             </p>
           </div>
         ) : (
-          <div className="asset-grid">
+          <div className="asset-list">
             {stored.map((core) => (
-              <CoreCard
-                key={core.id}
-                core={core}
-                busy={busy}
-                onRemove={() => void remove(core)}
-              />
+              <CoreRow key={core.id} core={core} busy={busy} onRemove={() => void remove(core)} />
             ))}
           </div>
         )}
@@ -411,7 +406,7 @@ export function CoreLibraryPage({
   )
 }
 
-function CoreCard({
+function CoreRow({
   core,
   busy,
   onRemove,
@@ -420,6 +415,9 @@ function CoreCard({
   busy: boolean
   onRemove: () => void
 }) {
+  // An imported jar has no project and no version, so its file name is the only
+  // name it has — which is also why it is the one row that does not repeat the
+  // file name underneath.
   const title = core.imported ? core.fileName : `${core.projectName} ${core.version}`
 
   return (
@@ -429,25 +427,28 @@ function CoreCard({
           {(core.projectName || core.fileName).slice(0, 1).toUpperCase()}
         </span>
         <div className="asset__title">
-          <strong title={title}>{title}</strong>
+          <span className="asset__label">
+            <strong title={title}>{title}</strong>
+            {core.kind === 'proxy' && <span className="badge">代理端</span>}
+            {core.imported && <span className="badge">自行放入</span>}
+            {!core.imported && !isRecommended(core.channel) && (
+              <span className="badge badge--warn">{core.channel}</span>
+            )}
+          </span>
           <span className="asset__sub">
-            {core.imported ? '自行放入的 jar' : core.projectName || '未知来源'}
+            <span>{core.imported ? '自行放入的 jar' : core.projectName || '未知来源'}</span>
+            {!core.imported && <code title={core.fileName}>{core.fileName}</code>}
           </span>
         </div>
-        {core.kind === 'proxy' && <span className="badge">代理端</span>}
-        {core.imported && <span className="badge">自行放入</span>}
-        {!core.imported && !isRecommended(core.channel) && (
-          <span className="badge badge--warn">{core.channel}</span>
-        )}
       </div>
 
-      <dl className="asset__facts">
-        {!core.imported && (
-          <div>
-            <dt>构建</dt>
-            <dd>#{core.build}</dd>
-          </div>
-        )}
+      <dl className="asset__facts asset__facts--split">
+        <div>
+          <dt>构建</dt>
+          {/* A dash rather than a missing pair: the column has to stay a column
+              even on the row that has nothing to put in it. */}
+          <dd>{core.imported ? '—' : `#${core.build}`}</dd>
+        </div>
         <div>
           <dt>体积</dt>
           <dd>{formatBytes(core.size)}</dd>
@@ -458,11 +459,7 @@ function CoreCard({
         </div>
       </dl>
 
-      <p className="asset__path" title={core.fileName}>
-        <code>{core.fileName}</code>
-      </p>
-
-      <footer className="asset__actions">
+      <footer className="asset__actions asset__actions--split">
         {core.usedBy.length > 0 ? (
           <span className="asset__users">
             使用中：

@@ -6,7 +6,7 @@ import type { LibraryView } from '../routes'
 import type { JavaInstallJob, JavaRuntime, JavaSource, SystemJava } from '../types'
 import type { JavaController } from '../useJava'
 import { Page } from './Page'
-import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
+import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
 /** Named because the page renders it before its data arrives as well as after,
  *  and the two have to be the same string or the page moves when it loads. */
@@ -121,12 +121,11 @@ export function JavaPage({
               <Skeleton w="64px" h={15} />
               <Skeleton w="180px" h={12} />
             </div>
-            {/* 已安装 is a grid of runtime cards, and how many there are is
-                exactly what is being fetched — so this is one card's worth,
-                the commonest case on a machine that has been set up. */}
-            <div className="asset-grid">
-              <Skeleton w="100%" h={196} />
-            </div>
+            {/* 已安装 is a list of runtime rows, and how many there are is
+                exactly what is being fetched — so this is the system Java plus
+                one install, the commonest case on a machine that has been set
+                up. */}
+            <SkeletonRows rows={2} />
           </SkeletonPanel>
           <SkeletonPanel title={false}>
             <div className="chart-head">
@@ -205,10 +204,10 @@ export function JavaPage({
             </p>
           </div>
         ) : (
-          <div className="asset-grid">
-            {overview.system && <SystemCard system={overview.system} />}
+          <div className="asset-list">
+            {overview.system && <SystemRow system={overview.system} />}
             {runtimes.map((runtime) => (
-              <RuntimeCard
+              <RuntimeRow
                 key={runtime.id}
                 runtime={runtime}
                 busy={busy}
@@ -419,41 +418,43 @@ function SourcePicker({
 
 /** The machine's own Java. Listed because an instance can launch with it, but
  *  it is not the panel's to delete. */
-function SystemCard({ system }: { system: SystemJava }) {
+function SystemRow({ system }: { system: SystemJava }) {
   return (
     <article className="asset asset--muted">
       <div className="asset__head">
         <span className="asset__tile">{system.major || '?'}</span>
         <div className="asset__title">
-          <strong>系统 Java {system.major || '?'}</strong>
-          <span className="asset__sub">{system.vendor || '未知发行方'}</span>
+          <span className="asset__label">
+            <strong>系统 Java {system.major || '?'}</strong>
+            <span className="badge">来自 {system.source}</span>
+          </span>
+          <span className="asset__sub">
+            <span>{system.vendor || '未知发行方'}</span>
+            <code title={system.path}>{system.path}</code>
+          </span>
         </div>
-        <span className="badge">来自 {system.source}</span>
       </div>
 
-      <dl className="asset__facts">
+      <dl className="asset__facts asset__facts--split">
         <div>
           <dt>完整版本</dt>
           <dd>{system.version}</dd>
         </div>
-        <div>
-          <dt>归属</dt>
-          <dd>系统自带</dd>
-        </div>
+        {/* The panel did not install this one, so it knows neither its size nor
+            when it arrived. The two cells stay to hold their tracks — the
+            columns below have to line up under the ones above. */}
+        <div className="asset__hole" aria-hidden="true" />
+        <div className="asset__hole" aria-hidden="true" />
       </dl>
 
-      <p className="asset__path" title={system.path}>
-        <code>{system.path}</code>
-      </p>
-
-      <footer className="asset__actions">
+      <footer className="asset__actions asset__actions--split">
         <span className="muted">面板不管理它，也不会删除它。</span>
       </footer>
     </article>
   )
 }
 
-function RuntimeCard({
+function RuntimeRow({
   runtime,
   busy,
   onRemove,
@@ -467,14 +468,19 @@ function RuntimeCard({
       <div className="asset__head">
         <span className="asset__tile asset__tile--accent">{runtime.major}</span>
         <div className="asset__title">
-          <strong>Java {runtime.major}</strong>
-          <span className="asset__sub">{runtime.vendor || '未知发行方'}</span>
+          <span className="asset__label">
+            <strong>Java {runtime.major}</strong>
+            <span className="badge">{runtime.imageType.toUpperCase()}</span>
+            {runtime.live && <span className="badge badge--live">运行中</span>}
+          </span>
+          <span className="asset__sub">
+            <span>{runtime.vendor || '未知发行方'}</span>
+            <code title={runtime.javaPath}>{runtime.javaPath}</code>
+          </span>
         </div>
-        <span className="badge">{runtime.imageType.toUpperCase()}</span>
-        {runtime.live && <span className="badge badge--live">运行中</span>}
       </div>
 
-      <dl className="asset__facts">
+      <dl className="asset__facts asset__facts--split">
         <div>
           <dt>完整版本</dt>
           <dd>{runtime.version}</dd>
@@ -489,11 +495,7 @@ function RuntimeCard({
         </div>
       </dl>
 
-      <p className="asset__path" title={runtime.javaPath}>
-        <code>{runtime.javaPath}</code>
-      </p>
-
-      <footer className="asset__actions">
+      <footer className="asset__actions asset__actions--split">
         {runtime.usedBy.length > 0 ? (
           <span className="asset__users">
             使用中：
