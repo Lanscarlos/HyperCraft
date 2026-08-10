@@ -62,7 +62,7 @@ export type Route =
       view: LibraryView
       pluginId?: string
       /**
-       * Which instances 获取插件 judges compatibility against.
+       * Which instances 插件市场 judges compatibility against.
        *
        * A view filter, not a destination — nothing is installed anywhere from
        * that page. It lives in the URL because "兼容" is not a property of a
@@ -123,18 +123,18 @@ export const LIBRARY_VIEWS: Record<LibrarySection, { id: LibraryView; label: str
     { id: 'install', label: '安装新版本' },
     { id: 'source', label: '下载源' },
   ],
-  // Two pages, and they are two questions rather than two lists: 我的库 is
-  // "what is the state of what I run", 浏览市场 is "is this worth installing".
+  // Two pages, and they are two questions rather than two lists: 插件列表 is
+  // "what is the state of what I run", 插件市场 is "is this worth installing".
   //
   // 插件源 used to be a third, and it was not a page — it was two unrelated
   // things wearing one heading. Adding a GitHub repository is an *action*, and
   // it belongs with the other three ways a plugin gets into the library, which
-  // is the + 添加插件 menu on 我的库. The token, the download mirror and the
+  // is the + 添加插件 menu on 插件列表. The token, the download mirror and the
   // retention default are *configuration*, panel-wide, changed once, and they
   // belong in panel settings with the rest of the things you set once.
   plugins: [
-    { id: 'list', label: '我的库' },
-    { id: 'browse', label: '浏览市场' },
+    { id: 'list', label: '插件列表' },
+    { id: 'browse', label: '插件市场' },
   ],
 }
 
@@ -299,7 +299,7 @@ export function routeFromLocation(): Route {
     if (section === 'terminal') return { kind: 'host', section: 'config' }
     // The plugin source was a page of its own twice — under 面板设置, then
     // under 插件库 — before it turned out to be two things: an action, which
-    // is now a menu item on 我的库, and configuration, which is here.
+    // is now a menu item on 插件列表, and configuration, which is here.
     if (section === 'plugin-source') return { kind: 'settings', section: 'plugins' }
     return { kind: 'settings', section: pick(SETTINGS_SECTIONS, section, 'devices') }
   }

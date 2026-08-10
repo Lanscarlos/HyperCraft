@@ -45,7 +45,7 @@ type StatusFilter = 'all' | 'broken' | 'updatable'
  *
  * What this page cannot do is acquire a plugin. It hands this server things
  * the library already holds; downloading one is a panel-wide act with its own
- * page, and 去获取插件 goes there carrying this server as the compatibility
+ * page, and 去插件市场 goes there carrying this server as the compatibility
  * reference so the trip costs the context and nothing else.
  */
 export function InstancePlugins({
@@ -58,7 +58,7 @@ export function InstancePlugins({
   instance: InstanceStatus
   /** The panel-wide library: what this server can be given. */
   plugins: PluginController
-  /** Opens 获取插件, with this server as the compatibility reference. */
+  /** Opens 插件市场, with this server as the compatibility reference. */
   onOpenBrowse: () => void
   /** Opens another page of this server — the file manager, for a config dir. */
   onOpenSection: (section: InstanceSection, path?: string) => void
@@ -181,7 +181,7 @@ export function InstancePlugins({
             从插件库安装
           </button>
           <button className="link" onClick={onOpenBrowse}>
-            去获取插件
+            去插件市场
           </button>
         </div>
       </header>
@@ -229,7 +229,7 @@ export function InstancePlugins({
               <>
                 插件库还是空的，先去
                 <button className="link" onClick={onOpenBrowse}>
-                  获取插件
+                  插件市场
                 </button>
                 下载一个。
               </>
@@ -383,7 +383,7 @@ function LibraryPicker({
         <p className="modal__lead">
           这里只列插件库里已经下载好的。想要的不在里面，就去
           <button className="link" onClick={onOpenBrowse}>
-            获取插件
+            插件市场
           </button>
           下载。
         </p>

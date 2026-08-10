@@ -10,7 +10,7 @@ import { Page } from './Page'
  * This was a page called 插件源 and it held two things that are not the same
  * kind of thing. Registering a repository is an *action*, done whenever a new
  * plugin turns up, and it now sits with the other three ways a plugin enters
- * the library — the + 添加插件 menu on 我的库, where it also gets to show what
+ * the library — the + 添加插件 menu on 插件列表, where it also gets to show what
  * it found before you agree to it. The token and the download mirror are
  * *settings*: set on the day the panel is installed or the day something stops
  * working, and never again. Only the second half is a page, and this is it.

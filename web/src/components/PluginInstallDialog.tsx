@@ -144,7 +144,7 @@ export function PluginInstallDialog({
 
         {item.versions.length === 0 ? (
           <div className="alert alert--warn">
-            插件库里还没有这个插件的 jar —— 先去「获取插件」下载一个版本。
+            插件库里还没有这个插件的 jar —— 先去「插件市场」下载一个版本。
           </div>
         ) : (
           <label className="field">
