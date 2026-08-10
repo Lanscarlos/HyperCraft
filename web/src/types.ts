@@ -259,6 +259,126 @@ export interface JavaMajor {
   installed: boolean
 }
 
+// ------------------------------------------------------------- databases
+
+/** A database engine the panel knows how to set up. */
+export interface DatabaseEngine {
+  id: 'mysql' | 'postgresql' | 'mongodb'
+  name: string
+  note: string
+  /** Who publishes the binaries the panel downloads. */
+  vendor: string
+  defaultPort: number
+  adminUser: string
+  /** False for MongoDB, whose tarball ships no client to create a user with. */
+  password: boolean
+  scheme: string
+  jdbc?: string
+}
+
+/** One engine build unpacked on disk, shared by every database built on it. */
+export interface DatabaseInstall {
+  id: string
+  engine: string
+  version: string
+  path: string
+  serverPath: string
+  size: number
+  installedAt: string
+  /** What the server binary said when it could not load — a missing libaio and
+   *  friends — with the command that fixes it. */
+  problem?: string
+  hint?: string
+  /** Databases running on this engine. */
+  usedBy: string[]
+  live: boolean
+}
+
+export type DatabaseState = 'stopped' | 'starting' | 'running' | 'stopping' | 'failed'
+
+/** One database the panel set up: a data directory, a port and a process. */
+export interface DatabaseService {
+  id: string
+  name: string
+  engine: string
+  version: string
+  installId: string
+  dir: string
+  port: number
+  bind: string
+  database: string
+  user: string
+  password: string
+  runAs?: string
+  autoStart: boolean
+  createdAt: string
+  state: DatabaseState
+  pid?: number
+  since: string
+  error?: string
+  /** True when the engine this database runs on has been deleted. */
+  missing: boolean
+  /** What to paste into a plugin config; built by the panel so every client
+   *  agrees on it. */
+  uri: string
+  jdbc?: string
+}
+
+export interface DatabasePlatform {
+  os: string
+  arch: string
+  distro?: string
+  distroVersion?: string
+  musl?: boolean
+  warning?: string
+}
+
+export interface DatabaseVersion {
+  version: string
+  /** The product line — MySQL 8.0 and 8.4 are different lines, not two patches. */
+  series: string
+  lts: boolean
+  note: string
+  installed: boolean
+}
+
+export type DatabaseInstallState = JavaInstallState
+
+export interface DatabaseInstallJob {
+  engine: string
+  version: string
+  fileName: string
+  total: number
+  downloaded: number
+  state: DatabaseInstallState
+  error?: string
+  installId?: string
+  startedAt: string
+  finishedAt?: string
+}
+
+export interface DatabaseOverview {
+  root: string
+  platform: DatabasePlatform
+  engines: DatabaseEngine[]
+  installs: DatabaseInstall[]
+  services: DatabaseService[]
+  job: DatabaseInstallJob | null
+}
+
+/** What creating a database needs. Everything but the engine has a default the
+ *  panel fills in, so the form can be as short as one click. */
+export interface NewDatabase {
+  name?: string
+  installId: string
+  database: string
+  user?: string
+  password?: string
+  port?: number
+  bind?: string
+  autoStart?: boolean
+}
+
 export type CoreDownloadState = 'downloading' | 'done' | 'failed' | 'cancelled'
 
 /** The panel-wide download slot; cores land in the library, not in an instance. */
@@ -1202,6 +1322,7 @@ export type AuthEventKind =
   | 'pair-failed'
   | 'unpaired'
   | 'password-changed'
+  | 'token-rejected'
 
 /**
  * One credential event, as kept in the panel's memory. The list is cleared by a

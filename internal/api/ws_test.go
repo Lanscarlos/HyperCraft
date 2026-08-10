@@ -19,6 +19,22 @@ import (
 func (e *testEnv) dialConsole(instanceID string) *websocket.Conn {
 	e.t.Helper()
 
+	conn, resp, err := e.tryDialConsole(instanceID)
+	if err != nil {
+		status := 0
+		if resp != nil {
+			status = resp.StatusCode
+		}
+		e.t.Fatalf("dial console: %v (http %d)", err, status)
+	}
+	return conn
+}
+
+// tryDialConsole is dialConsole without the fatal, for the tests that expect
+// the handler to refuse.
+func (e *testEnv) tryDialConsole(instanceID string) (*websocket.Conn, *http.Response, error) {
+	e.t.Helper()
+
 	url := "ws" + strings.TrimPrefix(e.server.URL, "http")
 	header := http.Header{}
 	parsed, err := http.NewRequest(http.MethodGet, e.server.URL, nil)
@@ -31,15 +47,10 @@ func (e *testEnv) dialConsole(instanceID string) *websocket.Conn {
 
 	conn, resp, err := websocket.DefaultDialer.Dial(
 		url+"/api/instances/"+instanceID+"/console", header)
-	if err != nil {
-		status := 0
-		if resp != nil {
-			status = resp.StatusCode
-		}
-		e.t.Fatalf("dial console: %v (http %d)", err, status)
+	if conn != nil {
+		e.t.Cleanup(func() { conn.Close() })
 	}
-	e.t.Cleanup(func() { conn.Close() })
-	return conn
+	return conn, resp, err
 }
 
 func (e *testEnv) createInstance(name string) instance.Status {
@@ -250,5 +261,75 @@ func TestConsoleRequiresASession(t *testing.T) {
 	}
 	if resp == nil || resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("expected HTTP 401, got %v", resp)
+	}
+}
+
+// A console socket is cheap to open and not cheap to hold: it subscribes to the
+// instance's log fan-out and keeps two goroutines alive. A client reconnecting
+// without closing what it had must not be able to pile them up on a server
+// process that has to keep running.
+func TestConsoleSocketsAreCappedPerInstance(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	created := env.createInstance("crowded")
+
+	for i := range maxConsoleSockets {
+		conn := env.dialConsole(created.ID)
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if _, _, err := conn.ReadMessage(); err != nil {
+			t.Fatalf("socket %d never opened: %v", i, err)
+		}
+	}
+
+	_, resp, err := env.tryDialConsole(created.ID)
+	if err == nil {
+		t.Fatal("expected the socket past the cap to be refused")
+	}
+	if resp == nil || resp.StatusCode != http.StatusConflict {
+		t.Errorf("expected HTTP 409, got %v", resp)
+	}
+}
+
+// The cap counts what is held, so closing a socket has to hand its slot back —
+// otherwise a day of normal reloading would lock the operator out of their own
+// console.
+func TestClosingAConsoleSocketReturnsItsSlot(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	created := env.createInstance("recycled")
+
+	for range maxConsoleSockets {
+		conn := env.dialConsole(created.ID)
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if _, _, err := conn.ReadMessage(); err != nil {
+			t.Fatalf("socket never opened: %v", err)
+		}
+		conn.Close()
+		// The handler releases as it unwinds, which happens on its own
+		// goroutine after the peer's close lands.
+		waitFor(t, func() bool { return env.api.consoleSockets.active() == 0 })
+	}
+}
+
+// Two instances are two separate budgets: filling one console must not cost the
+// operator the ability to watch another server.
+func TestConsoleCapIsPerInstance(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	busy := env.createInstance("busy")
+	quiet := env.createInstance("quiet")
+
+	for range maxConsoleSockets {
+		conn := env.dialConsole(busy.ID)
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if _, _, err := conn.ReadMessage(); err != nil {
+			t.Fatalf("socket never opened: %v", err)
+		}
+	}
+
+	conn := env.dialConsole(quiet.ID)
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatalf("the second instance's console was refused: %v", err)
 	}
 }

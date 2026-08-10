@@ -11,6 +11,7 @@ import type { ReactElement } from 'react'
 export type IconName =
   | 'dashboard'
   | 'java'
+  | 'database'
   | 'cores'
   | 'plugins'
   | 'terminal'
@@ -38,6 +39,15 @@ const PATHS: Record<IconName, ReactElement> = {
       <rect x="13.5" y="3.5" width="7" height="7" rx="1.6" />
       <rect x="3.5" y="13.5" width="7" height="7" rx="1.6" />
       <rect x="13.5" y="13.5" width="7" height="7" rx="1.6" />
+    </>
+  ),
+  // The stack of platters everything from Oracle to Notion has settled on. It
+  // reads as "database" at 16px in a way nothing more original does.
+  database: (
+    <>
+      <ellipse cx="12" cy="6" rx="7.5" ry="3" />
+      <path d="M4.5 6v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6" />
+      <path d="M4.5 12v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3v-6" />
     </>
   ),
   // A cup, for the runtime you install rather than the language you write.

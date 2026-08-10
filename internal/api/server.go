@@ -16,6 +16,7 @@ import (
 
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
+	"github.com/lanscarlos/hypercraft/internal/dbruntime"
 	"github.com/lanscarlos/hypercraft/internal/hostterm"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/javaruntime"
@@ -58,6 +59,11 @@ type Server struct {
 	// both are expensive; see ratelimit.go.
 	loginLimit *rateLimiter
 	kdf        *kdfGate
+	// consoleSockets bounds how many console websockets one client may hold on
+	// one instance at a time. Unlike the two above it guards an authenticated
+	// endpoint: what it stops is a client that reconnects without closing,
+	// piling up subscriptions on a server process that must keep running.
+	consoleSockets *streamGate
 	// authLog is the in-memory view of recent credential events behind
 	// GET /api/auth/events. The slog lines remain the system of record; see
 	// authlog.go.
@@ -76,6 +82,11 @@ type Server struct {
 	// java manages the Java runtimes servers are launched with. Optional, on
 	// the same terms as jars.
 	java *javaruntime.Installer
+	// databaseInstalls downloads database engines and databases runs the
+	// databases built on them. Optional as a pair, like the plugin services:
+	// neither half is useful without the other.
+	databaseInstalls *dbruntime.Installer
+	databases        *dbruntime.Manager
 	// plugins fetches plugin releases into the panel-wide plugin library, and
 	// instancePlugins hands copies out to servers. Optional as a pair: both
 	// nil turns plugin management off, and neither is useful without the
@@ -126,6 +137,9 @@ type Options struct {
 	Plugins         *plugin.Downloader
 	InstancePlugins *plugin.Instances
 	PendingPlugins  *plugin.Pending
+
+	DatabaseInstalls *dbruntime.Installer
+	Databases        *dbruntime.Manager
 }
 
 func NewServer(opts Options) *Server {
@@ -144,6 +158,7 @@ func NewServer(opts Options) *Server {
 
 		loginLimit:     newRateLimiter(loginBurst, loginRefill),
 		kdf:            newKDFGate(defaultKDFSlots(), kdfWait),
+		consoleSockets: newStreamGate(maxConsoleSockets),
 		authLog:        newAuthLog(),
 		trustedProxies: trusted,
 
@@ -159,6 +174,9 @@ func NewServer(opts Options) *Server {
 
 		instancePlugins: opts.InstancePlugins,
 		pendingPlugins:  opts.PendingPlugins,
+
+		databaseInstalls: opts.DatabaseInstalls,
+		databases:        opts.Databases,
 		upgrader: websocket.Upgrader{
 			HandshakeTimeout: 10 * time.Second,
 			ReadBufferSize:   4096,
@@ -308,6 +326,25 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("POST /api/java/install/cancel", s.handleCancelJavaInstall)
 	protected.HandleFunc("DELETE /api/java/{id}", s.handleDeleteJava)
 
+	// Databases. Panel-wide like the Java runtimes and for the same reason —
+	// one download of MySQL serves every server that needs one — but with a
+	// second layer the runtimes do not have: an engine is the binaries, a
+	// service is a data directory and a process. Hence two sets of routes.
+	protected.HandleFunc("GET /api/databases", s.handleDatabaseOverview)
+	// Two segments deep on purpose, the same way the plugin config routes are:
+	// "engines" must never be reachable as a service id.
+	protected.HandleFunc("GET /api/databases/engines/{engine}/versions", s.handleListDatabaseVersions)
+	protected.HandleFunc("POST /api/databases/engines/install", s.handleInstallDatabase)
+	protected.HandleFunc("POST /api/databases/engines/install/cancel", s.handleCancelDatabaseInstall)
+	protected.HandleFunc("DELETE /api/databases/engines/{id}", s.handleDeleteDatabaseEngine)
+
+	protected.HandleFunc("POST /api/databases/services", s.handleCreateDatabase)
+	protected.HandleFunc("PUT /api/databases/services/{id}", s.handleUpdateDatabase)
+	protected.HandleFunc("DELETE /api/databases/services/{id}", s.handleDeleteDatabase)
+	protected.HandleFunc("POST /api/databases/services/{id}/start", s.handleDatabasePower(true))
+	protected.HandleFunc("POST /api/databases/services/{id}/stop", s.handleDatabasePower(false))
+	protected.HandleFunc("GET /api/databases/services/{id}/logs", s.handleDatabaseLogs)
+
 	protected.HandleFunc("GET /api/instances/{id}/console", s.handleConsoleSocket)
 
 	// File manager. Every path here is confined to the instance directory by
@@ -369,6 +406,14 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 		if token, ok := bearerToken(r); ok {
 			dev, valid := s.devices.Validate(token)
 			if !valid {
+				// Worth recording even though guessing a device token is
+				// hopeless — 32 bytes from crypto/rand has no shorter path than
+				// exhaustion. What this catches is the other case: an app still
+				// presenting a token the operator revoked, which looks exactly
+				// like an intrusion attempt from the outside and is the one
+				// thing the credential trail could not previously tell them
+				// apart from silence.
+				s.recordAuth(r, eventTokenRejected, "", "")
 				writeError(w, http.StatusUnauthorized, "invalid or revoked device token")
 				return
 			}

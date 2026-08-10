@@ -1,4 +1,4 @@
-package javaruntime
+package unpack
 
 import (
 	"archive/tar"
@@ -7,12 +7,15 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/ulikunitz/xz"
 )
 
 // tarEntry is one member of a test archive.
@@ -98,7 +101,7 @@ func extractToTemp(t *testing.T, name string, data []byte) (string, error) {
 	}
 	defer root.Close()
 
-	return dest, extractArchive(context.Background(), name, file, root)
+	return dest, Extract(context.Background(), name, file, root, Limits{})
 }
 
 func TestExtractTarGzKeepsModesAndLinks(t *testing.T) {
@@ -228,7 +231,7 @@ func TestFlattenLiftsTheWrapperDirectory(t *testing.T) {
 	}
 	defer root.Close()
 
-	if err := flatten(root); err != nil {
+	if err := Flatten(root); err != nil {
 		t.Fatalf("flatten: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dest, "bin", "java")); err != nil {
@@ -243,4 +246,84 @@ func buildTarGzWithoutSymlinks(t *testing.T) []byte {
 	t.Helper()
 	entries := jdkEntries()
 	return buildTarGz(t, entries[:len(entries)-1])
+}
+
+// MySQL publishes its Linux server tarballs as .tar.xz and in no other format,
+// so xz is not an optional convenience: without it the engine cannot be
+// installed on the platform most panels run on.
+func TestExtractTarXZ(t *testing.T) {
+	gzipped := buildTarGz(t, jdkEntries()[:len(jdkEntries())-1])
+	gz, err := gzip.NewReader(bytes.NewReader(gzipped))
+	if err != nil {
+		t.Fatalf("re-read fixture: %v", err)
+	}
+	plain, err := io.ReadAll(gz)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	var buf bytes.Buffer
+	writer, err := xz.NewWriter(&buf)
+	if err != nil {
+		t.Fatalf("new xz writer: %v", err)
+	}
+	if _, err := writer.Write(plain); err != nil {
+		t.Fatalf("write xz: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close xz: %v", err)
+	}
+
+	dest, err := extractToTemp(t, "mysql-8.0.45-linux.tar.xz", buf.Bytes())
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "jdk-21.0.1+12-jre", "bin", "java")); err != nil {
+		t.Errorf("xz payload was not extracted: %v", err)
+	}
+}
+
+// The limits are a parameter because a MySQL tarball is an order of magnitude
+// larger than a JDK; a caller that sets one has to actually get it enforced.
+func TestExtractHonoursLimits(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "big.tar.gz")
+	data := buildTarGz(t, []tarEntry{{name: "jre/big", body: strings.Repeat("x", 4096)}})
+	if err := os.WriteFile(archivePath, data, 0o644); err != nil {
+		t.Fatalf("write archive: %v", err)
+	}
+	file, err := os.Open(archivePath)
+	if err != nil {
+		t.Fatalf("open archive: %v", err)
+	}
+	defer file.Close()
+
+	root, err := os.OpenRoot(t.TempDir())
+	if err != nil {
+		t.Fatalf("open root: %v", err)
+	}
+	defer root.Close()
+
+	err = Extract(context.Background(), "big.tar.gz", file, root, Limits{MaxBytes: 1024})
+	if !errors.Is(err, ErrBadArchive) {
+		t.Fatalf("got %v, want ErrBadArchive", err)
+	}
+}
+
+func TestSupported(t *testing.T) {
+	for _, name := range []string{
+		"OpenJDK21U-jre_x64_linux_hotspot.tar.gz",
+		"mongodb-linux-x86_64-ubuntu2204-8.0.28.tgz",
+		"mysql-8.0.45-linux-glibc2.17-x86_64-minimal.tar.xz",
+		"embedded-postgres-binaries-linux-amd64-17.6.0.jar",
+		"mysql-8.0.45-winx64.zip",
+	} {
+		if !Supported(name) {
+			t.Errorf("%s should be supported", name)
+		}
+	}
+	for _, name := range []string{"mysql.deb", "postgres.rpm", "server.tar.bz2", ""} {
+		if Supported(name) {
+			t.Errorf("%s should not be supported", name)
+		}
+	}
 }

@@ -4965,6 +4965,25 @@ small.field__bad {
   margin-left: 0;
 }
 
+/* The connection string on a database card.
+
+   It is the one piece of text on this page somebody actually has to read
+   character by character — it goes into a plugin's config — so it gets a line
+   of its own rather than the ellipsis treatment .asset__sub code gives a path.
+   A URI has no spaces to wrap at, so the overflow is scrolled inside this box:
+   letting it size the card would push every database row wider than the grid.
+   min-width: 0 because the card is a flex column and without it the longest
+   URI sets the width of the whole thing. */
+.asset__conn {
+  display: block;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 6px 9px;
+  color: var(--text);
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* --------------------------------------------------------------- choosers
 
    A dropdown hides the one thing that decides the click — is this version LTS,
@@ -5299,6 +5318,237 @@ input.input-slim:disabled {
  */
 .auth-events .badge {
   margin-left: 0;
+}
+
+/* --------------------------------------------------------------- wizard
+
+   新建实例 asks its five questions one at a time: a rail of steps, one panel,
+   and a pair of buttons under it. What is *inside* the panel is built out of
+   the controls the rest of the sheet already defines — .choice, .segmented,
+   .field, .progress — because a wizard is a route through the panel's forms
+   rather than a second set of them, and the step that downloads a core has to
+   look like the page that downloads a core.
+
+   The rail wraps instead of scrolling sideways. Five short chips fit on one
+   line on a laptop and land on two or three on a phone, and both of those
+   read as "where am I in this"; a rail you have to swipe does not. */
+
+.wizard-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 7px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.wizard-step:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.wizard-step:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* Layered over the base rather than replacing it, for the same reason
+   .choice--active is: a background shorthand here drops --surface-1 and the
+   step you are on ends up flatter than the ones you are not. */
+.wizard-step--active {
+  background: linear-gradient(180deg, var(--accent-soft), transparent), var(--surface-1);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.wizard-step__index {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 21px;
+  height: 21px;
+  background: var(--surface-3);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.wizard-step--active .wizard-step__index {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* A finished step is a fact, not the brand's business — the same go-signal
+   the status dots use, so a rail of terracotta ticks does not read as five
+   warnings. */
+.wizard-step--done .wizard-step__index {
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+}
+
+/* A step whose predecessors have no answer yet. Dimmed rather than hidden:
+   the rail is also the promise of how long this is going to take. */
+.wizard-step:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 上一步 on one end, 下一步 on the other — the two directions of the wizard
+   are also the two ends of the row, so neither is ever where the other was a
+   screen ago. */
+.wizard__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Why 下一步 is greyed out. Sits under the button it is about. */
+.wizard__blocked {
+  margin: -8px 0 0;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+/* The last screen's read-back of every answer. Label column narrow and fixed
+   so the values line up in one edge to scan down. */
+.wizard-summary {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 9px 16px;
+  margin: 0;
+  font-size: 13px;
+}
+
+/* The dt/dd pairs are wrapped in a div each so they stay together in the
+   markup; display: contents hands them to the grid anyway. */
+.wizard-summary > div {
+  display: contents;
+}
+
+.wizard-summary dt {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.wizard-summary dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wizard-summary dd .badge:first-child {
+  margin-left: 0;
+}
+
+/* What the 创建 button is doing, one line per call. It is four requests and
+   the first one is the irreversible one, so they are reported separately
+   rather than behind a single spinner. */
+.wizard-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 13px 15px;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  list-style: none;
+  font-size: 13px;
+}
+
+.wizard-task {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.wizard-task__mark {
+  flex: 0 0 auto;
+  width: 14px;
+  color: var(--text-faint);
+  font-weight: 650;
+  text-align: center;
+}
+
+.wizard-task__label,
+.wizard-task__note {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wizard-task__note {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.wizard-task--pending,
+.wizard-task--skipped {
+  color: var(--text-faint);
+}
+
+.wizard-task--active .wizard-task__mark {
+  color: var(--accent);
+}
+
+.wizard-task--done .wizard-task__mark {
+  color: var(--ok);
+}
+
+.wizard-task--failed {
+  color: var(--danger-ink);
+}
+
+.wizard-task--failed .wizard-task__mark {
+  color: var(--danger);
+}
+
+/* A block inside a panel that is a different job from the panel's own: the
+   Java step both picks a runtime and can install one, and run together they
+   read as a single list of controls where the last one downloads 200 MB. */
+.panel__sub {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* A switch whose explanation is a sentence rather than a phrase. The base
+   .checkbox lays label and note out side by side, which is right for a short
+   note and turns a long one into a two-word-per-line column. */
+.checkbox--stacked {
+  flex-wrap: wrap;
+}
+
+.checkbox--stacked > small {
+  /* Lines up under the label: the box is 15px and the row gap is 9. */
+  flex-basis: 100%;
+  margin-left: 24px;
 }
 
 /* ------------------------------------------------------- overview summary

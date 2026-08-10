@@ -21,7 +21,7 @@ export type InstanceSection =
   | 'settings'
 
 /** The shared-asset pages. Stock, as opposed to what one server has chosen. */
-export type LibrarySection = 'cores' | 'java' | 'plugins'
+export type LibrarySection = 'cores' | 'java' | 'database' | 'plugins'
 
 /**
  * The pages inside one library section.
@@ -42,6 +42,8 @@ export type LibraryView =
   | 'source'
   | 'list'
   | 'browse'
+  | 'databases'
+  | 'engines'
 
 /** Pages about the machine. `terminal` is the shell and is fenced off. */
 export type HostSection = 'metrics' | 'instances' | 'disk' | 'config' | 'terminal'
@@ -55,6 +57,12 @@ export type StateFilter = 'all' | 'live' | 'stopped' | 'problem'
 export type Route =
   | { kind: 'overview' }
   | { kind: 'instances'; query: string; state: StateFilter }
+  /**
+   * The creation wizard. A page rather than a dialog because it is five steps
+   * long and two of them start a download that outlives the click — a modal
+   * you can dismiss by pressing Escape is the wrong container for that.
+   */
+  | { kind: 'new-instance' }
   | { kind: 'instance'; id: string; section: InstanceSection }
   | {
       kind: 'library'
@@ -105,12 +113,14 @@ export const INSTANCE_SECTIONS: { id: InstanceSection; label: string }[] = [
   { id: 'settings', label: '实例设置' },
 ]
 
-/** In build order: Java runs the core, the core loads the plugins. The
- *  navigation group and the command palette both read this, so someone setting
- *  a server up for the first time meets the three in the order they need them. */
+/** In build order: Java runs the core, the core loads the plugins, and the
+ *  database is what a plugin asks for once it is loaded. The navigation group
+ *  and the command palette both read this, so someone setting a server up for
+ *  the first time meets the four in the order they need them. */
 export const LIBRARY_SECTIONS: { id: LibrarySection; label: string }[] = [
   { id: 'java', label: 'Java 环境' },
   { id: 'cores', label: '服务端核心' },
+  { id: 'database', label: '数据库环境' },
   { id: 'plugins', label: '插件库' },
 ]
 
@@ -125,6 +135,15 @@ export const LIBRARY_VIEWS: Record<LibrarySection, { id: LibraryView; label: str
     { id: 'installed', label: '已安装' },
     { id: 'install', label: '安装新版本' },
     { id: 'source', label: '下载源' },
+  ],
+  // Three pages, and the order is the order of the questions: what databases
+  // do I have, what engines are they built on, and how do I get another engine.
+  // The engine list comes second because after the first install it is the page
+  // you never open again — it is where you go to free disk space.
+  database: [
+    { id: 'databases', label: '我的数据库' },
+    { id: 'engines', label: '已装引擎' },
+    { id: 'install', label: '安装引擎' },
   ],
   // Two pages, and they are two questions rather than two lists: 插件列表 is
   // "what is the state of what I run", 插件市场 is "is this worth installing".
@@ -216,6 +235,8 @@ export function parentOf(route: Route): Route | null {
   switch (route.kind) {
     case 'instances':
       return { kind: 'overview' }
+    case 'new-instance':
+      return { kind: 'instances', query: '', state: 'all' }
     case 'instance':
       return route.section === 'console'
         ? { kind: 'instances', query: '', state: 'all' }
@@ -302,6 +323,10 @@ function readRoute(path: string, search: string): Route {
       : { kind: 'library', section, view: defaultView(section) }
   }
 
+  // Ahead of the list below, which would otherwise swallow it: /instances/…
+  // is the list with a filter, and 新建 is not a filter.
+  if (path === '/instances/new') return { kind: 'new-instance' }
+
   if (path === '/instances' || path.startsWith('/instances/')) {
     const state = params.get('state') ?? 'all'
     return {
@@ -328,6 +353,9 @@ function readRoute(path: string, search: string): Route {
   }
 
   if (path === '/java') return { kind: 'library', section: 'java', view: 'installed' }
+  if (path === '/databases' || path === '/database') {
+    return { kind: 'library', section: 'database', view: 'databases' }
+  }
   if (path === '/cores') return { kind: 'library', section: 'cores', view: 'stock' }
   const legacyPlugin = path.match(/^\/plugins\/([^/]+)/)
   if (legacyPlugin) {
@@ -361,6 +389,8 @@ export function pathOf(route: Route): string {
     }
     case 'settings':
       return `/settings/${route.section}`
+    case 'new-instance':
+      return '/instances/new'
     case 'instances': {
       const params = new URLSearchParams()
       if (route.query.trim() !== '') params.set('q', route.query)

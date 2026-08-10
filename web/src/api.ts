@@ -8,7 +8,12 @@ import type {
   CoreLibrary,
   CoreProject,
   CoreVersion,
+  DatabaseInstallJob,
+  DatabaseOverview,
+  DatabaseService,
+  DatabaseVersion,
   Device,
+  NewDatabase,
   EulaStatus,
   HostInspection,
   HostListing,
@@ -432,6 +437,39 @@ export const api = {
   cancelJavaInstall: () => request<void>('POST', '/api/java/install/cancel'),
   deleteJavaRuntime: (id: string) =>
     request<void>('DELETE', `/api/java/${encodeURIComponent(id)}`),
+
+  databaseOverview: () => request<DatabaseOverview>('GET', '/api/databases'),
+  databaseVersions: (engine: string) =>
+    request<DatabaseVersion[]>(
+      'GET',
+      `/api/databases/engines/${encodeURIComponent(engine)}/versions`,
+    ),
+  installDatabaseEngine: (engine: string, version: string) =>
+    request<DatabaseInstallJob>('POST', '/api/databases/engines/install', { engine, version }),
+  cancelDatabaseInstall: () => request<void>('POST', '/api/databases/engines/install/cancel'),
+  deleteDatabaseEngine: (id: string) =>
+    request<void>('DELETE', `/api/databases/engines/${encodeURIComponent(id)}`),
+
+  createDatabase: (input: NewDatabase) =>
+    request<DatabaseService>('POST', '/api/databases/services', input),
+  updateDatabase: (id: string, input: Partial<Pick<DatabaseService, 'name' | 'port' | 'bind' | 'autoStart'>>) =>
+    request<DatabaseService>('PUT', `/api/databases/services/${encodeURIComponent(id)}`, input),
+  startDatabase: (id: string) =>
+    request<DatabaseService>('POST', `/api/databases/services/${encodeURIComponent(id)}/start`),
+  stopDatabase: (id: string) =>
+    request<DatabaseService>('POST', `/api/databases/services/${encodeURIComponent(id)}/stop`),
+  databaseLogs: (id: string) =>
+    request<{ lines: string[] }>(
+      'GET',
+      `/api/databases/services/${encodeURIComponent(id)}/logs`,
+    ),
+  /** deleteData is spelled out rather than defaulted: everything a server ever
+   *  wrote is in that directory. */
+  deleteDatabase: (id: string, deleteData: boolean) =>
+    request<void>(
+      'DELETE',
+      `/api/databases/services/${encodeURIComponent(id)}?data=${deleteData ? 'delete' : 'keep'}`,
+    ),
 
   updateStatus: () => request<UpdateStatus>('GET', '/api/update'),
   checkUpdate: () => request<UpdateStatus>('POST', '/api/update/check'),
