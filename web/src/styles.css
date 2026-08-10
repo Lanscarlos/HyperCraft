@@ -6606,12 +6606,18 @@ button.rows__name:hover strong {
 
    The library's detail view is a drawer over the list, not a page: the work is
    comparative, and a page throws away the filter, the scroll position and the
-   row this one was being compared against. 740px because the deployment matrix
-   inside it is a four-column table about a fleet, and 520 — what the market
-   drawer uses for one plugin's description — folds it into unreadable wraps. */
+   row this one was being compared against. Wider than the market drawer because
+   the deployment matrix inside it is a four-column table about a fleet, and the
+   width that carries one plugin's description folds it into unreadable wraps.
+
+   740px is the floor rather than the width: the four-column matrix and the
+   per-platform jar rows both fit at it and neither has any air, and on a 1440
+   or 1920 screen there is a great deal of empty list behind the drawer to spend
+   on that. Capped so it stays a drawer — past ~1040px the thing it is covering
+   stops being visible enough to be worth not navigating away from. */
 
 .drawer--wide .drawer__panel {
-  width: min(740px, 100%);
+  width: min(100%, clamp(740px, 62vw, 1040px));
 }
 
 .drawer__step {
@@ -7404,7 +7410,13 @@ button.rows__name:hover strong {
   bottom: 0;
   display: flex;
   flex-direction: column;
-  width: min(520px, 100%);
+  /* 520px is where the content stops fitting, not where it stops needing room:
+     a version row carries a version number, a date, a size, a game-version list
+     and a build count, and the build chips under it carry a platform name and a
+     compatibility badge each. At 520 every one of those wraps. So it grows with
+     the viewport and keeps 520 as the floor — full width on a phone, where
+     leaving a 70px sliver of the list showing helps nobody. */
+  width: min(100%, clamp(520px, 42vw, 700px));
   background: var(--surface-1);
   border-left: 1px solid var(--border-strong);
   box-shadow: var(--shadow-lg);
@@ -7536,6 +7548,28 @@ button.rows__name:hover strong {
   color: var(--text-faint);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+
+/* The build picker, inside the version list, under the row it belongs to.
+   Same accent bar as the chosen row above it and no border between the two:
+   they are one selected thing, and a box of its own would read as a second
+   question rather than the rest of this one. */
+.drawer__version-builds {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 11px 10px;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--border);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.drawer__version-builds:last-child {
+  border-bottom: none;
+}
+
+.drawer__version-builds .chart-note {
+  margin: 0;
 }
 
 /* One release, several jars — the picker for which one comes down.
