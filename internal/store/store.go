@@ -97,6 +97,50 @@ func (s *Store) SaveInstances(configs []instance.Config) error {
 	return writeFileAtomic(s.paths.InstancesFile(), append(data, '\n'), 0o600)
 }
 
+// SaveResume records the instances to restart after a self-update. It is
+// deliberately separate from the instance registry: an interrupted update must
+// not be able to corrupt the list of servers that exist.
+func (s *Store) SaveResume(ids []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if ids == nil {
+		ids = []string{}
+	}
+	data, err := json.Marshal(ids)
+	if err != nil {
+		return fmt.Errorf("encode resume list: %w", err)
+	}
+	return writeFileAtomic(s.paths.ResumeFile(), append(data, '\n'), 0o600)
+}
+
+// TakeResume reads the resume list and removes it, so servers are brought back
+// exactly once. A missing file is the normal case — the panel was started
+// without an update pending — and is not an error.
+func (s *Store) TakeResume() ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	data, err := os.ReadFile(s.paths.ResumeFile())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read resume list: %w", err)
+	}
+	// Removed before it is acted on: a server that fails to start must not
+	// leave the panel trying again on every boot.
+	if err := os.Remove(s.paths.ResumeFile()); err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("clear resume list: %w", err)
+	}
+
+	var ids []string
+	if err := json.Unmarshal(data, &ids); err != nil {
+		return nil, fmt.Errorf("parse resume list: %w", err)
+	}
+	return ids, nil
+}
+
 // writeFileAtomic writes via a temp file and a rename, so a crash or a full
 // disk can never leave a half-written config behind.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {

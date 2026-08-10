@@ -18,9 +18,30 @@ export function formatBytes(bytes: number, digits = 1): string {
   return `${text} ${BYTE_UNITS[unit]}`
 }
 
+/** A transfer rate. Bytes per second rather than bits: everything else in the
+ *  panel — memory, disk, a jar's size — is bytes, and a chart that switched
+ *  units halfway down the page would be read wrong long before it was noticed. */
+export function formatRate(bytesPerSecond: number): string {
+  return `${formatBytes(bytesPerSecond)}/s`
+}
+
 export function formatPercent(value: number, digits = 0): string {
   if (!Number.isFinite(value)) return '0%'
   return `${value.toFixed(digits)}%`
+}
+
+/** Day and minute, for "installed at" / "added at" lines. Seconds would be
+ *  noise: nobody cares which second a 60 MB download finished on. */
+export function formatDate(iso: string): string {
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return ''
+  return at.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 export function formatTime(iso: string): string {

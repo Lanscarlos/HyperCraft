@@ -20,6 +20,9 @@ type instanceRequest struct {
 	JVMArgs        []string `json:"jvmArgs"`
 	ServerArgs     []string `json:"serverArgs"`
 	Command        []string `json:"command"`
+	Encoding       string   `json:"encoding"`
+	TTY            *bool    `json:"tty"`
+	ForceColor     *bool    `json:"forceColor"`
 	AutoStart      bool     `json:"autoStart"`
 	AutoRestart    bool     `json:"autoRestart"`
 	StopCommand    string   `json:"stopCommand"`
@@ -28,15 +31,20 @@ type instanceRequest struct {
 
 func (req instanceRequest) toConfig() instance.Config {
 	return instance.Config{
-		Name:           strings.TrimSpace(req.Name),
-		Directory:      strings.TrimSpace(req.Directory),
-		Java:           strings.TrimSpace(req.Java),
-		Jar:            strings.TrimSpace(req.Jar),
-		MinMemoryMB:    req.MinMemoryMB,
-		MaxMemoryMB:    req.MaxMemoryMB,
-		JVMArgs:        cleanArgs(req.JVMArgs),
-		ServerArgs:     cleanArgs(req.ServerArgs),
-		Command:        cleanArgs(req.Command),
+		Name:        strings.TrimSpace(req.Name),
+		Directory:   strings.TrimSpace(req.Directory),
+		Java:        strings.TrimSpace(req.Java),
+		Jar:         strings.TrimSpace(req.Jar),
+		MinMemoryMB: req.MinMemoryMB,
+		MaxMemoryMB: req.MaxMemoryMB,
+		JVMArgs:     cleanArgs(req.JVMArgs),
+		ServerArgs:  cleanArgs(req.ServerArgs),
+		Command:     cleanArgs(req.Command),
+		Encoding:    strings.TrimSpace(req.Encoding),
+		// Absent means "unset" for both of these: applyDefaults turns them on
+		// rather than silently taking Go's zero value for a bool.
+		TTY:            req.TTY,
+		ForceColor:     req.ForceColor,
 		AutoStart:      req.AutoStart,
 		AutoRestart:    req.AutoRestart,
 		StopCommand:    strings.TrimSpace(req.StopCommand),
@@ -111,9 +119,18 @@ func (s *Server) handleDeleteInstance(w http.ResponseWriter, r *http.Request) {
 	// happens when the caller opts in explicitly.
 	deleteFiles := r.URL.Query().Get("deleteFiles") == "true"
 
-	if err := s.mgr.Delete(r.PathValue("id"), deleteFiles); err != nil {
+	id := r.PathValue("id")
+	if err := s.mgr.Delete(id, deleteFiles); err != nil {
 		s.writeDomainError(w, err)
 		return
+	}
+	// The plugin records describe an instance that no longer exists. Dropping
+	// them after the delete succeeded — never before — means a refused delete
+	// leaves the instance exactly as it was, plugins included.
+	if s.instancePlugins != nil {
+		if err := s.instancePlugins.Forget(id); err != nil {
+			s.log.Warn("could not drop the instance's plugin records", "instance", id, "err", err)
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -131,6 +148,13 @@ func (s *Server) handlePower(action powerAction) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		inst, ok := s.instanceFromPath(w, r)
 		if !ok {
+			return
+		}
+		// An update stops every server and then replaces the panel's own
+		// binary; a server started in that window would be counted as down,
+		// left out of the resume list, and killed by the restart moments later.
+		if (action == powerStart || action == powerRestart) && s.updater != nil && s.updater.Applying() {
+			writeError(w, http.StatusConflict, "面板正在更新，服务器会在更新完成后自动恢复运行")
 			return
 		}
 

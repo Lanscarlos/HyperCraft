@@ -1,32 +1,215 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { MouseEvent } from 'react'
 
+import { collectAlerts } from './alerts'
 import { ApiError, api } from './api'
 import { ChangePasswordDialog } from './components/ChangePasswordDialog'
-import { HostOverview } from './components/HostOverview'
+import { CommandPalette } from './components/CommandPalette'
+import { CoreLibraryPage } from './components/CoreLibraryPage'
+import { Dashboard } from './components/Dashboard'
+import { HostPage } from './components/HostPage'
+import { HostTerminal } from './components/HostTerminal'
+import { ImportInstanceDialog } from './components/ImportInstanceDialog'
+import { InstanceList } from './components/InstanceList'
 import { InstanceView } from './components/InstanceView'
+import { JavaPage } from './components/JavaPage'
 import { Login } from './components/Login'
 import { NewInstanceDialog } from './components/NewInstanceDialog'
+import { PluginDetailPage } from './components/PluginDetailPage'
+import { PluginLibraryPage } from './components/PluginLibraryPage'
+import { PluginSourceSettings } from './components/PluginSourceSettings'
+import { SettingsPage } from './components/SettingsPage'
+import { Sidebar } from './components/Sidebar'
+import { TopBar } from './components/TopBar'
+import type { Crumb } from './components/TopBar'
+import {
+  HOST_SECTIONS,
+  INSTANCE_SECTIONS,
+  LIBRARY_SECTIONS,
+  LIBRARY_VIEWS,
+  SETTINGS_SECTIONS,
+  defaultView,
+  navKeyOf,
+  parentOf,
+  pathOf,
+  routeFromLocation,
+  scopeOf,
+} from './routes'
+import type { InstanceSection, LibrarySection, LibraryView, Route, StateFilter } from './routes'
+import { captureScope } from './scopeMorph'
 import type { InstanceStatus, User } from './types'
-import { STATE_LABELS, mergeState } from './types'
+import { mergeState } from './types'
+import { useCores } from './useCores'
+import { useJava } from './useJava'
+import { useMediaQuery } from './useMediaQuery'
+import { usePlugins } from './usePlugins'
+import { useRecents } from './useRecents'
+import { useSystem } from './useSystem'
+import { useTerminal } from './useTerminal'
+import { updateLabel, useUpdate } from './useUpdate'
 
 /** How often the instance list refreshes; the console pushes state instantly,
  *  this is only to keep the sidebar honest for servers you are not watching. */
 const POLL_INTERVAL_MS = 5000
 
-/** Reads the selected instance out of the URL so deep links and reloads work. */
-function instanceIdFromPath(): string | null {
-  const match = window.location.pathname.match(/^\/i\/([^/]+)/)
-  return match ? match[1] : null
+/** Below this the sidebar cannot sit beside the content without taking a third
+ *  of it, so it becomes a drawer. A phone matters more here than in most back
+ *  offices — the person who owns the server reads the alert away from a desk —
+ *  so the breakpoint is generous. Kept in step with styles.css: CSS decides how
+ *  it looks, this decides what the button does. */
+const DRAWER_QUERY = '(max-width: 1024px)'
+
+/** Whether the desktop sidebar is folded to icons. A per-device preference,
+ *  like the theme, so it lives next to it in localStorage. */
+const RAIL_KEY = 'hypercraft.sidebar'
+
+/**
+ * Click handling for a link that navigates inside the panel.
+ *
+ * The routes are real paths already, so the navigation is an anchor with a
+ * real href: ⌘-click opens a server in a second tab, right-click copies its
+ * link, the status bar shows where a row goes. Only a plain left click is
+ * taken over — every other click is the browser being asked for something it
+ * does better than we would.
+ */
+function follow(go: () => void) {
+  return (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
+    go()
+  }
+}
+
+function labelOf<T extends string>(list: { id: T; label: string }[], id: T): string {
+  return list.find((entry) => entry.id === id)?.label ?? ''
+}
+
+/**
+ * Where you are, as the top bar says it.
+ *
+ * Every page scrolls its own heading out of sight, so this is the only thing on
+ * screen that still answers "which instance am I in" once you are three screens
+ * into a file listing. A step links only when it is somewhere you can go back
+ * to — the last one is where you already are.
+ */
+function crumbsFor(
+  route: Route,
+  selected: InstanceStatus | null,
+  pluginName: string | undefined,
+  link: (route: Route) => Pick<Crumb, 'href' | 'onClick'>,
+): Crumb[] {
+  switch (route.kind) {
+    case 'instances':
+      return [{ label: '概览', ...link({ kind: 'overview' }) }, { label: '所有实例' }]
+    case 'instance': {
+      const section = labelOf(INSTANCE_SECTIONS, route.section)
+      const trail: Crumb[] = [
+        { label: '所有实例', ...link({ kind: 'instances', query: '', state: 'all' }) },
+        selected
+          ? {
+              label: selected.name,
+              state: selected.state,
+              ...link({ kind: 'instance', id: route.id, section: 'console' }),
+            }
+          : { label: '实例' },
+      ]
+      // The discovery tab is a step below the list it was opened from, and the
+      // trail says so — otherwise 获取插件 and 已装插件 read as the same page.
+      if (route.section === 'plugins' && route.tab === 'browse') {
+        return [
+          ...trail,
+          { label: section, ...link({ kind: 'instance', id: route.id, section: 'plugins' }) },
+          { label: '获取插件' },
+        ]
+      }
+      return [...trail, { label: section }]
+    }
+    case 'library': {
+      const section = labelOf(LIBRARY_SECTIONS, route.section)
+      const home: Route = {
+        kind: 'library',
+        section: route.section,
+        view: defaultView(route.section),
+      }
+      const base: Crumb[] = [{ label: '资源库' }]
+      if (pluginName) {
+        return [...base, { label: section, ...link(home) }, { label: pluginName }]
+      }
+      if (route.view === 'browse') {
+        return [
+          ...base,
+          { label: section, ...link({ kind: 'library', section: route.section, view: 'list' }) },
+          { label: '获取插件' },
+        ]
+      }
+      const view = labelOf(LIBRARY_VIEWS[route.section], route.view)
+      // The first page of a section is the section: repeating its name under
+      // itself would be a step that goes nowhere.
+      return route.view === defaultView(route.section)
+        ? [...base, { label: section }]
+        : [...base, { label: section, ...link(home) }, { label: view }]
+    }
+    case 'host':
+      return [
+        { label: '主机', ...link({ kind: 'host', section: 'metrics' }) },
+        { label: labelOf(HOST_SECTIONS, route.section) },
+      ]
+    case 'settings':
+      return [{ label: '面板设置' }, { label: labelOf(SETTINGS_SECTIONS, route.section) }]
+    default:
+      return [{ label: '概览' }]
+  }
+}
+
+/** What the back button says it goes to. The trail already names every step;
+ *  this is the one step that has to fit in a tooltip. */
+function labelOfRoute(route: Route, instances: InstanceStatus[]): string {
+  switch (route.kind) {
+    case 'instances':
+      return '所有实例'
+    case 'instance':
+      return instances.find((item) => item.id === route.id)?.name ?? '实例'
+    case 'library':
+      return labelOf(LIBRARY_SECTIONS, route.section)
+    case 'host':
+      return '主机'
+    case 'settings':
+      return '面板设置'
+    default:
+      return '概览'
+  }
 }
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [checkingSession, setCheckingSession] = useState(true)
   const [instances, setInstances] = useState<InstanceStatus[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(instanceIdFromPath)
+  const [route, setRoute] = useState<Route>(routeFromLocation)
   const [showNew, setShowNew] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+
+  const compact = useMediaQuery(DRAWER_QUERY)
+  const [navOpen, setNavOpen] = useState(false)
+  const [railed, setRailed] = useState(() => window.localStorage.getItem(RAIL_KEY) === 'rail')
+  const sidebarRef = useRef<HTMLElement | null>(null)
+  const navToggle = useRef<HTMLButtonElement | null>(null)
+
+  const signedIn = Boolean(user)
+  // Polled at the app level rather than inside the pages that show them: all
+  // four are long-running daemon jobs that keep going after you navigate away,
+  // and the sidebar says so while they do.
+  const update = useUpdate(signedIn)
+  const java = useJava(signedIn)
+  const cores = useCores(signedIn)
+  const plugins = usePlugins(signedIn)
+  const system = useSystem(signedIn)
+  // Not polled, unlike the others: nothing turns the terminal on but a person
+  // clicking the switch, and that path already refreshes the status.
+  const terminal = useTerminal(signedIn)
+  const { recents, remember } = useRecents()
 
   useEffect(() => {
     api
@@ -37,25 +220,102 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const onPop = () => setSelectedId(instanceIdFromPath())
+    const onPop = () => setRoute(routeFromLocation())
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
-  const select = useCallback((id: string | null) => {
-    setSelectedId(id)
-    window.history.pushState(null, '', id ? `/i/${id}` : '/')
+  const navigate = useCallback((next: Route, replace = false) => {
+    setRoute(next)
+    const path = pathOf(next)
+    if (replace) window.history.replaceState(null, '', path)
+    else window.history.pushState(null, '', path)
+    // A drawer covers what you just navigated to, so picking something is also
+    // how you dismiss it. On a rail there is nothing to dismiss.
+    setNavOpen(false)
   }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem(RAIL_KEY, railed ? 'rail' : 'full')
+  }, [railed])
+
+  // Widening the window puts the sidebar back on screen for good; a drawer left
+  // "open" in that state would only mean a stray scrim.
+  useEffect(() => {
+    if (!compact) setNavOpen(false)
+  }, [compact])
+
+  useEffect(() => {
+    if (route.kind === 'instance') remember(route.id)
+  }, [route, remember])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const typing =
+        target?.isContentEditable ||
+        (target != null && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        // Deliberately works while typing: ⌘K from the console command line is
+        // exactly when you want to be somewhere else.
+        event.preventDefault()
+        setPaletteOpen((open) => !open)
+        return
+      }
+      if (event.key === 'Escape') {
+        setNavOpen(false)
+        return
+      }
+      if (event.key !== '[' || event.metaKey || event.ctrlKey || event.altKey) return
+      // The console command line and the host terminal are both real text
+      // inputs where '[' is a character, not a shortcut.
+      if (typing) return
+      event.preventDefault()
+      setRailed((value) => !value)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Focus follows the drawer: into it when it opens, back to the button that
+  // opened it when it closes, so a keyboard never lands behind the scrim.
+  const wasOpen = useRef(false)
+  useEffect(() => {
+    if (navOpen) sidebarRef.current?.focus()
+    else if (wasOpen.current) navToggle.current?.focus()
+    wasOpen.current = navOpen
+  }, [navOpen])
+
+  const openInstance = useCallback(
+    (id: string, section: InstanceSection = 'console') =>
+      navigate({ kind: 'instance', id, section }),
+    [navigate],
+  )
+
+  const openLibrary = useCallback(
+    (section: LibrarySection, view: LibraryView) => navigate({ kind: 'library', section, view }),
+    [navigate],
+  )
 
   const refresh = useCallback(async () => {
     try {
       const fetched = await api.listInstances()
-      setInstances((prev) =>
-        fetched.map((item) => {
+      setInstances((prev) => {
+        const next = fetched.map((item) => {
           const existing = prev.find((p) => p.id === item.id)
           return existing ? mergeState(existing, item) : item
-        }),
-      )
+        })
+        // mergeState hands back the object it was given when nothing moved, so
+        // an idle poll produces the same instances in the same order — and
+        // returning `prev` for that case is what turns it into no render at
+        // all. Building `next` first and throwing it away costs a few object
+        // spreads every five seconds; not doing it costs a full re-render of
+        // whatever page is open, at the same cadence, all day.
+        const unchanged =
+          next.length === prev.length && next.every((item, index) => item === prev[index])
+        return unchanged ? prev : next
+      })
       setLoadError(null)
     } catch (err) {
       if (err instanceof ApiError && err.isUnauthorized) {
@@ -80,6 +340,17 @@ export default function App() {
     )
   }, [])
 
+  const alerts = useMemo(
+    () =>
+      collectAlerts({
+        instances,
+        system: system.info,
+        update: update.status,
+        pluginUpdates: plugins.updates,
+      }),
+    [instances, system.info, update.status, plugins.updates],
+  )
+
   const signOut = async () => {
     try {
       await api.logout()
@@ -96,80 +367,258 @@ export default function App() {
     return <Login onSignedIn={setUser} />
   }
 
+  const selectedId = route.kind === 'instance' ? route.id : null
   const selected = instances.find((item) => item.id === selectedId) ?? null
+  // Matches the backend's State.Running(), which is what decides the list of
+  // servers recorded for resume — so the update dialog promises exactly what
+  // will happen.
+  const runningNames = instances
+    .filter((item) => item.state === 'running' || item.state === 'starting')
+    .map((item) => item.name)
+  // A plugin id from the URL that no longer exists (deleted, or a stale
+  // bookmark) falls back to the list rather than to an error page.
+  const openedPlugin =
+    route.kind === 'library' && route.section === 'plugins' && route.pluginId
+      ? (plugins.plugins.find((item) => item.id === route.pluginId) ?? null)
+      : null
+  const updateNotice = updateLabel(update.status)
+  const crumbs = crumbsFor(route, selected, openedPlugin?.name, (target) => ({
+    href: pathOf(target),
+    onClick: follow(() => navigate(target)),
+  }))
+  const scope = scopeOf(route)
+
+  // One step up the trail, for the top bar's back button. When that step leaves
+  // the scope it is exactly the movement 返回上级 in the sidebar makes, so it
+  // is captured the same way and the header shrinks back into the row it came
+  // from — the button being somewhere else does not make it a different act.
+  const parent = parentOf(route)
+  const goBack = parent
+    ? () => {
+        if (scopeOf(parent) !== scope) {
+          const key = navKeyOf(route)
+          if (key) captureScope(key)
+        }
+        navigate(parent)
+      }
+    : null
 
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <div className="sidebar__brand" onClick={() => select(null)}>
-          <span className="sidebar__logo">⛏</span>
-          <div>
-            <strong>HyperCraft</strong>
-            <small>{user.version}</small>
-          </div>
-        </div>
+    <div
+      className="app"
+      data-nav={compact && navOpen ? 'open' : undefined}
+      data-rail={!compact && railed ? 'on' : undefined}
+    >
+      {/* First thing in the tab order, visible only once it has focus: the
+          sidebar is a dozen-odd stops on a keyboard, and the content is behind
+          all of them. */}
+      <a className="skip" href="#main">
+        跳到主内容
+      </a>
 
-        <button className="btn btn--primary sidebar__new" onClick={() => setShowNew(true)}>
-          + 新建实例
-        </button>
+      <Sidebar
+        route={route}
+        scope={scope}
+        compact={compact}
+        railed={!compact && railed}
+        onToggleRail={() => setRailed((on) => !on)}
+        navigate={navigate}
+        follow={follow}
+        instances={instances}
+        recents={recents}
+        user={user}
+        system={system.info}
+        updateNotice={updateNotice}
+        alertCount={alerts.length}
+        java={java}
+        cores={cores}
+        plugins={plugins}
+        terminal={terminal}
+        onCreate={() => setShowNew(true)}
+        onOpenPalette={() => setPaletteOpen(true)}
+        sidebarRef={sidebarRef}
+      />
 
-        <nav className="sidebar__list">
-          {instances.length === 0 && (
-            <p className="sidebar__empty">还没有实例，先新建一个吧。</p>
+      {/* Only ever visible under an open drawer; it is what makes "tap the page
+          to dismiss" work, and it stops clicks reaching what it covers. */}
+      <div className="scrim" aria-hidden="true" onClick={() => setNavOpen(false)} />
+
+      <div className="shell">
+        <TopBar
+          crumbs={crumbs}
+          user={user}
+          compact={compact}
+          navOpen={navOpen}
+          onToggleNav={() => setNavOpen((open) => !open)}
+          toggleRef={navToggle}
+          onBack={goBack}
+          backHref={parent ? pathOf(parent) : null}
+          backLabel={parent ? labelOfRoute(parent, instances) : null}
+          onOpenPalette={() => setPaletteOpen(true)}
+          onChangePassword={() => setShowPassword(true)}
+          onSignOut={() => void signOut()}
+        />
+
+        <main className="main" id="main" tabIndex={-1}>
+          {loadError && <div className="alert alert--error">{loadError}</div>}
+
+          {route.kind === 'settings' ? (
+            <SettingsPage section={route.section} update={update} runningNames={runningNames} />
+          ) : route.kind === 'host' ? (
+            route.section === 'terminal' ? (
+              <HostTerminal
+                terminal={terminal}
+                onOpenSettings={() => navigate({ kind: 'host', section: 'config' })}
+              />
+            ) : (
+              <HostPage
+                section={route.section}
+                system={system}
+                instances={instances}
+                terminal={terminal}
+                onNavigate={navigate}
+              />
+            )
+          ) : route.kind === 'library' ? (
+            route.section === 'java' ? (
+              <JavaPage
+                java={java}
+                view={route.view}
+                onOpenView={(view) => openLibrary('java', view)}
+                onOpenCores={() => openLibrary('cores', 'stock')}
+              />
+            ) : route.section === 'cores' ? (
+              <CoreLibraryPage
+                cores={cores}
+                view={route.view}
+                onOpenView={(view) => openLibrary('cores', view)}
+                onOpenJava={() => openLibrary('java', 'installed')}
+              />
+            ) : openedPlugin ? (
+              <PluginDetailPage
+                key={openedPlugin.id}
+                item={openedPlugin}
+                plugins={plugins}
+                onBack={() => openLibrary('plugins', 'list')}
+              />
+            ) : route.view === 'source' ? (
+              <PluginSourceSettings plugins={plugins} />
+            ) : (
+              <PluginLibraryPage
+                plugins={plugins}
+                view={route.view}
+                onOpenView={(view) => openLibrary('plugins', view)}
+                onOpenPlugin={(id) =>
+                  navigate({ kind: 'library', section: 'plugins', view: 'list', pluginId: id })
+                }
+                onOpenSettings={() => openLibrary('plugins', 'source')}
+                onOpenInstance={(id) => openInstance(id, 'plugins')}
+              />
+            )
+          ) : route.kind === 'instances' ? (
+            <InstanceList
+              instances={instances}
+              query={route.query}
+              state={route.state}
+              onFilter={(next: { query: string; state: StateFilter }) =>
+                // Replaces rather than pushes: typing five characters into the
+                // search box must not put five entries in the back stack.
+                navigate({ kind: 'instances', ...next }, true)
+              }
+              onNavigate={navigate}
+              onCreate={() => setShowNew(true)}
+              onImport={() => setShowImport(true)}
+              onChanged={applyInstance}
+            />
+          ) : route.kind === 'instance' ? (
+            selected ? (
+              <InstanceView
+                key={selected.id}
+                instance={selected}
+                section={route.section}
+                tab={route.tab}
+                cores={cores}
+                plugins={plugins}
+                onChanged={applyInstance}
+                onDeleted={() => {
+                  navigate({ kind: 'instances', query: '', state: 'all' })
+                  void refresh()
+                }}
+                onOpenSection={(section) => openInstance(route.id, section)}
+                onOpenPluginTab={(tab) =>
+                  navigate({
+                    kind: 'instance',
+                    id: route.id,
+                    section: 'plugins',
+                    tab: tab === 'browse' ? 'browse' : undefined,
+                  })
+                }
+                onOpenCoreLibrary={() => openLibrary('cores', 'stock')}
+              />
+            ) : (
+              <div className="alert">
+                找不到这个实例，它可能已经被删除了。
+                <button
+                  className="link"
+                  onClick={() => navigate({ kind: 'instances', query: '', state: 'all' })}
+                >
+                  回到实例列表
+                </button>
+              </div>
+            )
+          ) : (
+            <Dashboard
+              instances={instances}
+              system={system.info}
+              alerts={alerts}
+              onSelect={openInstance}
+              onCreate={() => setShowNew(true)}
+              onNavigate={navigate}
+              onChanged={applyInstance}
+            />
           )}
-          {instances.map((item) => (
-            <button
-              key={item.id}
-              className={`sidebar__item${item.id === selectedId ? ' sidebar__item--active' : ''}`}
-              onClick={() => select(item.id)}
-            >
-              <span className={`status__dot status__dot--${item.state}`} />
-              <span className="sidebar__name">{item.name}</span>
-              <span className="sidebar__state">{STATE_LABELS[item.state]}</span>
-            </button>
-          ))}
-        </nav>
+        </main>
+      </div>
 
-        <div className="sidebar__footer">
-          <span title={user.username}>{user.username}</span>
-          <button className="link" onClick={() => setShowPassword(true)}>
-            修改密码
-          </button>
-          <button className="link" onClick={() => void signOut()}>
-            退出
-          </button>
-        </div>
-      </aside>
-
-      <main className="main">
-        {loadError && <div className="alert alert--error">{loadError}</div>}
-
-        {selected ? (
-          <InstanceView
-            key={selected.id}
-            instance={selected}
-            onChanged={applyInstance}
-            onDeleted={() => {
-              select(null)
-              void refresh()
-            }}
-          />
-        ) : (
-          <Welcome
-            instances={instances}
-            onSelect={select}
-            onCreate={() => setShowNew(true)}
-          />
-        )}
-      </main>
+      {paletteOpen && (
+        <CommandPalette
+          instances={instances}
+          onClose={() => setPaletteOpen(false)}
+          onNavigate={navigate}
+          onCreate={() => {
+            setPaletteOpen(false)
+            setShowNew(true)
+          }}
+          onImport={() => {
+            setPaletteOpen(false)
+            setShowImport(true)
+          }}
+        />
+      )}
 
       {showNew && (
         <NewInstanceDialog
+          cores={cores}
           onCancel={() => setShowNew(false)}
           onCreated={(created) => {
             setShowNew(false)
             setInstances((prev) => [...prev, created])
-            select(created.id)
+            openInstance(created.id)
+          }}
+          onOpenLibrary={() => {
+            setShowNew(false)
+            openLibrary('cores', 'download')
+          }}
+        />
+      )}
+
+      {showImport && (
+        <ImportInstanceDialog
+          onCancel={() => setShowImport(false)}
+          onImported={(created) => {
+            setShowImport(false)
+            setInstances((prev) => [...prev, created])
+            openInstance(created.id)
           }}
         />
       )}
@@ -182,52 +631,6 @@ export default function App() {
             setUser(null)
           }}
         />
-      )}
-    </div>
-  )
-}
-
-function Welcome({
-  instances,
-  onSelect,
-  onCreate,
-}: {
-  instances: InstanceStatus[]
-  onSelect: (id: string) => void
-  onCreate: () => void
-}) {
-  return (
-    <div className="welcome">
-      <h1>服务器总览</h1>
-      <p className="welcome__lead">
-        面板以后台守护进程的方式持有服务器进程。关掉浏览器、退出登录，甚至重启路由，
-        服务器都会照常运行 —— 只有停止面板本身才会（优雅地）关掉它们。
-      </p>
-
-      <HostOverview />
-
-      {instances.length === 0 ? (
-        <div className="welcome__empty">
-          <p>还没有任何实例。</p>
-          <button className="btn btn--primary" onClick={onCreate}>
-            新建第一个服务器
-          </button>
-        </div>
-      ) : (
-        <div className="cards">
-          {instances.map((item) => (
-            <button key={item.id} className="card" onClick={() => onSelect(item.id)}>
-              <div className="card__head">
-                <span className={`status__dot status__dot--${item.state}`} />
-                <strong>{item.name}</strong>
-              </div>
-              <div className="card__meta">{STATE_LABELS[item.state]}</div>
-              <div className="card__path" title={item.directory}>
-                {item.directory}
-              </div>
-            </button>
-          ))}
-        </div>
       )}
     </div>
   )

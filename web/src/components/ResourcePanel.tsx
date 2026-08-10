@@ -3,12 +3,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { formatBytes, formatPercent, formatTime } from '../format'
 import type { InstanceMetrics, InstanceStatus } from '../types'
-import { TimeSeriesChart, type Point } from './TimeSeriesChart'
+import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
+import { CHART_HEIGHT, TimeSeriesChart, type Point } from './TimeSeriesChart'
 
-// Validated against the panel's dark chart surface (#131720): CVD ΔE 19.6,
-// both above 3:1 contrast. See internal notes in styles.css.
-const CPU_COLOR = '#3987e5'
-const MEMORY_COLOR = '#199e70'
+// Named rather than literal: each theme steps the pair for its own chart
+// surface, and both steps are validated where they are defined (styles.css).
+const CPU_COLOR = 'var(--series-cpu)'
+const MEMORY_COLOR = 'var(--series-memory)'
 
 const RANGES = [
   { label: '5 分钟', ms: 5 * 60_000 },
@@ -16,7 +17,17 @@ const RANGES = [
   { label: '1 小时', ms: 60 * 60_000 },
 ] as const
 
-export function ResourcePanel({ instance }: { instance: InstanceStatus }) {
+interface Props {
+  instance: InstanceStatus
+  /** False while another tab is in front. The pane stays mounted so coming
+   *  back to it is instant, which would otherwise mean a hidden chart polling
+   *  every five seconds for the rest of the session — so the poll stops with
+   *  the pane and takes a fresh sample the moment it is back in front. Same
+   *  contract as ConsoleStatus, for the same reason. */
+  active: boolean
+}
+
+export function ResourcePanel({ instance, active }: Props) {
   const [data, setData] = useState<InstanceMetrics | null>(null)
   const [error, setError] = useState<string | null>(null)
   // 5 minutes by default: a freshly started panel has minutes of history, and
@@ -30,6 +41,7 @@ export function ResourcePanel({ instance }: { instance: InstanceStatus }) {
   instanceId.current = instance.id
 
   useEffect(() => {
+    if (!active) return
     let cancelled = false
 
     const load = async () => {
@@ -52,7 +64,7 @@ export function ResourcePanel({ instance }: { instance: InstanceStatus }) {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [instance.id])
+  }, [instance.id, active])
 
   const windowed = useMemo(() => {
     if (!data) return { cpu: [] as Point[], memory: [] as Point[], samples: [] }
@@ -85,13 +97,33 @@ export function ResourcePanel({ instance }: { instance: InstanceStatus }) {
     return <div className="alert alert--error">{error}</div>
   }
   if (!data) {
-    return <div className="panel">加载中…</div>
+    // Two cards with a chart-sized hole in each: the same shape the answer
+    // arrives in, so the charts do not shove the page down when they land.
+    return (
+      <SkeletonScreen label="正在读取监控数据…">
+        <div className="chart-filters">
+          <Skeleton w="56px" h={24} pill />
+          <Skeleton w="56px" h={24} pill />
+          <Skeleton w="56px" h={24} pill />
+        </div>
+        {['cpu', 'memory'].map((key) => (
+          <SkeletonPanel key={key} title={false}>
+            <div className="chart-head">
+              <Skeleton w="88px" h={15} />
+              <Skeleton w="42%" h={12} />
+            </div>
+            <Skeleton w="100%" h={CHART_HEIGHT} />
+            <Skeleton w="70%" h={12} />
+          </SkeletonPanel>
+        ))}
+      </SkeletonScreen>
+    )
   }
 
   const xmxBytes = data.maxMemoryMB > 0 ? data.maxMemoryMB * 1024 * 1024 : 0
 
   return (
-    <div className="settings">
+    <div className="stack">
       {/* Filters sit in one row above everything they scope. */}
       <div className="chart-filters">
         <span className="chart-filters__label">时间范围</span>

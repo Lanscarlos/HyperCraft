@@ -3,8 +3,36 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- One per mode, so the browser chrome matches the page it frames. -->
+    <meta name="theme-color" content="#fff8f6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1a1110" media="(prefers-color-scheme: dark)" />
+    <meta name="description" content="HyperCraft —— 自托管的 Minecraft 服务器面板" />
+    <!-- Inline so the favicon travels inside the single binary with everything
+         else; percent-encoded UTF-8 because the glyph lives in a data URI. -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%238f4c38'/%3E%3Ctext x='16' y='24' font-size='19' text-anchor='middle'%3E%E2%9B%8F%3C/text%3E%3C/svg%3E"
+    />
     <title>HyperCraft 面板</title>
+    <!-- Mode is resolved before the first paint rather than in React, so a
+         reload never flashes the wrong one. The key and the three values match
+         theme.ts; "跟随系统" is stored as no key at all. -->
+    <script>
+      ;(function () {
+        var pref = null
+        try {
+          pref = localStorage.getItem('hypercraft.theme')
+        } catch (e) {
+          /* storage disabled; follow the system */
+        }
+        var dark =
+          pref === 'dark' ||
+          (pref !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+        document.documentElement.style.background = dark ? '#1a1110' : '#fff8f6'
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

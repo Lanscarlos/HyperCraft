@@ -35,25 +35,36 @@ type outbound struct {
 
 // historyMessage is the opening frame: the scrollback plus the current state.
 //
+// TTY says which protocol this connection speaks, and is fixed for its
+// lifetime. When it is set, Lines is empty and the scrollback arrives instead
+// as a binary frame immediately after this one — raw bytes cannot be spliced
+// into JSON without breaking the multi-byte characters and escape sequences
+// that are the whole point of a terminal.
+//
 // Lines deliberately has no omitempty. An instance with nothing buffered yet
 // must still send `"lines": []`, or the client has to guard every access.
 type historyMessage struct {
 	Type  string              `json:"type"`
+	TTY   bool                `json:"tty"`
 	Lines []instance.Line     `json:"lines"`
 	State *instance.StateInfo `json:"state"`
 }
 
-// inbound is a message received from the browser.
+// inbound is a message received from the browser in a text frame. Keystrokes
+// for a terminal console ride in binary frames instead.
 type inbound struct {
 	Type    string `json:"type"`
 	Command string `json:"command,omitempty"`
+	Cols    uint16 `json:"cols,omitempty"`
+	Rows    uint16 `json:"rows,omitempty"`
 }
 
 // handleConsoleSocket streams one instance's console to a browser and relays
-// typed commands back to the server's stdin.
+// what is typed back to the server.
 //
 // The socket is purely an observer of the instance: dropping it, or dropping
-// every socket, does not touch the running process.
+// every socket, does not touch the running process. That holds for a terminal
+// console too — unlike the host shell, where the socket *is* the session.
 func (s *Server) handleConsoleSocket(w http.ResponseWriter, r *http.Request) {
 	inst, ok := s.instanceFromPath(w, r)
 	if !ok {
@@ -68,15 +79,26 @@ func (s *Server) handleConsoleSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	events, history, state := inst.Subscribe()
-	defer inst.Unsubscribe(events)
+	att := inst.Attach()
+	defer inst.Unsubscribe(att.Events)
+
+	// Size the terminal before anything is written to it, so the server's first
+	// lines are already wrapped for the window that will show them. The client
+	// re-reports on every resize; this is only the opening value.
+	if att.TTY {
+		// A client that names no size gets no viewport, rather than one that
+		// clamps up from zero and shrinks the terminal for everybody else.
+		if cols, rows := uint16Param(r, "cols", 0), uint16Param(r, "rows", 0); cols > 0 && rows > 0 {
+			inst.SetViewport(att.Events, cols, rows)
+		}
+	}
 
 	// notices carries messages produced by the read pump, so that every write
 	// to the connection still happens on this one goroutine (gorilla requires
 	// a single concurrent writer).
 	notices := make(chan outbound, 8)
 	readerDone := make(chan struct{})
-	go s.consoleReadPump(conn, inst, notices, readerDone)
+	go s.consoleReadPump(conn, inst, att, notices, readerDone)
 
 	writeJSON := func(msg any) error {
 		if err := conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
@@ -84,13 +106,27 @@ func (s *Server) handleConsoleSocket(w http.ResponseWriter, r *http.Request) {
 		}
 		return conn.WriteJSON(msg)
 	}
+	writeBinary := func(data []byte) error {
+		if err := conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+			return err
+		}
+		return conn.WriteMessage(websocket.BinaryMessage, data)
+	}
 	send := func(msg outbound) error { return writeJSON(msg) }
 
-	if history == nil {
-		history = []instance.Line{}
+	lines := att.Lines
+	if lines == nil {
+		lines = []instance.Line{}
 	}
-	if err := writeJSON(historyMessage{Type: "history", Lines: history, State: &state}); err != nil {
+	if err := writeJSON(historyMessage{
+		Type: "history", TTY: att.TTY, Lines: lines, State: &att.State,
+	}); err != nil {
 		return
+	}
+	if len(att.Terminal) > 0 {
+		if err := writeBinary(att.Terminal); err != nil {
+			return
+		}
 	}
 
 	ticker := time.NewTicker(pingPeriod)
@@ -109,12 +145,26 @@ func (s *Server) handleConsoleSocket(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-		case ev, open := <-events:
+		case ev, open := <-att.Events:
 			if !open {
 				// The broker dropped us for falling behind. Tell the client to
-				// reconnect and refill the gap from /logs?since=.
+				// reconnect: a line console refills the gap from /logs?since=,
+				// a terminal one replays the scrollback.
 				_ = send(outbound{Type: "resync", Message: "console stream fell behind; reconnecting"})
 				return
+			}
+			if ev.Type == instance.EventOutput {
+				if err := writeBinary(ev.Data); err != nil {
+					return
+				}
+				continue
+			}
+			// The protocol this connection announced is the one it gets, even
+			// if the instance's config is switched underneath it: a terminal
+			// client handed a line event would draw text the byte stream is
+			// also about to deliver. The change lands on the next reconnect.
+			if att.TTY && ev.Type == instance.EventLine {
+				continue
 			}
 			out := outbound{Type: string(ev.Type), Line: ev.Line, State: ev.State}
 			if err := send(out); err != nil {
@@ -137,19 +187,26 @@ func (s *Server) handleConsoleSocket(w http.ResponseWriter, r *http.Request) {
 func (s *Server) consoleReadPump(
 	conn *websocket.Conn,
 	inst *instance.Instance,
+	att instance.Attachment,
 	notices chan<- outbound,
 	done chan<- struct{},
 ) {
 	defer close(done)
 
-	conn.SetReadLimit(maxCommandBytes)
+	// A terminal console carries keystrokes, and a paste is one message; a line
+	// console only ever carries a single command.
+	if att.TTY {
+		conn.SetReadLimit(terminalReadLimit)
+	} else {
+		conn.SetReadLimit(maxCommandBytes)
+	}
 	_ = conn.SetReadDeadline(time.Now().Add(pongWait))
 	conn.SetPongHandler(func(string) error {
 		return conn.SetReadDeadline(time.Now().Add(pongWait))
 	})
 
 	for {
-		_, data, err := conn.ReadMessage()
+		kind, data, err := conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				s.log.Debug("console socket closed", "err", err)
@@ -158,6 +215,19 @@ func (s *Server) consoleReadPump(
 		}
 		// Any traffic proves the client is alive, not just pongs.
 		_ = conn.SetReadDeadline(time.Now().Add(pongWait))
+
+		if kind == websocket.BinaryMessage {
+			// Keystrokes for the server's own console. Silently ignored when
+			// the instance is not on a terminal: there is nothing there to type
+			// into, and a client in the wrong mode should reconnect, not have
+			// its keys turned into commands.
+			if att.TTY {
+				if err := inst.SendInput(data); err != nil && !errors.Is(err, instance.ErrNotRunning) {
+					s.log.Debug("console input rejected", "err", err)
+				}
+			}
+			continue
+		}
 
 		var msg inbound
 		if err := json.Unmarshal(data, &msg); err != nil {
@@ -173,6 +243,10 @@ func (s *Server) consoleReadPump(
 					text = "服务器未在运行，无法发送命令"
 				}
 				notify(notices, outbound{Type: "error", Message: text})
+			}
+		case "resize":
+			if att.TTY && msg.Cols > 0 && msg.Rows > 0 {
+				inst.SetViewport(att.Events, msg.Cols, msg.Rows)
 			}
 		case "ping":
 			notify(notices, outbound{Type: "pong"})

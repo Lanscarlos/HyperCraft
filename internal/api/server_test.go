@@ -16,8 +16,11 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/instance"
+	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/mcprops"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
+	"github.com/lanscarlos/hypercraft/internal/plugin"
+	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
 )
 
@@ -31,9 +34,20 @@ type testEnv struct {
 	server *httptest.Server
 	client *http.Client
 	mgr    *instance.Manager
+	store  *store.Store
+	paths  config.Paths
+	// fill stands in for the PaperMC API and its CDN; see handlers_downloads_test.go.
+	fill *fakeFill
+	// adoptium stands in for the Java download API; see handlers_java_test.go.
+	adoptium *fakeAdoptium
+	// github stands in for the GitHub releases API; see handlers_plugins_test.go.
+	github *fakeGitHub
 }
 
-func newTestEnv(t *testing.T) *testEnv {
+// newTestEnv builds a panel backed by a temporary data directory. Tests that
+// need a component the default wiring leaves out — the updater, say — pass an
+// option to fill it in.
+func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 	t.Helper()
 
 	paths := config.NewPaths(t.TempDir())
@@ -53,23 +67,53 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mgr := instance.NewManager(st, paths.ServersRoot(), logger)
+	fill := newFakeFill(t)
+	adoptium := newFakeAdoptium(t)
+	gh := newFakeGitHub(t)
+	pluginLibrary := plugin.NewLibrary(paths.PluginsRoot())
 
-	srv := httptest.NewServer(NewServer(Options{
+	options := Options{
 		Manager:  mgr,
 		Store:    st,
 		Sessions: auth.NewSessionStore(time.Hour),
 		Metrics:  metrics.New(time.Second, time.Minute, t.TempDir(), logger),
-		Panel:    panel,
-		Version:  "test",
-		Logger:   logger,
-	}).Handler())
+		Paths:    paths,
+		Jars: serverjar.NewDownloader(
+			serverjar.NewClient(fill.URL(), "test"),
+			serverjar.NewLibrary(paths.CoresRoot()),
+			logger,
+		),
+		Java: javaruntime.NewInstaller(
+			javaruntime.NewClient(adoptium.URL(), "test"),
+			javaruntime.NewStore(paths.JavaRoot()),
+			logger,
+		),
+		Plugins: plugin.NewDownloader(
+			plugin.NewClient(gh.URL(), "test"),
+			pluginLibrary,
+			logger,
+		),
+		InstancePlugins: plugin.NewInstances(pluginLibrary, paths.InstancePluginsFile()),
+		PendingPlugins:  plugin.NewPending(paths.PendingPluginsFile()),
+		Panel:           panel,
+		Version:         "test",
+		Logger:          logger,
+	}
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	srv := httptest.NewServer(NewServer(options).Handler())
 	t.Cleanup(srv.Close)
 
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatalf("cookiejar: %v", err)
 	}
-	return &testEnv{t: t, server: srv, client: &http.Client{Jar: jar}, mgr: mgr}
+	return &testEnv{
+		t: t, server: srv, client: &http.Client{Jar: jar},
+		mgr: mgr, store: st, paths: paths, fill: fill, adoptium: adoptium, github: gh,
+	}
 }
 
 // do issues a request with the CSRF header the UI always sends.
@@ -79,6 +123,23 @@ func (e *testEnv) do(method, path string, body any) *http.Response {
 }
 
 func (e *testEnv) doRaw(method, path string, body any, csrf bool) *http.Response {
+	e.t.Helper()
+
+	req := e.request(method, path, body)
+	if !csrf {
+		req.Header.Del(csrfHeader)
+	}
+
+	resp, err := e.client.Do(req)
+	if err != nil {
+		e.t.Fatalf("%s %s: %v", method, path, err)
+	}
+	return resp
+}
+
+// request builds a request the way the UI sends them — JSON body, CSRF header
+// — for callers that need to adjust it before it goes out.
+func (e *testEnv) request(method, path string, body any) *http.Request {
 	e.t.Helper()
 
 	var reader io.Reader
@@ -97,15 +158,8 @@ func (e *testEnv) doRaw(method, path string, body any, csrf bool) *http.Response
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if csrf {
-		req.Header.Set(csrfHeader, "1")
-	}
-
-	resp, err := e.client.Do(req)
-	if err != nil {
-		e.t.Fatalf("%s %s: %v", method, path, err)
-	}
-	return resp
+	req.Header.Set(csrfHeader, "1")
+	return req
 }
 
 func (e *testEnv) login() {

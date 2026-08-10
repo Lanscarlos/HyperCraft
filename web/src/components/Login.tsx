@@ -25,6 +25,9 @@ export function Login({ onSignedIn }: { onSignedIn: (user: User) => void }) {
   return (
     <div className="login">
       <form className="login__card" onSubmit={submit}>
+        <span className="login__mark" aria-hidden="true">
+          ⛏
+        </span>
         <h1 className="login__title">HyperCraft</h1>
         <p className="login__subtitle">Minecraft 服务器面板</p>
 

@@ -1,196 +1,208 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
-import { api } from '../api'
-import type { InstanceStatus, StateInfo } from '../types'
-import { STATE_LABELS, isLive, mergeState } from '../types'
-import { Console } from './Console'
+import { DUR } from '../motion'
+import type { InstanceSection, PluginTab } from '../routes'
+import type { InstanceStatus } from '../types'
+import type { CoreController } from '../useCores'
+import type { PluginController } from '../usePlugins'
+import type { FileJump } from './FileManager'
 import { FileManager } from './FileManager'
+import { InstanceCockpit } from './InstanceCockpit'
+import { InstancePlugins } from './InstancePlugins'
 import { LaunchSettings } from './LaunchSettings'
 import { PropertiesEditor } from './PropertiesEditor'
 import { ResourcePanel } from './ResourcePanel'
 
-type Tab = 'console' | 'files' | 'resources' | 'launch' | 'properties'
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'console', label: '控制台' },
-  { id: 'files', label: '文件' },
-  { id: 'resources', label: '资源' },
-  { id: 'launch', label: '启动设置' },
-  { id: 'properties', label: '服务器配置' },
-]
-
 interface Props {
   instance: InstanceStatus
+  section: InstanceSection
+  /** Which half of the plugin page is showing. Only 插件 has two. */
+  tab?: PluginTab
+  cores: CoreController
+  /** The panel-wide plugin library, so 已装插件 can add a source itself. */
+  plugins: PluginController
   onChanged: (instance: InstanceStatus) => void
   onDeleted: () => void
+  onOpenSection: (section: InstanceSection) => void
+  onOpenPluginTab: (tab: PluginTab) => void
+  /** The panel-wide core library, for "download another one". */
+  onOpenCoreLibrary: () => void
 }
 
-export function InstanceView({ instance, onChanged, onDeleted }: Props) {
-  const [tab, setTab] = useState<Tab>('console')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+/**
+ * One server, with its sidebar's section on screen.
+ *
+ * Sections used to be tabs inside this component; they are sidebar entries now
+ * (see Sidebar), which is what makes the console a page rather than a tab and
+ * keeps every part of one server at the same depth. What has not changed is
+ * that a section, once opened, stays mounted behind whatever replaced it: 文件
+ * and 监控 are two clicks apart and are exactly the pair you bounce between
+ * while a server starts, and paying the fetch twice — plus losing the scroll
+ * position and any open editor — was the whole cost of the old teardown.
+ *
+ * Lazily, though: mounting all six up front would fire six requests for panels
+ * most sessions never open.
+ */
+export function InstanceView({
+  instance,
+  section,
+  tab,
+  cores,
+  plugins,
+  onChanged,
+  onDeleted,
+  onOpenSection,
+  onOpenPluginTab,
+  onOpenCoreLibrary,
+}: Props) {
+  const [visited, setVisited] = useState<Set<InstanceSection>>(
+    () => new Set<InstanceSection>([section]),
+  )
+  // A directory another pane asked the file manager to open — the plugin
+  // list's 配置 shortcut, which is most of what saves an operator from
+  // hand-walking plugins/<Name>/ twenty times a week.
+  const [jump, setJump] = useState<FileJump | undefined>()
+  // The section that was on screen a moment ago, kept visible over the new one
+  // for the length of its exit. Without it a switch in the sidebar was a cut:
+  // the outgoing pane was `hidden` in the same frame the incoming one appeared,
+  // so the only motion in the whole content area was whatever the arriving
+  // pane's own entrance had time to show underneath it.
+  const [leaving, setLeaving] = useState<InstanceSection | null>(null)
+  const shown = useRef(section)
 
   useEffect(() => {
-    setTab('console')
-  }, [instance.id])
+    setVisited((prev) => (prev.has(section) ? prev : new Set(prev).add(section)))
+  }, [section])
 
-  // The console websocket is the fastest source of state changes, so state
-  // pushed from it updates the header without waiting for the list poll.
-  const applyState = useCallback(
-    (state: StateInfo) => onChanged(mergeState(instance, state)),
-    [instance, onChanged],
-  )
+  useLayoutEffect(() => {
+    if (shown.current === section) return
+    const previous = shown.current
+    shown.current = section
+    setLeaving(previous)
+    const timer = window.setTimeout(() => setLeaving(null), DUR.fast)
+    return () => window.clearTimeout(timer)
+  }, [section])
 
-  const power = async (action: 'start' | 'stop' | 'restart' | 'kill') => {
-    if (action === 'kill') {
-      const ok = window.confirm(
-        '强制结束会直接杀掉进程，不会保存世界，可能丢失最近的存档数据。确定继续吗？',
-      )
-      if (!ok) return
-    }
-    setBusy(true)
-    setError(null)
-    try {
-      onChanged(await api.power(instance.id, action))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '操作失败')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const live = isLive(instance.state)
+  // Switching servers is a remount — App keys this component on the instance
+  // id — so nothing carries over and there is no reset to do here. There used
+  // to be one, and on mount it raced the effect above and threw away the very
+  // section the URL had asked for: a reload of /i/<id>/plugins rendered an
+  // empty pane.
 
   return (
     <div className="instance">
-      <header className="instance__header">
-        <div className="instance__identity">
-          <h2>{instance.name}</h2>
-          <StatusBadge instance={instance} />
-        </div>
+      {/* The console is never torn down: its websocket and scrollback are the
+          one thing in the panel that is expensive to lose. */}
+      <Pane id="console" active={section === 'console'} leaving={leaving === 'console'}>
+        <InstanceCockpit
+          instance={instance}
+          active={section === 'console'}
+          onChanged={onChanged}
+          onOpenSection={onOpenSection}
+        />
+      </Pane>
 
-        <div className="instance__actions">
-          <button
-            className="btn btn--primary"
-            onClick={() => power('start')}
-            disabled={busy || live}
-          >
-            启动
-          </button>
-          <button
-            className="btn"
-            onClick={() => power('stop')}
-            disabled={busy || !live}
-          >
-            停止
-          </button>
-          <button
-            className="btn"
-            onClick={() => power('restart')}
-            disabled={busy}
-          >
-            重启
-          </button>
-          <button
-            className="btn btn--danger"
-            onClick={() => power('kill')}
-            disabled={busy || !live}
-          >
-            强制结束
-          </button>
-        </div>
-      </header>
-
-      {error && <div className="alert alert--error">{error}</div>}
-      {instance.message && !error && (
-        <div className="instance__message">{instance.message}</div>
+      {visited.has('metrics') && (
+        <Pane id="metrics" active={section === 'metrics'} leaving={leaving === 'metrics'} scroll>
+          <ResourcePanel instance={instance} active={section === 'metrics'} />
+        </Pane>
       )}
-
-      <nav className="tabs">
-        {TABS.map((entry) => (
-          <button
-            key={entry.id}
-            className={`tabs__tab${tab === entry.id ? ' tabs__tab--active' : ''}`}
-            onClick={() => setTab(entry.id)}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </nav>
-
-      <div className="instance__body">
-        {/* The console stays mounted so its websocket and scrollback survive a
-            trip to the settings tabs. */}
-        <div hidden={tab !== 'console'} className="instance__pane">
-          <Console
-            instanceId={instance.id}
-            state={instance.state}
-            onState={applyState}
+      {visited.has('files') && (
+        <Pane id="files" active={section === 'files'} leaving={leaving === 'files'} scroll>
+          <FileManager instance={instance} jump={jump} />
+        </Pane>
+      )}
+      {visited.has('plugins') && (
+        <Pane id="plugins" active={section === 'plugins'} leaving={leaving === 'plugins'} scroll>
+          <InstancePlugins
+            instance={instance}
+            plugins={plugins}
+            tab={tab ?? 'installed'}
+            onSelectTab={onOpenPluginTab}
+            onChanged={onChanged}
+            onOpenSection={(target, path) => {
+              if (target === 'files' && path) {
+                setVisited((prev) => new Set(prev).add('files'))
+                setJump({ path, token: Date.now() })
+              }
+              onOpenSection(target)
+            }}
           />
-        </div>
-        {tab === 'files' && (
-          <div className="instance__pane instance__pane--scroll">
-            <FileManager instance={instance} />
-          </div>
-        )}
-        {tab === 'resources' && (
-          <div className="instance__pane instance__pane--scroll">
-            <ResourcePanel instance={instance} />
-          </div>
-        )}
-        {tab === 'launch' && (
-          <div className="instance__pane instance__pane--scroll">
-            <LaunchSettings
-              instance={instance}
-              onSaved={onChanged}
-              onDeleted={onDeleted}
-            />
-          </div>
-        )}
-        {tab === 'properties' && (
-          <div className="instance__pane instance__pane--scroll">
-            <PropertiesEditor instance={instance} />
-          </div>
-        )}
-      </div>
+        </Pane>
+      )}
+      {visited.has('properties') && (
+        <Pane
+          id="properties"
+          active={section === 'properties'}
+          leaving={leaving === 'properties'}
+          scroll
+        >
+          <PropertiesEditor instance={instance} />
+        </Pane>
+      )}
+      {visited.has('settings') && (
+        <Pane id="settings" active={section === 'settings'} leaving={leaving === 'settings'} scroll>
+          <LaunchSettings
+            instance={instance}
+            cores={cores}
+            onSaved={onChanged}
+            onDeleted={onDeleted}
+            onOpenLibrary={onOpenCoreLibrary}
+          />
+        </Pane>
+      )}
     </div>
   )
 }
 
-function StatusBadge({ instance }: { instance: InstanceStatus }) {
-  const uptime = useUptime(instance.startedAt, isLive(instance.state))
+/** `hidden` rather than unmounted — and `hidden` specifically, because it is
+ *  what keeps a background pane out of the tab order and off a screen reader.
+ *  A pane on its way out is the one exception, and only for a tenth of a
+ *  second: it is a picture of the page you just left, laid over the one
+ *  arriving, so it is taken out of the tab order by hand instead. */
+function Pane({
+  id,
+  active,
+  leaving,
+  scroll,
+  children,
+}: {
+  id: InstanceSection
+  active: boolean
+  leaving: boolean
+  scroll?: boolean
+  children: React.ReactNode
+}) {
+  // Every other view in the panel gets its entrance from the fact that it was
+  // just created; these were created the first time you opened them and are
+  // only being un-hidden, which no CSS animation fires on. So the switch marks
+  // the pane that has come forward for the length of one entrance and then
+  // takes the mark off — and taking it off is the point, because a class that
+  // stayed would mean the animation never ran a second time.
+  //
+  // Before paint, not after. As a passive effect the mark landed one frame late
+  // — the pane had already painted where the animation was about to put it, so
+  // the first thing the reader saw was the finished state, and the entrance
+  // then started over from underneath it. That single wrong frame is most of
+  // why switching sections looked like it had no transition at all.
+  const [entering, setEntering] = useState(false)
+  useLayoutEffect(() => {
+    if (!active) return
+    setEntering(true)
+    const timer = window.setTimeout(() => setEntering(false), DUR.mid)
+    return () => window.clearTimeout(timer)
+  }, [active])
 
   return (
-    <div className="status">
-      <span className={`status__dot status__dot--${instance.state}`} />
-      <span className="status__label">{STATE_LABELS[instance.state]}</span>
-      {instance.pid ? <span className="status__meta">PID {instance.pid}</span> : null}
-      {uptime && <span className="status__meta">已运行 {uptime}</span>}
-      {instance.state === 'crashed' && instance.exitCode != null && (
-        <span className="status__meta">退出码 {instance.exitCode}</span>
-      )}
+    <div
+      hidden={!active && !leaving}
+      aria-hidden={leaving ? true : undefined}
+      className={`instance__pane${scroll ? ' instance__pane--scroll' : ''}${
+        entering ? ' instance__pane--entering' : ''
+      }${leaving ? ' instance__pane--leaving' : ''}`}
+      id={`instance-panel-${id}`}
+    >
+      {children}
     </div>
   )
-}
-
-/** Ticks once a second while the server is up. */
-function useUptime(startedAt: string | undefined, live: boolean): string | null {
-  const [now, setNow] = useState(() => Date.now())
-
-  useEffect(() => {
-    if (!live || !startedAt) return
-    const timer = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(timer)
-  }, [live, startedAt])
-
-  if (!live || !startedAt) return null
-
-  const seconds = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000))
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const secs = seconds % 60
-
-  if (hours > 0) return `${hours} 小时 ${minutes} 分`
-  if (minutes > 0) return `${minutes} 分 ${secs} 秒`
-  return `${secs} 秒`
 }

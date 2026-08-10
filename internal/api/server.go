@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -15,14 +16,21 @@ import (
 
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
+	"github.com/lanscarlos/hypercraft/internal/hostterm"
 	"github.com/lanscarlos/hypercraft/internal/instance"
+	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
+	"github.com/lanscarlos/hypercraft/internal/plugin"
+	"github.com/lanscarlos/hypercraft/internal/selfupdate"
+	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
 )
 
 // sessionCookie is the browser cookie holding the session token. It is also
-// what authenticates the console websocket, since browsers cannot set headers
-// on a WebSocket handshake.
+// what authenticates the console websocket for a browser, which cannot set
+// headers on a WebSocket handshake. A native client has no such limit and
+// presents its device token in the Authorization header there like anywhere
+// else; see bearerScheme.
 const sessionCookie = "hypercraft_session"
 
 // csrfHeader must be present on every state-changing request. A custom header
@@ -30,14 +38,68 @@ const sessionCookie = "hypercraft_session"
 // so requiring one blocks form-based CSRF without any token plumbing.
 const csrfHeader = "X-HyperCraft"
 
+// bearerScheme prefixes the Authorization header a native client sends. Only a
+// device token is accepted there, never a session token: keeping the two kinds
+// apart means a browser session can never be lifted out and replayed as a
+// long-lived credential. See internal/auth.DeviceToken.
+const bearerScheme = "Bearer "
+
 // Server wires the HTTP surface to the instance manager.
 type Server struct {
 	log      *slog.Logger
 	mgr      *instance.Manager
 	store    *store.Store
 	sessions *auth.SessionStore
-	metrics  *metrics.Collector
+	// devices holds the paired native clients. It is seeded from the panel
+	// config and is the runtime owner of that list from then on.
+	devices *auth.DeviceStore
+	// loginLimit throttles the two endpoints that check the panel password,
+	// and kdf caps how many of those checks run at once. Both are public and
+	// both are expensive; see ratelimit.go.
+	loginLimit *rateLimiter
+	kdf        *kdfGate
+	// authLog is the in-memory view of recent credential events behind
+	// GET /api/auth/events. The slog lines remain the system of record; see
+	// authlog.go.
+	authLog *authLog
+	// trustedProxies decides whether X-Forwarded-For is believed when working
+	// out which client a request belongs to. See config.Panel.TrustedProxies.
+	trustedProxies []netip.Prefix
+	metrics        *metrics.Collector
+	// paths is the panel's on-disk layout, used to seed the path picker with
+	// the directories an operator is most likely to want.
+	paths config.Paths
+	// jars fetches server cores from PaperMC into the panel-wide library.
+	// Optional: a nil downloader turns the feature off and leaves uploading a
+	// jar as the only way in.
+	jars *serverjar.Downloader
+	// java manages the Java runtimes servers are launched with. Optional, on
+	// the same terms as jars.
+	java *javaruntime.Installer
+	// plugins fetches plugin releases into the panel-wide plugin library, and
+	// instancePlugins hands copies out to servers. Optional as a pair: both
+	// nil turns plugin management off, and neither is useful without the
+	// other.
+	plugins         *plugin.Downloader
+	instancePlugins *plugin.Instances
+	// pendingPlugins records changes a running server has not seen yet, which
+	// is every plugin change: the directory is read once, at startup. Optional
+	// like the pair above — without it the page loses its banner, not its
+	// ability to install anything.
+	pendingPlugins *plugin.Pending
+	// updater installs new panel releases. Optional in the same way: nil turns
+	// in-panel updates off.
+	updater *selfupdate.Service
+	// terminal runs shells on the host. Optional, and even when present it
+	// does nothing until the operator flips config.Terminal.Enabled.
+	terminal *hostterm.Service
 	version  string
+
+	// The system java is found by forking one, so the answer is cached.
+	systemJavaMu    sync.Mutex
+	systemJavaCache javaruntime.SystemJava
+	systemJavaFound bool
+	systemJavaAt    time.Time
 
 	panelMu sync.RWMutex
 	panel   config.Panel
@@ -52,20 +114,51 @@ type Options struct {
 	Store    *store.Store
 	Sessions *auth.SessionStore
 	Metrics  *metrics.Collector
+	Paths    config.Paths
+	Jars     *serverjar.Downloader
+	Java     *javaruntime.Installer
+	Updater  *selfupdate.Service
+	Terminal *hostterm.Service
 	Panel    config.Panel
 	Version  string
 	Logger   *slog.Logger
+
+	Plugins         *plugin.Downloader
+	InstancePlugins *plugin.Instances
+	PendingPlugins  *plugin.Pending
 }
 
 func NewServer(opts Options) *Server {
+	trusted, bad := parseTrustedProxies(opts.Panel.TrustedProxies)
+	if len(bad) > 0 {
+		opts.Logger.Warn("ignoring unparseable trustedProxies entries",
+			"entries", strings.Join(bad, ", "))
+	}
+
 	s := &Server{
 		log:      opts.Logger,
 		mgr:      opts.Manager,
 		store:    opts.Store,
 		sessions: opts.Sessions,
+		devices:  auth.NewDeviceStore(opts.Panel.Devices),
+
+		loginLimit:     newRateLimiter(loginBurst, loginRefill),
+		kdf:            newKDFGate(defaultKDFSlots(), kdfWait),
+		authLog:        newAuthLog(),
+		trustedProxies: trusted,
+
 		metrics:  opts.Metrics,
+		paths:    opts.Paths,
+		jars:     opts.Jars,
+		java:     opts.Java,
+		plugins:  opts.Plugins,
+		updater:  opts.Updater,
+		terminal: opts.Terminal,
 		panel:    opts.Panel,
 		version:  opts.Version,
+
+		instancePlugins: opts.InstancePlugins,
+		pendingPlugins:  opts.PendingPlugins,
 		upgrader: websocket.Upgrader{
 			HandshakeTimeout: 10 * time.Second,
 			ReadBufferSize:   4096,
@@ -79,18 +172,55 @@ func NewServer(opts Options) *Server {
 
 func (s *Server) Handler() http.Handler { return s.handler }
 
+// persistPanel writes panel.json, folding in the current device list.
+//
+// The server is the sole writer of that file once it is running: a caller
+// saving its own copy would race a concurrent password change and could put the
+// old credential back.
+func (s *Server) persistPanel() error {
+	s.panelMu.Lock()
+	panel := s.panel
+	panel.Devices = s.devices.Snapshot()
+	s.panel = panel
+	s.panelMu.Unlock()
+	return s.store.SavePanel(panel)
+}
+
+// FlushDevices persists the device list if a token has been used since the last
+// write. LastUsed moves on every authenticated request, which is far too often
+// to touch the disk, so the panel flushes it on a slow timer and accepts losing
+// up to one interval of precision if it is killed outright.
+func (s *Server) FlushDevices() error {
+	if !s.devices.Dirty() {
+		return nil
+	}
+	return s.persistPanel()
+}
+
+// SweepRateLimits drops login-throttle buckets for addresses that have gone
+// quiet. Nothing depends on it for correctness — an idle bucket has refilled
+// and would allow the next attempt anyway — so it runs on the same slow timer
+// as the session GC purely to keep the table from growing.
+func (s *Server) SweepRateLimits() { s.loginLimit.sweep() }
+
 func (s *Server) routes() http.Handler {
 	api := http.NewServeMux()
 
 	// Public.
 	api.HandleFunc("POST /api/auth/login", s.handleLogin)
 	api.HandleFunc("GET /api/health", s.handleHealth)
+	// Pairing is authenticated by the password rather than by a session, so it
+	// sits outside requireAuth. See handleCreateDevice for why.
+	api.HandleFunc("POST /api/auth/devices", s.handleCreateDevice)
 
 	// Authenticated.
 	protected := http.NewServeMux()
 	protected.HandleFunc("POST /api/auth/logout", s.handleLogout)
 	protected.HandleFunc("GET /api/auth/me", s.handleMe)
 	protected.HandleFunc("POST /api/auth/password", s.handleChangePassword)
+	protected.HandleFunc("GET /api/auth/devices", s.handleListDevices)
+	protected.HandleFunc("DELETE /api/auth/devices/{id}", s.handleDeleteDevice)
+	protected.HandleFunc("GET /api/auth/events", s.handleAuthEvents)
 
 	protected.HandleFunc("GET /api/instances", s.handleListInstances)
 	protected.HandleFunc("POST /api/instances", s.handleCreateInstance)
@@ -109,7 +239,63 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("PUT /api/instances/{id}/properties", s.handlePutProperties)
 	protected.HandleFunc("GET /api/instances/{id}/eula", s.handleGetEULA)
 	protected.HandleFunc("POST /api/instances/{id}/eula", s.handleAcceptEULA)
-	protected.HandleFunc("GET /api/instances/{id}/jars", s.handleListJars)
+
+	// Server cores. Panel-wide rather than per-instance, for the same reason
+	// Java runtimes are: one download serves every server built from it, and
+	// an instance is handed its own copy out of the library.
+	protected.HandleFunc("GET /api/downloads/projects", s.handleListCoreProjects)
+	protected.HandleFunc("GET /api/downloads/projects/{project}/versions", s.handleListCoreVersions)
+	protected.HandleFunc("GET /api/downloads/projects/{project}/versions/{version}/build", s.handleLatestCoreBuild)
+	protected.HandleFunc("GET /api/cores", s.handleCoreLibrary)
+	protected.HandleFunc("POST /api/cores", s.handleStartCoreDownload)
+	protected.HandleFunc("POST /api/cores/cancel", s.handleCancelCoreDownload)
+	protected.HandleFunc("DELETE /api/cores/{id}", s.handleDeleteCore)
+	protected.HandleFunc("POST /api/instances/{id}/core", s.handleApplyCore)
+
+	// Plugins. Panel-wide on purpose, and more strictly so than cores are: a
+	// plugin is added, versioned and updated here and nowhere else, and an
+	// instance may only take a copy, swap which version it holds, or switch
+	// one off. Letting every server manage its own downloads is how a panel
+	// ends up with six subtly different copies of the same plugin and nobody
+	// able to say which is which.
+	protected.HandleFunc("GET /api/plugins", s.handlePluginLibrary)
+	protected.HandleFunc("POST /api/plugins", s.handleAddPlugin)
+	protected.HandleFunc("POST /api/plugins/check", s.handleCheckPlugins)
+	// Discovery. Two segments deep for the same reason the config routes are:
+	// "browse" must not be reachable as a plugin id.
+	protected.HandleFunc("GET /api/plugins/browse", s.handleBrowsePlugins)
+	protected.HandleFunc("GET /api/plugins/browse/{source}/{id}", s.handleBrowsePluginDetail)
+	protected.HandleFunc("POST /api/plugins/browse/track", s.handleTrackPlugin)
+	// The cross-instance view, and the bulk operation it exists to enable.
+	protected.HandleFunc("GET /api/plugins/overview", s.handlePluginOverview)
+	protected.HandleFunc("POST /api/plugins/bulk/preview", s.handleBulkUpgradePreview)
+	protected.HandleFunc("POST /api/plugins/bulk/upgrade", s.handleBulkUpgrade)
+	// Two segments deep on purpose: "PUT /api/plugins/{id}" already owns the
+	// single-segment shape, and a plugin an operator happened to name "token"
+	// would otherwise become the one plugin nobody can edit.
+	protected.HandleFunc("PUT /api/plugins/config/token", s.handlePluginToken)
+	protected.HandleFunc("PUT /api/plugins/config/mirror", s.handlePluginMirror)
+	protected.HandleFunc("POST /api/plugins/cancel", s.handleCancelPluginDownload)
+	protected.HandleFunc("PUT /api/plugins/{id}", s.handleUpdatePlugin)
+	protected.HandleFunc("DELETE /api/plugins/{id}", s.handleDeletePlugin)
+	protected.HandleFunc("GET /api/plugins/{id}/releases", s.handlePluginReleases)
+	protected.HandleFunc("POST /api/plugins/{id}/check", s.handleCheckPlugin)
+	protected.HandleFunc("POST /api/plugins/{id}/download", s.handleDownloadPlugin)
+	protected.HandleFunc("DELETE /api/plugins/{id}/versions", s.handleDeletePluginVersion)
+
+	protected.HandleFunc("GET /api/instances/{id}/plugins", s.handleListInstancePlugins)
+	protected.HandleFunc("POST /api/instances/{id}/plugins", s.handleInstallInstancePlugin)
+	protected.HandleFunc("PUT /api/instances/{id}/plugins", s.handleToggleInstancePlugin)
+	protected.HandleFunc("POST /api/instances/{id}/plugins/adopt", s.handleAdoptInstancePlugin)
+	protected.HandleFunc("DELETE /api/instances/{id}/plugins", s.handleUninstallInstancePlugin)
+
+	// Java runtimes. Panel-wide rather than per-instance: one download serves
+	// every server that needs that version.
+	protected.HandleFunc("GET /api/java", s.handleJavaOverview)
+	protected.HandleFunc("GET /api/java/available", s.handleListJavaMajors)
+	protected.HandleFunc("POST /api/java/install", s.handleInstallJava)
+	protected.HandleFunc("POST /api/java/install/cancel", s.handleCancelJavaInstall)
+	protected.HandleFunc("DELETE /api/java/{id}", s.handleDeleteJava)
 
 	protected.HandleFunc("GET /api/instances/{id}/console", s.handleConsoleSocket)
 
@@ -124,9 +310,29 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("POST /api/instances/{id}/files/mkdir", s.handleMkdir)
 	protected.HandleFunc("POST /api/instances/{id}/files/rename", s.handleRenameFile)
 
+	// Directories on the host, for the instance directory picker. Read-only,
+	// and not confined to an instance — see handlers_hostfs.go.
+	protected.HandleFunc("GET /api/fs", s.handleBrowseHost)
+	protected.HandleFunc("GET /api/fs/inspect", s.handleInspectHost)
+
 	// Resource usage.
 	protected.HandleFunc("GET /api/instances/{id}/metrics", s.handleInstanceMetrics)
 	protected.HandleFunc("GET /api/system", s.handleSystem)
+
+	// Panel self-update.
+	protected.HandleFunc("GET /api/update", s.handleUpdateStatus)
+	protected.HandleFunc("POST /api/update/check", s.handleUpdateCheck)
+	protected.HandleFunc("POST /api/update/apply", s.handleUpdateApply)
+	protected.HandleFunc("PUT /api/update/mirror", s.handleUpdateMirror)
+	protected.HandleFunc("PUT /api/update/channel", s.handleUpdateChannel)
+
+	// Host shell. The routes exist whatever the switch says — the status one
+	// is what the settings page renders the switch from, and the other two
+	// refuse while it is off — so turning the terminal on takes effect
+	// immediately instead of waiting for a panel restart.
+	protected.HandleFunc("GET /api/terminal", s.handleTerminalStatus)
+	protected.HandleFunc("PUT /api/terminal", s.handleTerminalToggle)
+	protected.HandleFunc("GET /api/terminal/session", s.handleTerminalSocket)
 
 	api.Handle("/api/", s.requireAuth(s.requireCSRF(protected)))
 
@@ -143,8 +349,26 @@ type ctxKey int
 
 const sessionKey ctxKey = iota
 
+// requireAuth accepts either of the panel's two credentials: a device token in
+// an Authorization header, which is how native clients authenticate, or the
+// session cookie the browser UI uses. They are not interchangeable — see
+// bearerScheme.
 func (s *Server) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if token, ok := bearerToken(r); ok {
+			dev, valid := s.devices.Validate(token)
+			if !valid {
+				writeError(w, http.StatusUnauthorized, "invalid or revoked device token")
+				return
+			}
+			// A device token authenticates the panel's single operator; the
+			// username comes from the credential rather than from the token,
+			// so renaming the operator does not strand paired devices.
+			who := principal{username: s.credential().Username, device: &dev}
+			next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), who)))
+			return
+		}
+
 		cookie, err := r.Cookie(sessionCookie)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "not signed in")
@@ -156,8 +380,19 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "session expired")
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(withSession(r.Context(), sess)))
+		next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), principal{username: sess.Username, session: sess})))
 	})
+}
+
+// bearerToken pulls a credential out of the Authorization header. RFC 7235
+// makes the scheme case-insensitive, so it is matched that way.
+func bearerToken(r *http.Request) (string, bool) {
+	header := r.Header.Get("Authorization")
+	if len(header) <= len(bearerScheme) || !strings.EqualFold(header[:len(bearerScheme)], bearerScheme) {
+		return "", false
+	}
+	token := strings.TrimSpace(header[len(bearerScheme):])
+	return token, token != ""
 }
 
 // requireCSRF rejects state-changing requests that did not come from the panel
@@ -168,6 +403,12 @@ func (s *Server) requireCSRF(next http.Handler) http.Handler {
 		switch r.Method {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
 		default:
+			// A bearer credential is never attached by the browser on its own,
+			// so a request carrying one cannot have been forged by another
+			// site. The header only has to guard the cookie path.
+			if _, bearer := bearerToken(r); bearer {
+				break
+			}
 			if r.Header.Get(csrfHeader) == "" {
 				writeError(w, http.StatusForbidden, "missing "+csrfHeader+" header")
 				return

@@ -1,24 +1,303 @@
+/* ------------------------------------------------------------------ tokens
+
+   Colour is one Material 3 scheme — a warm terracotta grown from #8F4C38 —
+   in two modes. The two blocks below are the only place a raw hex appears;
+   every rule after them works in named roles, so a mode is a table of values
+   and nothing else. `data-theme` on <html> is always resolved to light or
+   dark before first paint (see theme.ts), so dark needs one block, not a
+   media query and an override of it.
+
+   The M3 roles come first, copied from the scheme. Under them are the working
+   names the rest of the sheet uses: surfaces climb from --bg (the page)
+   through --surface-1 (cards, sidebar) to --surface-4 (a control sitting on a
+   card), which is M3's container ladder under a shorter name. Anything that
+   has to read as "on top of" something else moves up one step rather than
+   inventing a value. */
+
 :root {
-  --bg: #0b0e14;
-  --bg-raised: #131720;
-  --bg-input: #0d1117;
-  --border: #232a36;
-  --border-strong: #313a4a;
-  --text: #d7dde7;
-  --text-dim: #8b95a6;
-  --accent: #4c9f70;
-  --accent-hover: #5cb681;
-  --danger: #c15b5b;
-  --danger-hover: #d46b6b;
-  --warn: #c9a227;
+  /* --- M3 roles, light ----------------------------------------------
+     Only the roles the panel actually paints with; the scheme's secondary
+     family and the containers nothing reads are left out rather than carried
+     as decoration. */
+  --primary: #8f4c38;
+  --on-primary: #ffffff;
+  --primary-container: #ffdbd1;
+  --on-primary-container: #723523;
+  --error: #ba1a1a;
+  --on-error-container: #93000a;
+  --surface: #fff8f6;
+  --on-surface: #231917;
+  --on-surface-variant: #53433f;
+  --outline: #85736e;
+  --outline-variant: #d8c2bc;
+  --surface-lowest: #ffffff;
+  --surface-low: #fff1ed;
+  --surface-container: #fceae5;
+  --surface-high: #f7e4e0;
+  --surface-highest: #f1dfda;
+  --inverse-surface: #392e2b;
+  --inverse-on-surface: #ffede8;
+  --inverse-primary: #ffb5a0;
 
-  --state-stopped: #6b7484;
-  --state-starting: #d0a215;
-  --state-running: #4caf72;
-  --state-stopping: #d0a215;
-  --state-crashed: #d05353;
+  /* --- semantics the scheme has no role for -------------------------- */
 
-  --radius: 8px;
+  /* A server is running or it is not, and a terracotta "running" dot reads as
+     a warning. So go and caution keep hues of their own — caution stepped off
+     the scheme's tertiary so it still belongs to the palette — and each is
+     checked for 3:1 against the surface it sits on. */
+  --ok: #2e7d55;
+  --ok-ink: #235f41;
+  --ok-soft: rgba(46, 125, 85, 0.1);
+  --caution: #a8801b;
+  --caution-ink: #534619;
+  --caution-soft: rgba(140, 116, 46, 0.14);
+
+  /* --- working names ------------------------------------------------- */
+
+  /* Light runs the ladder the way a light UI reads it: the page is the warm
+     tinted surface, a card is plain white sitting on top of it, and anything
+     nested inside a card goes *warmer* to look recessed. Dark inverts that —
+     the page is the darkest thing and every step up is lighter — which is why
+     the two modes assign these five from opposite ends of the same ladder. */
+  --bg: var(--surface);
+  --bg-input: var(--surface);
+
+  --surface-1: var(--surface-lowest);
+  --surface-2: var(--surface-low);
+  --surface-3: var(--surface-container);
+  --surface-4: var(--surface-high);
+
+  /* Two very faint washes over the page, drawn from the scheme rather than
+     from a hue of their own. */
+  --wash-1: rgba(143, 76, 56, 0.05);
+  --wash-2: rgba(108, 93, 47, 0.045);
+
+  --border: var(--outline-variant);
+  --border-strong: #c3aca6;
+  --border-accent: #dfaf9f;
+
+  --text: var(--on-surface);
+  --text-dim: var(--on-surface-variant);
+  --text-faint: var(--outline);
+
+  --accent: var(--primary);
+  /* Hover moves *towards* the ink of the mode, so it darkens on light and
+     lightens on dark rather than always going one way. */
+  --accent-hover: var(--on-primary-container);
+  --accent-ink: var(--on-primary);
+  --accent-soft: rgba(143, 76, 56, 0.1);
+  --accent-glow: rgba(143, 76, 56, 0.22);
+  --accent-face: linear-gradient(180deg, #9d5641, #8a4835);
+  --accent-face-hover: linear-gradient(180deg, #ac6149, #96513c);
+  --accent-face-off: #ead7d0;
+  --accent-ink-off: #ab948c;
+
+  --danger: var(--error);
+  --danger-hover: var(--on-error-container);
+  --danger-ink: var(--on-error-container);
+  --danger-soft: rgba(186, 26, 26, 0.08);
+  --danger-face: linear-gradient(180deg, #fff1ef, #ffe4e0);
+  --danger-face-hover: linear-gradient(180deg, #ffe6e2, #ffd6d1);
+  --danger-edge: #f0bdb6;
+  --danger-edge-hover: #e39c93;
+
+  --state-stopped: var(--outline);
+  --state-starting: var(--caution);
+  --state-running: var(--ok);
+  --state-crashed: var(--error);
+
+  /* Surface effects. A card is lit from the top in both modes; on light that
+     is a white sheen, on dark a much fainter one, and neither is a colour a
+     rule should have to know. */
+  --sheen: rgba(255, 255, 255, 0.6);
+  --sunken: rgba(87, 60, 52, 0.035);
+  --inset: inset 0 1px 2px rgba(87, 60, 52, 0.09);
+  --scrim: rgba(43, 32, 29, 0.44);
+  --stripe: rgba(255, 255, 255, 0.24);
+  --brand-face: linear-gradient(150deg, #a85c45, #7d402e);
+  --selection: var(--primary-container);
+  --on-selection: var(--on-primary-container);
+
+  /* The terminal keeps a dark canvas in both modes: Minecraft's log colours
+     are ANSI, and ANSI is written for a dark background. On light that canvas
+     is the scheme's own inverse surface, which is exactly what M3 reserves
+     for a panel that inverts against the page. */
+  --term-bg: var(--inverse-surface);
+  --term-fg: var(--inverse-on-surface);
+  --term-cursor: var(--inverse-primary);
+  --term-selection: #6b4c42;
+  --term-black: #8a7871;
+  --term-bright-black: #a89791;
+  --term-blue: #8ab4f8;
+  --term-bright-blue: #adc9fb;
+  --term-edge: #4a3c38;
+
+  /* The host shell gets a canvas of its own, and not for decoration: a shell
+     on the whole machine and a Minecraft console are different risk levels,
+     and the only thing stopping an operator typing `rm -rf` into the wrong one
+     is that the two do not look alike. Cool slate against the panel's
+     terracotta — no other surface in the panel is this colour. */
+  --shell-bg: #101820;
+  --shell-fg: #cfd8e3;
+  --shell-cursor: #6fb3d2;
+  --shell-selection: #24455c;
+  --shell-edge: #2b3b4a;
+  --shell-accent: #6fb3d2;
+
+  --radius-sm: 6px;
+  --radius: 9px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* How wide content is allowed to get, in the two forms a page comes in.
+     Prose stops at a readable measure; tiles and cards get more room but not
+     all of it — a chart stretched across a 2560px monitor is not a better
+     chart. Every page picks one of these two and nothing else. */
+  --content-max: 880px;
+  --content-max-wide: 1440px;
+
+  /* One soft shadow per elevation step, tinted with the scheme's own brown so
+     a card never drops a grey shadow onto a warm page. */
+  --shadow-sm: 0 1px 2px rgba(87, 60, 52, 0.11);
+  --shadow: 0 1px 3px rgba(87, 60, 52, 0.1), 0 8px 22px -12px rgba(87, 60, 52, 0.3);
+  --shadow-lg: 0 4px 10px rgba(87, 60, 52, 0.12), 0 26px 52px -20px rgba(87, 60, 52, 0.36);
+
+  --ring: 0 0 0 3px rgba(143, 76, 56, 0.2);
+  --ring-danger: 0 0 0 3px rgba(186, 26, 26, 0.18);
+
+  /* --- motion ---------------------------------------------------------
+     One scale, four steps, and the step is picked by what the movement is
+     *for* rather than by how far it travels:
+
+       --dur-1  a tint under the pointer: hover, press, focus. Short enough to
+                read as the surface reacting rather than as an animation.
+       --dur    the default — a control changing state where it stands.
+       --dur-3  something arriving or leaving in a fixed spot: a menu, a
+                popover, one row of a list landing.
+       --dur-4  something that crosses the screen or covers it: the drawer,
+                the rail folding, a modal.
+
+     Two curves do nearly all of it. --ease is emphasized — slow off the mark,
+     long in the tail — which is what gives an arriving surface some weight;
+     --ease-in is its mirror and is only ever used on the way out, because a
+     thing leaving should accelerate away instead of loitering. --ease-out is
+     the flat one, for anything driven by data rather than by a hand (a bar
+     tracking a number), where a long tail just reads as lag. --ease-spring
+     overshoots by a hair and is kept for the couple of places a control should
+     feel sprung. */
+  --dur-1: 90ms;
+  --dur: 140ms;
+  --dur-3: 220ms;
+  --dur-4: 300ms;
+
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-in: cubic-bezier(0.5, 0, 0.9, 0.3);
+  --ease-out: cubic-bezier(0.33, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.3, 1.5, 0.6, 1);
+
+  /* How long a bar takes to walk to a new reading. Longer than any of the
+     above on purpose: it is not a response to a click, it is a value moving,
+     and it has to stay legible while it moves. */
+  --dur-data: 400ms;
+
+  --font-mono: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas,
+    'Liberation Mono', monospace;
+
+  color-scheme: light;
+  accent-color: var(--accent);
+}
+
+/* The same scheme's dark mode. Only the values move — no rule below this
+   block tests for a mode. */
+:root[data-theme='dark'] {
+  --primary: #ffb5a0;
+  --on-primary: #561f0f;
+  --primary-container: #723523;
+  --on-primary-container: #ffdbd1;
+  --error: #ffb4ab;
+  --on-error-container: #ffdad6;
+  --surface: #1a1110;
+  --on-surface: #f1dfda;
+  --on-surface-variant: #d8c2bc;
+  --outline: #a08c87;
+  --outline-variant: #53433f;
+  --surface-lowest: #140c0b;
+  --surface-low: #231917;
+  --surface-container: #271d1b;
+  --surface-high: #322825;
+  --surface-highest: #3d3230;
+  --inverse-surface: #f1dfda;
+  --inverse-on-surface: #392e2b;
+  --inverse-primary: #8f4c38;
+
+  --ok: #58c58c;
+  --ok-ink: #9ddcb8;
+  --ok-soft: rgba(88, 197, 140, 0.13);
+  --caution: #e0b13a;
+  --caution-ink: #e8d9ae;
+  --caution-soft: rgba(216, 197, 141, 0.12);
+
+  /* The ladder read from the other end: the page is the darkest step and a
+     card is one lighter, where light has the page tinted and the card white. */
+  --bg-input: var(--surface-lowest);
+  --surface-1: var(--surface-low);
+  --surface-2: var(--surface-container);
+  --surface-3: var(--surface-high);
+  --surface-4: var(--surface-highest);
+
+  --wash-1: rgba(255, 181, 160, 0.07);
+  --wash-2: rgba(216, 197, 141, 0.05);
+
+  --border-strong: #62504b;
+  --border-accent: #7d5445;
+
+  --accent-soft: rgba(255, 181, 160, 0.12);
+  --accent-glow: rgba(255, 181, 160, 0.26);
+  --accent-face: linear-gradient(180deg, #ffb5a0, #eb9c86);
+  --accent-face-hover: linear-gradient(180deg, #ffc6b4, #f7a893);
+  --accent-face-off: #4a332c;
+  --accent-ink-off: #97817a;
+
+  --danger-soft: rgba(255, 180, 171, 0.11);
+  --danger-face: linear-gradient(180deg, #3a2320, #2e1b19);
+  --danger-face-hover: linear-gradient(180deg, #4a2c28, #3a2320);
+  --danger-edge: #5e3a35;
+  --danger-edge-hover: #7d4b44;
+
+  --sheen: rgba(255, 255, 255, 0.03);
+  --sunken: rgba(255, 255, 255, 0.014);
+  --inset: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  --scrim: rgba(10, 6, 5, 0.7);
+  --stripe: rgba(255, 255, 255, 0.16);
+  --brand-face: linear-gradient(150deg, #ffb5a0, #c97b62);
+  --selection: rgba(255, 181, 160, 0.28);
+  --on-selection: #ffede8;
+
+  --term-bg: var(--surface-lowest);
+  --term-fg: var(--on-surface);
+  --term-cursor: var(--primary);
+  --term-selection: #5d4037;
+  --term-black: #7c6a65;
+  --term-bright-black: #a08c87;
+  --term-blue: #8ab4f8;
+  --term-bright-blue: #adc9fb;
+  --term-edge: var(--outline-variant);
+
+  /* Same job in dark mode: cool where everything else is warm. */
+  --shell-bg: #0b1219;
+  --shell-fg: #c3cedb;
+  --shell-cursor: #6fb3d2;
+  --shell-selection: #1d3a4e;
+  --shell-edge: #23313d;
+  --shell-accent: #7cc0de;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.42);
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.34), 0 8px 24px -12px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.38), 0 28px 60px -20px rgba(0, 0, 0, 0.75);
+
+  --ring: 0 0 0 3px rgba(255, 181, 160, 0.24);
+  --ring-danger: 0 0 0 3px rgba(255, 180, 171, 0.2);
+
   color-scheme: dark;
 }
 
@@ -33,26 +312,241 @@ body,
   margin: 0;
 }
 
+/* The shell is exactly one viewport tall and scrolls inside itself, so on a
+   phone it has to be the *visible* viewport: with 100% the browser measures
+   from the tall state and the bottom of the console sits under the collapsed
+   address bar. `dvh` is the one unit that tracks it. */
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+  }
+}
+
 body {
-  background: var(--bg);
+  /* Two very wide, very faint washes: enough to keep a full-screen panel from
+     reading as a flat sheet, faint enough that no text sits on a gradient it
+     has to fight. Both are drawn from the scheme — primary at the top left,
+     tertiary at the top right — so the page is warm before anything is on it.
+     Fixed so scrolling panes do not drag them. */
+  background:
+    radial-gradient(1100px 620px at 12% -12%, var(--wash-1), transparent 62%),
+    radial-gradient(900px 520px at 96% -6%, var(--wash-2), transparent 58%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', Roboto, sans-serif;
   font-size: 14px;
-  line-height: 1.55;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.012em;
 }
 
 code {
-  background: var(--bg-input);
+  background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0 4px;
-  font-size: 0.9em;
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  color: var(--text-dim);
 }
 
 a {
   color: var(--accent-hover);
+  text-decoration-color: color-mix(in srgb, var(--accent-hover) 40%, transparent);
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  text-decoration-color: currentColor;
+}
+
+::selection {
+  background: var(--selection);
+  color: var(--on-selection);
+}
+
+/* One scrollbar treatment for the whole app: the platform default is the
+   loudest thing on the page otherwise. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: var(--radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+  background-clip: padding-box;
+}
+
+/* Keyboard focus is visible everywhere; the mouse never sees it. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ----------------------------------------------------------------- motion
+
+   The tokens say how long and along what curve. This section holds the parts
+   that belong to no single component: the shared keyframes, and the three
+   conventions that are what actually make a hundred separate rules feel like
+   one panel rather than a hundred separately-tuned widgets.
+
+   **Press.** Everything that can be pressed sinks under the pointer and comes
+   back on release — a pixel of travel, or a percent and a half of scale. Small
+   enough that nobody would name it, big enough that a tap is acknowledged
+   before the request it fired has left the machine. A control with a hover
+   state and no press state is the commonest reason a panel feels hard: the
+   hover promises the thing is live and then the click says nothing at all, so
+   the only feedback left is the result arriving a few hundred milliseconds
+   later. `--press` is the amount, in one place, so a row and a card and a tab
+   all sink by the same amount.
+
+   **Symmetry.** Anything that animates in animates out. A sheet that rises
+   into place over 220ms and then vanishes between two frames reads as a
+   glitch, not as a dismissal — which is why the menus, the modals and the
+   palette carry a data-state through their exit instead of being unmounted
+   where they stand. The exit is always the shorter of the two and always on
+   --ease-in: you have already decided to leave, and waiting out a leisurely
+   fade for something you are done with is its own kind of friction.
+
+   **Arrival.** A list that appears all at once reads as a repaint. The same
+   list arriving over a fifth of a second reads as a list. See the stagger at
+   the bottom of this section. */
+
+:root {
+  /* Both halves of the press, so nothing has to re-derive them. */
+  --press: 0.985;
+  --press-drop: 1px;
+
+  /* Lets height/block-size animate to and from `auto` — what the sidebar's
+     folding group headings and the expanding <details> below need. Ignored by
+     browsers that do not have it, which simply keeps today's instant open. */
+  interpolate-size: allow-keywords;
+}
+
+/* Something arriving in place: up a little, out from under itself a little.
+   Used by every sheet, card and dialog that appears where it is asked for. */
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Its exit. Deliberately not `pop` reversed: it leaves from where it is and
+   shrinks slightly rather than retracing the arc it came in on, which is what
+   keeps a dismissal from looking like a rewind. */
+@keyframes pop-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(3px) scale(0.985);
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* The light/dark dissolve. The default cross-fade is the right shape; it is
+   only too slow for something the toggle fires three times while someone makes
+   up their mind. See theme.ts, which is what starts it. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--dur-4);
+  animation-timing-function: var(--ease);
+}
+
+/* ---- the stagger -------------------------------------------------------
+
+   One rule, applied to every collection in the panel, so a grid of instance
+   cards and a table of rows and the metric strip all fill in the same way.
+
+   Two details matter. The step is small — 26ms — because the point is a
+   direction of travel, not a performance; anything slower turns loading a
+   list into watching one. And it stops at the eighth child: past that the
+   delay would outlast anyone's patience for the ninth row, so everything
+   below simply lands with the eighth.
+
+   `backwards`, not `both`. `both` would leave the animation's final
+   `transform: none` in force forever, and an animated value outranks a
+   declared one — every :hover lift on a card in here would silently stop
+   working. `backwards` fills only the delay and then gets out of the way.
+
+   The alert list is not in here: .alert brings an entrance of its own, and a
+   warning is the one thing that should not wait its turn. */
+:is(
+  .cards,
+  .dashboard__instances,
+  .summary,
+  .asset-grid,
+  .choice-grid,
+  .tiles,
+  .rows,
+  .plugin-rows,
+  .device-list
+) > * {
+  animation: rise var(--dur-3) var(--ease) backwards;
+
+  &:nth-child(2) {
+    animation-delay: 26ms;
+  }
+  &:nth-child(3) {
+    animation-delay: 52ms;
+  }
+  &:nth-child(4) {
+    animation-delay: 78ms;
+  }
+  &:nth-child(5) {
+    animation-delay: 104ms;
+  }
+  &:nth-child(6) {
+    animation-delay: 130ms;
+  }
+  &:nth-child(7) {
+    animation-delay: 156ms;
+  }
+  &:nth-child(n + 8) {
+    animation-delay: 182ms;
+  }
 }
 
 /* ------------------------------------------------------------------ shell */
@@ -64,82 +558,479 @@ a {
   color: var(--text-dim);
 }
 
+/* The sidebar has three widths — full, folded to icons, and off-canvas — and
+   the grid only ever reads this one value, so switching between them is a
+   variable and not a second layout. */
+/* Off screen until it is focused, then it is the first thing on it. Skipping
+   the sidebar is the difference between one Tab and thirty for anyone driving
+   the panel from the keyboard. */
+.skip {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 90;
+  padding: 8px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  text-decoration: none;
+  transform: translateY(-200%);
+  transition: transform var(--dur) var(--ease);
+}
+
+.skip:focus-visible {
+  transform: none;
+}
+
+.main:focus-visible {
+  outline: none;
+}
+
 .app {
+  --sidebar-w: 240px;
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: var(--sidebar-w) 1fr;
   height: 100%;
+  /* Folding to the rail moves exactly one number, and animating that number is
+     the whole difference between a jump cut and the column sliding shut under
+     the pointer that asked for it. The content beside it reflows along the
+     way, which is the point: it is one movement, not a resize followed by a
+     repaint of everything to its right. */
+  transition: grid-template-columns var(--dur-4) var(--ease);
+}
+
+.app[data-rail='on'] {
+  --sidebar-w: 64px;
 }
 
 .sidebar {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px 12px;
-  background: var(--bg-raised);
+  padding: 14px 12px;
+  /* One step off the page rather than a colour of its own: the rail reads as
+     a container, and the main pane keeps the lighter surface. */
+  background: var(--surface-1);
   border-right: 1px solid var(--border);
+  min-height: 0;
+  /* Clipped for the length of the fold: a 240px-wide row inside a column on
+     its way to 64px would otherwise spill across the page for the duration.
+     Nothing here needs to paint outside the column — the active-row marker
+     stops exactly at its left edge — so this costs nothing the rest of the
+     time. */
+  overflow: hidden;
+  transition: padding var(--dur-4) var(--ease);
+  /* Focused programmatically when it opens as a drawer; that must not paint a
+     ring around the whole panel. */
+  outline: none;
+}
+
+/* The column beside the sidebar: one fixed strip on top, the page under it. */
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   min-height: 0;
 }
 
 .sidebar__brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 4px 6px 10px;
+  gap: 11px;
+  padding: 6px 6px 12px;
   cursor: pointer;
   border-bottom: 1px solid var(--border);
+  color: inherit;
+  text-decoration: none;
 }
 
+/* The one saturated mark in the whole shell, so the eye has somewhere to
+   land when the panel is otherwise all greys. */
 .sidebar__logo {
-  font-size: 22px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--brand-face);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 4px 12px -4px var(--accent-glow);
+  color: var(--on-primary);
+  font-size: 17px;
+  transition: transform var(--dur) var(--ease);
+}
+
+.sidebar__brand:hover .sidebar__logo {
+  transform: translateY(-1px) rotate(-6deg);
+}
+
+.sidebar__brand strong {
+  font-size: 15px;
+  letter-spacing: -0.01em;
 }
 
 .sidebar__brand small {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--text-dim);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .sidebar__new {
   width: 100%;
 }
 
-.sidebar__list {
+/* The sidebar's one scrolling region. Everything above it (brand, search, the
+   scope header) and below it (新建实例) is pinned, so there is exactly one
+   scrollbar in this column and one in the content area — never a third. */
+.sidebar__scroll {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  overflow-y: auto;
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  margin: 0 -2px;
+  padding: 0 2px;
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* A rule under the last group in a scope, for the entries that are not more
+   of the same. The shell is the only one so far. */
+.sidebar__nav--fenced {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* Group headings. They are what lets a whole category be hidden from a
+   sub-user in one check instead of six. */
+.sidebar__group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 8px 4px;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Anchors, not buttons: every one of these is a real path, so ⌘-click opens a
+   server in a second tab and right-click copies its link. They are painted as
+   rows, so the underline and link colour an anchor comes with are cleared. */
+.sidebar__link {
+  position: relative;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+  font-family: inherit;
+  font-size: 14px;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.sidebar__link:active {
+  transform: scale(var(--press));
+}
+
+/* The active row is marked twice — a tinted surface and a bar on the rail —
+   so it still reads as selected in a screenshot without colour. */
+.sidebar__link::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  width: 3px;
+  height: 0;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  transform: translateY(-50%);
+  /* Sprung, and it is the one marker in the panel that is: this bar is how you
+     confirm the click landed on the row you meant, and a hair of overshoot is
+     what makes it read as having snapped into place rather than grown. */
+  transition: height var(--dur-3) var(--ease-spring);
+}
+
+.sidebar__link--active::before {
+  height: 18px;
+}
+
+.sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+}
+
+.sidebar__link:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.sidebar__link--active {
+  background: linear-gradient(90deg, var(--accent-soft), transparent);
+  border-color: var(--border-accent);
+  color: var(--text);
+}
+
+.sidebar__link .badge {
+  margin-left: auto;
+}
+
+/* The fold, at the foot of the column it folds — see Sidebar.tsx for why it is
+   not in the top bar's left corner any more. Painted a step quieter than a
+   navigation row: it is a control on this column, not a place to go. */
+.sidebar__fold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 7px 10px;
+  margin-top: -4px;
+  background: none;
+  border: 1px solid transparent;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.sidebar__fold:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Folded, it is the one row that has to stay findable with its label gone —
+   it is the only way back out — so it centres like every other folded row. */
+.app[data-rail='on'] .sidebar__fold {
+  display: grid;
+  place-items: center;
+  gap: 0;
+  padding: 9px 0;
+}
+
+/* One of the handful of servers with a permanent seat. Indented under 所有实例
+   so the group reads as a list and not as five more top-level destinations. */
+.sidebar__link--instance {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 9px;
+  padding-left: 20px;
+}
+
+/* The shell. Padlocked, and painted in the panel's warning ink rather than its
+   accent, because a row that looks like 监控 is a row that gets clicked like
+   监控 — and this one is a shell on the whole machine. */
+.sidebar__link--shell .icon {
+  color: var(--caution);
+}
+
+.sidebar__link--shell:hover {
+  background: var(--caution-soft);
+}
+
+.sidebar__count {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* --- the fixed top of an inner scope ---------------------------------- */
+
+.sidebar__scope {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar__back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 12px;
+  text-decoration: none;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.sidebar__back:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Back is the one row that moves in the direction it goes. */
+.sidebar__back:active {
+  transform: translateX(-2px);
+}
+
+.sidebar__back .icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+
+/* Which server — or which machine — you are inside. It is the one thing an
+   inner scope owes the reader on every screen, so it is pinned above the
+   scroll rather than sitting in the list. */
+.sidebar__entity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+}
+
+.sidebar__entity--switch {
+  cursor: pointer;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.sidebar__entity--switch:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+.sidebar__entity--switch:active {
+  transform: scale(var(--press));
+}
+
+.sidebar__entity-dot {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  color: var(--text-faint);
+}
+
+.sidebar__entity-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.sidebar__entity-text strong {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__entity-text small {
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__entity-hint {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+/* --- the ⌘K button ---------------------------------------------------- */
+
+.sidebar__search-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-faint);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.sidebar__search-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text-dim);
+}
+
+.sidebar__search-btn:active {
+  transform: scale(var(--press));
+}
+
+.sidebar__search-btn .icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+
+.sidebar__kbd {
+  margin-left: auto;
+  padding: 1px 5px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-faint);
+  font-family: inherit;
+  font-size: 10px;
 }
 
 .sidebar__empty {
   color: var(--text-dim);
   font-size: 13px;
-  padding: 8px 6px;
+  padding: 6px 8px 8px;
+  margin: 0;
 }
 
-.sidebar__item {
-  display: grid;
-  grid-template-columns: 10px 1fr auto;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  color: var(--text);
-  cursor: pointer;
-  text-align: left;
-  font-size: 14px;
-}
-
-.sidebar__item:hover {
-  background: #1a202c;
-}
-
-.sidebar__item--active {
-  background: #1a212c;
-  border-color: var(--border-strong);
+.sidebar__link--active .sidebar__name {
+  font-weight: 600;
 }
 
 .sidebar__name {
@@ -149,33 +1040,573 @@ a {
 }
 
 .sidebar__state {
-  color: var(--text-dim);
+  color: var(--text-faint);
   font-size: 11px;
 }
 
-.sidebar__footer {
+/* The initial of an instance's name. Hidden until the sidebar is a rail, where
+   it is the only thing telling six servers apart. */
+.sidebar__initial {
+  display: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sidebar__link .icon {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.sidebar__link--active .icon {
+  color: var(--accent);
+}
+
+/* --- entering a scope -------------------------------------------------
+
+   The other half of scopeMorph.ts. That module handles the two things only
+   JavaScript can — the copy of the outgoing list, and the header flying up
+   from the row it replaced — and leaves the incoming list to CSS, which is
+   where a plain entrance belongs.
+
+   It waits 90ms before starting, which is most of the 140ms the old list takes
+   to clear. Both lists live in the same column, so a list that starts arriving
+   into a column still full of the last one is not one movement with two parts
+   — it is two navigations printed over each other, and for a moment neither is
+   readable. The rows then land in sequence, top-down, the way the eye is about
+   to read them.
+
+   `data-entering` is taken off after 300ms, and taking it off is load-bearing:
+   a class that stayed would mean the animation never ran again.
+
+   It is the rows that animate and not the blocks they sit in, which looks like
+   a detail and is not: the row flying up from the old list lands *inside* one
+   of these blocks, and a block fading in from zero would hold its own arriving
+   contents invisible for the first ninety milliseconds — including the one
+   thing in the sidebar that must not be hidden, because it is the one the eye
+   is following. Animating the leaves leaves the flier free. */
+.sidebar[data-entering]
+  :is(.sidebar__back, .sidebar__entity, .sidebar__brand, .sidebar__search-btn, .sidebar__new),
+.sidebar[data-entering] .sidebar__scroll :is(.sidebar__link, .sidebar__group, .sidebar__empty) {
+  animation: rise var(--dur-3) var(--ease) backwards;
+  animation-delay: 90ms;
+}
+
+/* Down each group in turn, which is the order they are about to be read in. */
+.sidebar[data-entering] .sidebar__nav .sidebar__link {
+  &:nth-child(2) {
+    animation-delay: 110ms;
+  }
+  &:nth-child(3) {
+    animation-delay: 130ms;
+  }
+  &:nth-child(n + 4) {
+    animation-delay: 150ms;
+  }
+}
+
+/* The one element that is not arriving: it is already on its way, under a
+   script animation carrying it from wherever its other half used to be. An
+   entrance here would fight that for the same two properties, and an entrance
+   with a delay would blank it for the first third of the journey. */
+.sidebar[data-entering] [data-lead] {
+  animation: none;
+}
+
+/* The copy that the outgoing list leaves in. It is positioned entirely from
+   JavaScript — it has to sit exactly where the real column is — so all this
+   owns is the guarantee that it can never be interacted with: it is a picture
+   of a sidebar that no longer exists, and a click landing on one of its links
+   would navigate somewhere the reader did not ask to go. */
+.sidebar__ghost,
+.sidebar__ghost * {
+  pointer-events: none !important;
+}
+
+/* ------------------------------------------------------------------- rail
+
+   Folded, the sidebar is icons and nothing else. Everything that carries text
+   is switched off in one place rather than each row being rebuilt, so a row
+   added later folds correctly without knowing this section exists. */
+
+.app[data-rail='on'] .sidebar {
+  padding: 14px 8px;
+  align-items: stretch;
+}
+
+/* The labels fade before they leave the flow rather than blinking out at the
+   first frame of a 300ms fold. `allow-discrete` is what defers the display
+   change to the end of the fade — a browser that does not know it simply falls
+   back to hiding them at once, which is what happened here before.
+
+   Every selector here is a descendant of `.sidebar`, and that is not decoration:
+   the fold is written against class names, and a class name is reachable from
+   anywhere in the document. `.sidebar__name` had been borrowed by the directory
+   picker's rows, so folding the sidebar folded the labels out of a modal on the
+   other side of the screen and left a list of anonymous folder icons. Scoped, a
+   name borrowed elsewhere is only borrowed styling. */
+.sidebar :is(
+  .sidebar__title,
+  .sidebar__state,
+  .sidebar__empty,
+  .sidebar__kbd,
+  .sidebar__entity-text,
+  .sidebar__entity-hint,
+  .sidebar__name
+) {
+  transition:
+    opacity var(--dur-1) var(--ease),
+    display var(--dur-1) allow-discrete;
+}
+
+.app[data-rail='on'] .sidebar :is(
+  .sidebar__title,
+  .sidebar__state,
+  .sidebar__empty,
+  .sidebar__kbd,
+  .sidebar__entity-text,
+  .sidebar__entity-hint,
+  .sidebar__name
+) {
+  opacity: 0;
+  display: none;
+}
+
+/* A group heading folds to the rule that was under it, so the categories are
+   still separable when their names are gone. It collapses rather than
+   disappearing: the heading's own height is what the fold takes away, and
+   watching it close is what says the group is still there. */
+.sidebar__group {
+  overflow: hidden;
+  transition:
+    height var(--dur-4) var(--ease),
+    padding var(--dur-4) var(--ease);
+}
+
+.app[data-rail='on'] .sidebar__group {
+  display: block;
+  height: 0;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.app[data-rail='on'] .sidebar__brand,
+.app[data-rail='on'] .sidebar__back,
+.app[data-rail='on'] .sidebar__entity {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.app[data-rail='on'] .sidebar__brand {
+  padding: 6px 0 12px;
+}
+
+.app[data-rail='on'] .sidebar__search-btn {
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.app[data-rail='on'] .sidebar__link,
+.app[data-rail='on'] .sidebar__new {
+  display: grid;
+  place-items: center;
+  gap: 0;
+  padding: 9px 0;
+}
+
+/* The dot rides the corner of the initial instead of sitting in a column of
+   its own, so state survives the fold. */
+.app[data-rail='on'] .sidebar__link--instance {
+  position: relative;
+  grid-template-columns: none;
+}
+
+.app[data-rail='on'] .sidebar__initial {
+  display: grid;
+}
+
+.app[data-rail='on'] .sidebar__link--instance .status__dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  /* Ringed in the sidebar's own colour so it reads as a badge on the corner of
+     the initial rather than a dot floating above it. */
+  box-shadow: 0 0 0 2px var(--surface-1);
+}
+
+/* A count or a "下载中" has no room, but the fact that *something* is waiting
+   still has to survive; the badge keeps its colour and loses its text. */
+.app[data-rail='on'] .sidebar__link .badge {
+  position: absolute;
+  top: 5px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 0;
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------- top bar
+
+   One strip that never scrolls, because every page below it does. It carries
+   where you are on the left and who you are on the right; both used to be
+   findable only in the sidebar, which is the half of the screen a phone
+   hides. */
+
+.topbar {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
-  color: var(--text-dim);
-  font-size: 12px;
+  flex: none;
+  height: 52px;
+  padding: 0 16px 0 10px;
+  padding-right: max(16px, env(safe-area-inset-right));
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
+  background-image: linear-gradient(180deg, var(--sheen), transparent);
 }
 
-.sidebar__footer > span {
-  flex: 1;
+.topbar__toggle {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+/* An anchor when it goes somewhere, so ⌘-click opens the parent page in a
+   second tab the way every other navigation in the panel does. */
+.topbar__toggle {
+  text-decoration: none;
+}
+
+/* The top of the trail: the slot is held so the strip does not reflow between
+   pages, but there is nothing above 概览 to go to. */
+.topbar__toggle--idle {
+  color: var(--text-faint);
+  opacity: 0.35;
+  cursor: default;
+}
+
+.topbar__toggle--idle:hover {
+  background: none;
+  border-color: transparent;
+}
+
+.topbar__toggle:not(.topbar__toggle--idle):hover,
+.topbar__search:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+/* The icon buttons on the strip sink further than a full-width control does —
+   there is no label travelling with them, so the whole target has to move
+   enough to be felt. */
+.topbar__toggle:active,
+.topbar__search:active,
+.theme-toggle:active {
+  transform: scale(0.9);
+}
+
+/* ⌘K, for the layouts where the sidebar's own search button is behind a
+   drawer — and for anyone who reaches for a magnifier before a shortcut. */
+.topbar__search {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* The trail. It wraps to nothing — a long instance name is truncated rather
+   than allowed to push the account controls off the strip. */
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+.crumbs__step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.crumbs__sep {
+  color: var(--text-faint);
+}
+
+.crumbs__link,
+.crumbs__here {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.crumbs__link {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  /* Underlined the whole time, in nothing. The line has to be there before it
+     is visible or the hover would turn it on between two frames — on a strip
+     where three steps sit a few pixels apart, that reads as the layout
+     twitching rather than as a link answering. */
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 2px;
+  transition:
+    color var(--dur) var(--ease),
+    text-decoration-color var(--dur) var(--ease);
+}
+
+.crumbs__link:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+
+.crumbs__here {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ menu
+
+   A button and the actions behind it: the account controls on the top bar,
+   the power actions you should not be able to hit by accident on an instance
+   header. One sheet, wherever it is opened from. */
+
+.menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.menu__sheet {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  /* Grown out of the button that opened it rather than dropped in from
+     nowhere, which is what the origin is for: the corner nearest the ⋯ stays
+     put and the sheet unfolds away from it. */
+  transform-origin: top right;
+  animation: pop var(--dur-3) var(--ease) both;
+}
+
+/* Menu owns the leaving state and holds the sheet mounted for exactly as long
+   as this takes; see useDismiss.ts. A sheet on its way out is scenery — it has
+   to stop taking clicks, or the last tenth of a second of a dismissal is a
+   window in which 强制结束 is still a live target. */
+.menu[data-state='out'] .menu__sheet {
+  animation: pop-out var(--dur) var(--ease-in) both;
+  pointer-events: none;
+}
+
+.menu__item {
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+
+.menu__item:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.menu__item:active:not(:disabled) {
+  background: var(--surface-3);
+}
+
+.menu__item:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+/* Destructive actions keep their colour in the sheet: the whole point of
+   moving 强制结束 in here was that it should never look like 停止. */
+.menu__item--danger {
+  color: var(--danger-ink);
+}
+
+.menu__item--danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+
+/* --------------------------------------------------------- account menu */
+
+.usermenu__button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 180px;
+  padding: 4px 8px 4px 4px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.usermenu__button:active {
+  transform: scale(var(--press));
+}
+
+.usermenu__button:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.usermenu__avatar {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.usermenu__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ scrim
+
+   Only ever painted under an open drawer. It is display:none everywhere else,
+   so on a desktop it is not in the way of a single click. */
+.scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: var(--scrim);
+  opacity: 0;
+  pointer-events: none;
+  /* Exactly as long as the drawer's own slide: two durations a fifth apart is
+     enough for the page to look like it finishes darkening after the panel has
+     already arrived. */
+  transition: opacity var(--dur-4) var(--ease);
+}
+
+/* Light / dark / 跟随系统, cycled in place. It sits in the top bar rather
+   than in 设置 because it is a per-person, per-device preference and the one
+   setting you change without meaning to open a settings page. */
+.theme-toggle {
+  display: grid;
+  place-items: center;
+  /* Same box as the nav toggle at the other end of the strip, so the two
+     icon buttons on the bar read as one size. */
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.theme-toggle:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+
 .main {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-width: 0;
   min-height: 0;
-  padding: 16px 20px;
+  padding: 16px 24px 20px;
+  padding-right: max(24px, env(safe-area-inset-right));
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
   gap: 12px;
   overflow: hidden;
 }
@@ -183,120 +1614,259 @@ a {
 /* ----------------------------------------------------------------- login */
 
 .login {
+  position: relative;
   display: grid;
   place-items: center;
   height: 100%;
   padding: 20px;
+  overflow: hidden;
+}
+
+/* A single soft light behind the card. Pointer-events off so it never eats a
+   click aimed at the form. */
+.login::before {
+  content: '';
+  position: absolute;
+  width: 640px;
+  height: 640px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-glow), transparent 62%);
+  filter: blur(20px);
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 .login__card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  width: min(380px, 100%);
-  padding: 28px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  width: min(392px, 100%);
+  padding: 30px 28px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface-1));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: rise 320ms var(--ease) both;
+}
+
+.login__mark {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  background: var(--brand-face);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 8px 22px -8px var(--accent-glow);
+  color: var(--on-primary);
+  font-size: 23px;
 }
 
 .login__title {
-  margin: 0;
+  margin: 6px 0 0;
   font-size: 26px;
-  letter-spacing: 0.5px;
+  letter-spacing: -0.02em;
 }
 
 .login__subtitle {
-  margin: -10px 0 6px;
+  margin: -12px 0 6px;
   color: var(--text-dim);
 }
 
 .login__hint {
-  margin: 4px 0 0;
-  color: var(--text-dim);
+  margin: 6px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  color: var(--text-faint);
   font-size: 12px;
-  line-height: 1.7;
+  line-height: 1.75;
 }
 
 /* --------------------------------------------------------------- controls */
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 7px 14px;
-  background: #1c2330;
+  background: linear-gradient(180deg, var(--surface-3), var(--surface-2));
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
   color: var(--text);
   cursor: pointer;
   font-size: 13px;
   font-family: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease),
+    box-shadow var(--dur) var(--ease);
 }
 
 .btn:hover:not(:disabled) {
-  background: #232b3a;
+  background: linear-gradient(180deg, var(--surface-4), var(--surface-3));
+  border-color: var(--outline);
+  transform: translateY(-1px);
+}
+
+/* Past the resting position, not back to it. The button lifts a pixel under
+   the pointer, so returning to zero on press is a one-pixel move that reads as
+   nothing at all; going a pixel *under* is what makes the click land. */
+.btn:active:not(:disabled) {
+  transform: translateY(var(--press-drop)) scale(var(--press));
+  box-shadow: none;
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
 }
 
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .btn--primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #06120c;
+  background: var(--accent-face);
+  border-color: transparent;
+  color: var(--accent-ink);
   font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 4px 14px -6px var(--accent-glow);
 }
 
 .btn--primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+  background: var(--accent-face-hover);
+  border-color: transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 8px 20px -8px var(--accent-glow);
 }
 
-/* opacity alone leaves the green primary looking clickable when it isn't */
+/* opacity alone leaves the filled primary looking clickable when it isn't */
 .btn--primary:disabled {
-  background: #2b3a33;
-  border-color: #2b3a33;
-  color: #728a7c;
+  background: var(--accent-face-off);
+  border-color: transparent;
+  color: var(--accent-ink-off);
   opacity: 1;
+  box-shadow: none;
 }
 
 .btn--danger {
-  border-color: #52333a;
-  color: var(--danger-hover);
+  background: var(--danger-face);
+  border-color: var(--danger-edge);
+  color: var(--danger-ink);
 }
 
 .btn--danger:hover:not(:disabled) {
-  background: #2a1c1f;
+  background: var(--danger-face-hover);
+  border-color: var(--danger-edge-hover);
+}
+
+.btn--danger:focus-visible {
+  box-shadow: var(--ring-danger);
+}
+
+/* ---- a button with a request in flight ---------------------------------
+
+   启动 does three things over about a second: post the request, wait for the
+   daemon, wait for the first state to come back over the websocket. Until now
+   all three looked identical to a button that had not been pressed — greyed
+   out, which is also what 启动 looks like on a server that is already up. So
+   the honest reading of a click was "nothing happened", and the second click
+   is how you find out it did.
+
+   `aria-busy` is both the hook and the announcement: a spinner appears where
+   the label's own gap already is, so the button neither resizes nor reflows
+   the row it sits in. The label stays — swapping it for 处理中… would lose the
+   one word that says which button you pressed. */
+.btn[aria-busy='true'] {
+  /* Not the disabled look: this button is doing what it was asked, and the
+     greying reserved for "you cannot press this" would say the opposite. */
+  opacity: 1;
+  cursor: progress;
+  color: color-mix(in srgb, currentColor 78%, transparent);
+}
+
+.btn[aria-busy='true']::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 26%, transparent);
+  border-top-color: currentColor;
+  animation: spin 620ms linear infinite;
+  /* Compositor-only, so a second of spinning next to a console streaming a
+     thousand lines a minute costs nothing. */
+  will-change: transform;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+/* The filled button is disabled while its request is out, and .btn--primary
+   :disabled would otherwise drain it to the flat off-face — the same one it
+   wears when the server is already running. It keeps its face; only the ink
+   softens, which is enough to say "not yet" without saying "not available". */
+.btn--primary[aria-busy='true'] {
+  background: var(--accent-face);
+  color: color-mix(in srgb, var(--accent-ink) 80%, transparent);
+}
+
+/* A button whose whole label is one glyph — the ⋯ that opens a menu. Square
+   rather than pill-shaped so it does not read as a third action. */
+.btn--icon {
+  padding: 7px 11px;
+  font-size: 15px;
+  line-height: 1;
 }
 
 .link {
   background: none;
   border: none;
+  border-radius: 4px;
   color: var(--text-dim);
   cursor: pointer;
   font-size: 12px;
   padding: 0;
   text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
   font-family: inherit;
+  transition: color var(--dur) var(--ease);
 }
 
 .link:hover {
   color: var(--text);
+  text-decoration-color: currentColor;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 
 .field > span {
   font-size: 12px;
+  font-weight: 500;
   color: var(--text-dim);
 }
 
 .field small {
-  color: var(--text-dim);
+  color: var(--text-faint);
   font-size: 11px;
   line-height: 1.6;
 }
@@ -304,19 +1874,34 @@ a {
 .field input,
 .field select,
 .field textarea {
-  padding: 8px 10px;
+  padding: 8px 11px;
   background: var(--bg-input);
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--inset);
   color: var(--text);
   font-family: inherit;
   font-size: 13px;
   width: 100%;
+  transition:
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+.field input::placeholder,
+.field textarea::placeholder {
+  color: var(--text-faint);
 }
 
 .field textarea {
-  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   resize: vertical;
+}
+
+.field input:hover:not(:disabled),
+.field select:hover:not(:disabled),
+.field textarea:hover:not(:disabled) {
+  border-color: var(--outline);
 }
 
 .field input:focus,
@@ -324,11 +1909,14 @@ a {
 .field textarea:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: var(--ring);
 }
 
 .field input:disabled,
+.field select:disabled,
 .field textarea:disabled {
   opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .field-row {
@@ -348,19 +1936,22 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .checkbox {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 9px;
   cursor: pointer;
 }
 
 .checkbox input {
   margin-top: 3px;
+  width: 15px;
+  height: 15px;
   accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .checkbox small {
@@ -369,23 +1960,173 @@ a {
 
 /* --------------------------------------------------------------- feedback */
 
-.alert {
+/* Off screen but still read out. Used to hand a screen reader the one sentence
+   a wall of placeholder bars is standing in for. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- placeholders ------------------------------------------------------
+
+   The rule that matters here is the delay, not the shimmer: a placeholder is
+   held at opacity 0 for 140ms before it fades in, so a fetch the daemon
+   answers off its own memory — which is most of them — swaps straight to real
+   content and never shows grey. Only a request slow enough to be noticed gets
+   a placeholder, which is the only case where one helps.
+
+   `both` is what makes the delay work: without a fill the element would paint
+   at full opacity while it waits. */
+.skeleton-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: fade 180ms var(--ease) both;
+  animation-delay: 140ms;
+}
+
+/* The same box .stack is, because that is what it stands in for — a
+   placeholder laid out differently from the content is a placeholder that
+   still moves the page when the content arrives. Not needed inside <Page>,
+   which is already this column with this gap. */
+.skeleton-screen--stack {
+  padding: 16px 2px 40px;
+  max-width: var(--content-max);
+}
+
+/* No box of its own: the bars are children of the stack above, and this only
+   exists to take the whole block out of the accessibility tree at once. */
+.skeleton-screen__body {
+  display: contents;
+}
+
+.skeleton {
+  display: block;
+  border-radius: var(--radius-sm);
+  /* Three stops over twice the width, slid from one end to the other: a band
+     of light crossing a dull bar. The colours are the same surface ladder
+     everything else uses, so it stays a card that has not filled in yet
+     rather than a grey rectangle sitting on a warm page. */
+  background: linear-gradient(
+    90deg,
+    var(--surface-3) 0%,
+    var(--surface-4) 42%,
+    var(--surface-4) 58%,
+    var(--surface-3) 100%
+  );
+  background-size: 220% 100%;
+  animation: sweep 1.5s linear infinite;
+  /* Sits between the two lines it stands in for rather than butting against
+     them, so a stack of bars has the rhythm of text. */
+  flex: 0 0 auto;
+}
+
+.skeleton--pill {
+  border-radius: var(--radius-pill);
+}
+
+@keyframes sweep {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+
+.skeleton-panel {
+  gap: 11px;
+}
+
+.skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.skeleton-rows__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* Matches a real .file-row / .device-row, which is the whole point — the
+     listing that replaces this lands on the same grid. */
   padding: 9px 12px;
-  background: #1b2130;
+  border-bottom: 1px solid var(--border);
+}
+
+.skeleton-rows__row:last-child {
+  border-bottom: none;
+}
+
+.skeleton-rows__row > .skeleton:last-child {
+  margin-left: auto;
+}
+
+/* ---- refreshing in place ----------------------------------------------
+
+   Different problem from the one above: the content is already on screen and
+   correct, and a *newer* copy is on its way — stepping into a directory,
+   switching a chart's range. Replacing it with placeholders would throw away
+   something the operator is still reading, so the old copy stays put and only
+   says it is stale. The pointer says the same thing, and clicks are refused
+   for the moment it takes, so a double-click cannot queue two navigations. */
+[data-pending='true'] {
+  opacity: 0.55;
+  cursor: progress;
+  transition: opacity var(--dur) var(--ease);
+}
+
+[data-pending='true'] * {
+  pointer-events: none;
+}
+
+.alert {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 13px;
+  background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-left: 3px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
+  animation: rise 200ms var(--ease) both;
 }
 
 .alert--error {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 34%, transparent);
   border-left-color: var(--danger);
-  color: #ecc2c2;
+  color: var(--danger-ink);
 }
 
 .alert--ok {
-  border-left-color: var(--accent);
-  color: #bfe3ce;
+  background: var(--ok-soft);
+  border-color: color-mix(in srgb, var(--ok) 34%, transparent);
+  border-left-color: var(--ok);
+  color: var(--ok-ink);
+}
+
+/* Used for the warnings on the terminal settings page, where the point is
+   "read this before you click", not "something went wrong". */
+.alert--warn {
+  background: var(--caution-soft);
+  border-color: color-mix(in srgb, var(--caution) 36%, transparent);
+  border-left-color: var(--caution);
+  color: var(--caution-ink);
+}
+
+.alert .link {
+  color: inherit;
+  font-size: 13px;
 }
 
 .status {
@@ -394,6 +2135,36 @@ a {
   gap: 10px;
   font-size: 12px;
   color: var(--text-dim);
+}
+
+/* Facts that ride along with the state — pid, uptime, exit code. Boxed so a
+   row of them reads as data rather than as a sentence. */
+.status__meta {
+  padding: 1px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* State is the one thing on screen that changes without anyone touching it,
+   and a dot that snaps from grey to green is a change you only catch if you
+   happened to be looking at it. Over a fifth of a second it is caught in
+   peripheral vision — which is the whole job of a status dot on a sidebar you
+   are not currently reading. */
+.status__dot,
+.console__dot,
+.hostterm__dot,
+.pill,
+.badge {
+  transition:
+    background var(--dur-3) var(--ease),
+    border-color var(--dur-3) var(--ease),
+    box-shadow var(--dur-3) var(--ease),
+    color var(--dur-3) var(--ease);
 }
 
 .status__dot {
@@ -410,14 +2181,16 @@ a {
 .status__dot--starting,
 .status__dot--stopping {
   background: var(--state-starting);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-starting) 18%, transparent);
   animation: pulse 1.2s ease-in-out infinite;
 }
 .status__dot--running {
   background: var(--state-running);
-  box-shadow: 0 0 6px rgba(76, 175, 114, 0.7);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-running) 20%, transparent);
 }
 .status__dot--crashed {
   background: var(--state-crashed);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-crashed) 18%, transparent);
 }
 
 @keyframes pulse {
@@ -430,8 +2203,29 @@ a {
   }
 }
 
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .status__label {
   color: var(--text);
+  font-weight: 500;
 }
 
 /* -------------------------------------------------------------- instance */
@@ -439,47 +2233,21 @@ a {
 .instance {
   display: flex;
   flex-direction: column;
-  gap: 12px;
   min-height: 0;
   flex: 1;
-}
-
-.instance__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.instance__identity {
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.instance__identity h2 {
-  margin: 0;
-  font-size: 20px;
-}
-
-.instance__actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
 }
 
 .instance__message {
   color: var(--text-dim);
   font-size: 12px;
-  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
-.instance__body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
+/* A section, once opened, stays mounted behind whatever replaced it. Only one
+   is ever not hidden — apart from the tenth of a second a switch takes, when
+   the outgoing one is still on top of it — so they all claim the same box. */
+.instance {
+  position: relative;
 }
 
 .instance__pane {
@@ -493,34 +2261,402 @@ a {
   display: none;
 }
 
+/* A pane is never unmounted, so it cannot use the entrance every page gets:
+   an animation only runs when its element is created, and these were created
+   the first time you opened the section. InstanceView flags the pane that has
+   just come forward for the length of one entrance instead — same movement,
+   driven by the switch rather than by a mount. */
+.instance__pane--entering {
+  animation: rise var(--dur-3) var(--ease) backwards;
+}
+
+/* And the half that was missing: the section you just left, held over the one
+   arriving for the length of its exit.
+   Lifted out of the flow rather than left in it — two panes in one flex column
+   would stack, and the new page would start halfway down the window and slide
+   up as the old one went. Over the top, so what the reader sees is one page
+   dissolving into another in the same frame, which is what a switch between two
+   views of the same server is. Nothing in here is reachable: it is a picture of
+   a page whose state has already moved on. */
+.instance__pane--leaving {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+  /* The panel's one exit shape, the same one a dialog leaves on: down a few
+     pixels, back a hair, gone.
+     Short, and on --ease rather than the accelerating curve an exit normally
+     takes — the same call scopeMorph makes for the same reason. Both pages
+     occupy the same box, so every millisecond the old one is still legible is
+     a millisecond of two pages printed over each other; --ease-in spends its
+     first third barely moving, which is exactly the third that has to be over
+     before the new page arrives. */
+  animation: pop-out var(--dur-1) var(--ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The blanket override collapses the animation to nothing, which leaves this
+     pane parked on top of the new one for the duration — invisible, but there.
+     Take it out of the layout instead: a reader who asked for no motion gets
+     the switch they would have got before any of this existed. */
+  .instance__pane--leaving {
+    display: none;
+  }
+}
+
 .instance__pane--scroll {
   overflow-y: auto;
 }
 
-.tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--border);
+/* An instance section takes the width of its pane, the way the console does.
+   .stack's reading measure is right for a settings form standing on its own
+   page; inside an instance it left every section but the console in a column
+   with a third of the window empty beside it — and the file listing, the charts
+   and the plugin rows are precisely the things that wanted that space. Capped
+   at the panel's wide measure rather than uncapped, so an ultrawide monitor
+   does not get a three-thousand-pixel row of properties. */
+.instance__pane .stack,
+.instance__pane .skeleton-screen--stack {
+  max-width: var(--content-max-wide);
 }
 
-.tabs__tab {
-  padding: 8px 16px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
+
+/* ------------------------------------------------------------- cockpit
+
+   The instance home page. Identity and power on top, three numbers under it,
+   then the log — which gets everything that is left, because a console that
+   has to be scrolled to is a console that gets replaced by an SSH session. */
+
+.cockpit {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  flex: 1;
+}
+
+.cockpit__bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.cockpit__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cockpit__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cockpit__title h1 {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: -0.01em;
+}
+
+/* The facts that identify this server rather than measure it: which core,
+   which Java, how long, and the address to hand to a player. */
+.cockpit__facts {
+  display: flex;
+  align-items: center;
+  gap: 6px 14px;
+  flex-wrap: wrap;
   color: var(--text-dim);
+  font-size: 12px;
+}
+
+.cockpit__facts > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+.cockpit__address {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text);
   cursor: pointer;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 12px;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
-.tabs__tab:hover {
-  color: var(--text);
+.cockpit__address:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
 }
 
-.tabs__tab--active {
-  color: var(--text);
-  border-bottom-color: var(--accent);
+/* This one copies to the clipboard, and the copy is silent: the press is the
+   only thing that says the click was taken. */
+.cockpit__address:active {
+  transform: scale(0.96);
+}
+
+.cockpit__address code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.cockpit__address span {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+/* Status as a filled chip rather than a word: it is the one thing on this bar
+   that is read at a glance from across a desk. */
+.pill {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--surface-3);
+  color: var(--text-dim);
+}
+
+.pill--running {
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+}
+
+.pill--starting,
+.pill--stopping {
+  background: var(--caution-soft);
+  color: var(--caution-ink);
+}
+
+.pill--crashed {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+
+/* --- the metric strip ------------------------------------------------- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+}
+
+.tile--link {
+  cursor: pointer;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.tile--link:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.tile--link:active {
+  transform: scale(var(--press));
+}
+
+.tile__label {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.tile__value {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.tile__detail {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+/* The last few minutes, inside the tile. A steady 60% and a spike caught at
+   60% on its way past 100 are the same number and completely different
+   problems; the line is what tells them apart. */
+.spark {
+  display: block;
+  width: 100%;
+  height: 26px;
+  margin: 2px 0;
+  overflow: visible;
+}
+
+.spark--empty {
+  height: 26px;
+}
+
+/* --- console beside the quick panel ----------------------------------- */
+
+.cockpit__split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The right-hand column only appears when taking 280px off the log still
+   leaves a usable log. Below that the console gets the whole pane. */
+@media (min-width: 1280px) {
+  .cockpit__split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 12px;
+  }
+}
+
+.quick {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+  background: var(--surface-1);
+  background-image: linear-gradient(180deg, var(--sheen), transparent 96px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+@media (min-width: 1280px) {
+  .quick {
+    display: flex;
+  }
+}
+
+.quick__idle {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.quick__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Each one names the command it sends. A button that fires something into a
+   server console without saying what is a button people stop pressing. */
+.quick__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.quick__item:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+/* These fire a command into a running server, so the press is the only
+   acknowledgement there is until the log answers. */
+.quick__item:active:not(:disabled) {
+  transform: scale(var(--press));
+  background: var(--surface-4);
+}
+
+.quick__item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.quick__item strong {
+  font-size: 13px;
+}
+
+.quick__item code {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.quick__item small {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.quick__note {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.quick__links {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+
+/* ---------------------------------------------------------- power buttons
+
+   A stopped server has one thing you can do to it and a running one has two,
+   so that is what is on screen. 强制结束 is never one of them — it lives in
+   the ⋯ menu, one deliberate extra step away from the pointer that just
+   pressed 启动. */
+
+.power {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.power__spacer {
+  display: block;
+  width: 32px;
 }
 
 /* --------------------------------------------------------------- console */
@@ -530,22 +2666,119 @@ a {
   flex-direction: column;
   gap: 8px;
   flex: 1;
+  /* Both zeros matter: it is a grid item beside the quick panel, and a grid
+     item's default min size is its content — a long log line would push the
+     panel off the screen instead of scrolling. */
   min-height: 0;
+  min-width: 0;
 }
 
 .console__screen {
   flex: 1;
   min-height: 200px;
-  padding: 8px 4px 8px 10px;
-  background: #0d1117;
-  border: 1px solid var(--border);
+  padding: 10px 4px 10px 12px;
+  /* Flat, not a gradient: the terminal canvas paints its own opaque
+     background on top, so anything but a single colour shows a seam. */
+  background: var(--term-bg);
+  border: 1px solid var(--term-edge);
   border-radius: var(--radius);
   overflow: hidden;
 }
 
 .console__error {
-  color: #ecc2c2;
+  color: var(--danger-ink);
   font-size: 12px;
+}
+
+/* A terminal console types into the screen itself, so it has no input row to
+   carry the connection state; this thin strip takes its place. */
+.console__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.console__dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--state-stopped);
+}
+
+.console__dot--open {
+  background: var(--state-running);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-running) 20%, transparent);
+}
+
+.console__dot--connecting,
+.console__dot--reconnecting {
+  background: var(--state-starting);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+/* Tab completion candidates, sitting just above the input like a shell's. */
+.console__hints {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  animation: rise 120ms var(--ease) both;
+}
+
+.console__hint-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.console__hint {
+  padding: 2px 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.console__hint:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+.console__hint:active {
+  transform: scale(0.94);
+}
+
+.console__hint--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.console__hint-more,
+.console__hint-desc {
+  color: var(--text-faint);
+  font-size: 11px;
+  align-self: center;
 }
 
 .console__input {
@@ -556,15 +2789,20 @@ a {
   background: var(--bg-input);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
+  transition:
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
 }
 
 .console__input:focus-within {
   border-color: var(--accent);
+  box-shadow: var(--ring);
 }
 
 .console__prompt {
   color: var(--accent);
-  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
+  font-weight: 600;
 }
 
 .console__input input {
@@ -573,7 +2811,7 @@ a {
   background: none;
   border: none;
   color: var(--text);
-  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
 }
 
@@ -583,13 +2821,24 @@ a {
 
 .console__input button {
   padding: 5px 12px;
-  background: #1c2330;
+  background: var(--surface-3);
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--text);
   cursor: pointer;
   font-family: inherit;
   font-size: 12px;
+  transition:
+    background var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.console__input button:hover:not(:disabled) {
+  background: var(--surface-4);
+}
+
+.console__input button:active:not(:disabled) {
+  transform: scale(0.95);
 }
 
 .console__input button:disabled {
@@ -597,72 +2846,388 @@ a {
   cursor: not-allowed;
 }
 
-/* -------------------------------------------------------------- settings */
+/* ----------------------------------------------------------------- stack */
 
-.settings {
+/* A stack of panels inside a pane that already scrolls — the instance tabs use
+   it. Not a page: it has no head and does not own a scrollbar. It shares the
+   page's reading width so the panel has one measure, not two that differ by
+   sixty pixels for no reason anyone can state. It was called .settings until
+   the file manager and the resource charts were also built out of it, which is
+   two thirds of its uses having nothing to do with settings. */
+.stack {
   display: flex;
   flex-direction: column;
   gap: 16px;
   padding: 16px 2px 40px;
-  max-width: 780px;
+  max-width: var(--content-max);
 }
 
 .panel {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 18px;
-  background: var(--bg-raised);
+  padding: 18px 20px;
+  background: var(--surface-1);
+  /* A single hairline of light along the top edge; it is what makes a card
+     sit on the page instead of being a hole cut into it. */
+  background-image: linear-gradient(180deg, var(--sheen), transparent 96px);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
 }
 
 .panel--warn {
-  border-color: #4a3d18;
-  background: #1c1a12;
+  border-color: color-mix(in srgb, var(--caution) 34%, transparent);
+  background: linear-gradient(180deg, var(--caution-soft), transparent 120px), var(--surface-1);
 }
 
 .panel__title {
   margin: 0;
   font-size: 15px;
+  font-weight: 600;
+}
+
+/* Given the extra width, a form's fields lay out in columns instead of
+   stretching: a text input as wide as the window is harder to read, not
+   easier, and it is what makes a wide settings page look like a narrow one
+   that was pulled sideways. Only panels that ask for it — .panel--form — are
+   laid out this way; the ones holding a chart or a table already fill the
+   space with something worth having. */
+.panel--form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  align-items: start;
+  gap: 14px 20px;
+}
+
+/* The parts of such a panel that are about the whole of it rather than about
+   one field: its title, its notes, its button row — plus whatever asks for the
+   full measure because it is a paragraph of text in a box (.field--full). */
+.panel--form > .panel__title,
+.panel--form > .panel__path,
+.panel--form > .alert,
+.panel--form > .chart-note,
+.panel--form > .actions,
+.panel--form > .field--full,
+.panel--form > p,
+.panel--form > .props-grid {
+  grid-column: 1 / -1;
 }
 
 .panel__path {
   margin: -10px 0 0;
-  color: var(--text-dim);
-  font-family: ui-monospace, Menlo, Consolas, monospace;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
   font-size: 11px;
   word-break: break-all;
 }
 
+/* The long tail of server.properties: dozens of one-line key/value pairs the
+   panel has no opinion about. They are the clearest case for columns — every
+   row is the same shape and the same height — so they wrap into as many as fit
+   rather than making a single list four screens long. */
 .props-grid {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 8px 20px;
 }
 
-.settings__actions {
+/* The row of buttons a panel ends with. Destructive ones are pushed to the far
+   end of it, away from the button the hand is already going for. */
+.actions {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
 }
 
-.settings__danger {
+.actions__danger {
   display: flex;
   gap: 8px;
   margin-left: auto;
 }
 
-/* --------------------------------------------------------------- welcome */
+/* ---------------------------------------------------------------- update */
 
-.welcome {
+.update {
+  background: var(--surface-1);
+  background-image: linear-gradient(180deg, var(--sheen), transparent 96px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+  margin-bottom: 24px;
+}
+
+.update--busy {
+  border-color: var(--border-accent);
+  box-shadow:
+    var(--shadow),
+    0 0 0 1px var(--accent-soft);
+}
+
+.update__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.update__title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.update__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin: 0 0 12px;
+}
+
+.update__meta dt {
+  color: var(--text-faint);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.update__meta dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.update__note {
+  color: var(--text-dim);
+  margin: 12px 0 0;
+}
+
+.update__actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.update__notes {
+  margin-top: 12px;
+}
+
+.update__notes summary,
+.update__mirror summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 12px;
+  transition: color var(--dur) var(--ease);
+}
+
+.update__notes summary:hover,
+.update__mirror summary:hover {
+  color: var(--text);
+}
+
+/* A disclosure that opens instantly shoves everything under it down the page
+   by two hundred pixels between one frame and the next, which is the single
+   most disorienting thing left in the panel — the release notes are long. It
+   unrolls instead. `interpolate-size` (set on :root, in the motion section) is
+   what allows the height to animate to `auto`; a browser without either that
+   or ::details-content simply keeps today's instant open, which is why this is
+   written as an enhancement rather than as a height the markup depends on. */
+details::details-content {
+  block-size: 0;
+  overflow: hidden;
+  transition:
+    block-size var(--dur-3) var(--ease),
+    content-visibility var(--dur-3) allow-discrete;
+}
+
+details[open]::details-content {
+  block-size: auto;
+}
+
+/* Release notes are markdown from the changelog; shown as-is rather than
+   rendered, so no markdown dependency is pulled in for one panel. */
+.update__notes pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 12px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.update__list {
+  margin: 8px 0;
+  padding-left: 20px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.badge--update {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.update__mirror {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.update__mirror-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.update__mirror-custom {
+  display: flex;
+  gap: 8px;
+  margin-left: 24px;
+}
+
+.update__mirror-custom input {
+  flex: 1;
+  padding: 6px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.update__mirror-custom input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+/* ------------------------------------------------------- welcome & pages
+
+   .page is the plain scrolling page shell every panel-wide view uses; the
+   overview is the same thing with cards under it. */
+
+/* Every page arrives the same way, and it is deliberately the smallest of the
+   entrances: six pixels and a fifth of a second. A page is the largest thing
+   that moves in the panel, so it is also the thing whose movement gets old
+   fastest — anything more theatrical here would be paid for on every click for
+   the life of the install. */
+.welcome,
+.page {
   overflow-y: auto;
   padding-bottom: 30px;
+  animation: rise var(--dur-3) var(--ease) backwards;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* The scroll container itself is always as wide as the pane, so its scrollbar
+   rides the window edge instead of floating in the middle of the screen with
+   dead space beside it. Reading width is capped on the children instead. */
+.page > * {
+  max-width: var(--content-max);
+}
+
+/* Tiles and cards rather than prose, so they take the width they are given —
+   up to a point. Their own paragraphs stay capped by .page__lead. */
+.page--wide > * {
+  max-width: var(--content-max-wide);
 }
 
 .welcome h1 {
   font-size: 22px;
   margin: 0 0 8px;
+}
+
+.page h1 {
+  font-size: 23px;
+  margin: 0;
+}
+
+/* Title and lead on the left, the page's own facts on the right — so a page
+   about a shared asset opens with "what have I got" already answered. */
+.page__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 32px;
+  flex-wrap: wrap;
+}
+
+/* The title column, and only it: `> div` also caught an aside that happened to
+   be a div — a button row beside the title — and gave it the title's column
+   direction and 280px floor, which is how two buttons ended up stacked in a
+   box a third of the head wide. */
+.page__head > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 280px;
+  flex: 1;
+}
+
+.page__head .page__lead {
+  margin: 0;
+}
+
+/* A row of standalone facts. Chips rather than a comma-separated line: each
+   one is a separate answer, and they stay separable when they wrap. */
+.meta-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* A button row beside a page title stays on one line. The head is a wrapping
+   flex row whose left half claims the space, which squeezes anything on the
+   right down to its narrowest column — two buttons, stacked. They move under
+   the title together instead. */
+.page__head .actions {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+
+/* Beside a title the chips are the secondary half, so they wrap onto a second
+   row rather than pushing the lead paragraph down to a narrow column — which
+   is what plain max-content sizing does once a long path is among them. */
+.page__head .meta-chips {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  max-width: 50%;
+}
+
+.meta-chips > span {
+  /* Capped so one long value — a data directory nested six levels deep —
+     cannot push the rest of the facts off the row. */
+  max-width: min(100%, 360px);
+  padding: 1px 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .welcome__lead {
@@ -671,17 +3236,42 @@ a {
   margin: 0 0 24px;
 }
 
+.page__lead {
+  color: var(--text-dim);
+  max-width: 660px;
+  margin: -8px 0 0;
+}
+
+.welcome__hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 24px;
+  color: var(--text-dim);
+}
+
+/* The "nothing here yet" block: a dashed outline says the space is meant to
+   be filled, rather than looking like a rendering failure. */
 .welcome__empty {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
+  padding: 34px 20px;
+  background: var(--sunken);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
   color: var(--text-dim);
+  text-align: center;
+}
+
+.welcome__empty p {
+  margin: 0;
 }
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
   gap: 12px;
 }
 
@@ -690,24 +3280,45 @@ a {
   flex-direction: column;
   gap: 6px;
   padding: 16px;
-  background: var(--bg-raised);
+  background: var(--surface-1);
+  background-image: linear-gradient(180deg, var(--sheen), transparent 80px);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   color: var(--text);
   cursor: pointer;
   text-align: left;
   font-family: inherit;
   font-size: 14px;
+  transition:
+    border-color var(--dur) var(--ease),
+    transform var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
 }
 
 .card:hover {
   border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+
+/* All the way back down and a shade under, so the lift the hover gave it is
+   visibly spent rather than merely paused. */
+.card:active {
+  transform: translateY(0) scale(var(--press));
+  box-shadow: var(--shadow-sm);
+  transition-duration: var(--dur-1);
 }
 
 .card__head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
+}
+
+.card__head strong {
+  font-size: 15px;
+  transition: color var(--dur) var(--ease);
 }
 
 .card__meta {
@@ -716,15 +3327,21 @@ a {
 }
 
 .card__path {
-  color: var(--text-dim);
-  font-family: ui-monospace, Menlo, Consolas, monospace;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
   font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* ---------------------------------------------------------------- modals */
+/* ---------------------------------------------------------------- modals
+
+   Both halves of the appearance are here, and so are both halves of the
+   dismissal — see Modal.tsx, which holds the dialog mounted for exactly as
+   long as the exit takes. Before that it was a one-way animation: a card that
+   rose into place over a fifth of a second and then, on 取消, was simply gone
+   between two frames, along with the blurred page behind it. */
 
 .modal {
   position: fixed;
@@ -732,21 +3349,33 @@ a {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(4, 6, 10, 0.7);
+  background: var(--scrim);
+  backdrop-filter: blur(6px);
   z-index: 50;
+  animation: fade var(--dur-3) var(--ease) both;
 }
 
 .modal__card {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  width: min(460px, 100%);
+  width: min(470px, 100%);
   max-height: 90vh;
   overflow-y: auto;
   padding: 24px;
-  background: var(--bg-raised);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface-1));
   border: 1px solid var(--border-strong);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: pop var(--dur-4) var(--ease) both;
+}
+
+.modal[data-state='out'] {
+  animation: fade-out var(--dur) var(--ease-in) both;
+}
+
+.modal[data-state='out'] .modal__card {
+  animation: pop-out var(--dur) var(--ease-in) both;
 }
 
 .modal__title {
@@ -767,43 +3396,41 @@ a {
   margin-top: 4px;
 }
 
-@media (max-width: 720px) {
-  .app {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-  }
-
-  .sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    max-height: 45vh;
-  }
-
-  .field-row {
-    grid-template-columns: 1fr;
-  }
-
-  .settings__danger {
-    margin-left: 0;
-  }
-}
-
 /* ------------------------------------------------------------------ charts
 
-   The panel commits to a single dark look, so the chart tokens are defined
-   once rather than as a light/dark pair. The two series colours were checked
-   against --chart-surface with the palette validator: CVD ΔE 19.6 between
-   them, both above 3:1 contrast. Swapping either means re-running it. */
+   Series colours are not the brand's. A chart's job is to keep CPU apart from
+   memory — and now the two directions of network traffic apart from both — and
+   hues stepped off one terracotta cannot do that. So each mode gets its own
+   set, stepped for the surface it is drawn on and put through the palette
+   validator against that surface, every pair against every other pair:
+
+     light (#ffffff)  worst CVD ΔE 9.3 (deutan), worst normal ΔE 20.8, all ≥ 3:1
+     dark  (#231917)  worst CVD ΔE 8.1 (deutan), worst normal ΔE 20.2, all ≥ 3:1
+
+   Swapping any of them, adding a fifth, or moving the card surface under them
+   means re-running it — the worst pair is rarely the one you changed. The
+   status trio is separate and never used as a series. */
 
 :root {
-  --chart-surface: #131720;
-  --chart-grid: #232a36;
-  --chart-reference: #3b4553;
+  --chart-surface: var(--surface-1);
+  --chart-grid: #ead6d0;
+  --chart-reference: #c3aca6;
+  --series-cpu: #2a6ad6;
+  --series-memory: #1b8a5f;
+  --series-net-down: #b3399c;
+  --series-net-up: #c25b12;
+  --status-ok: var(--ok);
+  --status-warning: var(--caution);
+  --status-critical: var(--error);
+}
+
+:root[data-theme='dark'] {
+  --chart-grid: #3d3230;
+  --chart-reference: #6b5b57;
   --series-cpu: #3987e5;
   --series-memory: #199e70;
-  --status-ok: #0ca30c;
-  --status-warning: #fab219;
-  --status-critical: #d03b3b;
+  --series-net-down: #c95fae;
+  --series-net-up: #cf7a24;
 }
 
 .chart {
@@ -815,7 +3442,7 @@ a {
   display: grid;
   place-items: center;
   height: 168px;
-  color: var(--text-dim);
+  color: var(--text-faint);
   font-size: 13px;
 }
 
@@ -858,7 +3485,7 @@ a {
   display: flex;
   justify-content: space-between;
   padding: 0 62px 0 56px;
-  color: var(--text-dim);
+  color: var(--text-faint);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
@@ -870,10 +3497,11 @@ a {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 4px 10px;
-  background: #1b2130;
+  padding: 5px 11px;
+  background: var(--surface-3);
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
   pointer-events: none;
   white-space: nowrap;
 }
@@ -890,7 +3518,7 @@ a {
 
 .chart-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
@@ -902,9 +3530,23 @@ a {
   font-size: 12px;
 }
 
+/* A second chart under the first inside one card — the two directions of
+   network traffic. Quieter than the card's own title, because the card is the
+   subject and these two are its halves. */
+.chart-head--stacked {
+  margin-top: 4px;
+}
+
+.chart-head__title {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .chart-note {
   margin: 0;
-  color: var(--text-dim);
+  color: var(--text-faint);
   font-size: 11px;
   line-height: 1.7;
 }
@@ -927,21 +3569,32 @@ a {
   padding: 4px 12px;
   background: none;
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--text-dim);
   cursor: pointer;
   font-family: inherit;
   font-size: 12px;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .chip:hover {
   color: var(--text);
+  background: var(--surface-2);
+}
+
+.chip:active {
+  transform: scale(0.94);
 }
 
 .chip--active {
-  background: #1c2330;
+  background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--text);
+  font-weight: 500;
 }
 
 .chip--right {
@@ -950,44 +3603,10 @@ a {
 
 /* ------------------------------------------------------------------ meters */
 
-.host {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 18px;
-  margin-bottom: 24px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-
-.host__head h2 {
-  margin: 0 0 4px;
-  font-size: 16px;
-}
-
-.host__meta {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin: 0;
-  color: var(--text-dim);
-  font-size: 12px;
-}
-
-.meters {
-  display: grid;
-  /* Capped rather than 1fr: stretched across a wide screen the label and its
-     value drift so far apart they stop reading as one tile. */
-  grid-template-columns: repeat(auto-fit, minmax(200px, 260px));
-  gap: 24px;
-  justify-content: start;
-}
-
 .meter {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
 }
 
 .meter__head {
@@ -1002,22 +3621,28 @@ a {
 }
 
 .meter__value {
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 .meter__track {
   height: 6px;
-  background: #1c2330;
-  border-radius: 999px;
+  background: var(--surface-4);
+  border-radius: var(--radius-pill);
   overflow: hidden;
+  box-shadow: var(--inset);
 }
 
+/* Flat, one colour per state. The gradient-and-glow the fills used to carry
+   was a dark-UI device; on a light surface it only muddies the one thing the
+   bar has to say, which is how far along it is. */
 .meter__fill {
   height: 100%;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--status-ok);
-  transition: width 0.4s ease;
+  transition: width var(--dur-data) var(--ease-out);
 }
 
 .meter__fill--warning {
@@ -1029,14 +3654,18 @@ a {
 
 .meter__detail {
   margin: 0;
-  color: var(--text-dim);
+  color: var(--text-faint);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ------------------------------------------------------------------ tables */
 
 .table-scroll {
   overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--sunken);
 }
 
 .data-table {
@@ -1047,16 +3676,26 @@ a {
 
 .data-table th,
 .data-table td {
-  padding: 7px 10px;
+  padding: 8px 12px;
   text-align: left;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 .data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-2);
   color: var(--text-dim);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .data-table td.num,
@@ -1065,12 +3704,23 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
+.data-table tbody tr {
+  transition: background var(--dur) var(--ease);
+}
+
 .data-table tbody tr:hover {
-  background: #171d28;
+  background: var(--surface-2);
 }
 
 .data-table .muted {
   color: var(--text-dim);
+}
+
+/* Secondary prose: the "nothing here yet" lines under a list. */
+.muted {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .data-table .actions {
@@ -1086,6 +3736,10 @@ a {
   color: var(--danger-hover);
 }
 
+.link--danger:hover {
+  color: var(--danger);
+}
+
 /* ------------------------------------------------------------- file manager */
 
 .breadcrumb {
@@ -1099,19 +3753,27 @@ a {
 .breadcrumb__crumb {
   background: none;
   border: none;
+  border-radius: 5px;
   color: var(--accent-hover);
   cursor: pointer;
   font-family: inherit;
   font-size: 13px;
-  padding: 2px 4px;
+  padding: 2px 6px;
+  transition:
+    background var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .breadcrumb__crumb:hover {
-  text-decoration: underline;
+  background: var(--accent-soft);
+}
+
+.breadcrumb__crumb:active {
+  transform: scale(0.94);
 }
 
 .breadcrumb__sep {
-  color: var(--text-dim);
+  color: var(--text-faint);
 }
 
 .file-toolbar {
@@ -1122,7 +3784,7 @@ a {
 }
 
 .file-toolbar__hint {
-  color: var(--text-dim);
+  color: var(--text-faint);
   font-size: 11px;
 }
 
@@ -1138,6 +3800,7 @@ a {
   font-size: 13px;
   padding: 0;
   text-align: left;
+  transition: color var(--dur) var(--ease);
 }
 
 .file-link:hover:not(:disabled) {
@@ -1152,56 +3815,98 @@ a {
 
 .file-icon {
   font-size: 13px;
+  opacity: 0.85;
 }
 
 .badge {
+  display: inline-flex;
+  align-items: center;
   margin-left: 8px;
-  padding: 1px 6px;
-  background: #1c2330;
-  border-radius: 4px;
+  padding: 1px 7px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
   color: var(--text-dim);
   font-size: 10px;
+  line-height: 1.7;
+  white-space: nowrap;
 }
 
-.settings--dropping {
+.stack--dropping {
   outline: 2px dashed var(--accent);
   outline-offset: 6px;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
+  background: var(--accent-soft);
 }
 
 .progress {
   position: relative;
-  height: 20px;
-  background: #1c2330;
-  border-radius: 6px;
+  height: 22px;
+  background: var(--surface-4);
+  border-radius: var(--radius-sm);
   overflow: hidden;
+  box-shadow: var(--inset);
 }
 
 .progress__bar {
   height: 100%;
   background: var(--accent);
-  transition: width 0.2s linear;
+  transition: width var(--dur) linear;
 }
 
+/* The stripes only exist to say "still moving" while a download sits at the
+   same percentage for a while. */
+.progress__bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(
+    115deg,
+    var(--stripe) 25%,
+    transparent 25%,
+    transparent 50%,
+    var(--stripe) 50%,
+    var(--stripe) 75%,
+    transparent 75%
+  );
+  background-size: 22px 22px;
+  animation: stripes 700ms linear infinite;
+}
+
+@keyframes stripes {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 22px 0;
+  }
+}
+
+/* The label sits over both the filled and the unfilled half of the bar, so it
+   cannot take either one's ink; the halo is what keeps it legible on both. */
 .progress__label {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
   font-size: 11px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  color: var(--text);
+  text-shadow: 0 0 4px var(--bg-input), 0 0 8px var(--bg-input);
 }
 
 .file-editor {
   width: 100%;
-  padding: 12px;
+  padding: 12px 14px;
   background: var(--bg-input);
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--inset);
   color: var(--text);
-  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12.5px;
-  line-height: 1.6;
+  line-height: 1.65;
   resize: vertical;
   tab-size: 2;
 }
@@ -1209,4 +3914,2822 @@ a {
 .file-editor:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.download-status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.download-status .chart-note {
+  margin: 0;
+}
+
+/* ------------------------------------------------------------- device rows */
+
+.device-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.device-row {
+  padding: 11px 13px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.device-row:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.device-row__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.device-row__spacer {
+  flex: 1;
+}
+
+.device-row__meta {
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+
+/* A sentence rather than a fact — "this jar is the library's own download" —
+   so it gets its own line instead of trailing the dot-separated metadata. */
+.device-row__hint {
+  display: block;
+  margin-top: 3px;
+}
+
+/* ------------------------------------------------------------------ assets
+
+   Java runtimes and server cores are the same kind of thing — one downloaded
+   artefact, with a version, a size, a path on disk and a list of instances
+   depending on it — so they share one card. Reading the two pages side by side
+   should feel like reading one page twice. */
+
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.asset {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 15px 16px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition:
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+
+.asset:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+/* The machine's own Java, which the panel reports but does not own. */
+.asset--muted {
+  background: var(--sunken);
+  border-style: dashed;
+}
+
+.asset__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* A version number big enough to pick out of a grid of eight cards. */
+.asset__tile {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.asset__tile--accent {
+  background: var(--primary-container);
+  border-color: var(--border-accent);
+  color: var(--on-primary-container);
+}
+
+.asset__title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.asset__title strong {
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset__sub {
+  color: var(--text-dim);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Label over value, in columns — the shape a spec sheet wants, and it survives
+   a narrow card by wrapping a whole pair at a time. */
+.asset__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin: 0;
+}
+
+.asset__facts dt {
+  color: var(--text-faint);
+  font-size: 11px;
+  margin-bottom: 1px;
+}
+
+.asset__facts dd {
+  margin: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.asset__path {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset__path code {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.asset__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 11px;
+  border-top: 1px solid var(--border);
+}
+
+.asset__actions .muted {
+  font-size: 11px;
+}
+
+.asset__users {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  min-width: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.asset__users .badge {
+  margin-left: 0;
+}
+
+/* --------------------------------------------------------------- choosers
+
+   A dropdown hides the one thing that decides the click — is this version LTS,
+   is it already installed, what server does it run. These lay the options out
+   flat so the answer is on screen before the choice is made. */
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.choice-grid--wide {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.choice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 13px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+
+.choice:hover:not(:disabled) {
+  border-color: var(--outline);
+  transform: translateY(-1px);
+}
+
+.choice:active:not(:disabled) {
+  transform: translateY(var(--press-drop)) scale(var(--press));
+  transition-duration: var(--dur-1);
+}
+
+.choice:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* Layered over the base rather than replacing it: a background shorthand here
+   drops --bg-input, and the picked option ends up *paler* than the ones it is
+   picked out of. */
+.choice--active {
+  background: linear-gradient(180deg, var(--accent-soft), transparent), var(--bg-input);
+  border-color: var(--accent);
+}
+
+.choice:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.choice__value {
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.choice--active .choice__value {
+  color: var(--accent-hover);
+}
+
+.choice__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.choice__label .badge {
+  margin-left: 0;
+}
+
+.choice__note {
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* Two or three mutually exclusive options that fit on one line. */
+.segmented {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  flex-wrap: wrap;
+}
+
+.segmented__option {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1 1 150px;
+  padding: 8px 12px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.segmented__option:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.segmented__option:active:not(:disabled) {
+  transform: scale(var(--press));
+}
+
+.segmented__option:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.segmented__option--active {
+  background: var(--surface-3);
+  border-color: var(--border-accent);
+  color: var(--text);
+}
+
+.segmented__option strong {
+  font-size: 13px;
+}
+
+.segmented__option small {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.segmented__option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Minecraft versions: a hundred of them, all short, all worth scanning at
+   once. Capped in height so the download button never leaves the screen. */
+.version-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 168px;
+  overflow-y: auto;
+  padding: 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.version {
+  padding: 4px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.version:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+.version:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.version:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.version--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+/* Pre-releases and snapshots are only shown on request, but once shown they
+   still have to look different from what you would run a server on. */
+.version--unstable {
+  border-style: dashed;
+}
+
+.version:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Exactly what is about to be written to disk, resolved before the click. */
+.build-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 13px 15px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+}
+
+.build-summary__file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.build-summary__file code {
+  overflow-wrap: anywhere;
+}
+
+.build-summary__file .badge {
+  margin-left: 0;
+}
+
+/* A label with its own controls on the right of the row. */
+.field__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.field__tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Qualified with the element: a bare .input-slim ties with `.field input`
+   above, which stretches every input in a field to 100% and would push this
+   one onto its own line. */
+input.input-slim {
+  width: 200px;
+  padding: 5px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+input.input-slim:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+input.input-slim:disabled {
+  opacity: 0.5;
+}
+
+.checkbox--inline {
+  align-items: center;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.checkbox--inline input {
+  margin-top: 0;
+}
+
+/* Badge variants used on the asset cards. "Installed" and "running" are the
+   same go-signal the status dots use, so they take that hue rather than the
+   brand's — a terracotta "运行中" would read as a caution. */
+.badge--ok {
+  background: var(--ok-soft);
+  border-color: color-mix(in srgb, var(--ok) 34%, transparent);
+  color: var(--ok-ink);
+}
+
+.badge--live {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: var(--surface-lowest);
+  font-weight: 600;
+}
+
+.badge--warn {
+  background: var(--caution-soft);
+  border-color: color-mix(in srgb, var(--caution) 36%, transparent);
+  color: var(--caution-ink);
+}
+
+.badge--danger {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 36%, transparent);
+  color: var(--danger-ink);
+}
+
+/*
+ * Badges normally sit after a run of text, so they carry a left margin. In the
+ * auth log they are the first thing in the cell and that margin would knock the
+ * column out of line with its header.
+ */
+.auth-events .badge {
+  margin-left: 0;
+}
+
+/* ------------------------------------------------------- overview summary
+
+   Four numbers, and only numbers that would change what the reader does next.
+   Machine diagnostics (network, per-core CPU, IO wait) are deliberately a
+   floor down on the host pages: they answer "why", and a home page's job is
+   "whether". */
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.summary__cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 13px 16px;
+  background: var(--surface-1);
+  background-image: linear-gradient(180deg, var(--sheen), transparent 70px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  overflow: hidden;
+}
+
+.summary__cell--link {
+  cursor: pointer;
+  transition:
+    border-color var(--dur) var(--ease),
+    transform var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+.summary__cell--link:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+
+.summary__cell--link:active {
+  transform: translateY(0) scale(var(--press));
+  box-shadow: var(--shadow-sm);
+  transition-duration: var(--dur-1);
+}
+
+/* Severity rides the left edge rather than the whole tile: a red block for
+   "disk is filling" would outshout an actual crash three tiles over. */
+.summary__cell--warn::before,
+.summary__cell--error::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--caution);
+}
+
+.summary__cell--error::before {
+  background: var(--danger);
+}
+
+.summary__label {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.summary__value {
+  font-size: 23px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary__detail {
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- the alert block --------------------------------------------------
+
+   Rendered only when there is something in it. A permanent "一切正常" panel
+   trains the eye to skip exactly the place warnings appear. */
+
+.alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alerts .alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0;
+}
+
+.alert__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.alert__body span {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.badge--alert {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+
+.chart-head__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* --- instance cards ---------------------------------------------------- */
+
+.card__state {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.card--crashed {
+  border-color: var(--danger);
+}
+
+.card__live {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.card__bar {
+  height: 5px;
+  background: var(--surface-4);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  box-shadow: var(--inset);
+}
+
+.card__bar-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--status-ok);
+  transition: width var(--dur-data) var(--ease-out);
+}
+
+.card__bar-fill[data-hot='on'] {
+  background: var(--status-critical);
+}
+
+.card__figures {
+  display: flex;
+  gap: 4px 12px;
+  flex-wrap: wrap;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.card__figures--down {
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.card__figures > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.card__why {
+  color: var(--text-faint);
+}
+
+.card__why--bad {
+  color: var(--danger-hover);
+}
+
+/* ------------------------------------------------------------- filter bar
+
+   One row above the content it scopes, in the same place on every list page,
+   and every value in it lives in the URL — so a filtered list survives a
+   reload and can be pasted to someone else. */
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.filters__search {
+  flex: 0 1 260px;
+  min-width: 160px;
+  padding: 7px 11px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.filters__search:focus-visible {
+  border-color: var(--border-accent);
+  box-shadow: var(--ring);
+  outline: none;
+}
+
+.filters__chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filters__count {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----------------------------------------------------------------- rows
+
+   A table that becomes cards. Rows are 48px on a desktop — this is a back
+   office, where the same row is scanned twenty times a day and density beats
+   air — and stack into a card below the drawer breakpoint, where five columns
+   would each be forty pixels wide. */
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+.rows__head,
+.rows__row {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 1.2fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rows__head {
+  min-height: 36px;
+  background: var(--surface-2);
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.rows__row:last-child {
+  border-bottom: none;
+}
+
+/* A row is too wide to move without the whole table looking loose, so its
+   press is a tint one step further than its hover rather than any travel. The
+   same trick is used for every other full-width row in the panel. */
+.rows__row,
+.plugin-row,
+.plugin-version,
+.picker__row {
+  transition: background var(--dur-1) var(--ease);
+}
+
+.rows__row:hover {
+  background: var(--surface-2);
+}
+
+.rows__row:active,
+.plugin-row:active,
+.plugin-version:active,
+.picker__row:not(.picker__row--plain):active {
+  background: var(--surface-3);
+}
+
+.rows__name {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 6px 0;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.rows__name strong {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rows__name small {
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rows__path {
+  font-family: var(--font-mono);
+}
+
+button.rows__name:hover strong {
+  color: var(--accent-hover);
+}
+
+.rows__cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rows__cell--num {
+  font-variant-numeric: tabular-nums;
+}
+
+.rows__cell--end {
+  justify-content: flex-end;
+}
+
+.rows__cell small {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.rows__empty {
+  margin: 0;
+  padding: 22px 14px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+.rows__error {
+  grid-column: 1 / -1;
+  padding-bottom: 8px;
+  color: var(--danger-hover);
+  font-size: 11px;
+}
+
+/* A share of the machine, as a bar narrow enough to sit in a table cell. */
+.share {
+  display: block;
+  flex: 1;
+  max-width: 90px;
+  height: 5px;
+  background: var(--surface-4);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.share__fill {
+  display: block;
+  height: 100%;
+  background: var(--border-strong);
+  border-radius: var(--radius-pill);
+  transition: width var(--dur-data) var(--ease-out);
+}
+
+.share__fill--live {
+  background: var(--status-ok);
+}
+
+/* ------------------------------------------------------- allocation bar
+
+   Two layers in one track: the pale one is what has been promised away (the
+   sum of the running servers' -Xmx) and the solid one is what is actually in
+   use. Over-allocation is the failure this is here to make visible — the
+   kernel resolves it by killing a running server, and a single percentage
+   hides it completely until that happens. */
+
+.alloc {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alloc__track {
+  position: relative;
+  height: 14px;
+  background: var(--surface-4);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  box-shadow: var(--inset);
+}
+
+.alloc__committed,
+.alloc__used {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  transition: width var(--dur-data) var(--ease-out);
+}
+
+.alloc__committed {
+  background: var(--accent-soft);
+  border: 1px solid var(--border-accent);
+}
+
+.alloc__used {
+  background: var(--status-ok);
+}
+
+/* Where the physical memory runs out, drawn only when allocation passes it. */
+.alloc__limit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--danger);
+}
+
+.alloc__legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.alloc__key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alloc__key::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--surface-4);
+}
+
+.alloc__key--used::before {
+  background: var(--status-ok);
+}
+
+.alloc__key--committed::before {
+  background: var(--accent-soft);
+  border: 1px solid var(--border-accent);
+}
+
+/* A short definition list of facts, two or three across. */
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 20px;
+  margin: 0;
+}
+
+.figures > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.figures dt {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.figures dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.figures dd small {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+/* ------------------------------------------------------- command palette
+
+   The sidebar deliberately shows a handful of servers, which only works if
+   there is a fast way to the other twenty-five. This is it, and because the
+   pages are in the same list it doubles as the way to reach 磁盘 without
+   first remembering which group it was filed under. */
+
+.palette {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: start center;
+  padding: 12vh 16px 16px;
+}
+
+.palette__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  backdrop-filter: blur(4px);
+  animation: fade var(--dur-3) var(--ease) both;
+}
+
+.palette[data-state='out'] .palette__scrim {
+  animation: fade-out var(--dur) var(--ease-in) both;
+}
+
+/* ⌘K is a reflex — it gets pressed, used and dismissed inside a second — so
+   its exit is the shortest in the panel. Anything longer and the page you
+   just asked for is behind a box you have finished with. */
+.palette[data-state='out'] .palette__box {
+  animation: pop-out var(--dur-1) var(--ease-in) both;
+}
+
+.palette__box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: 66vh;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: pop var(--dur-3) var(--ease) both;
+}
+
+.palette__field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.palette__field .icon {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.palette__field input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  outline: none;
+}
+
+.palette__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.palette__group {
+  padding: 8px 8px 4px;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.palette__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+/* Keyboard and pointer share one highlight, so ↓↓↵ and a click can never
+   disagree about which row is about to open. */
+.palette__item[data-active='true'] {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.palette__item:active {
+  transform: scale(0.99);
+  background: var(--accent-soft);
+}
+
+.palette__bullet {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+
+.palette__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette__hint {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.palette__empty {
+  margin: 0;
+  padding: 22px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+.palette__foot {
+  display: flex;
+  gap: 14px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.dashboard__instances {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* A card with its own buttons cannot itself be a button, so the clickable part
+   is a child and the card is a plain container. */
+.card--static {
+  cursor: default;
+}
+
+.card--static:hover {
+  border-color: var(--border);
+  transform: none;
+  box-shadow: var(--shadow-sm);
+}
+
+/* …and the card still lifts when the pointer is over that child, so the
+   hover target does not feel smaller than the card. */
+.card--static:has(.card__open:hover) {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+
+/* Same for the press: it is the child that is being clicked, but it is the
+   card that has to answer. */
+.card--static:has(.card__open:active) {
+  transform: translateY(0) scale(var(--press));
+  box-shadow: var(--shadow-sm);
+  transition-duration: var(--dur-1);
+}
+
+.card__open {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+.card__open:hover strong {
+  color: var(--accent-hover);
+}
+
+.card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Pushed to the bottom so a running card and a stopped one — which carry
+     different numbers of lines — still line their buttons up across the grid. */
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.card__error {
+  margin-top: 8px;
+  color: var(--danger-hover);
+  font-size: 11px;
+}
+
+/* ----------------------------------------------------------- path picker */
+
+/* An input with a button welded to its right edge. */
+.field__with-button {
+  display: flex;
+  gap: 8px;
+}
+
+.field__with-button input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The dialogs that are showing you something — a directory listing, what the
+   panel found in a folder — rather than asking you for four fields. The base
+   card fixes its own width, so a max-width on its own never widened anything;
+   this sets the width the same way. */
+.modal__card--wide {
+  width: min(640px, 100%);
+  max-width: 640px;
+}
+
+.picker__path {
+  display: flex;
+  gap: 8px;
+}
+
+.picker__path input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 11px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.picker__path input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.picker__list {
+  display: flex;
+  flex-direction: column;
+  /* Tall enough to browse in, short enough that the buttons stay on screen. */
+  height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.picker__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.picker__row:hover {
+  background: var(--surface-2);
+}
+
+/* A row's own label, rather than the sidebar's — which is what it used to
+   borrow, and which the rail folds away wherever it finds it. */
+.picker__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker__row--plain {
+  cursor: default;
+  color: var(--text-dim);
+}
+
+.picker__row--plain:hover {
+  background: none;
+}
+
+.picker__list .muted {
+  padding: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* --------------------------------------------------------- host terminal */
+
+/* The shell fills the pane the way the console does, but with no command bar
+   under it: everything, including history and completion, happens inside the
+   terminal itself because that is where the shell's own line editor lives. */
+.hostterm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  padding: 4px 2px 16px;
+}
+
+/* The identity strip. It is painted in the shell's own cool palette rather
+   than the panel's warm one, and it never scrolls away: two terminals that
+   look alike are two terminals you will eventually type into the wrong one
+   of, and one of them is the whole machine. */
+.hostterm__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 9px 13px;
+  background: var(--shell-bg);
+  border: 1px solid var(--shell-edge);
+  border-radius: var(--radius);
+  color: var(--shell-fg);
+}
+
+.hostterm__where {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.hostterm__where .icon {
+  align-self: center;
+  color: var(--shell-accent);
+}
+
+.hostterm__where strong {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--shell-accent);
+}
+
+.hostterm__where span {
+  color: color-mix(in srgb, var(--shell-fg) 62%, transparent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.hostterm__bar .hostterm__phase {
+  color: color-mix(in srgb, var(--shell-fg) 70%, transparent);
+}
+
+.hostterm__bar .btn {
+  background: transparent;
+  border-color: var(--shell-edge);
+  color: var(--shell-fg);
+}
+
+.hostterm__bar .btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--shell-fg) 10%, transparent);
+  border-color: var(--shell-accent);
+  color: var(--shell-fg);
+}
+
+.hostterm__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hostterm__phase {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.hostterm__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--state-stopped);
+}
+
+.hostterm__dot--open {
+  background: var(--state-running);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-running) 20%, transparent);
+}
+
+.hostterm__dot--connecting {
+  background: var(--state-starting);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.hostterm__dot--closed {
+  background: var(--danger);
+}
+
+.hostterm__notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 13px;
+  background: var(--caution-soft);
+  border: 1px solid color-mix(in srgb, var(--caution) 34%, transparent);
+  border-left: 3px solid var(--caution);
+  border-radius: var(--radius-sm);
+  color: var(--caution-ink);
+  font-size: 13px;
+}
+
+/* Same padding as the console screen so the two panes line up when you flip
+   between a server and the shell. */
+.hostterm__screen {
+  flex: 1;
+  min-height: 240px;
+  padding: 10px 4px 10px 12px;
+  /* Flat, not a gradient: the terminal canvas paints its own opaque
+     background on top, so anything but a single colour shows a seam. */
+  background: var(--shell-bg);
+  border: 1px solid var(--shell-edge);
+  /* Squared off at the top so the identity strip and the canvas read as one
+     object; the server console is rounded all round. */
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.hostterm__hint {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+/* ------------------------------------------------------------- responsive */
+
+@media (max-width: 1240px) {
+  .app {
+    --sidebar-w: 224px;
+  }
+
+  .main {
+    padding: 14px 16px 16px;
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+}
+
+/* Under this width the sidebar stops being a column and becomes a drawer: it
+   leaves the grid entirely, slides in over the page, and the top bar's button
+   is what brings it back.
+
+   The breakpoint is 1024 rather than the 720 a back office would normally
+   take, because this back office is opened from a phone more than most: the
+   person who owns the server gets the alert while they are out, and what they
+   need on that screen is status, power, console and nothing else. */
+@media (max-width: 1024px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: fixed;
+    z-index: 60;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(84vw, 300px);
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+    box-shadow: var(--shadow-lg);
+    transform: translateX(-101%);
+    /* Off-canvas is not "somewhere further left": nothing in it is reachable
+       by tab until it is open. Visibility flips only once the slide is over,
+       so closing still animates. */
+    visibility: hidden;
+    transition:
+      transform var(--dur-4) var(--ease),
+      visibility 0s linear var(--dur-4);
+  }
+
+  .app[data-nav='open'] .sidebar {
+    transform: none;
+    visibility: visible;
+    transition:
+      transform var(--dur-4) var(--ease),
+      visibility 0s;
+  }
+
+  .scrim {
+    display: block;
+  }
+
+  .app[data-nav='open'] .scrim {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .topbar {
+    padding-left: max(8px, env(safe-area-inset-left));
+  }
+
+  /* On a phone the username is the least useful thing on the strip; the
+     avatar still opens the same menu. */
+  .usermenu__name {
+    display: none;
+  }
+
+  .main {
+    padding: 12px 14px 16px;
+    padding-right: max(14px, env(safe-area-inset-right));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .field-row {
+    grid-template-columns: 1fr;
+  }
+
+  .actions__danger {
+    margin-left: 0;
+  }
+
+  .power .btn,
+  .modal__actions .btn {
+    flex: 1;
+  }
+
+  .summary {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+
+  /* Five columns at forty pixels each is not a table. Each row becomes a card
+     that stacks its cells, which is also what makes the row's own buttons
+     reachable with a thumb. */
+  .rows__head {
+    display: none;
+  }
+
+  .rows__row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 12px 14px;
+  }
+
+  .rows__cell--end {
+    justify-content: flex-start;
+  }
+
+  /* The metric strip scrolls sideways instead of stacking into four rows that
+     push the console off the screen. */
+  .tiles {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    margin: 0 -14px;
+    padding: 0 14px 4px;
+  }
+
+  .tiles > .tile {
+    flex: 0 0 190px;
+    scroll-snap-align: start;
+  }
+
+  .cockpit__bar {
+    align-items: stretch;
+  }
+
+  .cockpit__facts > span {
+    max-width: 100%;
+  }
+
+  /* Stacked rather than side by side, so the chips get the whole width. */
+  .page__head .meta-chips {
+    max-width: none;
+    justify-content: flex-start;
+  }
+
+  .asset-grid,
+  .choice-grid,
+  .choice-grid--wide {
+    grid-template-columns: 1fr;
+  }
+
+}
+
+/* Everything above animates only as decoration; none of it carries meaning,
+   so it can all be switched off. Nothing is *only* reachable through an
+   animation — the state that each one carries is also on screen as a colour,
+   a position or a label — so cutting them costs no information.
+
+   The JavaScript-driven ones read the same preference for themselves rather
+   than relying on this block: a WAAPI animation and a scheduled unmount are
+   not transitions and would sail straight through it. See motion.ts. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    /* Smooth scrolling is motion too, and it is the kind most likely to make
+       someone who asked for less of it feel unwell. */
+    scroll-behavior: auto !important;
+  }
+}
+
+/* --------------------------------------------------------------- plugin list
+
+   The library page is a list, not a grid of cards: what an operator does here
+   is scan down twenty plugins looking for the ones that need attention, and a
+   row puts name, held version, upstream version and users on one line where
+   they can be compared. Everything you can do *to* a plugin is on its own page,
+   so a row needs no controls beyond "open" and the one action worth taking from
+   the list — downloading an update it just told you about. */
+
+.plugin-rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.plugin-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.plugin-row:last-child {
+  border-bottom: none;
+}
+
+.plugin-row:hover {
+  background: var(--surface-2);
+}
+
+/* The name is the target: the whole left half is one button, so opening a
+   plugin does not require finding a small link at the end of the row. */
+.plugin-row__main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 2 1 220px;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plugin-row__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.plugin-row__title strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-row__title small,
+.plugin-row__facts small {
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-row__facts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 180px;
+  min-width: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.plugin-row__users {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1 1 140px;
+  min-width: 0;
+  font-size: 11px;
+}
+
+.plugin-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Below this the four columns stop fitting side by side, and a row that wraps
+   mid-column reads worse than one that stacks. */
+@media (max-width: 900px) {
+  .plugin-row {
+    flex-wrap: wrap;
+  }
+
+  .plugin-row__main {
+    flex: 1 1 100%;
+  }
+}
+
+/* ----------------------------------------------------------- plugin versions
+
+   A plugin is the one asset the panel keeps a history of, so its card carries
+   a list the core and Java cards do not need: every version on disk, and what
+   upstream has published. Rows rather than cards — the difference between two
+   entries is a version string and a date, and a grid of tiles would spend a
+   lot of space saying the same word eight times. */
+
+.plugin-versions {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.plugin-version {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.plugin-version:last-child {
+  border-bottom: none;
+}
+
+.plugin-version:hover {
+  background: var(--surface-2);
+}
+
+.plugin-version__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-version__meta {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* The version picker sits inline in a row of buttons, so it has to line up
+   with them rather than with the full-width inputs in a form. */
+.device-row__main select.input-slim {
+  max-width: 190px;
+}
+
+/* A checkbox whose hint is a sentence rather than a few words. Side by side,
+   the hint squeezes the label until it wraps mid-word; stacking them under the
+   box keeps both readable in a 470px modal. */
+.checkbox--stacked {
+  flex-wrap: wrap;
+}
+
+.checkbox--stacked > span {
+  flex: 1 1 auto;
+}
+
+.checkbox--stacked > small {
+  flex: 1 0 100%;
+  padding-left: 24px;
+}
+
+/* ================================================================= plugins
+
+   Three views share this block: the discovery page, one server's installed
+   list, and the cross-instance library. They are deliberately three different
+   shapes — a filter rail beside wide rows, a dense table, and an aggregate
+   whose weight sits in its last column — because they answer three different
+   questions. What they share is the compatibility badge and the two-tab strip
+   above them. */
+
+/* --------------------------------------------------------- plugin sub-tabs
+
+   已装插件 / 获取插件. The one place in the panel with a tab strip, and it is
+   here because the pair is one page in two states rather than two
+   destinations — and because the instance scope has no second sidebar level to
+   put them in, so a sidebar row would exist in one scope and not the other. */
+.subtabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  align-self: flex-start;
+}
+
+.subtabs__tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 16px;
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  font-size: 13px;
+  text-decoration: none;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.subtabs__tab:hover {
+  color: var(--text);
+}
+
+.subtabs__tab--active {
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  /* The border would otherwise move the label by a pixel as it activates. */
+  padding: 4px 15px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* A verdict nobody could reach. Grey rather than green or yellow, because
+   "未知" is a third answer and painting it like either of the other two is
+   exactly the mistake the three states exist to prevent. */
+.badge--muted {
+  background: var(--surface-3);
+  border-color: var(--border);
+  color: var(--text-faint);
+}
+
+/* -------------------------------------------------------------- discovery
+
+   Filter rail on the left, wide rows on the right. Not a card grid: every
+   fact that decides a plugin is text, and a card spends its area on an icon
+   that identifies nothing while truncating the description. */
+.browse {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.browse__rail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+}
+
+.browse__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.browse__group-label {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* 安装到 is not one filter among five: it decides what every badge below it
+   means. So it gets a surface of its own and the accent border, and it sits
+   above everything else on the rail. */
+.browse__target {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius);
+}
+
+.browse__target-empty {
+  margin: 0;
+  color: var(--caution-ink);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.browse__target-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+
+.browse__target-line {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.browse__target-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.browse__target-line small {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.browse__check {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.browse__check input {
+  margin-top: 2px;
+  flex: none;
+}
+
+.browse__check--switch {
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+  font-weight: 500;
+}
+
+.browse__hint {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.browse__select {
+  width: 100%;
+}
+
+.browse__main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.browse__search .filters__search {
+  width: 100%;
+}
+
+.browse__count {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.browse__count-note {
+  margin-left: 4px;
+  color: var(--text-faint);
+}
+
+.browse__rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+.browse-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--dur-1) var(--ease);
+}
+
+.browse-row:last-child {
+  border-bottom: none;
+}
+
+.browse-row:hover {
+  background: var(--surface-2);
+}
+
+/* Incompatible rows are dimmed, never hidden. Someone searching for a plugin
+   that stopped at 1.16.5 needs to be told that — a search that returns nothing
+   reads as a broken panel, and "三年没更新、只支持到 1.16.5" is the answer. */
+.browse-row--dim {
+  opacity: 0.55;
+}
+
+.browse-row--dim:hover {
+  opacity: 0.85;
+}
+
+.browse-row--focused {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.browse-row__open {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.browse-row__icon {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--surface-3);
+}
+
+.browse-row__icon--blank {
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.browse-row__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.browse-row__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.browse-row__head strong {
+  font-size: 14px;
+}
+
+.browse-row__author {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+/* One line, clipped. The full description is a click away in the drawer, and
+   two lines here would halve how many plugins fit on a screen. */
+.browse-row__summary {
+  color: var(--text-dim);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browse-row__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.browse-row__stale {
+  color: var(--caution-ink);
+}
+
+.browse-row__action {
+  flex: none;
+}
+
+@media (max-width: 860px) {
+  .browse {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .browse__rail {
+    position: static;
+  }
+}
+
+/* ----------------------------------------------------------------- drawer
+
+   A plugin's detail slides over the results rather than replacing them. The
+   operator is comparing candidates, and a page would take the search text, the
+   filters and the scroll position with it. */
+.drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.drawer__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  animation: fade var(--dur-3) var(--ease) both;
+}
+
+.drawer__panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  background: var(--surface-1);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-lg);
+  animation: slide-in var(--dur-4) var(--ease) both;
+}
+
+.drawer--leaving .drawer__scrim {
+  animation: fade-out var(--dur) var(--ease-in) both;
+}
+
+.drawer--leaving .drawer__panel {
+  animation: slide-out var(--dur) var(--ease-in) both;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+@keyframes slide-out {
+  to {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+.drawer__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.drawer__title {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.drawer__title h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.drawer__sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  margin: 4px 0 0;
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
+.drawer__body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  flex: 1;
+  padding: 16px 18px;
+  overflow-y: auto;
+}
+
+.drawer__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.drawer__section h3 {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.drawer__versions {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.drawer__version {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 11px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.drawer__version:last-child {
+  border-bottom: none;
+}
+
+.drawer__version:hover {
+  background: var(--surface-2);
+}
+
+.drawer__version--chosen {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.drawer__version-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.drawer__version-meta {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.drawer__deps {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.drawer__deps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+/* Third-party prose, rendered as text rather than markup: a plugin
+   description is content the panel did not write, and the drawer is not worth
+   an HTML sanitiser. */
+.drawer__notes {
+  margin: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 10px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.drawer__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.drawer__foot-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.drawer__progress {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------- installed plugins
+
+   A dense table whose job is to expose problems. Failures are pinned to the
+   top by the API and painted red here, with the reason under the name — the
+   reason is the content of the row, not a detail behind a tooltip. */
+.plugin-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+.plugin-table__head,
+.plugin-table__row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.15fr) minmax(0, 1.35fr) minmax(0, 0.8fr);
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.plugin-table__head {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  background: var(--surface-2);
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.plugin-table__row:last-child {
+  border-bottom: none;
+}
+
+.plugin-table__row:hover {
+  background: var(--surface-2);
+}
+
+/* The whole row, not a dot at the end of it. A plugin that did not load is
+   the reason someone opened this page, and it has to be findable from across
+   the room. */
+.plugin-table__row--broken {
+  background: var(--danger-soft);
+}
+
+.plugin-table__row--broken:hover {
+  background: color-mix(in srgb, var(--danger-soft) 82%, var(--danger));
+}
+
+.plugin-table__cell {
+  min-width: 0;
+}
+
+.plugin-table__name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plugin-table__name strong {
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-table__reason {
+  color: var(--danger-ink);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.plugin-table__path {
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-table__status,
+.plugin-table__version {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.plugin-table__version select.input-slim {
+  max-width: 130px;
+}
+
+.plugin-table__upgrade {
+  cursor: pointer;
+}
+
+.plugin-table__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.plugin-table__empty {
+  padding: 18px 14px;
+  text-align: center;
+}
+
+.chip--danger.chip--active {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+/* N 项变更待重启生效. Only rendered when there is something pending and the
+   server is actually running — telling someone to restart a stopped server is
+   noise, and the next start picks everything up anyway. */
+.restart-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.restart-banner__list {
+  margin: 3px 0 0;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+@media (max-width: 780px) {
+  .plugin-table__head {
+    display: none;
+  }
+
+  .plugin-table__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .plugin-table__actions {
+    justify-content: flex-start;
+  }
+}
+
+/* ------------------------------------------------------ cross-instance view
+
+   The weight is on the last column on purpose. This page exists to answer
+   "are my servers on the same versions", and 使用中的实例 is where that answer
+   lives — so it takes nearly half the row and expands itself when the versions
+   disagree. */
+.overview-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+.overview-table__head,
+.overview-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1.7fr) minmax(0, 1.1fr) minmax(0, 2.2fr);
+  gap: 12px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.overview-table__head {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  align-items: center;
+  background: var(--surface-2);
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.overview-row {
+  align-items: start;
+}
+
+.overview-row:last-child {
+  border-bottom: none;
+}
+
+.overview-row:hover {
+  background: var(--surface-2);
+}
+
+.overview-row--mixed {
+  box-shadow: inset 2px 0 0 var(--caution);
+}
+
+.overview-row__pick {
+  display: flex;
+  align-items: center;
+  padding-top: 3px;
+}
+
+.overview-row__name {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.overview-row__name strong {
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-row__name small,
+.overview-row__version small {
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-row__version {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The line the column is scanned down. Three states, three colours, no
+   further reading required to know which rows need doing. */
+.overview-row__status--ok {
+  color: var(--ok-ink);
+}
+
+.overview-row__status--warn {
+  color: var(--caution-ink);
+  font-weight: 600;
+}
+
+.overview-row__status--idle {
+  color: var(--text-faint);
+}
+
+.overview-row__uses {
+  min-width: 0;
+  font-size: 12px;
+}
+
+.overview-row__list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.overview-row__list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.overview-row__instance {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.overview-row__ver {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-row__fold {
+  color: var(--text-dim);
+}
+
+/* A downloaded jar nobody references. This page is the only place in the
+   panel that would ever mention it again, which is why the cleanup link is
+   here rather than anywhere else. */
+.overview-row__unused {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-faint);
+}
+
+.bulkbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+.bulk-confirm__plugins {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+/* One sentence, then the detail under it. A flex column here put every
+   inline fragment of "将 X 升级至 Y" on its own line. */
+.bulk-confirm__plugins li {
+  line-height: 1.6;
+}
+
+.bulk-confirm__plugins small {
+  display: block;
+}
+
+.bulk-confirm__plugins small {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.drawer__warn {
+  color: var(--caution-ink);
+  line-height: 1.5;
+}
+
+.bulk-confirm__scope {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.meta-chips__warn {
+  color: var(--caution-ink);
+}
+
+@media (max-width: 900px) {
+  .overview-table__head {
+    display: none;
+  }
+
+  .overview-row {
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 6px 12px;
+  }
+
+  .overview-row__version,
+  .overview-row__uses {
+    grid-column: 2;
+  }
+}
+
+/* A badge in a stacked cell would otherwise take the column's full width: it
+   is a flex item in a column, and its own width is not what stretch honours. */
+.plugin-table__name .badge {
+  align-self: flex-start;
+  margin-left: 0;
 }

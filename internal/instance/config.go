@@ -42,6 +42,19 @@ type Config struct {
 	ServerArgs  []string `json:"serverArgs"`  // args after the jar, e.g. --nogui
 	Command     []string `json:"command"`     // full argv; when set, the fields above are ignored
 
+	// Console settings.
+	Encoding string `json:"encoding"` // console charset: auto (default), utf-8, gbk, …
+	// TTY runs the server on a pseudo-terminal instead of pipes, which is the
+	// default: it is what makes JLine offer the server's *own* tab completion,
+	// what makes progress output appear as it is drawn instead of only once it
+	// ends in a newline, and what makes colour work without being forced.
+	// Turning it off restores the pipe console, which keeps stdout and stderr
+	// apart and is the only mode Windows can run. Default true.
+	TTY *bool `json:"tty"`
+	// ForceColor keeps ANSI colours on through a pipe. It has no effect in TTY
+	// mode, where the server can see a terminal and colours itself. Default true.
+	ForceColor *bool `json:"forceColor"`
+
 	// Supervision settings.
 	AutoStart      bool   `json:"autoStart"`      // start when the panel boots
 	AutoRestart    bool   `json:"autoRestart"`    // restart after an unexpected exit
@@ -73,6 +86,23 @@ func (c *Config) applyDefaults() {
 	if c.ServerArgs == nil {
 		c.ServerArgs = []string{"--nogui"}
 	}
+	if canonical, ok := canonicalEncoding(c.Encoding); ok {
+		c.Encoding = canonical
+	}
+	if c.ForceColor == nil {
+		// Colours on by default: an instance saved before this option existed
+		// should behave like a console, not like a log file.
+		on := true
+		c.ForceColor = &on
+	}
+	if c.TTY == nil {
+		// On by default, including for instances saved before the option
+		// existed: a console attached to a terminal is what the server software
+		// itself expects, and every panel-visible behaviour that depends on it
+		// (completion, progress output, colour) is better for it.
+		on := true
+		c.TTY = &on
+	}
 	if c.CreatedAt.IsZero() {
 		c.CreatedAt = time.Now()
 	}
@@ -103,14 +133,73 @@ func (c *Config) validate() error {
 	if c.usesCustomCommand() && strings.TrimSpace(c.Command[0]) == "" {
 		return fmt.Errorf("%w: command's first element must be the executable", ErrInvalidConfig)
 	}
+	if _, ok := canonicalEncoding(c.Encoding); !ok {
+		return fmt.Errorf("%w: unknown console encoding %q", ErrInvalidConfig, c.Encoding)
+	}
 	return nil
+}
+
+// colorForced reports whether the panel should make the server emit ANSI
+// colour even though its stdout is a pipe.
+func (c *Config) colorForced() bool { return c.ForceColor == nil || *c.ForceColor }
+
+// ttyEnabled reports the operator's choice of console transport, which is only
+// a request: whether it is honoured also depends on the platform.
+func (c *Config) ttyEnabled() bool { return c.TTY == nil || *c.TTY }
+
+// wantsTTY reports whether this instance will actually be given a terminal.
+func (c *Config) wantsTTY() bool { return c.ttyEnabled() && ptySupported }
+
+// consoleJVMArgs are the flags that make the JVM's console behave, given the
+// transport it is about to be handed.
+//
+// They go before the operator's own JVM args, so anyone who disagrees can
+// override any of them by repeating the property — the last -D wins.
+func (c *Config) consoleJVMArgs(tty bool) []string {
+	args := make([]string, 0, 9)
+
+	switch {
+	case tty:
+		// Nothing to compensate for: the server can see a terminal, so JLine
+		// drives it properly and TerminalConsoleAppender colours its output on
+		// its own. Forcing either would be worse than leaving them alone —
+		// terminal.jline=false is precisely what would throw away the
+		// server-side completion this mode exists to get.
+	case c.colorForced():
+		// TerminalConsoleAppender — used by vanilla, Paper, Fabric and friends
+		// — only colours its output when it can see a terminal, and there is
+		// no terminal behind a pipe. terminal.ansi=true says "emit it anyway";
+		// terminal.jline=false stops JLine from trying to drive a terminal
+		// that does not exist and printing a warning about it.
+		args = append(args, "-Dterminal.jline=false", "-Dterminal.ansi=true")
+	}
+
+	// Anything other than UTF-8 is a charset we decode ourselves, so leave the
+	// JVM on its platform default in that case.
+	if canonical, _ := canonicalEncoding(c.Encoding); canonical == EncodingAuto || canonical == EncodingUTF8 {
+		// file.encoding is what Java 8-17 uses for the console streams; 18+
+		// splits stdout/stderr/stdin out into their own properties (and still
+		// answers to the older sun.* spellings), so set both generations.
+		args = append(args,
+			"-Dfile.encoding=UTF-8",
+			"-Dstdout.encoding=UTF-8",
+			"-Dstderr.encoding=UTF-8",
+			"-Dstdin.encoding=UTF-8",
+			"-Dsun.stdout.encoding=UTF-8",
+			"-Dsun.stderr.encoding=UTF-8",
+			"-Dsun.stdin.encoding=UTF-8",
+		)
+	}
+	return args
 }
 
 // usesCustomCommand reports whether this instance bypasses the java/jar path.
 func (c *Config) usesCustomCommand() bool { return len(c.Command) > 0 }
 
-// commandLine builds the argv used to launch the server.
-func (c *Config) commandLine() (string, []string, error) {
+// commandLine builds the argv used to launch the server. tty says which
+// console transport the process is about to get, since some of the JVM flags
+// exist only to paper over not having a terminal.
+func (c *Config) commandLine(tty bool) (string, []string, error) {
 	if c.usesCustomCommand() {
 		return c.Command[0], append([]string(nil), c.Command[1:]...), nil
 	}
@@ -118,13 +207,15 @@ func (c *Config) commandLine() (string, []string, error) {
 		return "", nil, fmt.Errorf("%w: no server jar configured", ErrInvalidConfig)
 	}
 
-	args := make([]string, 0, len(c.JVMArgs)+len(c.ServerArgs)+4)
+	console := c.consoleJVMArgs(tty)
+	args := make([]string, 0, len(console)+len(c.JVMArgs)+len(c.ServerArgs)+4)
 	if c.MinMemoryMB > 0 {
 		args = append(args, fmt.Sprintf("-Xms%dM", c.MinMemoryMB))
 	}
 	if c.MaxMemoryMB > 0 {
 		args = append(args, fmt.Sprintf("-Xmx%dM", c.MaxMemoryMB))
 	}
+	args = append(args, console...)
 	args = append(args, c.JVMArgs...)
 	args = append(args, "-jar", c.Jar)
 	args = append(args, c.ServerArgs...)
@@ -143,6 +234,12 @@ type StateInfo struct {
 	StartedAt *time.Time `json:"startedAt,omitempty"`
 	ExitCode  *int       `json:"exitCode,omitempty"`
 	Message   string     `json:"message,omitempty"`
+	// TTYActive is whether the *running* process actually got a terminal, which
+	// can differ from the config: the platform may not support one, or opening
+	// it may have failed and the start fallen back to pipes. The name has to
+	// differ from Config.TTY — Status embeds both, and two identically tagged
+	// fields at the same depth make encoding/json drop them both.
+	TTYActive bool `json:"ttyActive"`
 }
 
 // Status is an instance's config plus its live state, as returned by the API.
@@ -150,4 +247,8 @@ type Status struct {
 	Config
 	StateInfo
 	LastSeq uint64 `json:"lastSeq"`
+	// TTYSupported is whether this platform can give an instance a terminal at
+	// all, so the UI can grey the switch out instead of letting it be set to
+	// something that will silently fall back.
+	TTYSupported bool `json:"ttySupported"`
 }

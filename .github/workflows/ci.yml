@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# The build only reads the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 构建与测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 安装前端依赖
+        run: npm ci --prefix web
+
+      # gofmt + go vet. Runs before the build so a formatting slip fails fast.
+      - name: 检查代码风格
+        run: make lint
+
+      # -race needs cgo, which ubuntu-latest has.
+      - name: 运行测试
+        run: make test
+
+      # Also builds the frontend, so a broken tsc/vite build fails here too.
+      - name: 构建二进制
+        run: make build
+
+      - name: 冒烟测试
+        run: ./hypercraft -version
