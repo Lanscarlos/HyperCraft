@@ -297,6 +297,72 @@ func PickFor(version Version, target Target) Artifact {
 	return best
 }
 
+// Offer is a newer version of a plugin that one server can actually take.
+type Offer struct {
+	Tag     string `json:"tag"`
+	Version string `json:"version"`
+	// SHA256 and FileName name the jar within that release, because a release
+	// is not a file: on this server it is the paper build, on the proxy next to
+	// it, the velocity one.
+	SHA256   string `json:"sha256,omitempty"`
+	FileName string `json:"fileName,omitempty"`
+	// Platform is that jar's, for a row that wants to say which build it is
+	// offering.
+	Platform string `json:"platform,omitempty"`
+}
+
+// UpdateFor is the newest release the library holds that this server can take.
+//
+// Not simply "the newest release the library holds", which is what the plugin
+// page used to offer, and which is wrong in a way that only became visible
+// once releases were read correctly: LuckPerms publishes a Velocity build and
+// a Fabric build under numbers newer than the Bukkit one a Paper server is
+// running, and a panel that sorts by date and stops there tells that server to
+// update to a jar it cannot load. So a release is only an offer if it holds a
+// jar this server could run.
+//
+// Unknown counts as runnable. Every GitHub release is unknown — nobody
+// publishes loader metadata there — and refusing to offer updates for those
+// would be the panel withholding what it does know because of what it does
+// not. Only a jar the metadata positively rules out is skipped.
+//
+// Nil when there is nothing newer, when the plugin is pinned, or when
+// everything newer is for another platform.
+func UpdateFor(item Plugin, current string, target Target) *Offer {
+	if item.Policy.Pin != "" {
+		return nil
+	}
+	for _, version := range item.Versions {
+		// Versions are newest first, so reaching the installed one means
+		// everything above it was for something else.
+		if version.Tag == current {
+			return nil
+		}
+		artifact, ok := runnable(version, target)
+		if !ok {
+			continue
+		}
+		return &Offer{
+			Tag:      version.Tag,
+			Version:  version.Version,
+			SHA256:   artifact.SHA256,
+			FileName: artifact.FileName,
+			Platform: artifact.Platform,
+		}
+	}
+	return nil
+}
+
+// runnable is the jar of this release this server could load, if any.
+func runnable(version Version, target Target) (Artifact, bool) {
+	best := PickFor(version, target)
+	loaders, gameVersions := Claims(version, best)
+	if Judge(target, loaders, gameVersions).State == CompatBad {
+		return Artifact{}, false
+	}
+	return best, true
+}
+
 func fitRank(state string) int {
 	switch state {
 	case CompatOK:
