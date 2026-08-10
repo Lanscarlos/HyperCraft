@@ -23,9 +23,9 @@ interface Props {
   navOpen: boolean
   onToggleNav: () => void
   toggleRef: RefObject<HTMLButtonElement>
-  /** One step up the trail, or null at the top of it. */
+  /** Back to the page you came from, or null when nothing came before this one. */
   onBack: (() => void) | null
-  /** Where that step lands, so the button is a real link like the trail is. */
+  /** Where that lands, so the button is a real link like the trail is. */
   backHref: string | null
   /** Named in the tooltip: "返回" alone is the question, not the answer. */
   backLabel: string | null
@@ -90,15 +90,16 @@ export function TopBar({
             event.preventDefault()
             onBack()
           }}
-          title={backLabel ? `返回${backLabel}` : '返回上一级'}
-          aria-label={backLabel ? `返回${backLabel}` : '返回上一级'}
+          title={backLabel ? `返回${backLabel}` : '返回上一页'}
+          aria-label={backLabel ? `返回${backLabel}` : '返回上一页'}
         >
           <Icon name="back" />
         </a>
       ) : (
-        // The overview is the top of the trail. The button stays in place
-        // rather than being removed, because a strip whose contents shift left
-        // on one page out of six is a strip that has to be re-read.
+        // Nowhere to go back to: the overview reached with nothing before it.
+        // The button stays in place rather than being removed, because a strip
+        // whose contents shift left on one page out of six is a strip that has
+        // to be re-read.
         <span className="topbar__toggle topbar__toggle--idle" aria-hidden="true">
           <Icon name="back" />
         </span>

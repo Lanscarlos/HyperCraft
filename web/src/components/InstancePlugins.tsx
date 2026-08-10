@@ -111,7 +111,7 @@ export function InstancePlugins({
 
   const entries = listing?.entries ?? []
   const broken = entries.filter((entry) => entry.failure).length
-  const updatable = entries.filter((entry) => updateFor(entry, listing?.library ?? [])).length
+  const updatable = entries.filter((entry) => entry.update).length
   const pending = listing?.pending ?? []
 
   // What the library holds that this server does not have yet, and has a jar
@@ -137,7 +137,7 @@ export function InstancePlugins({
 
   const shown = entries.filter((entry) => {
     if (filter === 'broken') return Boolean(entry.failure)
-    if (filter === 'updatable') return Boolean(updateFor(entry, listing?.library ?? []))
+    if (filter === 'updatable') return Boolean(entry.update)
     return true
   })
 
@@ -266,9 +266,9 @@ export function InstancePlugins({
                 if (held) setInstalling(held)
                 else onOpenBrowse()
               }}
-              onSwitchVersion={(tag) =>
+              onSwitchVersion={(tag, sha) =>
                 void act(
-                  () => api.installInstancePlugin(instance.id, entry.pluginId ?? '', tag),
+                  () => api.installInstancePlugin(instance.id, entry.pluginId ?? '', tag, sha),
                   '切换版本失败',
                 )
               }
@@ -514,15 +514,6 @@ function Chip({
   )
 }
 
-/** The newest library version this row is not already on, or null. */
-function updateFor(entry: InstancePlugin, library: LibraryPlugin[]) {
-  if (!entry.managed || !entry.pluginId) return null
-  const item = library.find((candidate) => candidate.id === entry.pluginId)
-  const newest = item?.versions[0]
-  if (!newest || newest.tag === entry.tag) return null
-  return newest
-}
-
 function PluginRow({
   entry,
   library,
@@ -544,13 +535,18 @@ function PluginRow({
   onOpenConfig: () => void
   onOpenConsole: () => void
   onFindDependency: () => void
-  onSwitchVersion: (tag: string) => void
+  /** The digest is optional and names which jar of that release: the update
+   *  badge already knows, having been told by the panel. Picking a version out
+   *  of the dropdown leaves it to the server to resolve. */
+  onSwitchVersion: (tag: string, sha?: string) => void
   onSetEnabled: (enabled: boolean) => void
   onAdopt: () => void
   onRollback: () => void
   onRemove: () => void
 }) {
-  const update = updateFor(entry, library)
+  // Whether there is anything to move up to is the server's answer, not the
+  // library's: see InstancePlugin.update.
+  const update = entry.update
   const item = library.find((candidate) => candidate.id === entry.pluginId)
   const versions = item?.versions ?? []
 
@@ -619,8 +615,12 @@ function PluginRow({
           <button
             className="badge badge--update plugin-table__upgrade"
             disabled={busy}
-            onClick={() => onSwitchVersion(update.tag)}
-            title={`升级到 ${update.version}`}
+            onClick={() => onSwitchVersion(update.tag, update.sha256)}
+            title={
+              update.platform
+                ? `升级到 ${update.version}，用其中的 ${loaderLabel(update.platform)} 构建`
+                : `升级到 ${update.version}`
+            }
           >
             → {update.version}
           </button>

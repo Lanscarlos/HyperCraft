@@ -139,6 +139,12 @@ type Entry struct {
 
 	// Compat is whether this jar suits the server's version and loader.
 	Compat *Compat `json:"compat,omitempty"`
+	// Update is the newest version in the library this server could move to,
+	// and which jar of it. Nil when it is already on the newest, when the
+	// plugin is pinned, or when everything newer is built for another
+	// platform — the last of which is why this is decided here rather than by
+	// the page taking versions[0]. See UpdateFor.
+	Update *Offer `json:"update,omitempty"`
 	// Failure is what the server said when it could not load this plugin. The
 	// whole reason this page is a table and not a list of names.
 	Failure *Failure `json:"failure,omitempty"`

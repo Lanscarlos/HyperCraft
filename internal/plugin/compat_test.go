@@ -196,3 +196,84 @@ func TestAcrossServersIsPessimistic(t *testing.T) {
 		t.Errorf("both fit, so the row fits: %+v", verdict)
 	}
 }
+
+// The bug this exists for, in one test.
+//
+// A Paper server running the bukkit build of a release is not "behind" because
+// the proxy build of the same number, or a Fabric-only release published
+// later, sits above it in the library's list. Offering either is offering a
+// jar the server cannot load.
+func TestUpdateForSkipsBuildsThisServerCannotLoad(t *testing.T) {
+	paper := Target{MCVersion: "1.20.4", Loader: "paper"}
+	velocity := Target{MCVersion: "3.3.0", Loader: "velocity"}
+
+	item := Plugin{
+		ID:   "luckperms",
+		Name: "LuckPerms",
+		Versions: []Version{
+			{
+				Tag: "v5.5.72", Version: "v5.5.72",
+				Artifacts: []Artifact{
+					{SHA256: "f1", FileName: "LuckPerms-Fabric-5.5.72.jar", Platform: "fabric", Loaders: []string{"fabric"}},
+				},
+			},
+			{
+				Tag: "v5.5.71", Version: "v5.5.71",
+				Artifacts: []Artifact{
+					{SHA256: "b1", FileName: "LuckPerms-Bukkit-5.5.71.jar", Platform: "bukkit", Loaders: []string{"bukkit", "paper", "spigot"}},
+					{SHA256: "v1", FileName: "LuckPerms-Velocity-5.5.71.jar", Platform: "velocity", Loaders: []string{"velocity"}},
+				},
+			},
+			{
+				Tag: "v5.5.70", Version: "v5.5.70",
+				Artifacts: []Artifact{
+					{SHA256: "b0", FileName: "LuckPerms-Bukkit-5.5.70.jar", Platform: "bukkit", Loaders: []string{"bukkit", "paper", "spigot"}},
+				},
+			},
+		},
+	}
+
+	// On v5.5.70, the Paper server is offered v5.5.71 — and specifically its
+	// bukkit jar, not whichever build sorted first.
+	offer := UpdateFor(item, "v5.5.70", paper)
+	if offer == nil || offer.Tag != "v5.5.71" {
+		t.Fatalf("offered %+v, want v5.5.71", offer)
+	}
+	if offer.SHA256 != "b1" {
+		t.Errorf("offered the %s jar, want the bukkit build", offer.FileName)
+	}
+
+	// On v5.5.71 there is nothing above it this server can run: v5.5.72 is
+	// Fabric only. This is the one that used to say "→ v5.5.71-velocity".
+	if offer := UpdateFor(item, "v5.5.71", paper); offer != nil {
+		t.Errorf("offered %+v to a Paper server, want nothing", offer)
+	}
+
+	// The proxy is a different question with a different answer.
+	if offer := UpdateFor(item, "v5.5.70", velocity); offer == nil || offer.SHA256 != "v1" {
+		t.Errorf("the proxy was offered %+v, want the velocity jar of v5.5.71", offer)
+	}
+
+	// A pinned plugin is pinned.
+	pinned := item
+	pinned.Policy = Policy{Pin: "v5.5.70"}
+	if offer := UpdateFor(pinned, "v5.5.70", paper); offer != nil {
+		t.Errorf("offered %+v for a pinned plugin", offer)
+	}
+}
+
+// A GitHub release publishes no loader metadata, and "unknown" must not become
+// "refused" — that would hide every update for every plugin tracked that way.
+func TestUpdateForStillOffersUnjudgeableReleases(t *testing.T) {
+	item := Plugin{
+		ID: "essentials",
+		Versions: []Version{
+			{Tag: "v2.21.0", Version: "2.21.0", Artifacts: []Artifact{{SHA256: "a", FileName: "EssentialsX-2.21.0.jar"}}},
+			{Tag: "v2.20.1", Version: "2.20.1", Artifacts: []Artifact{{SHA256: "b", FileName: "EssentialsX-2.20.1.jar"}}},
+		},
+	}
+	offer := UpdateFor(item, "v2.20.1", Target{MCVersion: "1.20.4", Loader: "paper"})
+	if offer == nil || offer.Tag != "v2.21.0" {
+		t.Fatalf("offered %+v, want v2.21.0", offer)
+	}
+}

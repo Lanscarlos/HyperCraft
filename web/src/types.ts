@@ -773,6 +773,13 @@ export interface InstancePlugin {
   selfUpdate?: boolean
   /** Whether this jar suits the server's version and loader. */
   compat?: PluginCompat
+  /** The newest version in the library *this server* could move to, and which
+   *  jar of it. Decided by the panel rather than by taking the top of the
+   *  version list: a cross-platform plugin publishes its proxy and its Fabric
+   *  builds under numbers newer than the one a Paper server is running, and
+   *  those are not newer versions here. Absent when there is nothing to
+   *  offer. */
+  update?: PluginUpdateOffer
   /** What the server said when it could not load this plugin. */
   failure?: PluginFailure
   /** Set when this row has a change the running server has not seen. */
@@ -782,6 +789,15 @@ export interface InstancePlugin {
   configDir?: string
   gameVersions?: string[]
   loaders?: string[]
+}
+
+/** A version one server could move up to, and the jar of it that fits. */
+export interface PluginUpdateOffer {
+  tag: string
+  version: string
+  sha256?: string
+  fileName?: string
+  platform?: string
 }
 
 export interface InstancePluginList {
@@ -924,8 +940,13 @@ export interface PluginUse {
   state: InstanceState
   version: string
   tag: string
-  /** Behind the newest version the library holds — the field the page is for. */
+  /** Behind the newest version the library holds *that this server can take*
+   *  — the field the page is for. */
   outdated: boolean
+  /** Which release that is, and which jar of it. Absent when there is nothing
+   *  to move up to: a release whose only build is for another platform is not
+   *  an update for this server. */
+  update?: PluginUpdateOffer
   /** What the last reconciliation said about this copy. Empty when the two
    *  agree, or when nothing has looked yet. */
   recon?: ReconState

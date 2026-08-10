@@ -1017,6 +1017,15 @@ func (s *Server) handleListInstancePlugins(w http.ResponseWriter, r *http.Reques
 		verdict := plugin.Judge(resp.Target, entry.Loaders, entry.GameVersions)
 		entry.Compat = &verdict
 		entry.PendingAction = pendingByKey[entry.Key]
+		// What this server could move up to — judged against this server, not
+		// against the top of the library's list. A plugin that publishes a
+		// proxy build after its server build has a newer version that is not a
+		// newer version *here*.
+		if entry.Managed && entry.PluginID != "" {
+			if item, err := s.plugins.Library().Get(entry.PluginID); err == nil {
+				entry.Update = plugin.UpdateFor(item, entry.Tag, resp.Target)
+			}
+		}
 		// Both names, because which one the server printed depends on how far
 		// the load got: the jar's if it never read plugin.yml, the declared
 		// name if it did.

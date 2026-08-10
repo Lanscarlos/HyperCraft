@@ -573,36 +573,34 @@ func (r *Registry) modrinthVersions(ctx context.Context, id string) ([]Release, 
 	//
 	// Modrinth files each platform's build as a version of its own — LuckPerms
 	// publishes 5.5.71 five times over, once for bukkit, once for velocity,
-	// once for fabric — with the same version number on all of them. Read one
-	// version to one release and the library ends up holding five copies of a
-	// plugin that shipped once, reports the fleet as running five different
-	// versions, and offers to "upgrade" a Velocity proxy to a Paper jar. The
-	// number is the release; the builds under it are its jars.
-	byVersion := map[string]int{}
+	// once for fabric — and it is the version *number* that says they are one
+	// release. Read one version to one release and the library ends up holding
+	// five copies of a plugin that shipped once, reports the fleet as running
+	// five different versions, and offers to "upgrade" a Velocity proxy to a
+	// Paper jar. The number is the release; the builds under it are its jars.
 	out := make([]Release, 0, len(versions))
 	for _, version := range versions {
 		file, ok := primaryFile(version)
 		if !ok {
 			continue
 		}
+		number, platform := releaseNumber(version.VersionNumber)
+		if platform == "" {
+			platform = firstLoader(version.Loaders)
+		}
 		asset := Asset{
 			Name:         file.FileName,
 			Size:         file.Size,
 			URL:          file.URL,
-			Platform:     firstLoader(version.Loaders),
+			Platform:     platform,
 			Loaders:      version.Loaders,
 			GameVersions: version.GameVersions,
 		}
 
-		key := strings.TrimSpace(version.VersionNumber)
-		if key == "" {
+		if number == "" {
 			// Nothing to group on. Its own release, addressed the way it
 			// always was.
-			key = version.ID
-		}
-		if at, seen := byVersion[key]; seen {
-			out[at] = mergeModrinth(out[at], version, asset)
-			continue
+			number = version.ID
 		}
 
 		deps := make([]Dependency, 0, len(version.Dependencies))
@@ -623,11 +621,10 @@ func (r *Registry) modrinthVersions(ctx context.Context, id string) ([]Release, 
 				URL:      "https://modrinth.com/plugin/" + dep.ProjectID,
 			})
 		}
-		byVersion[key] = len(out)
 		out = append(out, Release{
-			Tag:          key,
+			Tag:          number,
 			Name:         version.Name,
-			Version:      version.VersionNumber,
+			Version:      number,
 			Notes:        version.Changelog,
 			Prerelease:   version.VersionType != "release",
 			PublishedAt:  version.Published,
@@ -639,48 +636,127 @@ func (r *Registry) modrinthVersions(ctx context.Context, id string) ([]Release, 
 			Downloads:    version.Downloads,
 		})
 	}
-	for i := range out {
-		out[i] = orderAssets(out[i])
-	}
+	out = groupReleases(out)
 	sortReleases(out)
 	return out, nil
 }
 
-// mergeModrinth folds another build of a version already collected into it.
+// releaseNumber splits a published version number into the release it names
+// and the platform that build is for.
 //
-// The release takes the union of what its builds support, because that is what
-// the plugin as published supports and it is what a search badge is claiming.
-// Which of those a given server can actually load is a property of one jar, and
-// that stays on the jar.
-func mergeModrinth(release Release, version modrinthVersion, asset Asset) Release {
-	for _, held := range release.Assets {
-		// The same file twice is one file. Modrinth does this when a build
-		// genuinely covers several loaders and the project lists it once per
-		// loader.
-		if strings.EqualFold(held.Name, asset.Name) && held.URL == asset.URL {
-			return release
-		}
+// The registries have two ways of saying "these are one release": Hangar puts
+// the platforms inside one version, and Modrinth files a version per platform
+// with the platform written into the number — LuckPerms publishes
+// "v5.5.71-bukkit", "v5.5.71-velocity", "v5.5.71-bungee". Grouping on the
+// number alone therefore groups nothing, which is exactly the shape that had a
+// Paper server being offered the proxy build as its next version.
+//
+// Only a suffix that names a platform is taken off. "1.2.3-beta" and
+// "2.0-rc1" are versions, not builds, and the list below is the whole of what
+// this is willing to believe is a platform.
+func releaseNumber(number string) (release, platform string) {
+	number = strings.TrimSpace(number)
+	cut := strings.LastIndex(number, "-")
+	if cut <= 0 || cut == len(number)-1 {
+		return number, ""
 	}
-	if assetNames(release.Assets)[strings.ToLower(asset.Name)] {
-		asset.Name = platformName(asset.Name, asset.Platform)
+	suffix := strings.ToLower(number[cut+1:])
+	canonical, ok := platformSuffixes[suffix]
+	if !ok {
+		return number, ""
 	}
-	release.Assets = append(release.Assets, asset)
-	release.GameVersions = union(release.GameVersions, version.GameVersions)
-	release.Loaders = union(release.Loaders, version.Loaders)
-	release.Downloads += version.Downloads
-	// The release is dated by its earliest build: that is when it was
-	// published, and a later platform build is the same release catching up.
-	if !version.Published.IsZero() && version.Published.Before(release.PublishedAt) {
-		release.PublishedAt = version.Published
-	}
-	// A release is a prerelease only if every build of it is one.
-	release.Prerelease = release.Prerelease && version.VersionType != "release"
-	if release.Notes == "" {
-		release.Notes = version.Changelog
-	}
-	return release
+	return number[:cut], canonical
 }
 
+// platformSuffixes is every token a version number may end with that names the
+// server this build is for, mapped to the loader name the compatibility check
+// uses. "bungee" is Modrinth's own shorthand for BungeeCord; the rest are
+// spelled the way they are judged.
+var platformSuffixes = map[string]string{
+	"bukkit":     "bukkit",
+	"spigot":     "spigot",
+	"paper":      "paper",
+	"purpur":     "purpur",
+	"folia":      "folia",
+	"velocity":   "velocity",
+	"bungee":     "bungeecord",
+	"bungeecord": "bungeecord",
+	"waterfall":  "waterfall",
+	"sponge":     "sponge",
+	"fabric":     "fabric",
+	"forge":      "forge",
+	"neoforge":   "neoforge",
+	"quilt":      "quilt",
+	"nukkit":     "nukkit",
+}
+
+// groupReleases folds releases that share a tag into one.
+//
+// Both registry readers produce one entry per *build*, and this is where a
+// release stops being several of them: the assets join, and everything the
+// release as a whole claims becomes the union of what its builds claim —
+// because that is what the plugin as published supports, and it is what a
+// search badge is claiming. Which of it a given server can actually load is a
+// property of one jar, and that stays on the jar.
+func groupReleases(list []Release) []Release {
+	at := map[string]int{}
+	out := make([]Release, 0, len(list))
+	for _, release := range list {
+		index, seen := at[release.Tag]
+		if !seen {
+			at[release.Tag] = len(out)
+			out = append(out, release)
+			continue
+		}
+		out[index] = mergeRelease(out[index], release)
+	}
+	for i := range out {
+		out[i] = orderAssets(out[i])
+	}
+	return out
+}
+
+func mergeRelease(into, extra Release) Release {
+	held := assetNames(into.Assets)
+	for _, asset := range extra.Assets {
+		// The same file twice is one file: a build that genuinely covers
+		// several loaders, listed once per loader.
+		if sameAsset(into.Assets, asset) {
+			continue
+		}
+		if held[strings.ToLower(asset.Name)] {
+			asset.Name = platformName(asset.Name, asset.Platform)
+		}
+		held[strings.ToLower(asset.Name)] = true
+		into.Assets = append(into.Assets, asset)
+	}
+	into.GameVersions = union(into.GameVersions, extra.GameVersions)
+	into.Loaders = union(into.Loaders, extra.Loaders)
+	into.Downloads += extra.Downloads
+	// The release is dated by its earliest build: that is when it was
+	// published, and a later platform build is the same release catching up.
+	if !extra.PublishedAt.IsZero() && extra.PublishedAt.Before(into.PublishedAt) {
+		into.PublishedAt = extra.PublishedAt
+	}
+	// A release is a prerelease only if every build of it is one.
+	into.Prerelease = into.Prerelease && extra.Prerelease
+	if into.Notes == "" {
+		into.Notes = extra.Notes
+	}
+	if len(into.Dependencies) == 0 {
+		into.Dependencies = extra.Dependencies
+	}
+	return into
+}
+
+func sameAsset(held []Asset, asset Asset) bool {
+	for _, one := range held {
+		if strings.EqualFold(one.Name, asset.Name) && one.URL == asset.URL {
+			return true
+		}
+	}
+	return false
+}
 func assetNames(assets []Asset) map[string]bool {
 	out := make(map[string]bool, len(assets))
 	for _, asset := range assets {
@@ -1019,15 +1095,18 @@ func (r *Registry) hangarVersions(ctx context.Context, id string) ([]Release, er
 			}
 		}
 
+		// The version's name within the project, and nothing else. The tag
+		// used to carry the platform too — "1.2.3@PAPER" — which made one
+		// release look like as many releases as it has builds, and made the
+		// panel report a plugin published once as inconsistent across a fleet.
+		// The platform belongs to the jar, and it is on the jar. A project
+		// that writes the platform into the version name instead is folded the
+		// same way, by groupReleases below.
+		number, _ := releaseNumber(version.Name)
 		out = append(out, Release{
-			// The version's name within the project, and nothing else. It used
-			// to carry the platform too — "1.2.3@PAPER" — which made one
-			// release look like as many releases as it has builds, and made
-			// the panel report a plugin published once as inconsistent across
-			// a fleet. The platform belongs to the jar, and it is on the jar.
-			Tag:          version.Name,
+			Tag:          number,
 			Name:         version.Name,
-			Version:      version.Name,
+			Version:      number,
 			Notes:        version.Description,
 			Prerelease:   !strings.EqualFold(version.Channel.Name, "release"),
 			PublishedAt:  version.CreatedAt,
@@ -1040,6 +1119,7 @@ func (r *Registry) hangarVersions(ctx context.Context, id string) ([]Release, er
 			SHA256:       assets[0].SHA256,
 		})
 	}
+	out = groupReleases(out)
 	sortReleases(out)
 	return out, nil
 }

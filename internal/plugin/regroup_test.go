@@ -198,3 +198,90 @@ func TestRegroupIsIdempotent(t *testing.T) {
 		t.Fatalf("want one release holding two jars, got %+v", stored.Versions)
 	}
 }
+
+// LuckPerms as Modrinth actually publishes it: the platform is written into
+// the version number, so the library written by an older build holds
+// "v5.5.71-bukkit" and "v5.5.71-velocity" as two releases.
+func TestRegroupMergesPlatformSuffixedNumbers(t *testing.T) {
+	library := newLibrary(t)
+	item, err := library.Add("LuckPerms", Source{Kind: SourceModrinth, Repo: "luckperms"}, "", "")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	day := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	storeArtifact(t, library, item.ID, "aa", "v5.5.71-bukkit", "LuckPerms-Bukkit-5.5.71.jar", "bukkit-bytes", day)
+	storeArtifact(t, library, item.ID, "bb", "v5.5.71-velocity", "LuckPerms-Velocity-5.5.71.jar", "velocity-bytes", day.Add(5*time.Minute))
+
+	if fixed := library.Regroup(quiet()); fixed != 1 {
+		t.Fatalf("Regroup rewrote %d plugins, want 1", fixed)
+	}
+	stored, err := library.Get(item.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(stored.Versions) != 1 {
+		t.Fatalf("holds %d versions, want 1: %+v", len(stored.Versions), stored.Versions)
+	}
+	release := stored.Versions[0]
+	if release.Tag != "v5.5.71" || release.Version != "v5.5.71" {
+		t.Errorf("release is %q tagged %q, want v5.5.71 with no platform on it",
+			release.Version, release.Tag)
+	}
+	if len(release.Artifacts) != 2 {
+		t.Fatalf("release holds %d jars, want 2", len(release.Artifacts))
+	}
+	for _, artifact := range release.Artifacts {
+		if artifact.Platform == "" {
+			t.Errorf("%s lost the platform its version number named", artifact.FileName)
+		}
+		if _, err := os.Stat(library.versionFile(item.ID, release.Tag, artifact.FileName)); err != nil {
+			t.Errorf("%s did not move: %v", artifact.FileName, err)
+		}
+	}
+}
+
+// The servers' records name the tags the merge just rewrote. Re-pointed by
+// digest, which is the one thing about a jar that did not change.
+func TestRealignRepointsRecordsAtTheirRelease(t *testing.T) {
+	library := newLibrary(t)
+	item, err := library.Add("LuckPerms", Source{Kind: SourceModrinth, Repo: "luckperms"}, "", "")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	day := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	storeArtifact(t, library, item.ID, "aa", "v5.5.71-bukkit", "LuckPerms-Bukkit-5.5.71.jar", "bukkit-bytes", day)
+	storeArtifact(t, library, item.ID, "bb", "v5.5.71-velocity", "LuckPerms-Velocity-5.5.71.jar", "velocity-bytes", day.Add(time.Minute))
+
+	instances := NewInstances(library, filepath.Join(t.TempDir(), "instance-plugins.json"))
+	if err := instances.put("test", Installed{
+		PluginID: item.ID,
+		Tag:      "aa",
+		Version:  "v5.5.71-bukkit",
+		FileName: "LuckPerms-Bukkit-5.5.71.jar",
+		Dir:      "plugins",
+		SHA256:   "bukkit-bytes",
+	}); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+
+	library.Regroup(quiet())
+	if fixed := instances.Realign(library, quiet()); fixed != 1 {
+		t.Fatalf("Realign fixed %d records, want 1", fixed)
+	}
+
+	records := instances.Records("test")
+	if len(records) != 1 {
+		t.Fatalf("holds %d records, want 1", len(records))
+	}
+	if records[0].Tag != "v5.5.71" || records[0].Version != "v5.5.71" {
+		t.Errorf("record still points at %q / %q", records[0].Tag, records[0].Version)
+	}
+	// The jar's own claims travel with it: this server has the bukkit build,
+	// not "everything the release supports".
+	if len(records[0].Loaders) == 0 || records[0].Loaders[0] != "bukkit" {
+		t.Errorf("record claims %v, want the bukkit jar's own loaders", records[0].Loaders)
+	}
+	if second := instances.Realign(library, quiet()); second != 0 {
+		t.Errorf("Realign changed %d records the second time, want 0", second)
+	}
+}
