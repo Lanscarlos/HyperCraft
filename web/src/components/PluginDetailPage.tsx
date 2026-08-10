@@ -5,6 +5,7 @@ import { formatBytes, formatDate } from '../format'
 import type { LibraryPlugin, PluginRelease, PluginVersion } from '../types'
 import { hasPluginUpdate } from '../types'
 import type { PluginController } from '../usePlugins'
+import { loaderNote } from './PluginInstallDialog'
 import { Page } from './Page'
 import { PluginIcon } from './PluginIcon'
 
@@ -349,6 +350,10 @@ interface VersionRow {
   held?: PluginVersion
   /** The upstream release, when the list has been fetched. */
   release?: PluginRelease
+  /** Which server software this particular jar is built for. A plugin that
+   *  supports several ships one build per platform under the same release
+   *  number, and the only other sign of it is a suffix on the version. */
+  loaders?: string[]
 }
 
 /**
@@ -395,12 +400,14 @@ function VersionList({
       prerelease: version.prerelease,
       publishedAt: version.publishedAt,
       held: version,
+      loaders: version.loaders,
     })
   }
   for (const release of releases ?? []) {
     const existing = byTag.get(release.tag)
     if (existing) {
       existing.release = release
+      existing.loaders = existing.loaders ?? release.loaders
       continue
     }
     byTag.set(release.tag, {
@@ -409,6 +416,7 @@ function VersionList({
       prerelease: release.prerelease,
       publishedAt: release.publishedAt,
       release,
+      loaders: release.loaders,
     })
   }
   const rows = Array.from(byTag.values()).sort(
@@ -471,6 +479,11 @@ function VersionList({
                     <span className="badge badge--ok">已下载</span>
                   ) : (
                     <span className="badge badge--muted">可下载</span>
+                  )}
+                  {loaderNote(row.loaders) && (
+                    <span className="badge" title="这一份 jar 是给这些服务端核心用的">
+                      {loaderNote(row.loaders)}
+                    </span>
                   )}
                 </span>
 

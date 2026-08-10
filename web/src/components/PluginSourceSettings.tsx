@@ -23,7 +23,7 @@ export function PluginSourceSettings({ plugins }: { plugins: PluginController })
   return (
     <Page
       title="插件源"
-      lead="三个插件站覆盖了绝大多数插件，但覆盖不了只发在作者自己 GitHub Release 上的那种 —— 包括你自己那个私有仓库。这一页管的就是这件事：登记一个仓库当插件源，配好私有仓库要用的访问令牌，以及 jar 走哪个下载源。插件本身、版本和更新在「插件列表」里管，装到某台服上则在那台服的「已装插件」页。"
+      lead="三个插件站覆盖了绝大多数插件，但覆盖不了只发在作者自己 GitHub Release 上的那种 —— 包括你自己那个私有仓库。这一页管的就是这件事：登记一个仓库当插件源，配好私有仓库要用的访问令牌，以及 jar 走哪个下载源。插件本身、版本和更新在「插件列表」里管，装到某台服上则在那台服的「插件」页。"
       aside={
         // Registering a source, which is what this page is for. It used to sit
         // beside 检查全部更新 on the plugin list, where it was the only button

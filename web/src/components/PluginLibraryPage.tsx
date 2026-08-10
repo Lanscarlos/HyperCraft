@@ -19,6 +19,7 @@ import { Modal } from './Modal'
 import { Page } from './Page'
 import { PluginBrowse, sourceLabel } from './PluginBrowse'
 import { PluginIcon } from './PluginIcon'
+import { PluginImportDialog } from './PluginImportDialog'
 import { PluginInstallDialog } from './PluginInstallDialog'
 import { Toast } from './Toast'
 
@@ -76,6 +77,7 @@ export function PluginLibraryPage({
   const [result, setResult] = useState<string | null>(null)
   const [installing, setInstalling] = useState<LibraryPlugin | null>(null)
   const [bulkInstall, setBulkInstall] = useState<LibraryPlugin[] | null>(null)
+  const [importing, setImporting] = useState(false)
 
   const { job, library } = plugins
 
@@ -108,7 +110,7 @@ export function PluginLibraryPage({
       <Page
         wide
         title="获取插件"
-        lead="从 Modrinth、Hangar 和 SpigotMC 里找插件，下载到面板插件库。这里不会装进任何一台服务器 —— 装到哪几台是「插件列表」和实例自己的「已装插件」上的事。左边勾几台服只是为了让兼容性徽章有参照。"
+        lead="从 Modrinth、Hangar 和 SpigotMC 里找插件，下载到面板插件库。这里不会装进任何一台服务器 —— 装到哪几台是「插件列表」和实例自己的「插件」页上的事。左边勾几台服只是为了让兼容性徽章有参照。"
       >
         <PluginBrowse
           against={against ?? []}
@@ -126,7 +128,7 @@ export function PluginLibraryPage({
     <Page
       wide
       title="插件库"
-      lead="按插件看，而不是按服务器看：哪个插件在哪几台服上、版本对不对得上、哪些下载了却没人用。单台服的增删启停在实例自己的「已装插件」里。"
+      lead="按插件看，而不是按服务器看：哪个插件在哪几台服上、版本对不对得上、哪些下载了却没人用。单台服的增删启停在实例自己的「插件」页里。"
       aside={
         // The page's own state, and the one action that leaves it. The other
         // three buttons that used to sit by the section heading were not
@@ -145,6 +147,13 @@ export function PluginLibraryPage({
             )}
             {library?.root && <span title={library.root}>存放于 {library.root}</span>}
           </p>
+          {/* The other way a plugin gets into the library, and it belongs
+              beside the first: 获取插件 covers everything the catalogues can
+              reach, and this covers what they cannot — a marketplace plugin,
+              a build from a fork, something a friend sent over. */}
+          <button className="btn" onClick={() => setImporting(true)}>
+            导入 jar
+          </button>
           <button className="btn btn--primary" onClick={() => onOpenView('browse')}>
             获取插件
           </button>
@@ -249,7 +258,11 @@ export function PluginLibraryPage({
             <button className="link" onClick={() => onOpenView('browse')}>
               获取插件
             </button>
-            找一个下载下来，或者在
+            找一个下载下来，
+            <button className="link" onClick={() => setImporting(true)}>
+              直接导入一个 jar
+            </button>
+            ，或者在
             <button className="link" onClick={onOpenSettings}>
               插件源
             </button>
@@ -326,6 +339,18 @@ export function PluginLibraryPage({
             setInstalling(null)
             setResult(summary)
             void refresh()
+          }}
+        />
+      )}
+
+      {importing && (
+        <PluginImportDialog
+          onCancel={() => setImporting(false)}
+          onImported={(summary) => {
+            setImporting(false)
+            setResult(summary)
+            void refresh()
+            void plugins.refresh()
           }}
         />
       )}

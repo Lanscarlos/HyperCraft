@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -26,6 +27,10 @@ func (s *Server) writePluginError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, plugin.ErrExists), errors.Is(err, plugin.ErrBusy):
 		writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, plugin.ErrNotAJar):
+		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, plugin.ErrTooLarge):
+		writeError(w, http.StatusRequestEntityTooLarge, err.Error())
 	case errors.Is(err, plugin.ErrRateLimited):
 		// Not the panel's fault and not the operator's either; 429 is the one
 		// status that says "the same request will work later".
@@ -664,6 +669,77 @@ func (s *Server) handleInstallInstancePlugin(w http.ResponseWriter, r *http.Requ
 	s.log.Info("plugin installed into instance",
 		"instance", cfg.Name, "plugin", req.PluginID, "tag", entry.Tag)
 	writeJSON(w, http.StatusOK, entry)
+}
+
+// importedResult is one uploaded jar's outcome, per file rather than per
+// request: a five-jar upload where the third one is a zip should still land
+// the other four and name the one it could not read.
+type importedResult struct {
+	FileName string           `json:"fileName"`
+	Imported *plugin.Imported `json:"imported,omitempty"`
+	Error    string           `json:"error,omitempty"`
+}
+
+// handleImportPlugins takes jars the operator uploaded into the library.
+//
+// The way in for everything the catalogues cannot reach: a marketplace plugin,
+// a build from a fork, something a friend sent over. Those jars could always be
+// dropped into a server's plugins directory through the file manager — this is
+// the difference between doing that five times and doing it once.
+//
+// Streamed part by part rather than parsed into memory: plugin jars run to tens
+// of megabytes and the panel is expected to share a small box with the servers
+// it runs. Each part is staged, checksummed, and asked what it is; see
+// plugin/importer.go.
+func (s *Server) handleImportPlugins(w http.ResponseWriter, r *http.Request) {
+	if !s.pluginsAvailable(w) {
+		return
+	}
+
+	// Optional: with an id, every jar joins that plugin. Without one, each jar
+	// finds or creates its own entry from the name it declares.
+	id := strings.TrimSpace(r.URL.Query().Get("plugin"))
+
+	reader, err := r.MultipartReader()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "expected a multipart upload")
+		return
+	}
+
+	limit := s.maxUploadBytes()
+	results := make([]importedResult, 0, 2)
+	for {
+		part, err := reader.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "malformed upload")
+			return
+		}
+		if part.FileName() == "" {
+			part.Close()
+			continue
+		}
+
+		imported, importErr := s.plugins.Library().ImportJar(id, part.FileName(), part, limit)
+		part.Close()
+
+		if importErr != nil {
+			results = append(results, importedResult{FileName: part.FileName(), Error: importErr.Error()})
+			s.log.Warn("plugin import failed", "file", part.FileName(), "err", importErr)
+			continue
+		}
+		results = append(results, importedResult{FileName: part.FileName(), Imported: &imported})
+		s.log.Info("plugin imported",
+			"plugin", imported.Plugin.ID, "version", imported.Version.Version, "file", part.FileName())
+	}
+
+	if len(results) == 0 {
+		writeError(w, http.StatusBadRequest, "no files in the upload")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"results": results})
 }
 
 type adoptPluginRequest struct {

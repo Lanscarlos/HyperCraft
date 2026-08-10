@@ -372,6 +372,62 @@ func (s *Server) installTargets() []installTarget {
 	return out
 }
 
+// installMatrixResponse answers "which of my servers can take which of the
+// versions I already hold" in one request.
+//
+// A matrix rather than a verdict for one chosen version, because the install
+// dialog needs it *before* the choice is made: a plugin that publishes one jar
+// per platform — LuckPerms ships bukkit, velocity, fabric, forge and more under
+// the same release number — has a right answer per server, and a dialog that
+// could only judge the version already selected would let the operator find
+// that out by picking wrong first. It is small: held versions times instances,
+// both of which are single digits in practice.
+type installMatrixResponse struct {
+	Targets []installTarget `json:"targets"`
+	// Verdicts is keyed by version tag, then by instance id. A nil verdict is
+	// the honest answer for a jar whose source published no metadata — every
+	// GitHub release, and Hangar until its versions are read — and the UI shows
+	// no badge for it rather than a green one.
+	Verdicts map[string]map[string]*plugin.Compat `json:"verdicts"`
+}
+
+// handlePluginInstallTargets judges every downloaded version of one plugin
+// against every instance.
+//
+// Server-side because Judge is: the loader families (a Spigot plugin runs on
+// Paper, the reverse does not) and the minor-line version matching are subtle
+// enough that a second copy of them in the browser would drift, and the copy
+// that drifts is the one telling somebody their jar is fine.
+func (s *Server) handlePluginInstallTargets(w http.ResponseWriter, r *http.Request) {
+	if !s.pluginsAvailable(w) {
+		return
+	}
+
+	item, err := s.plugins.Library().Get(r.PathValue("id"))
+	if err != nil {
+		s.writePluginError(w, err)
+		return
+	}
+
+	targets := s.installTargets()
+	resp := installMatrixResponse{
+		Targets:  targets,
+		Verdicts: make(map[string]map[string]*plugin.Compat, len(item.Versions)),
+	}
+	for _, version := range item.Versions {
+		row := make(map[string]*plugin.Compat, len(targets))
+		for _, target := range targets {
+			row[target.ID] = plugin.JudgeAcross(
+				[]plugin.NamedTarget{{Name: target.Name, Target: target.Target}},
+				version.Loaders,
+				version.GameVersions,
+			)
+		}
+		resp.Verdicts[version.Tag] = row
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // detectTarget works out an instance's game version and loader, using the core
 // library as the middle of the three sources plugin.DetectTarget consults.
 func (s *Server) detectTarget(cfg instance.Config) plugin.Target {

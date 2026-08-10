@@ -22,7 +22,9 @@ import type {
   InstanceStatus,
   LibraryPlugin,
   PluginBrowseDetail,
+  ImportedPlugin,
   PluginBrowseResult,
+  PluginInstallTargets,
   PluginDownloadJob,
   PluginLibrary,
   PluginOverview,
@@ -293,6 +295,13 @@ export const api = {
   }) =>
     request<LibraryPlugin>('POST', '/api/plugins/browse/track', input),
 
+  /** Every downloaded version of one plugin, judged against every instance.
+   *  Judged on the server because Judge lives there — a second copy of the
+   *  loader families and the version-line matching in the browser would drift,
+   *  and the copy that drifts is the one saying a jar is fine. */
+  pluginInstallTargets: (id: string) =>
+    request<PluginInstallTargets>('GET', `/api/plugins/${encodeURIComponent(id)}/targets`),
+
   /** The cross-instance view: which servers run which version of what. */
   pluginOverview: () => request<PluginOverview>('GET', '/api/plugins/overview'),
   /** What a bulk upgrade would touch. Asked fresh rather than assembled in the
@@ -413,6 +422,54 @@ export function consoleSocketURL(
 export function terminalSocketURL(cols: number, rows: number): string {
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
   return `${scheme}://${window.location.host}/api/terminal/session?cols=${cols}&rows=${rows}`
+}
+
+/**
+ * Uploads jars straight into the plugin library.
+ *
+ * The way in for everything the catalogues cannot reach — a marketplace
+ * plugin, a build from a fork, something a friend sent over. XHR for the same
+ * reason the file upload uses it: only XHR reports progress, and a jar with no
+ * progress bar looks like a hang.
+ *
+ * `pluginId` adds the jars to a plugin that already exists; without it each
+ * jar finds or creates its own entry from the name it declares.
+ */
+export function importPluginJars(
+  files: File[],
+  onProgress: (fraction: number) => void,
+  pluginId?: string,
+): Promise<{ results: ImportedPlugin[] }> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData()
+    for (const file of files) form.append('file', file, file.name)
+
+    const query = pluginId ? `?plugin=${encodeURIComponent(pluginId)}` : ''
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `/api/plugins/import${query}`)
+    xhr.setRequestHeader(CSRF_HEADER, '1')
+    xhr.withCredentials = true
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded / event.total)
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText))
+        return
+      }
+      let message = `导入失败 (HTTP ${xhr.status})`
+      try {
+        const parsed = JSON.parse(xhr.responseText)
+        if (parsed?.error) message = parsed.error
+      } catch {
+        /* non-JSON error body */
+      }
+      reject(new ApiError(xhr.status, message))
+    }
+    xhr.onerror = () => reject(new ApiError(0, '导入失败：网络错误'))
+    xhr.send(form)
+  })
 }
 
 /** Direct link for a download; the browser handles the transfer itself. */

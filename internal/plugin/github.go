@@ -61,6 +61,18 @@ var (
 // and meet this one at Source, Release and Client.
 const SourceGitHub = "github"
 
+// SourceLocal is a jar the operator uploaded, with no upstream at all.
+//
+// It is the kind for everything the four catalogues cannot reach: a plugin
+// bought from a marketplace, one compiled from a fork, one a friend sent over.
+// Those jars used to have exactly one home — dropped into a server's plugins
+// directory by hand, where the panel would notice the file and be able to say
+// nothing else about it, once per server. As a library entry the same jar is
+// one upload, one checksum, and the same 装到实例 as everything else.
+//
+// What it does not get is update checking. There is nowhere to check.
+const SourceLocal = "local"
+
 // releasePage is how many releases one check looks at. Plugins that publish a
 // release per commit would otherwise push the useful versions off the end,
 // and nobody picks a version out of a list longer than this by scrolling.
@@ -127,6 +139,19 @@ func (s Source) Normalise() (Source, error) {
 	}
 	switch s.Kind {
 	case SourceGitHub:
+	case SourceLocal:
+		// A jar the operator handed the panel. There is no upstream to address,
+		// so Repo is only an identity — a slug of the plugin's own name, kept
+		// so a second upload of the same plugin joins the entry that already
+		// exists instead of starting a second one beside it.
+		s.Repo = strings.Trim(strings.TrimSpace(s.Repo), "/")
+		if s.Repo == "" {
+			return Source{}, fmt.Errorf("%w: 导入的插件得有个名字", ErrInvalidRepo)
+		}
+		s.Private = false
+		s.AssetPattern = ""
+		s.Prerelease = false
+		return s, nil
 	case SourceModrinth, SourceHangar, SourceSpigot:
 		// A registry addresses a plugin by an id of its own choosing — a
 		// Modrinth slug, a Hangar project name, a numeric SpigotMC resource —

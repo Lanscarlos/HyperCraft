@@ -141,6 +141,12 @@ func (d *Downloader) Check(ctx context.Context, id string) (Plugin, error) {
 	if err != nil {
 		return Plugin{}, err
 	}
+	// An uploaded jar has no upstream. Not an error and not a failed check —
+	// there is simply nothing to ask, and recording "check failed" against it
+	// would put a warning on a plugin that is working exactly as intended.
+	if item.Source.Kind == SourceLocal {
+		return item, nil
+	}
 	item = d.syncVisibility(ctx, item)
 
 	latest, checkErr := d.client.Latest(ctx, item.Source)

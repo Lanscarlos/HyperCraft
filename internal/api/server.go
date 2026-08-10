@@ -261,6 +261,7 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("GET /api/plugins", s.handlePluginLibrary)
 	protected.HandleFunc("POST /api/plugins", s.handleAddPlugin)
 	protected.HandleFunc("POST /api/plugins/check", s.handleCheckPlugins)
+	protected.HandleFunc("POST /api/plugins/import", s.handleImportPlugins)
 	// Discovery. Two segments deep for the same reason the config routes are:
 	// "browse" must not be reachable as a plugin id.
 	protected.HandleFunc("GET /api/plugins/browse", s.handleBrowsePlugins)
@@ -279,6 +280,7 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("PUT /api/plugins/{id}", s.handleUpdatePlugin)
 	protected.HandleFunc("DELETE /api/plugins/{id}", s.handleDeletePlugin)
 	protected.HandleFunc("GET /api/plugins/{id}/releases", s.handlePluginReleases)
+	protected.HandleFunc("GET /api/plugins/{id}/targets", s.handlePluginInstallTargets)
 	protected.HandleFunc("POST /api/plugins/{id}/check", s.handleCheckPlugin)
 	protected.HandleFunc("POST /api/plugins/{id}/download", s.handleDownloadPlugin)
 	protected.HandleFunc("DELETE /api/plugins/{id}/versions", s.handleDeletePluginVersion)

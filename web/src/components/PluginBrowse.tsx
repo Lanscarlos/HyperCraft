@@ -717,6 +717,8 @@ export function sourceLabel(source: PluginSourceKind): string {
       return 'Hangar'
     case 'spigot':
       return 'SpigotMC'
+    case 'local':
+      return '手动导入'
     default:
       return 'GitHub'
   }

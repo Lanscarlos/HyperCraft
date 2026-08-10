@@ -100,7 +100,7 @@ export const INSTANCE_SECTIONS: { id: InstanceSection; label: string }[] = [
   { id: 'console', label: '控制台' },
   { id: 'metrics', label: '监控' },
   { id: 'files', label: '文件' },
-  { id: 'plugins', label: '已装插件' },
+  { id: 'plugins', label: '插件' },
   { id: 'properties', label: '服务器配置' },
   { id: 'settings', label: '实例设置' },
 ]

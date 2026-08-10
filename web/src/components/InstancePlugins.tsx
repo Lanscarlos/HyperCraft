@@ -14,7 +14,7 @@ import type { PluginController } from '../usePlugins'
 import { Modal } from './Modal'
 import { loaderLabel } from './PluginBrowse'
 import { CompatBadge } from './PluginCompat'
-import { PluginInstallDialog } from './PluginInstallDialog'
+import { PluginInstallDialog, loaderNote } from './PluginInstallDialog'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
@@ -551,6 +551,10 @@ function PluginRow({
               ...versions.map((version) => ({
                 value: version.tag,
                 label: version.version,
+                // A plugin that supports several platforms holds one jar per
+                // platform under the same release number, and the version
+                // string alone does not say which of them this is.
+                note: loaderNote(version.loaders),
               })),
             ]}
             onChange={(next) => {

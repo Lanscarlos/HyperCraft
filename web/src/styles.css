@@ -6764,14 +6764,24 @@ button.rows__name:hover strong {
   border-top: 1px dashed var(--border);
 }
 
+/* One server per line, not a wrapped run of them. Wrapped, two servers on the
+   same line read as one phrase — 生存服 5.5.71 老版本服 5.4.98 — and the
+   thing this block exists to make obvious is precisely that they are two
+   answers that ought to match. Stacked, the versions line up under each other
+   and a mismatch is visible without reading. */
 .plugin-card__list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
+  flex-direction: column;
+  gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
   font-size: 12px;
+}
+
+.plugin-card__list li {
+  justify-content: space-between;
+  max-width: 340px;
 }
 
 .plugin-card__list li {
@@ -7357,4 +7367,46 @@ select.input-slim option {
     opacity: 0;
     transform: translateX(14px);
   }
+}
+
+/* The per-file outcome of a jar import. One line each, because the whole
+   point of reporting per file is that a five-jar upload with one bad zip in it
+   lands the other four and names the one it could not read. */
+.import-results {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 260px;
+  margin: 0;
+  padding: 9px 11px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+}
+
+.import-results li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.import-results small {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.import-results__bad small {
+  color: var(--danger-ink);
+}
+
+/* A file input is drawn by the platform and cannot be restyled past this, so
+   it gets the field's box and is left alone inside it. */
+.field input[type='file'] {
+  padding: 7px 9px;
+  cursor: pointer;
 }

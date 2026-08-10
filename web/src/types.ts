@@ -307,7 +307,7 @@ export interface CoreLibrary {
 // ------------------------------------------------------------------ plugins
 
 /** Which catalogue a plugin comes from. Mirrors internal/plugin. */
-export type PluginSourceKind = 'github' | 'modrinth' | 'hangar' | 'spigot'
+export type PluginSourceKind = 'github' | 'modrinth' | 'hangar' | 'spigot' | 'local'
 
 /** Where a plugin's releases come from. */
 export interface PluginSource {
@@ -438,6 +438,22 @@ export interface PluginJarInfo {
   platform?: string
   /** The game version the plugin declares support for, when it declares one. */
   apiVersion?: string
+}
+
+/** What one uploaded jar turned out to be. Per file rather than per request:
+ *  a five-jar upload where the third one is a zip lands the other four. */
+export interface ImportedPlugin {
+  fileName: string
+  imported?: {
+    plugin: LibraryPlugin
+    version: PluginVersion
+    /** The jar's own description of itself, so the dialog can show what was
+     *  read out rather than only what was stored. */
+    info: PluginJarInfo
+    /** True when this exact jar was already in the library. */
+    replaced: boolean
+  }
+  error?: string
 }
 
 /** A library version an unmanaged jar was recognised as, by SHA-256. */
@@ -613,6 +629,21 @@ export interface PluginBrowseResult {
   truncated: boolean
   /** How many results do not fit the target, for the count line. */
   incompatible: number
+}
+
+/**
+ * Which of my servers can take which of the versions I already hold.
+ *
+ * Keyed by version tag, then by instance id; a missing or null verdict means
+ * the source published nothing to judge by, which is a real answer and not a
+ * green light. Asked as a matrix rather than per chosen version because a
+ * plugin that ships one jar per platform — LuckPerms publishes bukkit,
+ * velocity, fabric and forge under the same release number — has a different
+ * right answer per server, and the picker needs that before the choice.
+ */
+export interface PluginInstallTargets {
+  targets: InstallTarget[]
+  verdicts: Record<string, Record<string, PluginCompat | null>>
 }
 
 export interface BrowseVersion extends PluginRelease {
