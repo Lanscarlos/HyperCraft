@@ -115,11 +115,20 @@ export function PluginDrawer({
         iconUrl: listing.iconUrl,
       })
 
-      if (version.held) {
+      // Which jar of this release, when it ships more than one. A release is
+      // not a file: installing onto a Velocity proxy and onto a Paper server
+      // are the same version and two different downloads, and "already held"
+      // is a different answer for each of them.
+      const wanted = assetFor(version, install)
+      const heldJar = wanted
+        ? (version.heldJars ?? []).some((name) => name.toLowerCase() === wanted.toLowerCase())
+        : version.held
+
+      if (heldJar) {
         setDone(`插件库里已经有 ${version.version} 了。`)
       } else {
         setProgress(`正在下载 ${version.version}…`)
-        await api.downloadPlugin(item.id, version.tag)
+        await api.downloadPlugin(item.id, version.tag, wanted)
         await waitForDownload(item.id, version.tag, setProgress)
         setDone(`已下载 ${version.version} 到插件库。`)
       }
@@ -372,4 +381,26 @@ async function waitForDownload(
     throw new Error(job.error || '下载失败')
   }
   throw new Error('下载超时')
+}
+
+/**
+ * Which jar of a release goes onto the server it was asked for.
+ *
+ * Only ever a hint, and only for the download: the panel judges compatibility
+ * server-side — the loader families are subtle enough that a second copy of
+ * that logic in the browser would drift — so this is the narrow, exact case
+ * that needs no families at all. A release with a jar labelled "velocity" and
+ * a proxy that runs Velocity is a match anybody can see, and everything else
+ * falls through to the release's primary jar, which is the answer this had
+ * before there was a choice to make.
+ */
+function assetFor(version: BrowseVersion, install?: InstallTarget): string | undefined {
+  const loader = install?.target.loader?.toLowerCase()
+  if (!loader || version.assets.length < 2) return undefined
+  const match = version.assets.find(
+    (asset) =>
+      (asset.platform ?? '').toLowerCase() === loader ||
+      asset.loaders?.some((entry) => entry.toLowerCase() === loader),
+  )
+  return match?.name
 }

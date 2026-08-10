@@ -167,6 +167,11 @@ func run() error {
 	// keeps every release it downloaded and hands out copies. Downloads have
 	// their own mirror setting — see config.Panel.PluginMirror.
 	pluginLibrary := plugin.NewLibrary(paths.PluginsRoot())
+	// A library written by an older build may hold one release several times
+	// over — once per platform — because that is how the panel used to read
+	// Hangar and Modrinth. Folded back before anything reads the library, so
+	// no page ever renders the split. A no-op on every boot after the first.
+	pluginLibrary.Regroup(logger)
 	pluginClient := plugin.NewClient("", userAgent)
 	pluginClient.SetMirror(panel.PluginMirror)
 	// A token is what makes the operator's own private repository readable, and

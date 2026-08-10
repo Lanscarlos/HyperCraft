@@ -2,8 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 
 import { api } from '../api'
 import { formatDate } from '../format'
-import type { InstanceStatus, LibraryPlugin, PluginInstallTargets } from '../types'
-import { isLive } from '../types'
+import type {
+  InstanceStatus,
+  LibraryPlugin,
+  PluginArtifact,
+  PluginCompat,
+  PluginInstallTargets,
+} from '../types'
+import { artifactKey, isLive, pluginArtifacts } from '../types'
 import { Modal } from './Modal'
 import { CompatBadge } from './PluginCompat'
 import { loaderLabel } from './PluginBrowse'
@@ -83,8 +89,34 @@ export function PluginInstallDialog({
 
   const verdictFor = (versionTag: string, instanceId: string) =>
     matrix?.verdicts?.[versionTag]?.[instanceId] ?? null
-  const badFor = (instanceId: string) => verdictFor(tag, instanceId)?.state === 'bad'
-  const clashes = targets.filter((instance) => badFor(instance.id))
+
+  // Which jar of the chosen release each server gets.
+  //
+  // A release is not a file. LuckPerms publishes a bukkit build and a velocity
+  // build under one version number, and "install 5.5.71 on these three
+  // servers" means the paper jar on two of them and the velocity jar on the
+  // proxy. The operator picked a version, which is the decision they can
+  // actually make; which file that is, per server, is arithmetic the panel has
+  // the metadata for — so it does it rather than asking.
+  const jars = version ? pluginArtifacts(version) : []
+  const jarFor = (instanceId: string): PluginArtifact | null => {
+    if (jars.length === 0) return null
+    let best = jars[0]
+    let rank = compatRank(jarVerdict(matrix, best, instanceId))
+    for (const jar of jars.slice(1)) {
+      const next = compatRank(jarVerdict(matrix, jar, instanceId))
+      if (next < rank) {
+        best = jar
+        rank = next
+      }
+    }
+    return best
+  }
+  const verdictOn = (instanceId: string): PluginCompat | null => {
+    const jar = jarFor(instanceId)
+    return jar ? jarVerdict(matrix, jar, instanceId) : verdictFor(tag, instanceId)
+  }
+  const clashes = targets.filter((instance) => verdictOn(instance.id)?.state === 'bad')
 
   // Which jar to open on.
   //
@@ -117,7 +149,7 @@ export function PluginInstallDialog({
     let applied = 0
     for (const instance of targets) {
       try {
-        await api.installInstancePlugin(instance.id, item.id, tag)
+        await api.installInstancePlugin(instance.id, item.id, tag, jarFor(instance.id)?.sha256)
         applied++
       } catch (err) {
         failures.push(`${instance.name}：${err instanceof Error ? err.message : '安装失败'}`)
@@ -165,9 +197,11 @@ export function PluginInstallDialog({
             />
             {version && (
               <small>
-                {loaderNote(version.loaders)
-                  ? `这个 jar 是给 ${loaderNote(version.loaders)} 用的`
-                  : '来源没说明这个 jar 是给哪种服务端核心用的，装之前请自行确认'}
+                {jars.length > 1
+                  ? `这次发布有 ${jars.length} 个 jar（${jarNote(jars)}）—— 每台服各取合适的那个`
+                  : loaderNote(version.loaders)
+                    ? `这个 jar 是给 ${loaderNote(version.loaders)} 用的`
+                    : '来源没说明这个 jar 是给哪种服务端核心用的，装之前请自行确认'}
                 {' · '}
                 {formatDate(version.publishedAt)}
               </small>
@@ -199,10 +233,16 @@ export function PluginInstallDialog({
                   {item.usedBy.includes(instance.name) && (
                     <span className="badge">已装，会换成这个版本</span>
                   )}
-                  {/* The verdict for *this* jar on *this* server. Absent when
-                      the source published nothing to judge by, which is not a
-                      green light — see CompatBadge. */}
-                  <CompatBadge compat={verdictFor(tag, instance.id) ?? undefined} />
+                  {/* The verdict for the jar *this* server would get, which
+                      on a multi-jar release is not the same jar its neighbour
+                      gets. Absent when the source published nothing to judge
+                      by, which is not a green light — see CompatBadge. */}
+                  {jars.length > 1 && jarFor(instance.id)?.platform && (
+                    <span className="badge badge--muted">
+                      {loaderLabel(jarFor(instance.id)!.platform!)} 构建
+                    </span>
+                  )}
+                  <CompatBadge compat={verdictOn(instance.id) ?? undefined} />
                 </label>
               ))}
             </div>
@@ -211,19 +251,20 @@ export function PluginInstallDialog({
 
         {clashes.length > 0 && (
           <div className="alert alert--warn">
-            {clashes.map((instance) => instance.name).join('、')} 跟这个 jar 对不上（
+            {clashes.map((instance) => instance.name).join('、')} 跟这个版本里的 jar 都对不上（
             {/* Deduped: five servers failing for the same reason should say
                 the reason once. */}
             {Array.from(
               new Set(
                 clashes
-                  .map((instance) => verdictFor(tag, instance.id)?.label)
+                  .map((instance) => verdictOn(instance.id)?.label)
                   .filter((label): label is string => Boolean(label)),
               ),
             ).join('、')}
             ），<strong>装上去多半不会被加载</strong>。
-            {item.versions.length > 1 &&
-              '上面换一个版本试试 —— 支持多种核心的插件，同一次发布往往每种核心各有一份 jar。'}
+            {jars.length > 1
+              ? '这次发布库里有几个平台的构建，但没有这几台服要的那个 —— 去插件详情的「版本」里把它下载到库。'
+              : '这个插件如果分平台发版，去插件详情的「版本」里看看有没有对应平台的 jar 可以下载。'}
           </div>
         )}
 
@@ -249,4 +290,36 @@ export function PluginInstallDialog({
       </div>
     </Modal>
   )
+}
+
+/** The verdict on one jar for one server, out of the matrix. */
+function jarVerdict(
+  matrix: PluginInstallTargets | null,
+  artifact: PluginArtifact,
+  instanceId: string,
+): PluginCompat | null {
+  return matrix?.jars?.[artifactKey(artifact)]?.[instanceId] ?? null
+}
+
+/** Fits, might fit, does not fit. Mirrors the ranking the server uses to fold
+ *  a release's jars into one verdict for the release. */
+function compatRank(verdict: PluginCompat | null): number {
+  switch (verdict?.state) {
+    case 'ok':
+      return 0
+    case 'bad':
+      return 2
+    default:
+      return 1
+  }
+}
+
+/** The platforms a release's jars are for, as one line. */
+function jarNote(jars: PluginArtifact[]): string {
+  const seen = new Set<string>()
+  for (const jar of jars) {
+    const platform = jar.platform ?? jar.loaders?.[0]
+    if (platform) seen.add(loaderLabel(platform))
+  }
+  return seen.size > 0 ? Array.from(seen).join(' / ') : `${jars.length} 个构建`
 }

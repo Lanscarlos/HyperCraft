@@ -236,8 +236,15 @@ export const api = {
     request<LibraryPlugin>('POST', `/api/plugins/${encodeURIComponent(id)}/check`),
   checkPlugins: () => request<PluginLibrary>('POST', '/api/plugins/check'),
   /** Downloads one release into the library. Empty tag means the newest. */
-  downloadPlugin: (id: string, tag: string) =>
-    request<PluginDownloadJob>('POST', `/api/plugins/${encodeURIComponent(id)}/download`, { tag }),
+  /** Fetches one jar of one release into the library. `asset` names which jar
+   *  by file name; empty takes the release's primary, which is what a release
+   *  publishing a single jar has. A plugin that ships a build per platform is
+   *  why the choice exists. */
+  downloadPlugin: (id: string, tag: string, asset?: string) =>
+    request<PluginDownloadJob>('POST', `/api/plugins/${encodeURIComponent(id)}/download`, {
+      tag,
+      asset,
+    }),
   cancelPluginDownload: () => request<void>('POST', '/api/plugins/cancel'),
   /** Deletes a release from the library, or one jar of it — deleting the
    *  Velocity build of a release while keeping the Paper one is a real thing

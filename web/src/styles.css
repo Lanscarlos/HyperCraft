@@ -6112,6 +6112,40 @@ button.rows__name:hover strong {
   white-space: nowrap;
 }
 
+/* What upstream published under a release that the library does not hold.
+   One row per jar, because a cross-platform plugin's release is several jars
+   and which of them you want depends on which server you are feeding. */
+.offers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.offers__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 8px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+
+.offers__file {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.offers__size {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* The update policy, as four mutually exclusive sentences rather than a
    dropdown of four words. The difference between 自动入库 and 自动推送实例 is
    the difference between a file appearing in a directory nobody is running and

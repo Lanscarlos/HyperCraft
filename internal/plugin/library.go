@@ -162,6 +162,40 @@ func (v Version) Primary() Artifact {
 	return v.Artifacts[0]
 }
 
+// ArtifactKey identifies one jar to the browser: its digest, which is its
+// identity, falling back to the file name for a record written before there
+// were digests.
+func ArtifactKey(a Artifact) string {
+	if a.SHA256 != "" {
+		return a.SHA256
+	}
+	return a.FileName
+}
+
+// Claims is what one jar says it supports, for the compatibility check.
+//
+// The jar's own claim first and the release's only as a fallback, because on a
+// release that ships a build per platform the release's claim is the union of
+// all of them — true of the release, false of every file under it. Judging a
+// velocity jar by "paper, velocity" is how a proxy build ends up on a Paper
+// server with a green badge on it.
+func Claims(version Version, artifact Artifact) (loaders, gameVersions []string) {
+	loaders = artifact.Loaders
+	if len(loaders) == 0 && artifact.Platform != "" {
+		// What the jar's own descriptor declared, which beats anything a
+		// registry said about it.
+		loaders = []string{artifact.Platform}
+	}
+	if len(loaders) == 0 {
+		loaders = version.Loaders
+	}
+	gameVersions = artifact.GameVersions
+	if len(gameVersions) == 0 {
+		gameVersions = version.GameVersions
+	}
+	return loaders, gameVersions
+}
+
 // Artifact returns the jar with a digest, or nil.
 func (v Version) Artifact(sha string) *Artifact {
 	for i := range v.Artifacts {

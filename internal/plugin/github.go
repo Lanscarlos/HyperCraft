@@ -228,6 +228,12 @@ func ParseRepo(raw string) (string, error) {
 }
 
 // Asset is one file published with a release.
+//
+// A release is not a file, and on the plugin registries it is very often not
+// one file: Hangar publishes a paper build and a velocity build under one
+// version, Modrinth files each platform's jar under the same version number.
+// Those are the same release packaged twice, so they are two assets here — and
+// what tells them apart is Platform, not the file name.
 type Asset struct {
 	Name string `json:"name"`
 	Size int64  `json:"size"`
@@ -240,6 +246,24 @@ type Asset struct {
 	// "Accept: application/octet-stream" header it answers with the bytes
 	// instead of the asset's metadata.
 	APIURL string `json:"apiUrl,omitempty"`
+
+	// Platform is the server this jar is built for — "paper", "velocity",
+	// "fabric" — as its source names it, lowercased. Empty for a GitHub
+	// release, which says nothing about its assets, and empty for a source
+	// that publishes one jar for everything. Empty means unknown: the jar is
+	// asked what it is once it has been downloaded, and jarinfo answers better
+	// than a guess from a file name would.
+	Platform string `json:"platform,omitempty"`
+	// Loaders and GameVersions are what this jar in particular supports, which
+	// on a multi-platform release is not what the release as a whole supports.
+	// The release's own fields are the union across its assets and are what a
+	// listing badge reads; these are what an install decision reads.
+	Loaders      []string `json:"loaders,omitempty"`
+	GameVersions []string `json:"gameVersions,omitempty"`
+	// SHA256 is the digest the source published for this file, when it
+	// published one. Never what the library records — that is computed from
+	// the bytes that arrived — but something to compare against.
+	SHA256 string `json:"sha256,omitempty"`
 }
 
 // Release is one version a plugin could be updated to.
