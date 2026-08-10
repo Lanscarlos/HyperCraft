@@ -37,12 +37,12 @@
 ```bash
 sudo mkdir -p /opt/hypercraft
 cd /opt/hypercraft
-sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v1.3.0/hypercraft-1.3.0-linux-amd64.tar.gz
-sudo tar -xzf hypercraft-1.3.0-linux-amd64.tar.gz --strip-components=1
+sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v0.3.0/hypercraft-0.3.0-linux-amd64.tar.gz
+sudo tar -xzf hypercraft-0.3.0-linux-amd64.tar.gz --strip-components=1
 ```
 
 包里是二进制、`hypercraft.service` 和几个文档文件。ARM 机器（`uname -m` 显示 `aarch64`）把 URL 里的
-`amd64` 换成 `arm64`。上面这个 URL 固定指向 v1.3.0，更新的版本见
+`amd64` 换成 `arm64`。上面这个 URL 固定指向 v0.3.0，更新的版本见
 [Releases 页面](https://github.com/Lanscarlos/HyperCraft/releases/latest) —— 不过装好之后面板能自己升级，
 这个链接一般只用一次。
 
@@ -53,7 +53,7 @@ sudo tar -xzf hypercraft-1.3.0-linux-amd64.tar.gz --strip-components=1
 校验文件和压缩包都从同一个镜像拿的话，校验就没多大意义了）：
 
 ```bash
-sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v1.3.0/SHA256SUMS.txt
+sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v0.3.0/SHA256SUMS.txt
 sha256sum -c SHA256SUMS.txt --ignore-missing
 ```
 
@@ -369,9 +369,9 @@ Android 9 以上默认禁止明文 HTTP，所以客户端连非 HTTPS 的面板�
   从 GitHub 直接取，所以镜像换不掉二进制——它给的包对不上 GitHub 的哈希就会被拒绝。
 
   **更新通道**分「正式版」和「快照」，默认正式版。快照是 main 分支每个通过 CI 的提交自动出的
-  一版（`1.2.1-snapshot.431` 这种，标着 prerelease），想提前试新功能可以在更新页切过去，
+  一版（`0.4-snapshot.86` 这种，标着 prerelease），想提前试新功能可以在更新页切过去，
   更新流程和正式版完全一样。快照通道同时也看正式版——按版本号取最新的那个，所以
-  `1.2.1` 一发布就会自动从 `1.2.1-snapshot.*` 更新过去。切回正式版通道时，如果当前跑的快照
+  `0.4.0` 一发布就会自动从 `0.4-snapshot.*` 更新过去。切回正式版通道时，如果当前跑的快照
   比最新正式版新，面板会提示装回最新正式版，那一步是往回装的，会明确说清楚。
   生产环境请留在正式版通道：快照只保证过了 CI。
 - **服务端核心库** —— 面板级的 jar 货架，在「资源库 → 服务端核心」里管（分「核心库」和「下载核心」两页）。目前可下载的是 Paper 和
@@ -543,7 +543,7 @@ go run ./cmd/hypercraft -data ./data     # 后端 :19190
 npm --prefix web run dev                 # 前端 :5173，API 自动代理到 19190
 
 make cross          # 交叉编译 linux/amd64, linux/arm64, windows, darwin/arm64
-make package VERSION=v1.3.0   # 交叉编译 + 打包出 release/ 里的压缩包和 SHA256SUMS.txt
+make package VERSION=v0.3.0   # 交叉编译 + 打包出 release/ 里的压缩包和 SHA256SUMS.txt
 ```
 
 ### 发布
@@ -553,8 +553,9 @@ make package VERSION=v1.3.0   # 交叉编译 + 打包出 release/ 里的压缩�
 - **正式版**：把 CHANGELOG 顶上的「未发布」改成 `## [x.y.z] - 日期` 合进 main，
   `.github/workflows/release.yml` 会打 tag 并发布。
 - **快照**：`.github/workflows/snapshot.yml` 挂在 CI 后面，main 上每个通过 CI 的提交都发一版
-  prerelease，版本号是下一个补丁版加 `-snapshot.<提交数>`。这个提交本身就是某个正式版时会跳过，
-  免得同一份代码有两个版本号。只保留最近 5 个，旧的连同 tag 一起删。
+  prerelease，版本号是下一个次版本号（只写两位）加 `-snapshot.<提交数>` —— `0.3.0` 之后就是
+  `0.4-snapshot.86`。缺的那一位按 0 算，所以它排在 `0.3.x` 之后、`0.4.0` 之前。这个提交本身
+  就是某个正式版时会跳过，免得同一份代码有两个版本号。只保留最近 5 个，旧的连同 tag 一起删。
 
 ### 结构
 
@@ -583,21 +584,21 @@ web/                 React + TypeScript + Vite + xterm.js（图表是手写 SVG�
 发版动作就是抬 `CHANGELOG.md` 顶部的版本号。在 PR 里加上这一版的日志：
 
 ```markdown
-## [1.0.1] - 2026-08-09
+## [0.4.0] - 2026-08-09
 
 ### 修复
 - ...
 ```
 
 合进 main 之后，GitHub Actions 发现这个版本还没有对应的 tag，就会跑完 lint 和
-测试、交叉编译四个平台、打好包，然后给这个 commit 打上 `v1.0.1` 并发布 Release。
+测试、交叉编译四个平台、打好包，然后给这个 commit 打上 `v0.4.0` 并发布 Release。
 没动版本号的合并只会跑一个几秒钟的检查然后跳过，不会发版。
 
 功能想先合进 main、攒几个再一起发的，把日志写在 `## [未发布]` 下面：这个标题不是
-版本号，工作流读不到，也就不会发版。等要发的时候把它改成 `## [1.0.1] - 日期`
+版本号，工作流读不到，也就不会发版。等要发的时候把它改成 `## [0.4.0] - 日期`
 再合一次即可。
 
-发布说明取自 `CHANGELOG.md` 里对应版本的那一节。带后缀的版本号（`1.1.0-rc.1`）
+发布说明取自 `CHANGELOG.md` 里对应版本的那一节。带后缀的版本号（`0.4.0-rc.1`）
 会发成 prerelease。手动推 `vX.Y.Z` 的 tag 也照样能发，走的是同一条流程。
 
 传错了或者日志写漏了：改完在 Actions 页面手动重跑 Release 工作流，填上同一个

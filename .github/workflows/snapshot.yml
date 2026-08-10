@@ -5,7 +5,7 @@ name: Snapshot
 #
 # It hangs off CI rather than off the push, so only a commit that already went
 # green is ever published. A snapshot is never a release: it is tagged
-# vX.Y.Z-snapshot.N, marked prerelease on GitHub, and only offered to panels
+# vX.Y-snapshot.N, marked prerelease on GitHub, and only offered to panels
 # that have switched their update channel to 快照.
 on:
   workflow_run:
@@ -78,15 +78,18 @@ jobs:
             exit 0
           fi
 
-          # A snapshot is work heading towards the next patch release, so it
-          # takes that version with a -snapshot suffix: 1.2.0 released means
-          # snapshots of 1.2.1. Semver puts it above 1.2.0 and below 1.2.1, so
-          # a panel on the stable channel never sees it and a panel on the
-          # snapshot channel leaves it as soon as 1.2.1 ships.
-          IFS=. read -r major minor patch <<EOF
+          # A snapshot is work heading towards the next minor release, so it
+          # takes that version with a -snapshot suffix: 0.3.0 released means
+          # snapshots of 0.4. The minor is the release unit while the project is
+          # on 0.x, so the third field is left off rather than named after a
+          # patch nobody intends to cut; a missing field is a zero, which puts
+          # 0.4-snapshot.N above every 0.3.x and below 0.4.0. A panel on the
+          # stable channel therefore never sees it, and a panel on the snapshot
+          # channel leaves it as soon as 0.4.0 ships.
+          IFS=. read -r major minor _ <<EOF
           ${released%%-*}
           EOF
-          next="${major}.${minor}.$((patch + 1))"
+          next="${major}.$((minor + 1))"
 
           # The build number is the commit count, not the run number: it stays
           # meaningful and keeps increasing even if this workflow is renamed or
