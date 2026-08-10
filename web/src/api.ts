@@ -531,6 +531,17 @@ export function downloadURL(id: string, filePath: string): string {
 }
 
 /**
+ * The same bytes, served for display instead of for saving.
+ *
+ * Only the raster image types the server agrees to send inline answer this —
+ * anything else comes back as an attachment, which an <img> would render as a
+ * broken icon. See previewTypes in handlers_fs.go for why the list is short.
+ */
+export function previewURL(id: string, filePath: string): string {
+  return `${downloadURL(id, filePath)}&inline=1`
+}
+
+/**
  * Uploads with XMLHttpRequest rather than fetch: only XHR reports upload
  * progress, and a 300 MB modpack jar with no progress bar looks like a hang.
  */
