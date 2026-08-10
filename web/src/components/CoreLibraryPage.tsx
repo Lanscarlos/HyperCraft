@@ -1,30 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect } from 'react'
 
-import { api } from '../api'
 import { ask } from '../confirm'
 import { formatBytes, formatDate } from '../format'
 import type { LibraryView } from '../routes'
-import type { CoreBuild, CoreDownloadJob, CoreProject, CoreVersion, ServerCore } from '../types'
+import type { CoreDownloadJob, ServerCore } from '../types'
 import type { CoreController } from '../useCores'
+import { CoreCatalogue, isRecommended, useCoreCatalogue } from './CoreCatalogue'
 import { Page } from './Page'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
-
-const SUPPORT_LABELS: Record<string, string> = {
-  SUPPORTED: '官方支持中',
-  UNSUPPORTED: '已停止支持',
-  DEPRECATED: '已弃用',
-  UNKNOWN: '',
-}
-
-/** The version most people want: newest, still supported, not a pre-release. */
-function pickDefault(versions: CoreVersion[]): string {
-  const supported = versions.find((v) => v.stable && v.support === 'SUPPORTED')
-  return (supported ?? versions.find((v) => v.stable) ?? versions[0])?.id ?? ''
-}
-
-function isRecommended(channel: string): boolean {
-  return ['STABLE', 'RECOMMENDED', 'DEFAULT'].includes(channel.toUpperCase())
-}
 
 /**
  * Panel-wide server core management: what has been downloaded, and a one-click
@@ -39,7 +22,9 @@ function isRecommended(channel: string): boolean {
  * The shelf and the catalogue are two pages now — see LIBRARY_VIEWS — but one
  * component, because the catalogue is three chained fetches (projects, then
  * versions, then the build) and stepping over to look at the shelf should not
- * throw the answer away and ask again on the way back.
+ * throw the answer away and ask again on the way back. The catalogue itself
+ * lives in useCoreCatalogue/CoreCatalogue, shared with the creation wizard,
+ * which downloads a core from the same three requests.
  */
 export function CoreLibraryPage({
   cores,
@@ -52,73 +37,12 @@ export function CoreLibraryPage({
   onOpenView: (view: LibraryView) => void
   onOpenJava: () => void
 }) {
-  const [projects, setProjects] = useState<CoreProject[]>([])
-  const [projectId, setProjectId] = useState('')
-  const [versions, setVersions] = useState<CoreVersion[]>([])
-  const [versionId, setVersionId] = useState('')
-  const [build, setBuild] = useState<CoreBuild | null>(null)
-  const [showUnstable, setShowUnstable] = useState(false)
-  const [filter, setFilter] = useState('')
-  const [catalogueError, setCatalogueError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  // Kept alive across a step over to the shelf: the catalogue is three chained
+  // fetches and coming back should not re-run them.
+  const catalogue = useCoreCatalogue(true)
+  const { projects, projectId, versionId, project, loading } = catalogue
 
   const { library, job, downloading, busy } = cores
-  const project = projects.find((p) => p.id === projectId)
-
-  useEffect(() => {
-    let live = true
-    api
-      .listCoreProjects()
-      .then((list) => {
-        if (!live) return
-        setProjects(list)
-        setProjectId((current) => current || list[0]?.id || '')
-      })
-      .catch(() => setProjects([]))
-      .finally(() => live && setLoading(false))
-    return () => {
-      live = false
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!projectId) return
-    let live = true
-    setVersions([])
-    setVersionId('')
-    setBuild(null)
-    setFilter('')
-    api
-      .listCoreVersions(projectId)
-      .then((list) => {
-        if (!live) return
-        setVersions(list)
-        setVersionId(pickDefault(list))
-        setCatalogueError(null)
-      })
-      .catch(
-        (err) =>
-          live && setCatalogueError(err instanceof Error ? err.message : '获取版本列表失败'),
-      )
-    return () => {
-      live = false
-    }
-  }, [projectId])
-
-  // Resolving the build up front means the operator sees the exact file, its
-  // size and its channel before anything touches the disk.
-  useEffect(() => {
-    if (!projectId || !versionId) return
-    let live = true
-    setBuild(null)
-    api
-      .latestCoreBuild(projectId, versionId)
-      .then((latest) => live && setBuild(latest))
-      .catch(() => undefined)
-    return () => {
-      live = false
-    }
-  }, [projectId, versionId])
 
   // A finished download adds a core; the library list has to catch up.
   useEffect(() => {
@@ -141,23 +65,6 @@ export function CoreLibraryPage({
     await cores.remove(core.id)
   }
 
-  // Two filters over one list: the stability switch is a decision about what is
-  // safe to run, the text box is only about finding a row in a list of 200.
-  // Whatever is selected always survives both — the download button names that
-  // version, so it has to stay on screen next to it.
-  const visible = useMemo(() => {
-    const needle = filter.trim().toLowerCase()
-    const matched = versions.filter(
-      (v) => (showUnstable || v.stable) && (!needle || v.id.toLowerCase().includes(needle)),
-    )
-    if (versionId && !matched.some((v) => v.id === versionId)) {
-      const picked = versions.find((v) => v.id === versionId)
-      if (picked) return [picked, ...matched]
-    }
-    return matched
-  }, [versions, showUnstable, filter, versionId])
-
-  const selected = versions.find((v) => v.id === versionId)
   const stored = cores.cores
   const totalSize = stored.reduce((sum, core) => sum + core.size, 0)
 
@@ -244,140 +151,9 @@ export function CoreLibraryPage({
 
           {job && <JobStatus job={job} />}
           {cores.error && <div className="alert alert--error">{cores.error}</div>}
-          {catalogueError && <div className="alert alert--error">{catalogueError}</div>}
+          {catalogue.error && <div className="alert alert--error">{catalogue.error}</div>}
 
-          <div className="field">
-            <span>核心</span>
-            <div className="choice-grid choice-grid--wide">
-              {projects.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`choice${item.id === projectId ? ' choice--active' : ''}`}
-                  aria-pressed={item.id === projectId}
-                  disabled={downloading}
-                  onClick={() => setProjectId(item.id)}
-                >
-                  <span className="choice__label">
-                    {item.name}
-                    {item.kind === 'proxy' && <span className="badge">代理端</span>}
-                  </span>
-                  <span className="choice__note">{item.description}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="field">
-            <div className="field__head">
-              <span>版本</span>
-              <div className="field__tools">
-                <input
-                  className="input-slim"
-                  type="search"
-                  value={filter}
-                  placeholder="筛选版本，如 1.21"
-                  aria-label="筛选版本"
-                  onChange={(e) => setFilter(e.target.value)}
-                  disabled={downloading || versions.length === 0}
-                />
-                <label className="checkbox checkbox--inline">
-                  <input
-                    type="checkbox"
-                    checked={showUnstable}
-                    onChange={(e) => {
-                      setShowUnstable(e.target.checked)
-                      if (!e.target.checked && selected && !selected.stable) {
-                        setVersionId(pickDefault(versions))
-                      }
-                    }}
-                    disabled={downloading}
-                  />
-                  <span>显示预览版和快照</span>
-                </label>
-              </div>
-            </div>
-
-            {versions.length === 0 ? (
-              <p className="muted">正在获取版本列表…</p>
-            ) : visible.length === 0 ? (
-              <p className="muted">没有匹配的版本。</p>
-            ) : (
-              <div className="version-list">
-                {visible.map((version) => (
-                  <button
-                    key={version.id}
-                    type="button"
-                    className={`version${version.id === versionId ? ' version--active' : ''}${
-                      version.stable ? '' : ' version--unstable'
-                    }`}
-                    aria-pressed={version.id === versionId}
-                    disabled={downloading}
-                    title={SUPPORT_LABELS[version.support] || undefined}
-                    onClick={() => setVersionId(version.id)}
-                  >
-                    {version.id}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {selected && (
-              <small>
-                {[
-                  SUPPORT_LABELS[selected.support] ?? selected.support,
-                  selected.javaMinimum > 0 ? `需要 Java ${selected.javaMinimum}+` : '',
-                  selected.builds > 0 ? `${selected.builds} 个构建` : '',
-                  selected.stable ? '' : '预览版',
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </small>
-            )}
-          </div>
-
-          {build ? (
-            <div className="build-summary">
-              <div className="build-summary__file">
-                <code>{build.fileName}</code>
-                <span className="badge">构建 #{build.build}</span>
-                {!isRecommended(build.channel) && (
-                  <span className="badge badge--warn">{build.channel}</span>
-                )}
-              </div>
-              <dl className="asset__facts">
-                <div>
-                  <dt>体积</dt>
-                  <dd>{formatBytes(build.size)}</dd>
-                </div>
-                <div>
-                  <dt>发布于</dt>
-                  <dd>{formatDate(build.time)}</dd>
-                </div>
-                <div>
-                  <dt>校验</dt>
-                  <dd title={build.sha256}>SHA-256 已提供</dd>
-                </div>
-              </dl>
-            </div>
-          ) : (
-            versionId && <p className="muted">正在确认最新构建…</p>
-          )}
-
-          {selected && selected.javaMinimum > 0 && (
-            <p className="chart-note">
-              该版本至少需要 Java {selected.javaMinimum}，机器上的 Java 太旧会在启动时直接报错 ——
-              <button className="link" onClick={onOpenJava}>
-                Java 环境
-              </button>
-              页面可以一键装一个。
-            </p>
-          )}
-          {build && !isRecommended(build.channel) && (
-            <div className="alert alert--warn">
-              这是 {build.channel} 频道的构建，PaperMC 不建议用在正式服上。
-            </div>
-          )}
+          <CoreCatalogue catalogue={catalogue} disabled={downloading} onOpenJava={onOpenJava} />
 
           <div className="actions">
             {downloading ? (
