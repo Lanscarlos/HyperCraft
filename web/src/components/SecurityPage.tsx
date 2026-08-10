@@ -157,6 +157,7 @@ const KIND_LABELS: Record<AuthEventKind, string> = {
   'pair-failed': '配对失败',
   unpaired: '解除配对',
   'password-changed': '修改密码',
+  'token-rejected': '设备令牌无效',
 }
 
 const KIND_BADGE: Record<AuthEventKind, string> = {
@@ -167,6 +168,7 @@ const KIND_BADGE: Record<AuthEventKind, string> = {
   'pair-failed': 'badge--danger',
   unpaired: '',
   'password-changed': 'badge--warn',
+  'token-rejected': 'badge--warn',
 }
 
 /**

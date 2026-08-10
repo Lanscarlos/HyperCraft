@@ -52,6 +52,18 @@ const (
 	// giving up. Long enough to absorb a burst of honest logins, short enough
 	// that a flood is refused instead of piling up.
 	kdfWait = 2 * time.Second
+	// maxConsoleSockets caps how many console websockets one client may hold
+	// open on one instance. Every socket costs a subscription on the instance's
+	// log fan-out and two goroutines that live as long as the connection, and
+	// nothing about the panel's UI wants more than one — the number is here for
+	// the client that reconnects in a loop without closing what it had, which
+	// otherwise piles up sockets on a process that must not be disturbed.
+	//
+	// Four rather than one: a reload overlaps the old socket with the new for
+	// as long as the close takes to land, React's development double-mount
+	// opens a second, and the operator may well have the instance up in another
+	// tab. The cap is there to stop a runaway, not to police honest use.
+	maxConsoleSockets = 4
 )
 
 // rateLimiter is a token bucket per key, refilling continuously.
@@ -205,6 +217,63 @@ func (g *kdfGate) enter(ctx context.Context) bool {
 }
 
 func (g *kdfGate) leave() { <-g.slots }
+
+// streamGate bounds how many long-lived connections one key may hold at once.
+//
+// It is a counter rather than a rate limit because the thing being rationed is
+// held, not spent: an open websocket keeps costing until it closes, so what
+// matters is how many exist right now and not how fast they were opened. The
+// rate limiter above cannot express that — a client could sit far below any
+// rate and still accumulate sockets forever.
+type streamGate struct {
+	max int
+
+	mu    sync.Mutex
+	held  map[string]int
+	total int
+}
+
+func newStreamGate(max int) *streamGate {
+	if max < 1 {
+		max = 1
+	}
+	return &streamGate{max: max, held: make(map[string]int)}
+}
+
+// enter takes a slot for key, returning the function that gives it back. The
+// release is idempotent so a handler can defer it and still return early.
+func (g *streamGate) enter(key string) (release func(), ok bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.held[key] >= g.max {
+		return nil, false
+	}
+	g.held[key]++
+	g.total++
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			g.mu.Lock()
+			defer g.mu.Unlock()
+			// The entry is deleted at zero rather than left behind: the key
+			// carries a client address, so a table that only ever grew would be
+			// a slow leak driven by whoever chose to connect.
+			if g.held[key]--; g.held[key] <= 0 {
+				delete(g.held, key)
+			}
+			g.total--
+		})
+	}, true
+}
+
+// active is how many slots are held in total, for tests.
+func (g *streamGate) active() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.total
+}
 
 // ------------------------------------------------------------ client address
 

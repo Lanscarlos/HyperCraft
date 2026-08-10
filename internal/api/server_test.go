@@ -33,9 +33,12 @@ type testEnv struct {
 	t      *testing.T
 	server *httptest.Server
 	client *http.Client
-	mgr    *instance.Manager
-	store  *store.Store
-	paths  config.Paths
+	// api is the panel behind server, for the few assertions that read state
+	// no endpoint exposes — how many console sockets are held, say.
+	api   *Server
+	mgr   *instance.Manager
+	store *store.Store
+	paths config.Paths
 	// fill stands in for the PaperMC API and its CDN; see handlers_downloads_test.go.
 	fill *fakeFill
 	// adoptium stands in for the Java download API; see handlers_java_test.go.
@@ -103,7 +106,8 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 		opt(&options)
 	}
 
-	srv := httptest.NewServer(NewServer(options).Handler())
+	api := NewServer(options)
+	srv := httptest.NewServer(api.Handler())
 	t.Cleanup(srv.Close)
 
 	jar, err := cookiejar.New(nil)
@@ -111,9 +115,25 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 		t.Fatalf("cookiejar: %v", err)
 	}
 	return &testEnv{
-		t: t, server: srv, client: &http.Client{Jar: jar},
+		t: t, server: srv, client: &http.Client{Jar: jar}, api: api,
 		mgr: mgr, store: st, paths: paths, fill: fill, adoptium: adoptium, github: gh,
 	}
+}
+
+// waitFor blocks until cond holds, for the handful of assertions that land on
+// another goroutine — a websocket handler unwinding after its peer hung up,
+// say. Polling rather than a fixed sleep so a slow CI box does not decide the
+// test's outcome.
+func waitFor(t *testing.T, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("condition never became true")
 }
 
 // do issues a request with the CSRF header the UI always sends.

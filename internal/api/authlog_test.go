@@ -200,3 +200,42 @@ func TestAuthLogIsEmptyToStart(t *testing.T) {
 		t.Errorf("a fresh log should be empty, got %d rows", len(list))
 	}
 }
+
+// An app still presenting a token the operator revoked looks, from outside,
+// exactly like someone probing the panel. Either way the operator wants the row.
+func TestAuthEventsRecordARejectedDeviceToken(t *testing.T) {
+	env := newTestEnv(t)
+	device := env.pair("phone")
+
+	// Unpair it, then let the app carry on as if nothing had happened.
+	env.login()
+	resp := env.do(http.MethodDelete, "/api/auth/devices/"+device.ID, nil)
+	resp.Body.Close()
+
+	stale := env.bearer(http.MethodGet, "/api/auth/me", device.Token, nil)
+	stale.Body.Close()
+	if stale.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("the revoked token still worked: %d", stale.StatusCode)
+	}
+
+	resp = env.do(http.MethodGet, "/api/auth/events", nil)
+	var events []authEvent
+	decodeBody(t, resp, &events)
+	if len(events) == 0 || events[0].Kind != eventTokenRejected {
+		t.Fatalf("newest event should be the rejected token, got %+v", events)
+	}
+	// It is a token, not a login: there is no username to claim.
+	if events[0].Username != "" {
+		t.Errorf("a rejected token has no username to report, got %q", events[0].Username)
+	}
+
+	// A client that keeps retrying must cost one row, not a screenful.
+	for range 3 {
+		env.bearer(http.MethodGet, "/api/auth/me", device.Token, nil).Body.Close()
+	}
+	resp = env.do(http.MethodGet, "/api/auth/events", nil)
+	decodeBody(t, resp, &events)
+	if events[0].Kind != eventTokenRejected || events[0].Count != 4 {
+		t.Errorf("expected the retries to fold into one row of 4, got %+v", events[0])
+	}
+}
