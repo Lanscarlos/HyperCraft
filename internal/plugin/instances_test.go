@@ -458,3 +458,99 @@ func TestAdoptRefusesAJarTheLibraryDoesNotHave(t *testing.T) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
+
+// writeJar puts a real, readable jar into an instance's plugins directory.
+func writeJar(t *testing.T, dir, name, descriptor string) {
+	t.Helper()
+	plugins := filepath.Join(dir, "plugins")
+	if err := os.MkdirAll(plugins, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(plugins, name), jarBytes(t, "plugin.yml", descriptor), 0o644); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+}
+
+func TestListReadsTheDescriptorOfPluginsThePanelInstalledToo(t *testing.T) {
+	library := newLibrary(t)
+	item := addPlugin(t, library, "EssentialsX", "EssentialsX/Essentials")
+	// The library's name for a plugin comes from its listing page; the jar
+	// declares something else, which is what the server will call it.
+	storeVersion(t, library, item.ID, "v1.0.0", "EssentialsX-1.0.0.jar", string(jarBytes(t, "plugin.yml",
+		"name: Essentials\nversion: 1.0.0\ndescription: The essentials.\nauthors: [Ada]\ndepend: [Vault]\nsoftdepend: [WorldEdit]\n")))
+
+	dir := t.TempDir()
+	instances := NewInstances(library, filepath.Join(t.TempDir(), "instance-plugins.json"))
+	if _, err := instances.Install("inst", dir, item.ID, "v1.0.0"); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	entries, err := instances.List("inst", dir)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	row := findEntry(entries, "EssentialsX-1.0.0.jar")
+	if row == nil || row.Jar == nil {
+		t.Fatalf("a managed row should still say what its jar declares: %+v", row)
+	}
+	if row.Jar.Description != "The essentials." || len(row.Jar.Depend) != 1 || row.Jar.Depend[0] != "Vault" {
+		t.Errorf("unexpected descriptor: %+v", row.Jar)
+	}
+	if len(row.Jar.SoftDepend) != 1 || row.Jar.SoftDepend[0] != "WorldEdit" {
+		t.Errorf("soft dependencies: %v", row.Jar.SoftDepend)
+	}
+	// What the row is *called* still comes from the record. The descriptor adds
+	// to a managed row; it does not take it over.
+	if row.Name != "EssentialsX" || row.Version != "1.0.0" {
+		t.Errorf("the descriptor overwrote the record: %+v", row)
+	}
+	// Bukkit names a plugin's directory after the declared name, so that is the
+	// directory the 配置 link has to point at.
+	if row.ConfigDir != "plugins/Essentials" {
+		t.Errorf("config directory: %q", row.ConfigDir)
+	}
+}
+
+func TestListFlagsTwoJarsDeclaringTheSamePlugin(t *testing.T) {
+	instances, _, dir, _ := instanceFixture(t)
+
+	// Different releases, different file names, same declared name — which is
+	// what a hand-uploaded build next to an existing one looks like. The server
+	// loads one and silently refuses the other.
+	writeJar(t, dir, "Atalanta-1.0.0.jar", "name: Atalanta\nversion: 1.0.0\n")
+	writeJar(t, dir, "Atalanta-1.0.0-snapshot.jar", "name: Atalanta\nversion: 1.0.0-snapshot\n")
+	writeJar(t, dir, "Vault.jar", "name: Vault\nversion: 1.7.3\n")
+
+	entries, err := instances.List("inst", dir)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	first, second := findEntry(entries, "Atalanta-1.0.0.jar"), findEntry(entries, "Atalanta-1.0.0-snapshot.jar")
+	if first == nil || second == nil {
+		t.Fatalf("both jars should be listed: %+v", entries)
+	}
+	if len(first.Conflicts) != 1 || first.Conflicts[0] != "plugins/Atalanta-1.0.0-snapshot.jar" {
+		t.Errorf("first row's conflicts: %v", first.Conflicts)
+	}
+	if len(second.Conflicts) != 1 || second.Conflicts[0] != "plugins/Atalanta-1.0.0.jar" {
+		t.Errorf("second row's conflicts: %v", second.Conflicts)
+	}
+	if row := findEntry(entries, "Vault.jar"); row == nil || len(row.Conflicts) != 0 {
+		t.Errorf("a plugin nobody duplicated is not a conflict: %+v", row)
+	}
+
+	// Switching one off is how the clash is resolved, so the warning has to go
+	// away when it is — a .disabled jar is not loaded and clashes with nothing.
+	if err := instances.SetEnabled("inst", dir, "file:plugins/Atalanta-1.0.0.jar", false); err != nil {
+		t.Fatalf("SetEnabled: %v", err)
+	}
+	after, err := instances.List("inst", dir)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, row := range after {
+		if len(row.Conflicts) != 0 {
+			t.Errorf("%s still reports a conflict: %v", row.FileName, row.Conflicts)
+		}
+	}
+}

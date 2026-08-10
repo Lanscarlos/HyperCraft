@@ -100,11 +100,21 @@ type Entry struct {
 	Tag         string    `json:"tag,omitempty"`
 	Version     string    `json:"version,omitempty"`
 	InstalledAt time.Time `json:"installedAt,omitempty"`
-	// Jar is what the file says about itself: the name and version the server
-	// will read at startup, rather than whatever the file happens to be called.
-	// Read for jars the panel did not install, which are the ones where the
-	// file name is all it would otherwise know.
+	// Jar is what the file says about itself: the name, version, description,
+	// authors and dependencies the server will read at startup, rather than
+	// whatever the file happens to be called.
+	//
+	// Read for every jar in the directory, managed ones included. The panel's
+	// record says which release it installed; it does not say what the plugin
+	// requires to load, and a missing 前置依赖 is the single most common reason
+	// a plugin that is definitely in the directory is definitely not running.
 	Jar *JarInfo `json:"jar,omitempty"`
+	// Conflicts are the other jars in this instance that declare the same
+	// plugin name. Bukkit loads exactly one of them and refuses the rest, and
+	// which one it picks is directory order — so this is a real, silent
+	// failure, and the file names are what tells the operator which copy to
+	// delete. Empty for the normal case.
+	Conflicts []string `json:"conflicts,omitempty"`
 	// Adoptable names the library plugin an unmanaged jar turned out to be,
 	// matched by content rather than by name, so the panel can offer to start
 	// tracking a file somebody installed by hand. Nil when the jar is not
@@ -196,13 +206,28 @@ type Instances struct {
 	mu      sync.Mutex
 	records map[string]*ledger
 	loaded  bool
+
+	// jarsMu guards the descriptor cache. Separate from mu: reading a jar has
+	// nothing to do with the records, and one lock over both would make every
+	// plugin page load wait behind whatever is writing the ledger.
+	jarsMu sync.Mutex
+	jars   map[string]*JarInfo
 }
+
+// jarCacheMax bounds the descriptor cache. Every entry is keyed by path, size
+// and modification time, so a plugin directory that is edited all day grows a
+// new key per edit and none of the old ones will ever be asked for again. Past
+// the cap the whole map goes: it is a cache of things that cost one small read
+// to recompute, and an eviction policy for that would be more machinery than
+// the thing it protects.
+const jarCacheMax = 2048
 
 func NewInstances(library *Library, path string) *Instances {
 	return &Instances{
 		library: library,
 		path:    path,
 		backups: filepath.Join(filepath.Dir(path), "plugin-backups"),
+		jars:    map[string]*JarInfo{},
 	}
 }
 
@@ -349,6 +374,9 @@ func (m *Instances) List(instanceID, directory string) ([]Entry, error) {
 			if entry.Recon == ReconMissing {
 				entry.Recon = "" // the file came back since the last pass
 			}
+			// After the disk fields, because the descriptor is cached against
+			// this file's size and modification time.
+			m.describe(browser, directory, &entry)
 		} else {
 			entry.Missing = true
 			entry.Recon = ReconMissing
@@ -365,13 +393,14 @@ func (m *Instances) List(instanceID, directory string) ([]Entry, error) {
 		// it costs nothing to see: the file is either in the ledger or it is
 		// not, and this listing has already read both sides.
 		entry.Recon = ReconForeign
-		m.identify(browser, &entry)
+		m.identify(browser, directory, &entry)
 		out = append(out, entry)
 	}
 
 	for i := range out {
 		out[i].ConfigDir = out[i].Dir + "/" + configDirName(out[i])
 	}
+	markConflicts(out)
 
 	sort.Slice(out, func(a, b int) bool {
 		// Managed plugins first: they are the ones this page can act on, and
@@ -413,19 +442,20 @@ func configDirName(entry Entry) string {
 // Failure is silence: this is decoration on a listing that has to work for a
 // directory full of arbitrary files, and a jar that cannot be read is still a
 // jar the operator can see, switch off and delete.
-func (m *Instances) identify(browser *serverfiles.Browser, entry *Entry) {
-	name := entry.FileName
-	if !entry.Enabled {
-		name += disabledSuffix
-	}
-	file, info, closer, err := browser.Open(entry.Dir + "/" + name)
+func (m *Instances) identify(browser *serverfiles.Browser, root string, entry *Entry) {
+	file, info, closer, err := browser.Open(jarPath(entry))
 	if err != nil {
 		return
 	}
 	defer closer()
 
-	if jar, ok := ReadJarInfo(file, info.Size()); ok {
-		entry.Jar = &jar
+	key := jarCacheKey(root, entry)
+	jar, cached := m.lookupJar(key)
+	if !cached {
+		jar = m.rememberJar(key, file, info.Size())
+	}
+	if jar != nil {
+		entry.Jar = cloneJarInfo(jar)
 		if jar.Name != "" {
 			entry.Name = jar.Name
 		}
@@ -434,6 +464,127 @@ func (m *Instances) identify(browser *serverfiles.Browser, entry *Entry) {
 		}
 	}
 	entry.Adoptable, entry.SHA256 = m.recognise(file, info.Size())
+}
+
+// describe reads what a jar declares about itself, without asking any of the
+// questions identify asks about an unmanaged one.
+//
+// A managed row already knows its name and version from the record — those come
+// from the source, which is the better answer. What the record does not hold is
+// the description, the authors, and above all the dependency list, and that list
+// is the same question whether the panel installed the jar or found it.
+//
+// Silent on failure, and no fallbacks: a managed row whose jar cannot be read is
+// still a row with a name, a version and a working 移除 button.
+func (m *Instances) describe(browser *serverfiles.Browser, root string, entry *Entry) {
+	key := jarCacheKey(root, entry)
+	if jar, cached := m.lookupJar(key); cached {
+		entry.Jar = cloneJarInfo(jar)
+		return
+	}
+	file, info, closer, err := browser.Open(jarPath(entry))
+	if err != nil {
+		return
+	}
+	defer closer()
+	entry.Jar = cloneJarInfo(m.rememberJar(key, file, info.Size()))
+}
+
+// jarPath is the file as it sits on disk, which for a disabled plugin is the
+// renamed one.
+func jarPath(entry *Entry) string {
+	name := entry.FileName
+	if !entry.Enabled {
+		name += disabledSuffix
+	}
+	return entry.Dir + "/" + name
+}
+
+// jarCacheKey identifies one exact file. Size and modification time are in it
+// because the point of the cache is to survive polling, not to survive an edit:
+// a jar swapped under the same name is a different jar and has to be re-read.
+func jarCacheKey(root string, entry *Entry) string {
+	return fmt.Sprintf("%s\x00%s\x00%d\x00%d", root, jarPath(entry), entry.Size, entry.Modified.UnixNano())
+}
+
+// lookupJar reports what was cached for a file, and whether anything was. The
+// two are different: a jar that is not a plugin caches a nil, and re-opening it
+// on every poll to learn that again is exactly what the cache is for.
+func (m *Instances) lookupJar(key string) (*JarInfo, bool) {
+	m.jarsMu.Lock()
+	defer m.jarsMu.Unlock()
+	jar, ok := m.jars[key]
+	return jar, ok
+}
+
+// rememberJar reads a descriptor and stores it. The read happens outside the
+// lock: two page loads racing on the same jar read it twice and store the same
+// answer, which is cheaper than making every other jar in the directory wait.
+func (m *Instances) rememberJar(key string, reader io.ReaderAt, size int64) *JarInfo {
+	var jar *JarInfo
+	if read, ok := ReadJarInfo(reader, size); ok {
+		jar = &read
+	}
+	m.jarsMu.Lock()
+	defer m.jarsMu.Unlock()
+	if m.jars == nil || len(m.jars) >= jarCacheMax {
+		m.jars = make(map[string]*JarInfo, jarCacheMax/4)
+	}
+	m.jars[key] = jar
+	return jar
+}
+
+// cloneJarInfo hands each row its own copy, so nothing a caller does to an
+// Entry can reach into the cache the next listing will read.
+func cloneJarInfo(jar *JarInfo) *JarInfo {
+	if jar == nil {
+		return nil
+	}
+	copied := *jar
+	return &copied
+}
+
+// markConflicts flags jars that declare the same plugin name.
+//
+// This is not "the same file twice". Two jars can be built from different
+// releases, carry different file names and different sizes, and still declare
+// `name: Atalanta` — which is what happens when somebody uploads a build by
+// hand next to the one the panel installed. Bukkit loads whichever it reaches
+// first and refuses the other with a line nobody reads, so the server runs a
+// version the panel is not showing, and every version number on the page is
+// then about the wrong file.
+//
+// Only enabled, present jars take part. A .disabled jar is not loaded, so it
+// clashes with nothing, and telling someone their switched-off spare is a
+// conflict would be crying wolf about the very thing that resolves one.
+func markConflicts(entries []Entry) {
+	byName := map[string][]int{}
+	for i := range entries {
+		if entries[i].Missing || !entries[i].Enabled {
+			continue
+		}
+		// The declared name only. The panel's own name for a plugin comes from
+		// the source's listing page and is regularly not what the jar declares
+		// — matching on it would report clashes the server will never see.
+		if entries[i].Jar == nil || entries[i].Jar.Name == "" {
+			continue
+		}
+		name := strings.ToLower(entries[i].Jar.Name)
+		byName[name] = append(byName[name], i)
+	}
+
+	for _, group := range byName {
+		if len(group) < 2 {
+			continue
+		}
+		for _, i := range group {
+			for _, j := range group {
+				if i != j {
+					entries[i].Conflicts = append(entries[i].Conflicts, jarPath(&entries[j]))
+				}
+			}
+		}
+	}
 }
 
 // recognise matches a file against the library's downloads by content.

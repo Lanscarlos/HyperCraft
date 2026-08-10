@@ -12,6 +12,9 @@ import type {
   PendingPluginChange,
 } from '../types'
 import type { PluginController } from '../usePlugins'
+import { InstancePluginDrawer } from './InstancePluginDrawer'
+import { Menu } from './Menu'
+import type { MenuItem } from './Menu'
 import { Modal } from './Modal'
 import { loaderLabel } from './PluginBrowse'
 import { CompatBadge } from './PluginCompat'
@@ -20,7 +23,7 @@ import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
 /** Which rows the status chips are showing. */
-type StatusFilter = 'all' | 'broken' | 'updatable'
+type StatusFilter = 'all' | 'broken' | 'updatable' | 'duplicate'
 
 /**
  * One server's plugins.
@@ -76,6 +79,10 @@ export function InstancePlugins({
   // "this server needs something" occurs.
   const [installing, setInstalling] = useState<LibraryPlugin | null>(null)
   const [picking, setPicking] = useState(false)
+  // The row whose jar is open in the detail drawer, by key. Held as a key
+  // rather than as the row itself so a refresh behind the drawer updates what
+  // it is showing instead of freezing it at whatever was true on open.
+  const [detail, setDetail] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -112,6 +119,11 @@ export function InstancePlugins({
   const entries = listing?.entries ?? []
   const broken = entries.filter((entry) => entry.failure).length
   const updatable = entries.filter((entry) => entry.update).length
+  // Jars whose plugin.yml declares a name another enabled jar here also
+  // declares. The server loads one of them and refuses the rest, so this is a
+  // failure that has not happened yet rather than untidiness — see
+  // plugin.markConflicts.
+  const duplicate = entries.filter((entry) => (entry.conflicts?.length ?? 0) > 0).length
   const pending = listing?.pending ?? []
 
   // What the library holds that this server does not have yet, and has a jar
@@ -138,8 +150,10 @@ export function InstancePlugins({
   const shown = entries.filter((entry) => {
     if (filter === 'broken') return Boolean(entry.failure)
     if (filter === 'updatable') return Boolean(entry.update)
+    if (filter === 'duplicate') return (entry.conflicts?.length ?? 0) > 0
     return true
   })
+  const opened = entries.find((entry) => entry.key === detail) ?? null
 
   return (
     <div className="stack">
@@ -202,6 +216,23 @@ export function InstancePlugins({
         }
       />
 
+      {/* Above the table, because a name clash is not a property of one row:
+          two rows are fighting over one name and the server has already picked
+          a winner without telling anybody which. */}
+      {duplicate > 0 && (
+        <div className="alert alert--warn">
+          {/* Boxed, because .alert is a wrapping flex row and the heading would
+              otherwise sit beside its own explanation. */}
+          <div>
+            <strong>有 {duplicate} 个 jar 跟别的重名</strong>
+            <p className="restart-banner__list">
+              插件叫什么由 jar 里的 plugin.yml 说了算，跟文件名无关。重名的几个里服务端只会加载一个，
+              剩下的会被拒绝 —— 下面标黄的行就是，点开看具体撞的是哪个文件。
+            </p>
+          </div>
+        </div>
+      )}
+
       <TargetLine listing={listing} />
 
       {entries.length > 0 && (
@@ -212,6 +243,11 @@ export function InstancePlugins({
           <Chip active={filter === 'broken'} onClick={() => setFilter('broken')} tone="danger">
             异常 {broken}
           </Chip>
+          {duplicate > 0 && (
+            <Chip active={filter === 'duplicate'} onClick={() => setFilter('duplicate')} tone="warn">
+              重名 {duplicate}
+            </Chip>
+          )}
           <Chip active={filter === 'updatable'} onClick={() => setFilter('updatable')}>
             可更新 {updatable}
           </Chip>
@@ -240,10 +276,13 @@ export function InstancePlugins({
         </div>
       ) : (
         <div className="plugin-table" role="table" aria-label="已装插件">
+          {/* 版本 sits next to 插件 because they are one fact — which build of
+              what is in this directory — and the status column used to be
+              wedged between the two halves of it. */}
           <div className="plugin-table__head" role="row">
             <span role="columnheader">插件</span>
-            <span role="columnheader">状态</span>
             <span role="columnheader">版本</span>
+            <span role="columnheader">状态</span>
             <span role="columnheader">操作</span>
           </div>
           {shown.map((entry) => (
@@ -253,6 +292,7 @@ export function InstancePlugins({
               library={listing?.library ?? []}
               busy={busy}
               live={listing?.live ?? false}
+              onOpenDetail={() => setDetail(entry.key)}
               onOpenConfig={() => onOpenSection('files', entry.configDir)}
               onOpenConsole={() => onOpenSection('console')}
               onFindDependency={() => {
@@ -342,6 +382,16 @@ export function InstancePlugins({
             setPicking(false)
             onOpenBrowse()
           }}
+        />
+      )}
+
+      {opened && (
+        <InstancePluginDrawer
+          entry={opened}
+          siblings={entries}
+          onClose={() => setDetail(null)}
+          onOpenConfig={() => onOpenSection('files', opened.configDir)}
+          onOpenConsole={() => onOpenSection('console')}
         />
       )}
 
@@ -500,13 +550,13 @@ function Chip({
   children,
 }: {
   active: boolean
-  tone?: 'danger'
+  tone?: 'danger' | 'warn'
   onClick: () => void
   children: React.ReactNode
 }) {
   return (
     <button
-      className={`chip${active ? ' chip--active' : ''}${tone === 'danger' ? ' chip--danger' : ''}`}
+      className={`chip${active ? ' chip--active' : ''}${tone ? ` chip--${tone}` : ''}`}
       onClick={onClick}
     >
       {children}
@@ -519,6 +569,7 @@ function PluginRow({
   library,
   busy,
   live,
+  onOpenDetail,
   onOpenConfig,
   onOpenConsole,
   onFindDependency,
@@ -532,6 +583,7 @@ function PluginRow({
   library: LibraryPlugin[]
   busy: boolean
   live: boolean
+  onOpenDetail: () => void
   onOpenConfig: () => void
   onOpenConsole: () => void
   onFindDependency: () => void
@@ -549,14 +601,22 @@ function PluginRow({
   const update = entry.update
   const item = library.find((candidate) => candidate.id === entry.pluginId)
   const versions = item?.versions ?? []
+  const clashes = entry.conflicts ?? []
 
   return (
     <div
-      className={`plugin-table__row${entry.failure ? ' plugin-table__row--broken' : ''}`}
+      className={`plugin-table__row${entry.failure ? ' plugin-table__row--broken' : ''}${
+        clashes.length > 0 ? ' plugin-table__row--clash' : ''
+      }`}
       role="row"
     >
       <div className="plugin-table__cell plugin-table__name" role="cell">
-        <strong>{entry.name}</strong>
+        {/* The name opens the jar's own account of itself. It is the thing on
+            the row an operator points at when the question is "what is this",
+            and it was, until now, the one thing on the row that did nothing. */}
+        <button className="plugin-table__open" onClick={onOpenDetail}>
+          {entry.name}
+        </button>
         {/* The reason goes directly under the name rather than behind a
             tooltip or a details page: it is the whole content of the row. */}
         {entry.failure ? (
@@ -567,12 +627,19 @@ function PluginRow({
             {entry.size > 0 && ` · ${formatBytes(entry.size)}`}
           </span>
         )}
-        {!entry.managed && <span className="badge">自行放入</span>}
-      </div>
-
-      <div className="plugin-table__cell plugin-table__status" role="cell">
-        <StatusCell entry={entry} live={live} />
-        <CompatBadge compat={entry.compat} />
+        {(!entry.managed || clashes.length > 0) && (
+          <span className="plugin-table__tags">
+            {!entry.managed && <span className="badge">自行放入</span>}
+            {clashes.length > 0 && (
+              <span
+                className="badge badge--warn"
+                title={`跟这些文件声明了同一个插件名：${clashes.join('、')}`}
+              >
+                重名 {clashes.length + 1}
+              </span>
+            )}
+          </span>
+        )}
       </div>
 
       <div className="plugin-table__cell plugin-table__version" role="cell">
@@ -627,26 +694,39 @@ function PluginRow({
         )}
       </div>
 
+      <div className="plugin-table__cell plugin-table__status" role="cell">
+        <StatusCell entry={entry} live={live} />
+        <CompatBadge compat={entry.compat} />
+      </div>
+
+      {/* Two buttons and a menu, the same two slots on every row, so the column
+          reads as a column. They used to be five underlined links laid out by
+          whichever of them happened to apply, which is why no two rows lined up
+          and why none of them looked pressable. What stays out front is the
+          action this particular row is asking for; everything rarer — 接管,
+          回滚, and 移除, which is not something to put under a stray click —
+          lives behind the ⋯. */}
       <div className="plugin-table__cell plugin-table__actions" role="cell">
-        {/* A broken row offers what fixes this particular break. A generic
-            "详情" here would be a click that leads to another click. */}
-        {entry.failure?.kind === 'dependency' && (
-          <button className="link" onClick={onFindDependency}>
-            安装依赖
-          </button>
-        )}
-        {entry.failure && (
-          <button className="link" onClick={onOpenConsole}>
-            查看日志
-          </button>
-        )}
-        {!entry.failure && (
+        {entry.failure ? (
           <>
-            <button className="link" onClick={onOpenConfig} title={entry.configDir}>
+            {/* A broken row offers what fixes this particular break. A generic
+                "详情" here would be a click that leads to another click. */}
+            {entry.failure.kind === 'dependency' && (
+              <button className="btn btn--row" onClick={onFindDependency}>
+                安装依赖
+              </button>
+            )}
+            <button className="btn btn--row" onClick={onOpenConsole}>
+              查看日志
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="btn btn--row" onClick={onOpenConfig} title={entry.configDir}>
               配置
             </button>
             <button
-              className="link"
+              className="btn btn--row"
               disabled={busy || entry.missing}
               onClick={() => onSetEnabled(!entry.enabled)}
             >
@@ -654,35 +734,65 @@ function PluginRow({
             </button>
           </>
         )}
-        {entry.adoptable && (
-          <button
-            className="link"
-            disabled={busy}
-            title={`按 SHA-256 校验，这就是插件库里的 ${entry.adoptable.name} ${entry.adoptable.version}`}
-            onClick={onAdopt}
-          >
-            接管
-          </button>
-        )}
-        {/* Why old versions are kept at all. It reads the upgrade snapshot
-            rather than the library, so it works even after a retention policy
-            has pruned the version it puts back. */}
-        {entry.managed && entry.pluginId && (
-          <button
-            className="link"
-            disabled={busy}
-            title="回到上一次升级之前的那个 jar。配置目录默认不动。"
-            onClick={onRollback}
-          >
-            回滚
-          </button>
-        )}
-        <button className="link link--danger" disabled={busy} onClick={onRemove}>
-          移除
-        </button>
+
+        <Menu
+          className="btn btn--icon btn--row"
+          ariaLabel={`${entry.name} 的更多操作`}
+          title="更多操作"
+          items={moreActions({
+            entry,
+            busy,
+            onOpenDetail,
+            onOpenConfig,
+            onAdopt,
+            onRollback,
+            onRemove,
+          })}
+        >
+          ⋯
+        </Menu>
       </div>
     </div>
   )
+}
+
+/** What is behind the ⋯. Built rather than written inline so the order is one
+ *  list to read: identify it, then the two recoveries, then the destructive one
+ *  last and marked. */
+function moreActions({
+  entry,
+  busy,
+  onOpenDetail,
+  onOpenConfig,
+  onAdopt,
+  onRollback,
+  onRemove,
+}: {
+  entry: InstancePlugin
+  busy: boolean
+  onOpenDetail: () => void
+  onOpenConfig: () => void
+  onAdopt: () => void
+  onRollback: () => void
+  onRemove: () => void
+}): MenuItem[] {
+  const items: MenuItem[] = [{ label: '插件详情', onSelect: onOpenDetail }]
+  // The failing row spent its two buttons on the failure, so its config link
+  // comes back here rather than disappearing.
+  if (entry.failure) {
+    items.push({ label: '打开配置目录', onSelect: onOpenConfig })
+  }
+  if (entry.adoptable) {
+    items.push({ label: '接管', onSelect: onAdopt, disabled: busy })
+  }
+  // Why old versions are kept at all. It reads the upgrade snapshot rather than
+  // the library, so it works even after a retention policy has pruned the
+  // version it puts back.
+  if (entry.managed && entry.pluginId) {
+    items.push({ label: '回滚到上个版本', onSelect: onRollback, disabled: busy })
+  }
+  items.push({ label: '移除', onSelect: onRemove, danger: true, disabled: busy })
+  return items
 }
 
 /** Twelve hex characters — enough to compare two digests by eye, short enough
