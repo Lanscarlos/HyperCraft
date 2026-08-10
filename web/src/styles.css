@@ -1857,6 +1857,25 @@ a:hover {
   line-height: 1;
 }
 
+/* A button sized to live inside a table row.
+
+   The face, the border, the press and the focus ring are the ordinary button's
+   — that is the point. The actions in a dense table used to be underlined
+   links, which is what you reach for when the row is tight, and it cost the
+   column everything: five links wrapped by whichever of them happened to apply
+   to that row, so no two rows lined up, and none of them read as pressable.
+   Two pixels less air is all it takes for a real button to fit. */
+.btn--row {
+  padding: 4px 10px;
+  font-size: 12px;
+  box-shadow: none;
+}
+
+.btn--icon.btn--row {
+  padding: 4px 9px;
+  font-size: 14px;
+}
+
 .link {
   background: none;
   border: none;
@@ -7450,14 +7469,31 @@ button.rows__name:hover strong {
   background: var(--surface-1);
 }
 
+/* 插件 · 版本 · 状态 · 操作, in that order. Name and version are one fact —
+   which build of what is sitting in this directory — and the status column used
+   to run down the middle of it, so the two halves of every row's identity were
+   read either side of something else.
+
+   The action column is 200px rather than an fr or an auto. Each row is its own
+   grid, so an auto track would size to that row's own buttons and the column
+   would zig-zag down the page; the fixed width is what puts every row's ⋯ on
+   the same pixel. Its floor is min-content rather than zero so that when the
+   window is too narrow to afford 200px the buttons keep their own size instead
+   of spilling out of the track and over the status column. */
 .plugin-table__head,
 .plugin-table__row {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1.15fr) minmax(0, 1.35fr) minmax(0, 0.8fr);
+  grid-template-columns:
+    minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 1fr)
+    minmax(min-content, 200px);
   align-items: center;
   gap: 12px;
   padding: 8px 14px;
   border-bottom: 1px solid var(--border);
+}
+
+.plugin-table__head > :last-child {
+  text-align: right;
 }
 
 .plugin-table__head {
@@ -7477,6 +7513,21 @@ button.rows__name:hover strong {
 
 .plugin-table__row:hover {
   background: var(--surface-2);
+}
+
+/* Two jars declaring the same plugin name. The server has already picked one
+   of them and refused the other without saying so, which makes every version
+   number on both rows a claim about a file that may not be the one running —
+   so the rows are tinted rather than badged and left to be noticed.
+
+   Before the broken rule on purpose: a row can be both, and "did not load" is
+   the more urgent of the two readings. */
+.plugin-table__row--clash {
+  background: var(--caution-soft);
+}
+
+.plugin-table__row--clash:hover {
+  background: color-mix(in srgb, var(--caution-soft) 80%, var(--caution));
 }
 
 /* The whole row, not a dot at the end of it. A plugin that did not load is
@@ -7500,11 +7551,45 @@ button.rows__name:hover strong {
   gap: 2px;
 }
 
-.plugin-table__name strong {
+/* The name is the way into the jar's own account of itself — the description,
+   the authors, and the dependency list that explains why it did not load. It
+   carries no button chrome: the row is dense and a third bordered control in
+   it would compete with the two that act on the server. The underline on hover
+   is the whole affordance, which is the one links are good at. */
+.plugin-table__open {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
   font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color var(--dur) var(--ease);
+}
+
+.plugin-table__open:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.plugin-table__open:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.plugin-table__tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .plugin-table__reason {
@@ -7546,7 +7631,7 @@ button.rows__name:hover strong {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 6px;
   white-space: nowrap;
 }
 
@@ -7558,6 +7643,11 @@ button.rows__name:hover strong {
 .chip--danger.chip--active {
   background: var(--danger-soft);
   border-color: var(--danger);
+}
+
+.chip--warn.chip--active {
+  background: var(--caution-soft);
+  border-color: var(--caution);
 }
 
 /* N 项变更待重启生效. Only rendered when there is something pending and the
@@ -7586,9 +7676,80 @@ button.rows__name:hover strong {
     gap: 6px;
   }
 
+  /* Stacked, the actions are the bottom line of the card rather than the end
+     of a row, so they read left-to-right from the same edge as everything
+     above them — and the ⋯ goes to the far right where a thumb reaches it. */
   .plugin-table__actions {
     justify-content: flex-start;
   }
+
+  .plugin-table__actions .menu {
+    margin-left: auto;
+  }
+}
+
+/* ---- one jar's own account of itself ------------------------------------
+
+   The table lists problems and actions; this is where the plugin.yml the
+   server reads at startup gets said out loud. Prose and a dependency list do
+   not fit in a table cell — truncated they say nothing, untruncated they wreck
+   every row height — so they are here, off to the side, at full length. */
+.jar-facts {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.jar-facts dt {
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.jar-facts dd {
+  margin: 0;
+  min-width: 0;
+  /* Paths, hashes and declared names have no spaces to break at, and a jar in
+     a six-deep directory would otherwise push the drawer sideways. */
+  overflow-wrap: anywhere;
+}
+
+.jar-facts__mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+/* A literal `description: |` block keeps the line breaks its author typed, and
+   throwing them away is how a formatted feature list becomes one long sentence. */
+.jar-facts__prose {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.jar-facts__note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.jar-facts__list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+
+.jar-facts__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
 }
 
 /* ------------------------------------------------------ cross-instance view
@@ -8388,8 +8549,11 @@ button.rows__name:hover strong {
 }
 
 /* A badge in a stacked cell would otherwise take the column's full width: it
-   is a flex item in a column, and its own width is not what stretch honours. */
-.plugin-table__name .badge {
+   is a flex item in a column, and its own width is not what stretch honours.
+   Still needed with the badges wrapped in .plugin-table__tags — that row is
+   itself the stretched flex item. */
+.plugin-table__name .badge,
+.plugin-table__tags {
   align-self: flex-start;
   margin-left: 0;
 }

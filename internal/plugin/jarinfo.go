@@ -27,9 +27,14 @@ const maxDescriptorBytes = 512 << 10
 
 // JarInfo is what a jar declares about itself.
 type JarInfo struct {
-	Name    string   `json:"name,omitempty"`
-	Version string   `json:"version,omitempty"`
-	Authors []string `json:"authors,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Version string `json:"version,omitempty"`
+	// Description is the one or two sentences the author wrote about what the
+	// plugin does. Not shown in the list — it is prose, and prose in a table
+	// cell is either truncated to uselessness or wrecks the row heights — but
+	// it is the thing that answers "what is this jar somebody left here".
+	Description string   `json:"description,omitempty"`
+	Authors     []string `json:"authors,omitempty"`
 	// Platform is which server the descriptor was written for: "bukkit" covers
 	// Spigot and Paper too, since they read the same plugin.yml.
 	Platform string `json:"platform,omitempty"`
@@ -134,9 +139,38 @@ func parsePluginYAML(data []byte) JarInfo {
 	// the only way to read the dependency of a plugin whose author formatted it
 	// the ordinary way.
 	var listing *[]string
+	// The other multi-line shape: a `description: |` or `description: >` whose
+	// text is the indented lines below it. Common enough in real plugin.yml
+	// files that ignoring it would mean showing no description for exactly the
+	// plugins whose authors wrote the longest one.
+	var block *string
+	var lines []string
+	var folded bool
+	endBlock := func() {
+		if block != nil {
+			*block = joinBlock(lines, folded)
+			block, lines = nil, nil
+		}
+	}
 
 	for _, raw := range strings.Split(string(data), "\n") {
 		line := strings.TrimRight(raw, " \t\r")
+
+		// A block's body is literal text: a line starting with '#' is a hash
+		// the author typed, and a blank line is a paragraph break. So it is
+		// read before the comment and blank-line rules below, not after.
+		if block != nil {
+			if line == "" {
+				lines = append(lines, "")
+				continue
+			}
+			if line[0] == ' ' || line[0] == '\t' {
+				lines = append(lines, strings.TrimSpace(line))
+				continue
+			}
+			endBlock() // dedented back to column zero: the block is over
+		}
+
 		if line == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
 			continue
 		}
@@ -187,13 +221,57 @@ func parsePluginYAML(data []byte) JarInfo {
 			info.Version = value
 		case "api-version":
 			info.APIVersion = value
+		case "description":
+			if fold, ok := blockScalar(value); ok {
+				block, folded, lines = &info.Description, fold, nil
+				continue
+			}
+			info.Description = value
 		case "author":
 			if value != "" {
 				info.Authors = append(info.Authors, value)
 			}
 		}
 	}
+	endBlock() // a descriptor that ends on its description
 	return info
+}
+
+// blockScalar reports whether a value opens a YAML block — `|` or `>`, with any
+// chomping or indentation indicator after it — and whether that block is folded
+// into one paragraph rather than keeping the author's line breaks.
+//
+// Strict about what may follow the indicator on purpose: `description: |x` is a
+// description that starts with a pipe, not a block, and reading it as one would
+// swallow the rest of the file.
+func blockScalar(value string) (fold bool, ok bool) {
+	if value == "" || (value[0] != '|' && value[0] != '>') {
+		return false, false
+	}
+	if strings.Trim(value[1:], "+-0123456789") != "" {
+		return false, false
+	}
+	return value[0] == '>', true
+}
+
+// joinBlock puts a block scalar's lines back together the way its indicator
+// asked: `>` wraps for the file's benefit and reads as one paragraph, `|` keeps
+// the breaks because the author put them there.
+func joinBlock(lines []string, folded bool) string {
+	if !folded {
+		return strings.TrimSpace(strings.Join(lines, "\n"))
+	}
+	var out []string
+	for _, line := range lines {
+		// A blank line in a folded scalar is the one break YAML keeps, and it
+		// is how an author writes two paragraphs in one.
+		if line == "" {
+			out = append(out, "\n")
+			continue
+		}
+		out = append(out, line)
+	}
+	return strings.TrimSpace(strings.Join(out, " "))
 }
 
 // yamlScalar strips the quoting and trailing comment off a scalar value.
@@ -236,6 +314,7 @@ func parseVelocity(data []byte) JarInfo {
 		ID           string   `json:"id"`
 		Name         string   `json:"name"`
 		Version      string   `json:"version"`
+		Description  string   `json:"description"`
 		Authors      []string `json:"authors"`
 		Dependencies []struct {
 			ID       string `json:"id"`
@@ -251,7 +330,12 @@ func parseVelocity(data []byte) JarInfo {
 		// server itself calls the plugin when the name is absent.
 		name = strings.TrimSpace(raw.ID)
 	}
-	info := JarInfo{Name: name, Version: strings.TrimSpace(raw.Version), Authors: raw.Authors}
+	info := JarInfo{
+		Name:        name,
+		Version:     strings.TrimSpace(raw.Version),
+		Description: strings.TrimSpace(raw.Description),
+		Authors:     raw.Authors,
+	}
 	for _, dep := range raw.Dependencies {
 		id := strings.TrimSpace(dep.ID)
 		if id == "" {
@@ -268,9 +352,10 @@ func parseVelocity(data []byte) JarInfo {
 
 func parseFabric(data []byte) JarInfo {
 	var raw struct {
-		ID      string `json:"id"`
-		Name    string `json:"name"`
-		Version string `json:"version"`
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Version     string `json:"version"`
+		Description string `json:"description"`
 		// Fabric allows either a plain name or an object per author.
 		Authors    []json.RawMessage `json:"authors"`
 		Depends    map[string]any    `json:"depends"`
@@ -281,7 +366,10 @@ func parseFabric(data []byte) JarInfo {
 		return JarInfo{}
 	}
 
-	info := JarInfo{Version: strings.TrimSpace(raw.Version)}
+	info := JarInfo{
+		Version:     strings.TrimSpace(raw.Version),
+		Description: strings.TrimSpace(raw.Description),
+	}
 	if info.Name = strings.TrimSpace(raw.Name); info.Name == "" {
 		info.Name = strings.TrimSpace(raw.ID)
 	}

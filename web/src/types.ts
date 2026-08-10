@@ -542,11 +542,20 @@ export interface PluginLibrary {
 export interface PluginJarInfo {
   name?: string
   version?: string
+  /** What the author wrote about the plugin. Prose — it belongs in the drawer,
+   *  not in a table cell. */
+  description?: string
   authors?: string[]
   /** Which server the descriptor was written for: bukkit, paper, velocity… */
   platform?: string
   /** The game version the plugin declares support for, when it declares one. */
   apiVersion?: string
+  /** The plugins the server will refuse to load this one without. A different
+   *  list from the registry's — that one is what the author wrote on the
+   *  listing page, this one is what the server enforces. */
+  depend?: string[]
+  /** Wanted if present, and not a reason to refuse. */
+  softDepend?: string[]
 }
 
 /** What one uploaded jar turned out to be. Per file rather than per request:
@@ -756,8 +765,13 @@ export interface InstancePlugin {
   tag?: string
   version?: string
   installedAt?: string
-  /** Read from the jar for rows the panel did not install. */
+  /** What the jar declares about itself, read out of its plugin.yml — for
+   *  every row, not only the ones the panel did not install. */
   jar?: PluginJarInfo
+  /** The other jars here declaring the same plugin name. The server loads one
+   *  of them and silently refuses the rest, so this is a failure waiting to
+   *  happen rather than a tidiness problem. Empty for the normal case. */
+  conflicts?: string[]
   /** Set when this jar is byte-for-byte a version the library holds. */
   adoptable?: AdoptablePlugin
   /** How this row's file compares with the ledger. Outranks every version

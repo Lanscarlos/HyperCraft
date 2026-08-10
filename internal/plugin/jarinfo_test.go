@@ -98,6 +98,64 @@ func TestReadJarInfoUnderstandsTheOtherPlatforms(t *testing.T) {
 	}
 }
 
+func TestReadJarInfoReadsDescriptionsInEveryShapeAuthorsWriteThem(t *testing.T) {
+	inline, size := jarWith(t, "plugin.yml", "name: Foo\nversion: 1.0\ndescription: Does one thing well.\n")
+	info, _ := ReadJarInfo(inline, size)
+	if info.Description != "Does one thing well." {
+		t.Errorf("inline: %q", info.Description)
+	}
+
+	// A folded block reads as one paragraph, and the key after it is still a
+	// key rather than more description.
+	folded, size := jarWith(t, "plugin.yml", `name: Foo
+version: 1.0
+description: >
+  Wrapped across
+  two lines.
+api-version: 1.20
+`)
+	info, _ = ReadJarInfo(folded, size)
+	if info.Description != "Wrapped across two lines." {
+		t.Errorf("folded: %q", info.Description)
+	}
+	if info.APIVersion != "1.20" {
+		t.Errorf("the block swallowed the key after it: %+v", info)
+	}
+
+	// A literal block keeps the author's breaks, including the '#' that is a
+	// hash they typed rather than a comment.
+	literal, size := jarWith(t, "plugin.yml", "name: Foo\nversion: 1.0\ndescription: |\n  Line one\n  # not a comment\ndepend: [Vault]\n")
+	info, _ = ReadJarInfo(literal, size)
+	if info.Description != "Line one\n# not a comment" {
+		t.Errorf("literal: %q", info.Description)
+	}
+	if len(info.Depend) != 1 || info.Depend[0] != "Vault" {
+		t.Errorf("depend after a block: %v", info.Depend)
+	}
+
+	// A description that merely starts with a pipe is not a block, and reading
+	// it as one would swallow the rest of the file.
+	pipe, size := jarWith(t, "plugin.yml", "name: Foo\nversion: 1.0\ndescription: |maybe\nauthor: Ada\n")
+	info, _ = ReadJarInfo(pipe, size)
+	if info.Description != "|maybe" || len(info.Authors) != 1 {
+		t.Errorf("pipe-leading scalar: %+v", info)
+	}
+}
+
+func TestReadJarInfoReadsDescriptionsOffTheJSONPlatforms(t *testing.T) {
+	velocity, size := jarWith(t, "velocity-plugin.json",
+		`{"id":"myplugin","version":"3.0.0","description":"A proxy plugin."}`)
+	if info, _ := ReadJarInfo(velocity, size); info.Description != "A proxy plugin." {
+		t.Errorf("velocity: %+v", info)
+	}
+
+	fabric, size := jarWith(t, "fabric.mod.json",
+		`{"id":"mymod","version":"1.2.3","description":"A mod."}`)
+	if info, _ := ReadJarInfo(fabric, size); info.Description != "A mod." {
+		t.Errorf("fabric: %+v", info)
+	}
+}
+
 func TestReadJarInfoIgnoresWhatItCannotRead(t *testing.T) {
 	if _, ok := ReadJarInfo(bytes.NewReader([]byte("not a zip")), 9); ok {
 		t.Error("a file that is not an archive has nothing to say")
