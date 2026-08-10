@@ -3754,6 +3754,25 @@ details[open]::details-content {
   margin-left: 12px;
 }
 
+/* A table cell is not a button row.
+ *
+ * `.actions` is a flex container — it is the row of buttons a panel ends with
+ * — and a <td> that becomes one stops being a table cell: it is laid out as an
+ * anonymous block inside the row, so its own border-bottom is drawn where its
+ * content ends instead of along the row's edge. In the file list that put the
+ * divider under 操作 a few pixels off from the divider under every other
+ * column, all the way down the table: a ladder of short crooked lines.
+ *
+ * The fix is the same either way round — a cell that wants a row of buttons
+ * puts the flex container *inside* itself, which is what .file-actions is —
+ * but this keeps the next `<td className="actions">` from bringing the bug
+ * back. */
+.data-table td.actions,
+.data-table th.actions {
+  display: table-cell;
+  vertical-align: middle;
+}
+
 .link--danger {
   color: var(--danger-hover);
 }
@@ -3762,7 +3781,59 @@ details[open]::details-content {
   color: var(--danger);
 }
 
-/* ------------------------------------------------------------- file manager */
+/* ------------------------------------------------------------- file manager
+
+   The list is the panel's one real table, and it is read the way a file
+   manager is read anywhere else: find the folder, find the thing that changed
+   last, act on it. So the columns are pinned to fixed widths rather than left
+   to the browser's content-driven guess — the 操作 column in particular, whose
+   buttons differ per row and used to make its edge zigzag down the page — and
+   everything that is not the name is set at a weight below it. */
+
+.files {
+  position: relative;
+}
+
+.files__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Up one level, next to the path rather than as a row inside the listing. A
+   "../" line pretending to be a file is a habit inherited from FTP clients,
+   and it is the one row in the table that must never be ticked or deleted. */
+.files__up {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.files__up:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.files__up:active:not(:disabled) {
+  transform: scale(var(--press));
+}
+
+.files__up:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
 
 .breadcrumb {
   display: flex;
@@ -3770,9 +3841,19 @@ details[open]::details-content {
   flex-wrap: wrap;
   gap: 2px;
   font-size: 13px;
+  min-width: 0;
+}
+
+.breadcrumb__step {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .breadcrumb__crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   background: none;
   border: none;
   border-radius: 5px;
@@ -3794,6 +3875,14 @@ details[open]::details-content {
   transform: scale(0.94);
 }
 
+/* The last crumb is where you already are: still clickable, because pressing
+   it is how you get back from a filtered view, but it stops advertising
+   itself as somewhere to go. */
+.breadcrumb__crumb--here {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .breadcrumb__sep {
   color: var(--text-faint);
 }
@@ -3805,15 +3894,205 @@ details[open]::details-content {
   flex-wrap: wrap;
 }
 
-.file-toolbar__hint {
+/* The filter box sits at the far end of the toolbar, away from the buttons
+   that change the directory: it only changes what is shown. */
+.file-toolbar__find {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 0 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   color: var(--text-faint);
-  font-size: 11px;
+  transition:
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+.file-toolbar__find:focus-within {
+  border-color: var(--border-accent);
+  box-shadow: var(--ring);
+}
+
+.file-toolbar__search {
+  width: 190px;
+  padding: 7px 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.file-toolbar__search:focus {
+  outline: none;
+}
+
+/* The bar that appears once something is ticked. Tinted rather than plain, so
+   it reads as a mode the list is in and not as another row of tools. */
+.file-bulk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius);
+  animation: rise 200ms var(--ease) both;
+}
+
+.file-bulk__count {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.file-bulk__clear {
+  margin-left: auto;
+}
+
+/* ---- the listing ---------------------------------------------------- */
+
+.data-table--files td,
+.data-table--files th {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+.data-table--files col.col--tick {
+  width: 38px;
+}
+
+.data-table--files col.col--size {
+  width: 104px;
+}
+
+.data-table--files col.col--time {
+  width: 148px;
+}
+
+/* Three 28px buttons and their gaps, to the pixel: the column that used to be
+   as wide as whichever row had the most links in it. */
+.data-table--files col.col--ops {
+  width: 116px;
+}
+
+.data-table--files td.col--tick,
+.data-table--files th.col--tick {
+  padding-right: 0;
+}
+
+.data-table--files td.col--ops,
+.data-table--files th.col--ops {
+  text-align: right;
+}
+
+.data-table tbody tr[data-ticked] {
+  background: var(--accent-soft);
+}
+
+/* A column header that is also a control. It keeps the header's type and adds
+   the arrow, which is always in the DOM — reserved space, faint until the
+   column is the one being sorted — so switching columns does not shuffle the
+   labels sideways. */
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  transition: color var(--dur) var(--ease);
+}
+
+.th-sort:hover {
+  color: var(--text);
+}
+
+.th-sort__mark {
+  font-size: 8px;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.th-sort:hover .th-sort__mark {
+  opacity: 0.45;
+}
+
+[aria-sort='ascending'] .th-sort,
+[aria-sort='descending'] .th-sort {
+  color: var(--text);
+}
+
+[aria-sort='ascending'] .th-sort__mark,
+[aria-sort='descending'] .th-sort__mark {
+  opacity: 1;
+}
+
+.num .th-sort {
+  justify-content: flex-end;
+}
+
+.tick {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.filecell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* The type mark. A tinted tile rather than a bare glyph: at 13px the eye finds
+   the block of colour first and the shape second, which is the order in which
+   a directory is actually scanned. */
+.fileicon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  background: var(--surface-3);
+  border-radius: 7px;
+  color: var(--text-dim);
+}
+
+.fileicon--dir {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.fileicon--conf {
+  background: var(--caution-soft);
+  color: var(--caution-ink);
+}
+
+.fileicon--media {
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+}
+
+.fileicon--pkg {
+  background: var(--surface-4);
+  color: var(--text);
 }
 
 .file-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  display: inline-block;
+  max-width: 100%;
   background: none;
   border: none;
   color: var(--text);
@@ -3821,12 +4100,16 @@ details[open]::details-content {
   font-family: inherit;
   font-size: 13px;
   padding: 0;
+  overflow: hidden;
   text-align: left;
+  text-overflow: ellipsis;
   transition: color var(--dur) var(--ease);
 }
 
 .file-link:hover:not(:disabled) {
   color: var(--accent-hover);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .file-link--plain,
@@ -3835,9 +4118,347 @@ details[open]::details-content {
   color: var(--text);
 }
 
-.file-icon {
+.file-time {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.file-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+/* Square, quiet until pointed at. Three of them per row, in the same order on
+   every row, is what lets the hand go to 删除 without reading it — which is
+   also why 删除 is the one that colours. */
+.iconbtn {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.iconbtn:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.iconbtn:active:not(:disabled) {
+  transform: scale(var(--press));
+}
+
+.iconbtn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.iconbtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.iconbtn--danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: var(--danger-edge);
+  color: var(--danger);
+}
+
+/* The empty-state row is not a file, so it does not light up like one. Typed
+   against the same ancestors as the hover rule it is overriding. */
+.data-table tbody tr.file-empty__row:hover {
+  background: none;
+}
+
+.file-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 30px 16px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.file-empty p {
+  margin: 0;
   font-size: 13px;
-  opacity: 0.85;
+}
+
+.file-empty__glyph {
+  width: 34px;
+  height: 34px;
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+
+.files__foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
+.files__root {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files__root code {
+  font-family: var(--font-mono);
+}
+
+/* ---- drag and drop --------------------------------------------------- */
+
+.files--dropping {
+  border-color: var(--accent);
+}
+
+/* Over the panel rather than around it: an outline on a card this tall is
+   mostly off screen, and the one thing the operator needs told — *which*
+   directory these files are about to land in — has nowhere to go on an
+   outline. */
+.file-drop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--surface-1) 82%, transparent);
+  border-radius: var(--radius-lg);
+  pointer-events: none;
+  z-index: 2;
+  animation: fade var(--dur) var(--ease) both;
+}
+
+/* Sticky rather than centred: a directory of two hundred files makes this
+   overlay several screens tall, and the middle of it is nowhere near the
+   middle of what the operator is looking at. */
+.file-drop__card {
+  position: sticky;
+  top: 26vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 22px 34px;
+  background: var(--surface-1);
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 14px;
+  text-align: center;
+}
+
+.file-drop__card small {
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
+.file-drop__glyph {
+  width: 26px;
+  height: 26px;
+  color: var(--accent);
+}
+
+/* ---- the text editor -------------------------------------------------- */
+
+.editor__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.editor__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.editor__path {
+  margin: 2px 0 0;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.editor__facts {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor__dot::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  vertical-align: middle;
+}
+
+.editor__dot--dirty {
+  color: var(--caution-ink);
+}
+
+.editor__dot--dirty::before {
+  background: var(--caution);
+}
+
+.editor__hint {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+/* The box itself is the scroll container; the gutter inside it is scrolled by
+   hand from the textarea's offset (see FileEditor). Both children must agree
+   on font, size and line-height for that to line up — one declaration, two
+   readers. */
+.editor {
+  display: flex;
+  height: min(58vh, 640px);
+  min-height: 240px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--inset);
+  overflow: hidden;
+  resize: vertical;
+}
+
+.editor:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.editor__gutter,
+.editor__text {
+  padding: 12px 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.65;
+  tab-size: 2;
+}
+
+.editor__gutter {
+  flex: 0 0 auto;
+  min-width: 44px;
+  padding-right: 10px;
+  padding-left: 12px;
+  background: var(--surface-2);
+  border-right: 1px solid var(--border);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-align: right;
+  white-space: pre;
+  user-select: none;
+}
+
+.editor__text {
+  flex: 1;
+  min-width: 0;
+  padding-right: 14px;
+  padding-left: 14px;
+  background: none;
+  border: none;
+  color: var(--text);
+  overflow: auto;
+  resize: none;
+  white-space: pre;
+}
+
+.editor__text:focus {
+  outline: none;
+}
+
+/* ---- dialogs ---------------------------------------------------------- */
+
+/* Wide enough for a 512px server icon to be shown at its own size. */
+.modal__card--wide {
+  width: min(680px, 100%);
+}
+
+.preview {
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  /* The chequerboard behind a PNG: without it a transparent icon on a light
+     panel looks like an icon with a white background, which is exactly the
+     mistake a server icon gets uploaded with. */
+  background-image:
+    linear-gradient(45deg, var(--surface-3) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--surface-3) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--surface-3) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--surface-3) 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+}
+
+.preview img {
+  max-width: 100%;
+  max-height: min(52vh, 460px);
+  /* Minecraft assets are 16px textures as often as they are 512px icons, and
+     a smoothed 16px texture is a smudge. */
+  image-rendering: pixelated;
+}
+
+.namelist {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.8;
+  word-break: break-all;
+}
+
+.namelist .muted {
+  font-size: 12px;
+}
+
+/* Typed as `small.field__bad` because `.field small` above already claims the
+   colour, and a hint that has turned into an error has to win it back. */
+small.field__bad {
+  color: var(--danger-hover);
+}
+
+/* A refresh button that says it is refreshing. */
+.spin {
+  animation: spin 700ms linear infinite;
 }
 
 .badge {
@@ -3852,13 +4473,6 @@ details[open]::details-content {
   font-size: 10px;
   line-height: 1.7;
   white-space: nowrap;
-}
-
-.stack--dropping {
-  outline: 2px dashed var(--accent);
-  outline-offset: 6px;
-  border-radius: var(--radius-lg);
-  background: var(--accent-soft);
 }
 
 .progress {
@@ -3916,27 +4530,6 @@ details[open]::details-content {
   font-variant-numeric: tabular-nums;
   color: var(--text);
   text-shadow: 0 0 4px var(--bg-input), 0 0 8px var(--bg-input);
-}
-
-.file-editor {
-  width: 100%;
-  padding: 12px 14px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--inset);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  line-height: 1.65;
-  resize: vertical;
-  tab-size: 2;
-}
-
-.file-editor:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: var(--ring);
 }
 
 .download-status {
@@ -5561,6 +6154,26 @@ button.rows__name:hover strong {
 
   .summary {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+
+  /* The filter takes the whole of the second line rather than being squeezed
+     to whatever is left beside four buttons. */
+  .file-toolbar__find {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .file-toolbar__search {
+    width: 100%;
+  }
+
+  /* 修改时间 is the first thing to go on a narrow screen: the name, the size
+     and the three buttons are what the row is for, and the exact stamp is
+     still on the row's own tooltip. */
+  .data-table--files col.col--time,
+  .data-table--files th:nth-child(4),
+  .data-table--files td:nth-child(4) {
+    display: none;
   }
 
   /* Five columns at forty pixels each is not a table. Each row becomes a card

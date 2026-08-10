@@ -190,11 +190,43 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	defer closer()
 
 	name := path.Base(info.Name())
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", contentDisposition(name))
+	if kind, ok := previewType(name); ok && r.URL.Query().Get("inline") == "1" {
+		w.Header().Set("Content-Type", kind)
+		// The panel is asking the browser to render bytes an operator uploaded,
+		// on the panel's own origin. nosniff is what keeps that to the one type
+		// named here: without it a "png" full of markup can still be sniffed as
+		// HTML and run with the session cookie attached.
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Content-Disposition", "inline; filename*=UTF-8''"+url.PathEscape(name))
+	} else {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", contentDisposition(name))
+	}
 	// ServeContent handles Range requests, so a dropped 300 MB world download
 	// can resume instead of restarting.
 	http.ServeContent(w, r, name, info.ModTime(), file)
+}
+
+// previewTypes are the files the panel will serve for display rather than for
+// saving, so the file manager can show server-icon.png without a round trip
+// through the operator's downloads folder.
+//
+// Raster only, and deliberately so. SVG is a document — it carries script — and
+// an HTML file rendered inline on this origin would be running inside the
+// panel's session. Everything not on this list stays an attachment.
+var previewTypes = map[string]string{
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif":  "image/gif",
+	".webp": "image/webp",
+	".bmp":  "image/bmp",
+	".ico":  "image/x-icon",
+}
+
+func previewType(name string) (string, bool) {
+	kind, ok := previewTypes[strings.ToLower(path.Ext(name))]
+	return kind, ok
 }
 
 // contentDisposition builds a header that survives non-ASCII filenames.

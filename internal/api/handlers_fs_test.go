@@ -87,6 +87,53 @@ func TestUploadAndDownloadRoundTrip(t *testing.T) {
 	}
 }
 
+// The file manager shows server-icon.png in place rather than making the
+// operator download it, which needs a real image content type — and needs
+// everything else to stay an attachment, since inline HTML on this origin
+// would run inside the panel's own session.
+func TestDownloadServesImagesInlineOnRequest(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	created := env.createInstance("preview")
+
+	for _, name := range []string{"server-icon.png", "notes.html"} {
+		resp := env.upload(created.ID, "", name, []byte("pretend bytes"))
+		resp.Body.Close()
+	}
+
+	resp := env.do(http.MethodGet, "/api/instances/"+created.ID+
+		"/files/download?path=server-icon.png&inline=1", nil)
+	resp.Body.Close()
+	if got := resp.Header.Get("Content-Type"); got != "image/png" {
+		t.Errorf("Content-Type = %q, want image/png", got)
+	}
+	if got := resp.Header.Get("Content-Disposition"); !strings.HasPrefix(got, "inline") {
+		t.Errorf("Content-Disposition = %q, want an inline disposition", got)
+	}
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+
+	// Not an image: the inline request must not change anything.
+	resp = env.do(http.MethodGet, "/api/instances/"+created.ID+
+		"/files/download?path=notes.html&inline=1", nil)
+	resp.Body.Close()
+	if got := resp.Header.Get("Content-Type"); got != "application/octet-stream" {
+		t.Errorf("Content-Type = %q, want application/octet-stream", got)
+	}
+	if got := resp.Header.Get("Content-Disposition"); !strings.HasPrefix(got, "attachment") {
+		t.Errorf("Content-Disposition = %q, want an attachment disposition", got)
+	}
+
+	// Without the flag an image is still a download.
+	resp = env.do(http.MethodGet, "/api/instances/"+created.ID+
+		"/files/download?path=server-icon.png", nil)
+	resp.Body.Close()
+	if got := resp.Header.Get("Content-Disposition"); !strings.HasPrefix(got, "attachment") {
+		t.Errorf("Content-Disposition = %q, want an attachment disposition", got)
+	}
+}
+
 // A crafted client can put anything in a multipart filename. It must land
 // inside the target directory regardless.
 func TestUploadFilenameCannotEscape(t *testing.T) {
