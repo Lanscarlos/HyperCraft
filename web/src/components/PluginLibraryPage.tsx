@@ -410,6 +410,7 @@ export function PluginLibraryPage({
       {addingSource && (
         <PluginSourceDialog
           busy={plugins.busy}
+          tokens={plugins.library?.tokens ?? []}
           onCancel={() => setAddingSource(false)}
           onSubmit={async (input) => {
             const ok = await plugins.add(input)
@@ -940,7 +941,7 @@ function LibraryFooter({
         {busy ? '对账中…' : '对账'}
       </button>
       <button className="link" onClick={onOpenSettings}>
-        插件源与令牌
+        GitHub 集成
       </button>
     </footer>
   )

@@ -3138,6 +3138,61 @@ details[open]::details-content {
   box-shadow: var(--ring);
 }
 
+/* ---------------------------------------------------------- github tokens
+
+   One row per stored credential on the GitHub 集成 page. It is a list of
+   secrets nobody can read, so what a row has to carry instead is everything
+   that identifies one: the name, its last four characters, whether it is the
+   default, what it has left of its quota, and how many plugins would break if
+   it went away. */
+.tokenrow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tokenrow__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* The name edits in place — renaming a token is the one change to it that is
+   purely cosmetic, so it should not need a dialog. Borderless until it is
+   touched, so the row reads as a list rather than as a form. */
+.tokenrow__name {
+  flex: 0 1 200px;
+  min-width: 120px;
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tokenrow__name:hover:not(:disabled) {
+  border-color: var(--border);
+}
+
+.tokenrow__name:focus {
+  outline: none;
+  background: var(--bg-input);
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+/* Pushed to the far end, so the row's buttons line up down the list however
+   long the names and badges before them are. */
+.tokenrow__used {
+  margin-left: auto;
+  font-size: 12px;
+}
+
 /* ------------------------------------------------------- welcome & pages
 
    .page is the plain scrolling page shell every panel-wide view uses; the

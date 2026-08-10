@@ -68,15 +68,32 @@ type Panel struct {
 	// weekly, so "the proxy that works for my plugins" is a choice worth making
 	// on its own rather than inheriting from a page about panel updates.
 	PluginMirror string `json:"pluginMirror,omitempty"`
-	// GitHubToken authenticates the panel's plugin lookups and downloads, so a
-	// plugin the operator publishes to their own private repository can be
-	// tracked like any other. Empty means anonymous requests, which is all a
-	// public repository needs.
-	//
-	// It lives here, beside the password hash, because panel.json is written
-	// 0600 and is already the file that must not be readable by anyone but the
-	// panel. It is never sent back out over the API — see handlePluginToken.
+	// GitHubToken is the single credential panels held before they could hold
+	// several. Read on load and folded into GitHubTokens by ApplyDefaults, then
+	// left empty — so an upgrade keeps working and a downgrade is the only thing
+	// that loses it.
 	GitHubToken string `json:"githubToken,omitempty"`
+	// GitHubTokens authenticate the panel's plugin lookups and downloads, so a
+	// plugin the operator publishes to a private repository can be tracked like
+	// any other. Empty means anonymous requests, which is all a public
+	// repository needs.
+	//
+	// A list rather than one token because a fine-grained access token is
+	// scoped to one account's repositories: covering a personal repository and
+	// an organisation's private fork with a single credential means a classic
+	// token with blanket repo scope, which is a much larger key than a panel
+	// that reads two repositories has any use for. Each plugin source names the
+	// token it is read with; see plugin.Source.TokenID.
+	//
+	// Order is meaning: the first entry is the default, used by every source
+	// that names none — which is every source added before this existed, and
+	// every public repository, where a token buys rate limit rather than access.
+	//
+	// They live here, beside the password hash, because panel.json is written
+	// 0600 and is already the file that must not be readable by anyone but the
+	// panel. The secrets are never sent back out over the API — see
+	// handlePluginTokens.
+	GitHubTokens []GitHubToken `json:"githubTokens,omitempty"`
 	// TrustedProxies are the CIDRs (or bare IPs, taken as /32 and /128) of
 	// reverse proxies and accelerators allowed to speak for their clients. It
 	// decides one thing: whether X-Forwarded-For is believed when deciding
@@ -102,6 +119,20 @@ type Panel struct {
 	// deliberately in-memory, these survive a restart — a phone app should not
 	// be signed out every time the panel updates itself.
 	Devices []auth.DeviceToken `json:"devices,omitempty"`
+}
+
+// GitHubToken is one stored GitHub credential.
+type GitHubToken struct {
+	// ID is what a plugin source points at. Stable across renames and across
+	// the secret being replaced: an id that changed when a token was rotated
+	// would silently detach every plugin using it.
+	ID string `json:"id"`
+	// Name is the operator's own label — "我的私库", "公司 org" — and is what
+	// error messages call this token. Never the secret.
+	Name string `json:"name"`
+	// Token is the credential. It leaves this file only as an Authorization
+	// header to api.github.com.
+	Token string `json:"token"`
 }
 
 // Terminal configures the in-panel shell.
@@ -147,6 +178,36 @@ func (p *Panel) ApplyDefaults() {
 	if p.UpdateChannel == "" {
 		p.UpdateChannel = DefaultUpdateChannel
 	}
+	p.migrateGitHubToken()
+}
+
+// LegacyTokenID is the id the one token a panel used to hold becomes when it is
+// folded into the list. Fixed rather than random so the migration is idempotent
+// and so a hand-written panel.json has something to name.
+const LegacyTokenID = "default"
+
+// migrateGitHubToken folds the single stored token into the list.
+//
+// The panel used to hold exactly one, and every plugin added under that panel
+// names no token at all — so the migrated entry has to land at the head of the
+// list, where "names none" resolves to. Emptying the old field afterwards is
+// what stops it being re-migrated into a second copy the next time the config
+// is read and written.
+func (p *Panel) migrateGitHubToken() {
+	if p.GitHubToken == "" {
+		return
+	}
+	legacy := GitHubToken{ID: LegacyTokenID, Name: "默认令牌", Token: p.GitHubToken}
+	p.GitHubToken = ""
+	for _, token := range p.GitHubTokens {
+		// Either the same secret or the id it would take means this migration
+		// already ran; the old field is a leftover copy rather than a token the
+		// list is missing.
+		if token.Token == legacy.Token || token.ID == legacy.ID {
+			return
+		}
+	}
+	p.GitHubTokens = append([]GitHubToken{legacy}, p.GitHubTokens...)
 }
 
 // Mirror is the configured update mirror, or "" for downloading straight from

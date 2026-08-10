@@ -11,6 +11,7 @@ import type {
   PluginPolicy,
   PluginRelease,
   PluginStatus,
+  PluginTokenInfo,
   PluginUpdateMode,
   PluginUse,
   PluginVersion,
@@ -269,6 +270,7 @@ export function PluginLibraryDrawer({
           {tab === 'settings' && (
             <SettingsTab
               item={item}
+              tokens={plugins.library?.tokens ?? []}
               busy={busy || plugins.busy}
               onSaveSource={(input) => plugins.edit(item.id, input)}
               onSavePolicy={(policy) =>
@@ -879,11 +881,13 @@ const MODES: { id: PluginUpdateMode; label: string; note: string }[] = [
 
 function SettingsTab({
   item,
+  tokens,
   busy,
   onSaveSource,
   onSavePolicy,
 }: {
   item: LibraryPlugin
+  tokens: PluginTokenInfo[]
   busy: boolean
   onSaveSource: (input: {
     name: string
@@ -891,6 +895,7 @@ function SettingsTab({
     assetPattern?: string
     prerelease?: boolean
     private?: boolean
+    tokenId?: string
     targetDir?: string
     note?: string
   }) => Promise<boolean>
@@ -899,6 +904,7 @@ function SettingsTab({
   const [targetDir, setTargetDir] = useState(item.targetDir)
   const [assetPattern, setAssetPattern] = useState(item.source.assetPattern ?? '')
   const [prerelease, setPrerelease] = useState(item.source.prerelease ?? false)
+  const [tokenId, setTokenId] = useState(item.source.tokenId ?? '')
   const [update, setUpdate] = useState<PluginUpdateMode>(item.policy?.update ?? '')
   const [pin, setPin] = useState(item.policy?.pin ?? '')
   const [keep, setKeep] = useState(String(item.policy?.keep ?? 0))
@@ -909,6 +915,7 @@ function SettingsTab({
     setTargetDir(item.targetDir)
     setAssetPattern(item.source.assetPattern ?? '')
     setPrerelease(item.source.prerelease ?? false)
+    setTokenId(item.source.tokenId ?? '')
     setUpdate(item.policy?.update ?? '')
     setPin(item.policy?.pin ?? '')
     setKeep(String(item.policy?.keep ?? 0))
@@ -918,7 +925,12 @@ function SettingsTab({
   const sourceDirty =
     targetDir !== item.targetDir ||
     assetPattern !== (item.source.assetPattern ?? '') ||
-    prerelease !== (item.source.prerelease ?? false)
+    prerelease !== (item.source.prerelease ?? false) ||
+    tokenId !== (item.source.tokenId ?? '')
+  // A token the panel no longer holds: the plugin goes on naming it, and goes
+  // on failing, until someone points it at another. Saying so is the only way
+  // that gets noticed.
+  const missingToken = tokenId !== '' && !tokens.some((token) => token.id === tokenId)
   const policyDirty =
     update !== (item.policy?.update ?? '') ||
     pin !== (item.policy?.pin ?? '') ||
@@ -934,6 +946,7 @@ function SettingsTab({
         assetPattern,
         prerelease,
         private: item.source.private,
+        tokenId,
         targetDir,
         note: item.note,
       })
@@ -988,6 +1001,38 @@ function SettingsTab({
           <span>包含预发布版本</span>
           <small>关掉的话，标了 prerelease 的 Release 不会出现在版本列表里，也不算「有更新」。</small>
         </label>
+
+        {/* Only for a GitHub source, and only when there is a choice to make:
+            the插件站 are public catalogues with nothing to authenticate to, and
+            a picker with one option is a question with one answer. A source
+            whose token was deleted still shows it — that is what has to be
+            fixed, so hiding it would hide the fix. */}
+        {item.source.kind === 'github' && (tokens.length > 1 || missingToken) && (
+          <label className="field">
+            <span>用哪个令牌读</span>
+            <select
+              value={tokenId}
+              disabled={busy || saving}
+              onChange={(event) => setTokenId(event.target.value)}
+            >
+              <option value="">默认{tokens.length > 0 ? `（${tokens[0].name}）` : ''}</option>
+              {tokens.map((token) => (
+                <option key={token.id} value={token.id}>
+                  {token.name}
+                  {token.hint ? ` ···${token.hint}` : ''}
+                </option>
+              ))}
+              {missingToken && <option value={tokenId}>已删除的令牌</option>}
+            </select>
+            <small>
+              {missingToken ? (
+                <>这个插件指定的令牌已经不在了，检查更新和下载都会失败 —— 挑一个现有的。</>
+              ) : (
+                <>私有仓库只有能看见它的那个账号的令牌读得到。公开仓库随便挑，令牌只起提额度的作用。</>
+              )}
+            </small>
+          </label>
+        )}
       </section>
 
       <section className="drawer__section">

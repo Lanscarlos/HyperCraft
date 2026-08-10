@@ -1,17 +1,18 @@
 import { useState } from 'react'
 
+import type { PluginTokenInfo } from '../types'
 import type { PluginController } from '../usePlugins'
 import { Page } from './Page'
 
 /**
- * The credential private repositories are read with, and the proxy their jars
+ * The credentials private repositories are read with, and the proxy their jars
  * come through.
  *
  * This was a page called 插件源 and it held two things that are not the same
  * kind of thing. Registering a repository is an *action*, done whenever a new
  * plugin turns up, and it now sits with the other three ways a plugin enters
  * the library — the + 添加插件 menu on 我的库, where it also gets to show what
- * it found before you agree to it. The token and the download mirror are
+ * it found before you agree to it. The tokens and the download mirror are
  * *settings*: set on the day the panel is installed or the day something stops
  * working, and never again. Only the second half is a page, and this is it.
  */
@@ -20,15 +21,15 @@ export function PluginSourceSettings({ plugins }: { plugins: PluginController })
 
   return (
     <Page
-      title="插件源与令牌"
-      lead="三个插件站覆盖了绝大多数插件，但覆盖不了只发在作者自己 GitHub Release 上的那种 —— 包括你自己那个私有仓库。这一页管两件事：读私有仓库要用的访问令牌，以及 jar 走哪个下载源。想加一个仓库当插件源，在「资源库 → 插件库」的「+ 添加插件」里。"
+      title="GitHub 集成"
+      lead="三个插件站覆盖了绝大多数插件，但覆盖不了只发在作者自己 GitHub Release 上的那种 —— 包括你自己那个私有仓库。这一页管两件事：读 GitHub 用的访问令牌，以及 jar 走哪个下载源。想加一个仓库当插件源，在「资源库 → 插件库」的「+ 添加插件」里。"
     >
       <GitHubTokenPanel
-        configured={library?.tokenConfigured ?? false}
-        hint={library?.tokenHint}
-        budget={library?.budget}
+        tokens={library?.tokens ?? []}
         busy={busy}
-        onSave={(token) => plugins.setToken(token)}
+        onAdd={plugins.addToken}
+        onUpdate={plugins.updateToken}
+        onRemove={plugins.removeToken}
       />
 
       {/* Only once the library has answered. The picker decides on mount
@@ -50,92 +51,235 @@ export function PluginSourceSettings({ plugins }: { plugins: PluginController })
 }
 
 /**
- * The credential private repositories are read with.
+ * The credentials private repositories are read with.
  *
- * Write-only on purpose: the panel will say whether it holds a token and show
- * its last four characters, and that is all — a token that can be read back out
- * of a page is a token that leaks with the page. Fixing a wrong one is done by
- * pasting a new one over it, not by editing it in place.
+ * A list rather than one box, because "the operator's GitHub account" is not
+ * one thing. A fine-grained token is minted by one account and scoped to a set
+ * of that account's repositories: the token that reads the plugin in your own
+ * namespace cannot be granted access to the org's private fork. With a single
+ * credential the only way to cover both is a classic token with blanket
+ * <code>repo</code> scope — the broadest key GitHub will mint, held by a panel
+ * that needs to read two repositories. So each plugin names the token it is
+ * read with, and this page is where the tokens are.
+ *
+ * Write-only on purpose: the panel will say a token is there and show its last
+ * four characters, and that is all — a token that can be read back out of a
+ * page is a token that leaks with the page. Fixing a wrong one is done by
+ * pasting a new one over it, which keeps the id and so keeps the plugins
+ * pointing at it.
  */
 function GitHubTokenPanel({
-  configured,
-  hint,
-  budget,
+  tokens,
   busy,
-  onSave,
+  onAdd,
+  onUpdate,
+  onRemove,
 }: {
-  configured: boolean
-  hint?: string
-  budget?: { limit: number; remaining: number; authenticated: boolean }
+  tokens: PluginTokenInfo[]
   busy: boolean
-  onSave: (token: string) => Promise<boolean>
+  onAdd: (name: string, token: string) => Promise<boolean>
+  onUpdate: (
+    id: string,
+    input: { name?: string; token?: string; default?: boolean },
+  ) => Promise<boolean>
+  onRemove: (id: string) => Promise<boolean>
 }) {
+  const [name, setName] = useState('')
   const [token, setToken] = useState('')
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!token.trim()) return
-    if (await onSave(token.trim())) setToken('')
+    if (await onAdd(name.trim(), token.trim())) {
+      setName('')
+      setToken('')
+    }
   }
 
   return (
     <section className="panel">
       <div className="chart-head">
         <h2 className="panel__title">GitHub 访问令牌</h2>
-        {configured && <span className="badge badge--ok">已配置{hint && ` ···${hint}`}</span>}
-        {/* The number the argument for a token actually rests on, rather than
-            the argument. "60 次一小时" is abstract until it is 7 左右. */}
-        {budget && budget.limit > 0 && (
-          <span className={`badge${budget.remaining <= budget.limit * 0.2 ? ' badge--warn' : ''}`}>
-            API 余额 {budget.remaining} / {budget.limit}
-          </span>
-        )}
+        {tokens.length > 0 && <span className="badge badge--ok">{tokens.length} 个</span>}
       </div>
       <p className="chart-note">
-        自己写的插件发在私有仓库里时，面板得先能证明「我是你」才看得见它 —— 填一个令牌就行，
-        剩下的不用管：哪个仓库是私有的由面板自己问 GitHub，检查更新和下载会自动走带认证的 API。
+        自己写的插件发在私有仓库里时，面板得先能证明「我是你」才看得见它。可以存好几个 ——
+        自己号一个、公司 org 一个 —— 添加插件时挑用哪个，不用为了让一把钥匙开两把锁去开
+        classic 令牌的全量 <code>repo</code> 权限。没指定的插件走「默认」那个。
         顺带一提，就算全是公开仓库，配了令牌也值：匿名调用每小时只有 60 次，
         「检查全部更新」一次就是一个插件一次调用，插件一多就不够用。
       </p>
+
+      {tokens.map((entry) => (
+        <TokenRow
+          key={entry.id}
+          token={entry}
+          busy={busy}
+          onUpdate={onUpdate}
+          onRemove={onRemove}
+        />
+      ))}
+
       <form onSubmit={(event) => void save(event)}>
-        <label className="field">
-          <span>令牌</span>
-          <input
-            type="password"
-            value={token}
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={configured ? '粘贴新令牌以替换现有的' : 'github_pat_… 或 ghp_…'}
-            onChange={(e) => setToken(e.target.value)}
-          />
-          <small>
-            在 GitHub 的 Settings → Developer settings → Personal access tokens 里生成。
-            fine-grained 令牌只要给目标仓库的 <code>Contents: Read-only</code> 权限；
-            classic 令牌勾 <code>repo</code>。令牌存在面板自己的 panel.json 里（0600），
-            只发给 api.github.com，不会经过下载源。
-          </small>
-        </label>
+        <div className="field-row">
+          <label className="field">
+            <span>名字</span>
+            <input
+              value={name}
+              placeholder={`令牌 ${tokens.length + 1}`}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <small>给自己认的，比如「我的私库」「公司 org」。</small>
+          </label>
+          <label className="field">
+            <span>令牌</span>
+            <input
+              type="password"
+              value={token}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="github_pat_… 或 ghp_…"
+              onChange={(e) => setToken(e.target.value)}
+            />
+            <small>
+              在 GitHub 的 Settings → Developer settings → Personal access tokens 里生成。
+              fine-grained 令牌只要给目标仓库的 <code>Contents: Read-only</code> 权限；
+              classic 令牌勾 <code>repo</code>。存在面板自己的 panel.json 里（0600），
+              只发给 api.github.com，不会经过下载源。
+            </small>
+          </label>
+        </div>
         <div className="field__tools">
           <button className="btn btn--primary" type="submit" disabled={busy || !token.trim()}>
-            {configured ? '替换令牌' : '保存令牌'}
+            添加令牌
           </button>
-          {configured && (
-            <button
-              className="btn"
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                if (window.confirm('清除后，私有仓库的插件将无法检查更新或下载。确定吗？')) {
-                  void onSave('')
-                }
-              }}
-            >
-              清除
-            </button>
-          )}
         </div>
       </form>
     </section>
+  )
+}
+
+/**
+ * One stored credential: what it is called, what it is worth, and the three
+ * things that can be done to it without detaching the plugins that name it.
+ *
+ * Deleting is the one with a consequence worth spelling out, which is why the
+ * count of plugins reading through it is on the row rather than somewhere else.
+ */
+function TokenRow({
+  token,
+  busy,
+  onUpdate,
+  onRemove,
+}: {
+  token: PluginTokenInfo
+  busy: boolean
+  onUpdate: (
+    id: string,
+    input: { name?: string; token?: string; default?: boolean },
+  ) => Promise<boolean>
+  onRemove: (id: string) => Promise<boolean>
+}) {
+  const [replacing, setReplacing] = useState(false)
+  const [secret, setSecret] = useState('')
+  const [name, setName] = useState(token.name)
+
+  const budget = token.budget
+  const low = budget && budget.limit > 0 && budget.remaining <= budget.limit * 0.2
+
+  const rename = async () => {
+    const trimmed = name.trim()
+    if (trimmed === '' || trimmed === token.name) {
+      setName(token.name)
+      return
+    }
+    if (!(await onUpdate(token.id, { name: trimmed }))) setName(token.name)
+  }
+
+  const replace = async () => {
+    if (!secret.trim()) return
+    if (await onUpdate(token.id, { token: secret.trim() })) {
+      setSecret('')
+      setReplacing(false)
+    }
+  }
+
+  return (
+    <div className="tokenrow">
+      <div className="tokenrow__head">
+        <input
+          className="tokenrow__name"
+          value={name}
+          disabled={busy}
+          aria-label="令牌名字"
+          onChange={(event) => setName(event.target.value)}
+          onBlur={() => void rename()}
+        />
+        {token.hint && <span className="muted">···{token.hint}</span>}
+        {token.default ? (
+          <span className="badge badge--ok">默认</span>
+        ) : (
+          <button
+            className="link"
+            type="button"
+            disabled={busy}
+            title="没有指定令牌的插件会用这一个"
+            onClick={() => void onUpdate(token.id, { default: true })}
+          >
+            设为默认
+          </button>
+        )}
+        {/* The number the argument for a token actually rests on, rather than
+            the argument. "60 次一小时" is abstract until it is 7 左右. */}
+        {budget && budget.limit > 0 && (
+          <span className={`badge${low ? ' badge--warn' : ''}`}>
+            API 余额 {budget.remaining} / {budget.limit}
+          </span>
+        )}
+        <span className="tokenrow__used muted">
+          {token.usedBy > 0 ? `${token.usedBy} 个插件在用` : '暂时没有插件在用'}
+        </span>
+        <button className="btn btn--small" type="button" disabled={busy} onClick={() => setReplacing(!replacing)}>
+          换令牌
+        </button>
+        <button
+          className="btn btn--small"
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            const warning =
+              token.usedBy > 0
+                ? `有 ${token.usedBy} 个插件在用这个令牌，删掉之后它们会读不到仓库，得改成别的令牌。确定吗？`
+                : '删掉这个令牌？'
+            if (window.confirm(warning)) void onRemove(token.id)
+          }}
+        >
+          删除
+        </button>
+      </div>
+
+      {replacing && (
+        <div className="update__mirror-custom">
+          <input
+            type="password"
+            value={secret}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="粘贴新令牌，旧的会被顶掉"
+            aria-label="新的访问令牌"
+            onChange={(event) => setSecret(event.target.value)}
+          />
+          <button
+            className="btn"
+            type="button"
+            disabled={busy || !secret.trim()}
+            onClick={() => void replace()}
+          >
+            保存
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 

@@ -186,6 +186,7 @@ export const api = {
     assetPattern?: string
     prerelease?: boolean
     private?: boolean
+    tokenId?: string
     targetDir?: string
     note?: string
   }) =>
@@ -195,6 +196,7 @@ export const api = {
       assetPattern: input.assetPattern ?? '',
       prerelease: input.prerelease ?? false,
       private: input.private ?? false,
+      tokenId: input.tokenId ?? '',
       targetDir: input.targetDir ?? '',
       note: input.note ?? '',
     }),
@@ -206,6 +208,7 @@ export const api = {
       assetPattern?: string
       prerelease?: boolean
       private?: boolean
+      tokenId?: string
       targetDir?: string
       note?: string
     },
@@ -216,15 +219,30 @@ export const api = {
       assetPattern: input.assetPattern ?? '',
       prerelease: input.prerelease ?? false,
       private: input.private ?? false,
+      tokenId: input.tokenId ?? '',
       targetDir: input.targetDir ?? '',
       note: input.note ?? '',
     }),
   /**
-   * Stores the GitHub token private repositories are read with, or clears it
-   * with an empty string. Write-only: nothing reads it back out.
+   * Adds a GitHub credential. Write-only, like all four of these: a token goes
+   * in and nothing reads it back out, so a hijacked session cannot lift the
+   * operator's GitHub account out of the panel.
    */
-  setPluginToken: (token: string) =>
-    request<PluginLibrary>('PUT', '/api/plugins/config/token', { token }),
+  addPluginToken: (name: string, token: string) =>
+    request<PluginLibrary>('POST', '/api/plugins/config/tokens', { name, token }),
+  /** Renames a token, replaces its secret, or makes it the default. All three
+   *  keep the id, so the plugins pointing at it stay pointed at it. */
+  updatePluginToken: (
+    id: string,
+    input: { name?: string; token?: string; default?: boolean },
+  ) =>
+    request<PluginLibrary>('PUT', `/api/plugins/config/tokens/${encodeURIComponent(id)}`, {
+      name: input.name ?? '',
+      token: input.token ?? '',
+      default: input.default ?? false,
+    }),
+  deletePluginToken: (id: string) =>
+    request<PluginLibrary>('DELETE', `/api/plugins/config/tokens/${encodeURIComponent(id)}`),
   /** Chooses the proxy plugin jars download through: an id, or a URL prefix. */
   setPluginMirror: (mirror: string) =>
     request<PluginLibrary>('PUT', '/api/plugins/config/mirror', { mirror }),
@@ -323,10 +341,18 @@ export const api = {
   /** Looks at a GitHub repository without tracking it: can the panel read it,
    *  is it private, what does its newest release ship, and which jar would the
    *  asset pattern pick. One call, four answers, before anybody commits. */
-  previewPluginSource: (repo: string, pattern?: string, prerelease?: boolean) => {
+  previewPluginSource: (
+    repo: string,
+    pattern?: string,
+    prerelease?: boolean,
+    tokenId?: string,
+  ) => {
     const params = new URLSearchParams({ repo })
     if (pattern) params.set('pattern', pattern)
     if (prerelease) params.set('prerelease', 'true')
+    // Which credential to look with is part of the question: a repository one
+    // token cannot see is a 404, and finding that out here is the whole point.
+    if (tokenId) params.set('tokenId', tokenId)
     return request<SourcePreview>('GET', `/api/plugins/source/preview?${params}`)
   },
 

@@ -444,8 +444,8 @@ func TestPrivatePluginIsUnreachableUntilATokenIsConfigured(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadPanel: %v", err)
 	}
-	if panel.GitHubToken != fakeGitHubToken {
-		t.Errorf("the token was not persisted: %q", panel.GitHubToken)
+	if len(panel.GitHubTokens) != 1 || panel.GitHubTokens[0].Token != fakeGitHubToken {
+		t.Errorf("the token was not persisted: %+v", panel.GitHubTokens)
 	}
 }
 
@@ -587,5 +587,99 @@ func TestInstancePluginListsUnmanagedJars(t *testing.T) {
 	}
 	if listing.Entries[0].Key != "file:plugins/Vault.jar" {
 		t.Errorf("key is %q", listing.Entries[0].Key)
+	}
+}
+
+// Several credentials, each answering for the repositories the operator paired
+// it with. The panel stores them, names them, and hands none of them back.
+func TestTokensAreStoredAsAListAndNamedIndividually(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	var library pluginLibraryResponse
+	decodeBody(t, env.do(http.MethodPost, "/api/plugins/config/tokens",
+		pluginTokenRequest{Name: "我的私库", Token: fakeGitHubToken}), &library)
+	decodeBody(t, env.do(http.MethodPost, "/api/plugins/config/tokens",
+		pluginTokenRequest{Name: "公司 org", Token: "ghp_second0000000"}), &library)
+
+	if len(library.Tokens) != 2 {
+		t.Fatalf("expected two tokens, got %+v", library.Tokens)
+	}
+	first, second := library.Tokens[0], library.Tokens[1]
+	if !first.Default || second.Default {
+		t.Errorf("the first token should be the default one: %+v", library.Tokens)
+	}
+	if first.Name != "我的私库" || first.Hint != fakeGitHubToken[len(fakeGitHubToken)-4:] {
+		t.Errorf("unexpected token view: %+v", first)
+	}
+
+	// A source may only name a token that exists — otherwise the mistake shows
+	// up later as a repository that mysteriously cannot be read.
+	rejected := env.do(http.MethodPost, "/api/plugins",
+		pluginRequest{Repo: "me/private", TokenID: "nope"})
+	rejected.Body.Close()
+	if rejected.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for an unknown token, got %d", rejected.StatusCode)
+	}
+
+	// The private repository is readable through the token that can see it,
+	// named explicitly rather than by being the only one configured.
+	var item plugin.Plugin
+	decodeBody(t, env.do(http.MethodPost, "/api/plugins",
+		pluginRequest{Repo: "me/private", TokenID: first.ID}), &item)
+	if item.Source.TokenID != first.ID {
+		t.Fatalf("the source should have kept its token: %+v", item.Source)
+	}
+	if item.CheckError != "" {
+		t.Fatalf("the first check should have gone through: %q", item.CheckError)
+	}
+
+	// Promoting the second is a reorder, and it does not disturb the id the
+	// plugin above is pinned to.
+	decodeBody(t, env.do(http.MethodPut, "/api/plugins/config/tokens/"+second.ID,
+		pluginTokenRequest{Default: true}), &library)
+	if library.Tokens[0].ID != second.ID || !library.Tokens[0].Default {
+		t.Fatalf("the promoted token should be first: %+v", library.Tokens)
+	}
+	for _, token := range library.Tokens {
+		if token.ID == first.ID && token.UsedBy != 1 {
+			t.Errorf("the plugin naming this token should be counted: %+v", token)
+		}
+	}
+
+	// Renaming keeps the id, so nothing pointing at it comes loose.
+	decodeBody(t, env.do(http.MethodPut, "/api/plugins/config/tokens/"+first.ID,
+		pluginTokenRequest{Name: "改个名"}), &library)
+	if library.Tokens[1].ID != first.ID || library.Tokens[1].Name != "改个名" {
+		t.Fatalf("unexpected rename result: %+v", library.Tokens)
+	}
+
+	decodeBody(t, env.do(http.MethodDelete, "/api/plugins/config/tokens/"+second.ID, nil), &library)
+	if len(library.Tokens) != 1 || library.Tokens[0].ID != first.ID {
+		t.Fatalf("the wrong token was deleted: %+v", library.Tokens)
+	}
+
+	missing := env.do(http.MethodDelete, "/api/plugins/config/tokens/gone", nil)
+	missing.Body.Close()
+	if missing.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", missing.StatusCode)
+	}
+
+	resp := env.do(http.MethodGet, "/api/plugins", nil)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if strings.Contains(string(body), fakeGitHubToken) {
+		t.Fatalf("the library listing handed a token back: %s", body)
+	}
+
+	panel, err := env.store.LoadPanel()
+	if err != nil {
+		t.Fatalf("LoadPanel: %v", err)
+	}
+	if len(panel.GitHubTokens) != 1 || panel.GitHubTokens[0].Name != "改个名" {
+		t.Errorf("the list was not persisted: %+v", panel.GitHubTokens)
 	}
 }
