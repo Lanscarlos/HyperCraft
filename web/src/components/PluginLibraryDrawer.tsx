@@ -211,10 +211,20 @@ export function PluginLibraryDrawer({
               instances={instances}
               busy={busy || plugins.busy}
               onOpenInstance={onOpenInstance}
+              // To the version this server was offered, and the jar of it the
+              // panel picked — not to whatever is at the top of the library's
+              // list, which on a cross-platform plugin is regularly a build
+              // this server cannot load. See plugin.UpdateFor.
               onUpgrade={(use) =>
                 void act(async () => {
-                  await api.installInstancePlugin(use.instanceId, row.id, row.newestTag ?? '')
-                  return `已把 ${use.name} 上的 ${row.name} 升到 ${row.newest}，重启后生效`
+                  if (!use.update) return `${use.name} 上的 ${row.name} 已经是它能用的最新版本了`
+                  await api.installInstancePlugin(
+                    use.instanceId,
+                    row.id,
+                    use.update.tag,
+                    use.update.sha256,
+                  )
+                  return `已把 ${use.name} 上的 ${row.name} 升到 ${use.update.version}，重启后生效`
                 })
               }
               onRollback={(use, withConfig) =>
@@ -399,7 +409,6 @@ function OverviewTab({
               <MatrixRow
                 key={use.instanceId}
                 use={use}
-                newest={row.newest}
                 busy={busy}
                 onOpen={() => onOpenInstance(use.instanceId)}
                 onUpgrade={() => onUpgrade(use)}
@@ -422,7 +431,6 @@ function OverviewTab({
 
 function MatrixRow({
   use,
-  newest,
   busy,
   onOpen,
   onUpgrade,
@@ -432,7 +440,6 @@ function MatrixRow({
   onAccept,
 }: {
   use: PluginUse
-  newest?: string
   busy: boolean
   onOpen: () => void
   onUpgrade: () => void
@@ -459,7 +466,7 @@ function MatrixRow({
 
       <span className="matrix__ver">
         <span className="ptable__num">{use.version}</span>
-        {use.outdated && newest && <span className="matrix__arrow">→ {newest}</span>}
+        {use.update && <span className="matrix__arrow">→ {use.update.version}</span>}
         {use.fileName && <code className="matrix__file">{use.fileName}</code>}
       </span>
 
@@ -512,9 +519,9 @@ function MatrixRow({
             重新对账
           </button>
         )}
-        {use.outdated && (
+        {use.update && (
           <button className="btn btn--small btn--primary" disabled={busy} onClick={onUpgrade}>
-            升到 {newest}
+            升到 {use.update.version}
           </button>
         )}
         {use.rollbackTo && (

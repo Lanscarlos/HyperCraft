@@ -66,6 +66,75 @@ func (l *Library) Regroup(log *slog.Logger) int {
 	return fixed
 }
 
+// Realign points every install record at the release its jar now belongs to.
+//
+// The merge above rewrites the library's tags, and an instance's record holds
+// the tag it was installed at — so without this the server that is running
+// LuckPerms sits on a tag that no longer exists, which reads as "this is not
+// any version we know" on every page that joins the two.
+//
+// Matched by digest, which is the one thing about a jar that does not change:
+// the record's own SHA is what the panel wrote down when it copied the file,
+// and finding it in the library is proof of which release it came from — much
+// better proof than the tag was. Records whose digest is in no release are
+// left alone; a jar the library no longer holds is a real state, and inventing
+// a tag for it would be worse than an old one.
+func (m *Instances) Realign(library *Library, log *slog.Logger) int {
+	items := library.List()
+	byDigest := map[string]struct {
+		tag, version string
+		artifact     Artifact
+		release      Version
+	}{}
+	for _, item := range items {
+		for _, version := range item.Versions {
+			for _, artifact := range version.Artifacts {
+				if artifact.SHA256 == "" {
+					continue
+				}
+				byDigest[strings.ToLower(item.ID+"/"+artifact.SHA256)] = struct {
+					tag, version string
+					artifact     Artifact
+					release      Version
+				}{version.Tag, version.Version, artifact, version}
+			}
+		}
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	records := m.load()
+
+	fixed := 0
+	for instanceID, book := range records {
+		if book == nil {
+			continue
+		}
+		for i := range book.Plugins {
+			record := &book.Plugins[i]
+			found, ok := byDigest[strings.ToLower(record.PluginID+"/"+record.SHA256)]
+			if !ok || (found.tag == record.Tag && found.version == record.Version) {
+				continue
+			}
+			log.Info("install record re-pointed at its release",
+				"instance", instanceID, "plugin", record.PluginID,
+				"was", record.Tag, "now", found.tag)
+			record.Tag, record.Version = found.tag, found.version
+			// The jar's own claims travel with it, so this server's
+			// compatibility badge describes the file it actually has rather
+			// than the release it belongs to.
+			record.Loaders, record.GameVersions = Claims(found.release, found.artifact)
+			fixed++
+		}
+	}
+	if fixed > 0 {
+		if err := m.save(records); err != nil {
+			log.Warn("could not write the re-pointed install records", "err", err)
+		}
+	}
+	return fixed
+}
+
 // want is one jar and where it has to end up: which release directory it is
 // in now, which it belongs under, and the name it goes by — which changes only
 // when two builds of one release turn out to be called the same thing.
@@ -103,6 +172,19 @@ func planRegroup(item Plugin) (Plugin, []want, bool) {
 				}
 				version.Artifacts[i].Loaders = []string{platform}
 			}
+		}
+
+		// The platform suffix comes off the displayed version too. Leaving it
+		// on would put "v5.5.71-bukkit" in the version column of a release
+		// that also holds the velocity jar.
+		if platform := versionPlatform(item.Source.Kind, version); platform != "" {
+			for i := range version.Artifacts {
+				if version.Artifacts[i].Platform == "" {
+					version.Artifacts[i].Platform = platform
+				}
+			}
+			version.Version = tag
+			changed = true
 		}
 
 		index, seen := at[tag]
@@ -185,8 +267,10 @@ func artifactPlatform(artifact Artifact) string {
 //   - Hangar addressed a version by name and the panel appended the platform.
 //     Everything before the "@" is the release.
 //   - Modrinth files one version per loader, each with its own opaque id and
-//     all of them carrying the release's version number. The number is the
-//     release, and it is what registry.go tags them with now.
+//     the release's version number — with the platform written into it, in the
+//     case that matters: LuckPerms publishes "v5.5.71-bukkit" beside
+//     "v5.5.71-velocity". The number without that suffix is the release, and
+//     it is what registry.go tags them with now.
 //
 // Everything else — GitHub, SpigotMC, an imported local jar — publishes one
 // release per tag and is left alone. Guessing at those would merge two
@@ -199,7 +283,7 @@ func regroupTag(kind string, version Version) string {
 			return version.Tag[:at]
 		}
 	case SourceModrinth:
-		if number := strings.TrimSpace(version.Version); number != "" {
+		if number, _ := releaseNumber(version.Version); number != "" {
 			return number
 		}
 	}
@@ -209,6 +293,16 @@ func regroupTag(kind string, version Version) string {
 // move is one jar changing place on disk, as absolute paths.
 type move struct {
 	from, to string
+}
+
+// versionPlatform is the platform a stored version's *number* named, for the
+// registry that writes it there. Empty when the number named none.
+func versionPlatform(kind string, version Version) string {
+	if kind != SourceModrinth {
+		return ""
+	}
+	_, platform := releaseNumber(version.Version)
+	return platform
 }
 
 // splitPlatform is the platform an old Hangar tag carried, lowercased, or

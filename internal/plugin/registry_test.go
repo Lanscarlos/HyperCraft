@@ -115,6 +115,74 @@ func TestModrinthVersionsGroupByVersionNumber(t *testing.T) {
 	}
 }
 
+// LuckPerms, as Modrinth actually publishes it: a version per platform, with
+// the platform written into the version number. Grouping on the number alone
+// groups nothing — which is how a Paper server came to be offered the Velocity
+// build as its next version.
+func TestModrinthGroupsPlatformSuffixedNumbers(t *testing.T) {
+	server := serveJSON(t, `[
+		{"id":"aa","name":"v5.5.71 (Velocity)","version_number":"v5.5.71-velocity","version_type":"release",
+		 "game_versions":["1.20.4"],"loaders":["velocity"],"date_published":"2026-02-01T10:05:00Z","downloads":3,
+		 "files":[{"url":"https://example.invalid/v.jar","filename":"LuckPerms-Velocity-5.5.71.jar","primary":true,"size":90}]},
+		{"id":"bb","name":"v5.5.71 (BungeeCord)","version_number":"v5.5.71-bungee","version_type":"release",
+		 "game_versions":["1.20.4"],"loaders":["bungeecord","waterfall"],"date_published":"2026-02-01T10:03:00Z","downloads":2,
+		 "files":[{"url":"https://example.invalid/b.jar","filename":"LuckPerms-Bungee-5.5.71.jar","primary":true,"size":91}]},
+		{"id":"cc","name":"v5.5.71 (Bukkit)","version_number":"v5.5.71-bukkit","version_type":"release",
+		 "game_versions":["1.20.4"],"loaders":["bukkit","folia","paper","spigot"],"date_published":"2026-02-01T10:00:00Z","downloads":5,
+		 "files":[{"url":"https://example.invalid/p.jar","filename":"LuckPerms-Bukkit-5.5.71.jar","primary":true,"size":100}]},
+		{"id":"dd","name":"v5.5.57 (Fabric)","version_number":"v5.5.57-fabric","version_type":"release",
+		 "game_versions":["1.20.4"],"loaders":["fabric"],"date_published":"2026-01-20T10:00:00Z","downloads":9,
+		 "files":[{"url":"https://example.invalid/f.jar","filename":"LuckPerms-Fabric-5.5.57.jar","primary":true,"size":95}]}
+	]`)
+
+	registry := NewRegistry("test")
+	registry.modrinthBase = server.URL
+
+	releases, err := registry.modrinthVersions(context.Background(), "luckperms")
+	if err != nil {
+		t.Fatalf("modrinthVersions: %v", err)
+	}
+	if len(releases) != 2 {
+		t.Fatalf("read %d releases, want 2: %+v", len(releases), releases)
+	}
+	newest := releases[0]
+	if newest.Tag != "v5.5.71" || newest.Version != "v5.5.71" {
+		t.Fatalf("newest is %q tagged %q, want v5.5.71 — the platform is not part of the version",
+			newest.Version, newest.Tag)
+	}
+	if len(newest.Assets) != 3 {
+		t.Fatalf("newest holds %d jars, want 3", len(newest.Assets))
+	}
+	// The jar a plain download takes has to be the one a Minecraft server
+	// loads, not whichever build the registry happened to list first.
+	if newest.Asset.Platform != "bukkit" {
+		t.Errorf("primary jar is %q, want the bukkit build", newest.Asset.Platform)
+	}
+	for _, asset := range newest.Assets {
+		if asset.Platform == "" {
+			t.Errorf("%s has no platform, though its version number named one", asset.Name)
+		}
+	}
+}
+
+// A suffix that is not a platform is part of the version.
+func TestReleaseNumberKeepsOrdinarySuffixes(t *testing.T) {
+	for _, probe := range []struct{ in, release, platform string }{
+		{"v5.5.71-bukkit", "v5.5.71", "bukkit"},
+		{"v5.5.71-bungee", "v5.5.71", "bungeecord"},
+		{"1.2.3-beta", "1.2.3-beta", ""},
+		{"2.0-rc1", "2.0-rc1", ""},
+		{"5.5.71", "5.5.71", ""},
+		{"-velocity", "-velocity", ""},
+	} {
+		release, platform := releaseNumber(probe.in)
+		if release != probe.release || platform != probe.platform {
+			t.Errorf("releaseNumber(%q) = %q, %q; want %q, %q",
+				probe.in, release, platform, probe.release, probe.platform)
+		}
+	}
+}
+
 // Two builds under one file name have to stay two files.
 func TestHangarRenamesCollidingBuilds(t *testing.T) {
 	server := serveJSON(t, `{"result":[{

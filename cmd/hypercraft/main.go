@@ -182,6 +182,10 @@ func run() error {
 	pluginDownloads := plugin.NewDownloader(pluginClient, pluginLibrary, logger)
 	defer pluginDownloads.Close()
 	instancePlugins := plugin.NewInstances(pluginLibrary, paths.InstancePluginsFile())
+	// The merge above rewrote the library's tags; the servers' records still
+	// name the old ones. Re-pointed by digest, which is the one thing about a
+	// jar that never changed.
+	instancePlugins.Realign(pluginLibrary, logger)
 	// Every plugin change lands in a directory the running server read once and
 	// will not read again, so the panel records what each server has yet to see.
 	pendingPlugins := plugin.NewPending(paths.PendingPluginsFile())

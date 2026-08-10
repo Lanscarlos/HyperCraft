@@ -542,9 +542,12 @@ type overviewUse struct {
 	State      instance.State `json:"state"`
 	Version    string         `json:"version"`
 	Tag        string         `json:"tag"`
-	// Outdated marks a copy behind the newest version the library holds. This
-	// is the field the whole page exists for.
+	// Outdated marks a copy behind the newest version the library holds that
+	// this server can take. This is the field the whole page exists for.
 	Outdated bool `json:"outdated"`
+	// Update is what "behind" means for this server: which release, and which
+	// jar of it. Nil when there is nothing to move up to.
+	Update *plugin.Offer `json:"update,omitempty"`
 	// Recon is what the last reconciliation said about this copy: drift when
 	// the bytes have changed under the record, missing when the file is gone,
 	// empty when the two agree or nothing has looked yet. It outranks Outdated
@@ -707,6 +710,11 @@ func (s *Server) handlePluginOverview(w http.ResponseWriter, r *http.Request) {
 		state  instance.State
 		byID   map[string]plugin.Installed
 		onDisk map[string]plugin.Deployment
+		// target is what this server runs, read once per instance rather than
+		// once per plugin: it decides whether a newer release in the library is
+		// a newer release *for this server*, and reading it involves the
+		// directory and the core library.
+		target plugin.Target
 	}
 	instances := make([]held, 0)
 	for _, inst := range s.mgr.List() {
@@ -718,6 +726,7 @@ func (s *Server) handlePluginOverview(w http.ResponseWriter, r *http.Request) {
 		instances = append(instances, held{
 			id: cfg.ID, name: cfg.Name, dir: cfg.Directory, state: inst.State(), byID: byID,
 			onDisk: s.instancePlugins.Deployments(cfg.ID, cfg.Directory),
+			target: s.detectTarget(cfg),
 		})
 	}
 	sort.Slice(instances, func(a, b int) bool { return instances[a].name < instances[b].name })
@@ -767,13 +776,17 @@ func (s *Server) handlePluginOverview(w http.ResponseWriter, r *http.Request) {
 				Version:    record.Version,
 				Tag:        record.Tag,
 				FileName:   record.FileName,
-				// "Behind the newest jar in the library", not "behind
-				// upstream": upgrading is a copy from the library, and a
-				// version nobody has downloaded is not something this page's
-				// 批量升级 button could apply.
-				Outdated: row.NewestTag != "" && record.Tag != row.NewestTag,
-				Recon:    record.Recon,
+				// "Behind the newest jar in the library that this server can
+				// take", not "behind upstream" and not "behind the top of the
+				// list": upgrading is a copy from the library, so a version
+				// nobody has downloaded is not something 批量升级 could apply
+				// — and neither is a release whose only jar is for another
+				// platform, which is what a cross-platform plugin's newest
+				// release regularly is. See plugin.UpdateFor.
+				Update: plugin.UpdateFor(item, record.Tag, inst.target),
+				Recon:  record.Recon,
 			}
+			use.Outdated = use.Update != nil
 			// Drift on a plugin allowed to update itself is normal operation.
 			// It stays visible on the plugin's own page and stops being a
 			// finding here — an alarm that fires every week on a working
@@ -995,16 +1008,24 @@ func (s *Server) bulkImpact(pluginIDs []string) bulkImpact {
 		if err != nil || len(item.Versions) == 0 {
 			continue
 		}
-		newest := item.Versions[0]
-		entry := bulkPlugin{ID: item.ID, Name: item.Name, To: newest.Version}
+		entry := bulkPlugin{ID: item.ID, Name: item.Name}
 
 		for _, inst := range s.mgr.List() {
 			cfg := inst.Config()
 			for _, record := range s.instancePlugins.Records(cfg.ID) {
-				if record.PluginID != item.ID || record.Tag == newest.Tag {
+				if record.PluginID != item.ID {
+					continue
+				}
+				// Per server, not per library: the newest release is not a
+				// release every server can take, and promising one that only
+				// ships a proxy build to a Paper server is a promise the
+				// upgrade would then have to keep. See plugin.UpdateFor.
+				offer := plugin.UpdateFor(item, record.Tag, s.detectTarget(cfg))
+				if offer == nil {
 					continue
 				}
 				entry.From = append(entry.From, record.Version)
+				entry.To = offer.Version
 
 				target, ok := byInstance[cfg.ID]
 				if !ok {
@@ -1075,22 +1096,23 @@ func (s *Server) handleBulkUpgrade(w http.ResponseWriter, r *http.Request) {
 		if err != nil || len(item.Versions) == 0 {
 			continue
 		}
-		newest := item.Versions[0]
-
 		for _, inst := range s.mgr.List() {
 			cfg := inst.Config()
-			holds := false
+			// What this server can move up to, which is not always what the
+			// library's newest release is — see plugin.UpdateFor. Nothing to
+			// move up to means this server is not part of the operation.
+			var offer *plugin.Offer
 			for _, record := range s.instancePlugins.Records(cfg.ID) {
-				if record.PluginID == item.ID && record.Tag != newest.Tag {
-					holds = true
+				if record.PluginID == item.ID {
+					offer = plugin.UpdateFor(item, record.Tag, s.detectTarget(cfg))
 				}
 			}
-			if !holds {
+			if offer == nil {
 				continue
 			}
 
-			_, _, err := s.instancePlugins.InstallArtifact(cfg.ID, cfg.Directory, item.ID, newest.Tag,
-				s.jarFor(cfg, item.ID, newest.Tag, ""), "")
+			_, _, err := s.instancePlugins.InstallArtifact(cfg.ID, cfg.Directory, item.ID, offer.Tag,
+				offer.SHA256, "")
 			if err != nil {
 				result.Failures = append(result.Failures, bulkFailure{
 					Instance: cfg.Name, Plugin: item.Name, Error: err.Error(),
