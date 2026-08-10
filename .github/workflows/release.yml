@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '要发布的 tag，例如 v1.0.0（必须已经存在）'
+        description: '要发布的 tag，例如 v0.3.0（必须已经存在）'
         required: true
 
 # Needed to create the tag and the release.
@@ -84,7 +84,7 @@ jobs:
             exit 0
           fi
 
-          # A tag with a pre-release suffix (v1.2.0-rc.1) ships as a prerelease.
+          # A tag with a pre-release suffix (v0.4.0-rc.1) ships as a prerelease.
           if printf '%s' "$tag" | grep -q -- '-'; then
             prerelease=true
           else
