@@ -285,3 +285,63 @@ func TestRealignRepointsRecordsAtTheirRelease(t *testing.T) {
 		t.Errorf("Realign changed %d records the second time, want 0", second)
 	}
 }
+
+// The update check is cached, not re-fetched, so a check made by an older
+// build keeps being displayed: 上游最新 goes on saying "v5.5.71-velocity"
+// about a release that is now read as one. Repaired in place — including for a
+// library whose versions were already merged by an earlier run, which is the
+// state a panel that has restarted once is in.
+func TestRegroupRepairsTheCachedCheck(t *testing.T) {
+	library := newLibrary(t)
+	item, err := library.Add("LuckPerms", Source{Kind: SourceModrinth, Repo: "luckperms"}, "", "")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	storeArtifact(t, library, item.ID, "v5.5.71", "v5.5.71", "LuckPerms-Bukkit-5.5.71.jar", "bukkit-bytes")
+	if err := library.RecordCheck(item.ID, &Release{
+		Tag:     "aa",
+		Name:    "v5.5.71 (Velocity)",
+		Version: "v5.5.71-velocity",
+	}, nil); err != nil {
+		t.Fatalf("RecordCheck: %v", err)
+	}
+
+	if fixed := library.Regroup(quiet()); fixed != 1 {
+		t.Fatalf("Regroup rewrote %d plugins, want 1", fixed)
+	}
+	stored, err := library.Get(item.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if stored.Latest == nil || stored.Latest.Version != "v5.5.71" || stored.Latest.Tag != "v5.5.71" {
+		t.Fatalf("upstream is %+v, want v5.5.71 with no platform on it", stored.Latest)
+	}
+	// And with the tag repaired, the release the library holds is recognised as
+	// the one upstream published — no permanent 有更新 on a plugin that is up
+	// to date.
+	if stored.UpdateAvailable() {
+		t.Error("still reports an update, though the library holds that release")
+	}
+	if second := library.Regroup(quiet()); second != 0 {
+		t.Errorf("Regroup rewrote %d plugins the second time, want 0", second)
+	}
+}
+
+// A GitHub tag is whatever the author typed and means nothing to strip.
+func TestRegroupLeavesGitHubChecksAlone(t *testing.T) {
+	library := newLibrary(t)
+	item := addPlugin(t, library, "Essentials", "EssentialsX/Essentials")
+	if err := library.RecordCheck(item.ID, &Release{Tag: "2.21.0-fabric", Version: "2.21.0-fabric"}, nil); err != nil {
+		t.Fatalf("RecordCheck: %v", err)
+	}
+	if fixed := library.Regroup(quiet()); fixed != 0 {
+		t.Fatalf("Regroup rewrote %d plugins, want 0", fixed)
+	}
+	stored, err := library.Get(item.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if stored.Latest.Tag != "2.21.0-fabric" {
+		t.Errorf("upstream tag became %q; a GitHub tag is not the panel's to rewrite", stored.Latest.Tag)
+	}
+}

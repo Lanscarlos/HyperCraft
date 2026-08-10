@@ -43,8 +43,15 @@ func (l *Library) Regroup(log *slog.Logger) int {
 	registry := l.load()
 	fixed := 0
 	for id, item := range registry {
+		item, latest := repairLatest(item)
 		merged, moves, ok := planRegroup(item)
 		if !ok {
+			if latest {
+				// Nothing on disk to move; the cached check was the only thing
+				// wrong with this entry.
+				registry[id] = item
+				fixed++
+			}
 			continue
 		}
 		if err := l.applyMoves(id, moves); err != nil {
@@ -133,6 +140,51 @@ func (m *Instances) Realign(library *Library, log *slog.Logger) int {
 		}
 	}
 	return fixed
+}
+
+// repairLatest rewrites what the last update check cached.
+//
+// The check result is stored, not re-fetched — the anonymous GitHub API allows
+// sixty calls an hour, and a page that refreshed it on every visit would spend
+// that budget on nobody's behalf. Which means a check made by an older build
+// keeps being displayed: 上游最新 goes on saying "v5.5.71-velocity" long after
+// the reader stopped producing such a thing, because nothing has looked again.
+// So the cached answer is rewritten to what a look would find now.
+//
+// Only the identity is repaired, not the assets — a re-check replaces the whole
+// record with a properly read one, and inventing a jar list here would be the
+// migration making up data it does not have.
+func repairLatest(item Plugin) (Plugin, bool) {
+	if item.Latest == nil {
+		return item, false
+	}
+	tag, version := item.Latest.Tag, item.Latest.Version
+	switch item.Source.Kind {
+	case SourceHangar:
+		if at := strings.Index(tag, "@"); at > 0 {
+			tag = tag[:at]
+		}
+		version, _ = releaseNumber(version)
+	case SourceModrinth:
+		// The stored tag is a Modrinth version id, which names one build and
+		// is not what a release is addressed by any more. The number is.
+		number, _ := releaseNumber(version)
+		if number == "" {
+			return item, false
+		}
+		tag, version = number, number
+	default:
+		return item, false
+	}
+	if tag == item.Latest.Tag && version == item.Latest.Version {
+		return item, false
+	}
+	// Copied rather than written through the pointer: the same Release may be
+	// shared with a caller that read this entry a moment ago.
+	latest := *item.Latest
+	latest.Tag, latest.Version = tag, version
+	item.Latest = &latest
+	return item, true
 }
 
 // want is one jar and where it has to end up: which release directory it is
