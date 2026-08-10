@@ -179,6 +179,12 @@ func run() error {
 	// can be several — one per account whose repositories the panel reads — and
 	// a plugin source names which of them it is read with.
 	pluginClient.SetTokens(api.PluginTokens(panel.GitHubTokens))
+	// 插件市场 opens on a curated shelf that has to be read from the registries
+	// before it can be drawn, which is a couple of seconds nobody should spend
+	// looking at an empty page. Read once here, in the background, so it is
+	// already there when somebody opens the market; refreshed from then on
+	// behind whoever is looking at it. See plugin/picks.go.
+	pluginClient.Registry().RefreshPicks()
 	pluginDownloads := plugin.NewDownloader(pluginClient, pluginLibrary, logger)
 	defer pluginDownloads.Close()
 	instancePlugins := plugin.NewInstances(pluginLibrary, paths.InstancePluginsFile())
