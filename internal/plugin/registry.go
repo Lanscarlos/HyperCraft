@@ -227,10 +227,11 @@ type Dependency struct {
 
 // Registry reads the three plugin catalogues.
 //
-// It holds no state beyond its HTTP client: nothing here is cached, because a
-// search is typed fresh every time and a version list is read at the moment of
-// installing, which is the one moment where a stale answer installs the wrong
-// file.
+// Searches and version lists are not cached, and that is the point of the type:
+// a search is typed fresh every time, and a version list is read at the moment
+// of installing, which is the one moment where a stale answer installs the wrong
+// file. The single exception is the curated shelf the empty query shows, which
+// is not a query at all but a fixed list of eleven ids — see picks.go.
 type Registry struct {
 	http      *http.Client
 	userAgent string
@@ -240,6 +241,8 @@ type Registry struct {
 	hangarBase   string
 	spigetBase   string
 	spigotBase   string
+
+	picks picksCache
 }
 
 func NewRegistry(userAgent string) *Registry {
@@ -250,6 +253,11 @@ func NewRegistry(userAgent string) *Registry {
 		hangarBase:   "https://hangar.papermc.io/api/v1",
 		spigetBase:   "https://api.spiget.org/v2",
 		spigotBase:   "https://www.spigotmc.org",
+		picks: picksCache{
+			ttl:        picksTTL,
+			partialTTL: picksPartialTTL,
+			emptyTTL:   picksEmptyTTL,
+		},
 	}
 }
 
