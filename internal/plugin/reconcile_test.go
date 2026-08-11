@@ -35,6 +35,7 @@ func storeDeclaredJar(t *testing.T, library *Library, id, tag, fileName, declare
 		PluginName: declared,
 		PluginVer:  declaredVer,
 		Platform:   "bukkit",
+		Scanned:    true,
 		AddedAt:    time.Now(),
 	}
 	err = library.record(id, Version{

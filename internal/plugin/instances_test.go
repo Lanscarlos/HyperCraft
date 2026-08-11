@@ -212,7 +212,7 @@ func TestUninstallRemovesTheJarAndTheRecord(t *testing.T) {
 
 	// A disabled plugin is uninstalled by its disabled name; the caller should
 	// not have to know which one it is on.
-	if err := instances.Uninstall("inst", dir, keyPluginPrefix+item.ID); err != nil {
+	if err := instances.Uninstall("inst", dir, keyPluginPrefix+item.ID, false); err != nil {
 		t.Fatalf("Uninstall: %v", err)
 	}
 	if exists(t, dir, "plugins/EssentialsX-1.0.0.jar"+disabledSuffix) {
@@ -232,7 +232,7 @@ func TestUninstallAnUnmanagedJar(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	if err := instances.Uninstall("inst", dir, keyFilePrefix+"plugins/Vault.jar"); err != nil {
+	if err := instances.Uninstall("inst", dir, keyFilePrefix+"plugins/Vault.jar", false); err != nil {
 		t.Fatalf("Uninstall: %v", err)
 	}
 	if exists(t, dir, "plugins/Vault.jar") {
@@ -249,7 +249,7 @@ func TestFileKeysMustNameAJar(t *testing.T) {
 		keyFilePrefix + "plugins/",
 		"nonsense",
 	} {
-		if err := instances.Uninstall("inst", dir, key); !errors.Is(err, ErrInvalidID) {
+		if err := instances.Uninstall("inst", dir, key, false); !errors.Is(err, ErrInvalidID) {
 			t.Errorf("Uninstall(%q) should have been refused, got %v", key, err)
 		}
 	}
@@ -631,5 +631,102 @@ func TestListFlagsTwoJarsDeclaringTheSamePlugin(t *testing.T) {
 		if len(row.Conflicts) != 0 {
 			t.Errorf("%s still reports a conflict: %v", row.FileName, row.Conflicts)
 		}
+	}
+}
+
+// configFixture is instanceFixture with a real jar, so the entry carries the
+// declared name the config directory is derived from — Bukkit names that
+// directory after plugin.yml, not after the file.
+func configFixture(t *testing.T) (*Instances, *Library, string, Plugin) {
+	t.Helper()
+	library := newLibrary(t)
+	item := addPlugin(t, library, "EssentialsX", "EssentialsX/Essentials")
+	storeDeclaredJar(t, library, item.ID, "v1.0.0", "EssentialsX-1.0.0.jar", "Essentials", "1.0.0")
+
+	dir := t.TempDir()
+	instances := NewInstances(library, filepath.Join(t.TempDir(), "instance-plugins.json"))
+	return instances, library, dir, item
+}
+
+// writeConfigDir puts a plugin's config directory where Bukkit would: named
+// after the descriptor's name, not after the jar.
+func writeConfigDir(t *testing.T, dir, name string) {
+	t.Helper()
+	path := filepath.Join(dir, "plugins", name)
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "config.yml"), []byte("k: v\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+}
+
+func TestUninstallKeepsTheConfigDirectoryByDefault(t *testing.T) {
+	instances, _, dir, item := configFixture(t)
+	if _, err := instances.Install("inst", dir, item.ID, "v1.0.0"); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	writeConfigDir(t, dir, "Essentials")
+
+	if err := instances.Uninstall("inst", dir, keyPluginPrefix+item.ID, false); err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+	if !exists(t, dir, "plugins/Essentials/config.yml") {
+		t.Error("the config directory went without being asked for")
+	}
+}
+
+func TestUninstallDeletesTheConfigDirectoryWhenAsked(t *testing.T) {
+	instances, _, dir, item := configFixture(t)
+	if _, err := instances.Install("inst", dir, item.ID, "v1.0.0"); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	// Named after the descriptor, which is not what the jar is called — the
+	// whole reason the panel has to read the jar before it can delete this.
+	writeConfigDir(t, dir, "Essentials")
+
+	if err := instances.Uninstall("inst", dir, keyPluginPrefix+item.ID, true); err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+	if exists(t, dir, "plugins/Essentials") {
+		t.Error("the config directory survived")
+	}
+	if exists(t, dir, "plugins/EssentialsX-1.0.0.jar") {
+		t.Error("the jar survived")
+	}
+}
+
+func TestUninstallLeavesTheConfigOfANameSharedWithAnotherJar(t *testing.T) {
+	instances, _, dir, item := configFixture(t)
+	if _, err := instances.Install("inst", dir, item.ID, "v1.0.0"); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	writeConfigDir(t, dir, "Essentials")
+
+	// A second jar in the directory declaring the same plugin name. Which of
+	// the two owns plugins/Essentials/ is unknowable, so deleting it would be a
+	// coin flip with somebody's permission groups on it.
+	other := jarBytes(t, "plugin.yml", "name: Essentials\nversion: 9.9.9\n")
+	if err := os.WriteFile(filepath.Join(dir, "plugins", "Essentials-fork.jar"), other, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := instances.Uninstall("inst", dir, keyPluginPrefix+item.ID, true); err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+	if !exists(t, dir, "plugins/Essentials/config.yml") {
+		t.Error("the config of a contested name was deleted")
+	}
+}
+
+func TestUninstallWithNoConfigDirectoryIsNotAnError(t *testing.T) {
+	instances, _, dir, item := configFixture(t)
+	if _, err := instances.Install("inst", dir, item.ID, "v1.0.0"); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	// A plugin that has never started has written nothing. Asking to delete a
+	// directory that does not exist is the ordinary case, not a failure.
+	if err := instances.Uninstall("inst", dir, keyPluginPrefix+item.ID, true); err != nil {
+		t.Fatalf("Uninstall: %v", err)
 	}
 }

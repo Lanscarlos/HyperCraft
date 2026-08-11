@@ -439,6 +439,11 @@ function LibraryScope(props: Props) {
                 <span className="badge badge--update">安装中</span>
               ) : section === 'plugins' && page.id === 'list' && plugins.updates > 0 ? (
                 <span className="badge badge--update">{plugins.updates}</span>
+              ) : // A count rather than 下载中: with a queue the interesting
+              // number is how many, and the row is the way to the page that
+              // says which.
+              section === 'plugins' && page.id === 'queue' && plugins.active > 0 ? (
+                <span className="badge badge--update">{plugins.active}</span>
               ) : null
 
             return (

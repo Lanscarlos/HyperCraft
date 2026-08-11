@@ -77,6 +77,22 @@ type Artifact struct {
 	APIVersion string   `json:"apiVersion,omitempty"`
 	Depend     []string `json:"depend,omitempty"`
 	SoftDepend []string `json:"softDepend,omitempty"`
+	// Description and Authors are the rest of what the descriptor says, and
+	// they are here for a plainer reason than the fields above: the library
+	// page could name a plugin and count its versions but could not say what
+	// the thing *does*. The registries answer that for a plugin that came from
+	// one; a GitHub source and an uploaded jar have no listing to read, and for
+	// those the descriptor is the only account of the plugin that exists.
+	//
+	// Descriptor, not listing. They are separate claims and the panel keeps
+	// them apart everywhere else, so it does here too — see DescriptorFacts.
+	Description string   `json:"description,omitempty"`
+	Authors     []string `json:"authors,omitempty"`
+	// Scanned marks a jar the panel has opened and read, whatever it found.
+	// Without it there is no way to tell "this jar declares nothing" from "this
+	// record predates the panel reading jars at all", and the backfill would
+	// re-open every Forge mod in the library on every start.
+	Scanned bool `json:"scanned,omitempty"`
 
 	// GameVersions and Loaders are what the *source* said this jar supports,
 	// which is a different claim from the descriptor's api-version and is kept
@@ -89,6 +105,111 @@ type Artifact struct {
 // Describes reports whether this artifact is the jar with that digest.
 func (a Artifact) Describes(sha string) bool {
 	return sha != "" && strings.EqualFold(a.SHA256, sha)
+}
+
+// applyJarInfo copies a descriptor onto the artifact.
+//
+// One place rather than a field list repeated at every call site: a download, a
+// local import and the backfill all read the same descriptor and every one of
+// them used to copy its own subset, which is how the library ended up holding
+// dependency lists for downloaded jars and nothing at all for imported ones.
+//
+// Platform is the exception and is only filled in when the descriptor names
+// one, because the caller may know better: a release's asset can carry a
+// platform for a jar whose descriptor does not.
+func (a *Artifact) applyJarInfo(info JarInfo) {
+	a.Scanned = true
+	a.PluginName = info.Name
+	a.PluginVer = info.Version
+	a.APIVersion = info.APIVersion
+	a.Depend = info.Depend
+	a.SoftDepend = info.SoftDepend
+	a.Description = info.Description
+	a.Authors = info.Authors
+	if info.Platform != "" {
+		a.Platform = info.Platform
+	}
+}
+
+// DescriptorFacts is what a plugin's jars declare about themselves, folded
+// across every version the library holds.
+//
+// Folded rather than taken from the newest, because the newest is not always
+// the one that answers: a plugin whose author dropped the description in one
+// release still has it in the one before, and an operator asking "what is this"
+// is asking about the plugin rather than about a build of it. Newest first
+// wherever there is a choice, since a description that was rewritten was
+// rewritten for a reason.
+type DescriptorFacts struct {
+	// Name is what the jars call themselves, which is the name the *server*
+	// files the plugin under and is regularly not what the source calls it —
+	// the EssentialsX repository ships a jar declaring "Essentials".
+	Name        string   `json:"name,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Authors     []string `json:"authors,omitempty"`
+	APIVersion  string   `json:"apiVersion,omitempty"`
+	Depend      []string `json:"depend,omitempty"`
+	SoftDepend  []string `json:"softDepend,omitempty"`
+	// Scanned is false when no jar of this plugin has ever been read — an
+	// empty descriptor block then means "not looked at yet" rather than "this
+	// jar declares nothing", and the page says so instead of showing a gap.
+	Scanned bool `json:"scanned,omitempty"`
+}
+
+// Descriptor folds a plugin's jars into one account of what it is.
+func (p Plugin) Descriptor() DescriptorFacts {
+	var out DescriptorFacts
+	depend, soft := map[string]bool{}, map[string]bool{}
+
+	// Newest first: Versions is held newest first, so the first jar that says
+	// anything is the most recent one that does.
+	for _, version := range p.Versions {
+		for _, artifact := range version.Artifacts {
+			if artifact.Scanned {
+				out.Scanned = true
+			}
+			if out.Name == "" {
+				out.Name = artifact.PluginName
+			}
+			if out.Description == "" {
+				out.Description = artifact.Description
+			}
+			if len(out.Authors) == 0 {
+				out.Authors = artifact.Authors
+			}
+			if out.APIVersion == "" {
+				out.APIVersion = artifact.APIVersion
+			}
+			for _, name := range artifact.Depend {
+				depend[name] = true
+			}
+			for _, name := range artifact.SoftDepend {
+				soft[name] = true
+			}
+		}
+	}
+
+	// A hard dependency outranks a soft one: a plugin that made an optional
+	// dependency required is a plugin whose server will not start without it,
+	// and listing that name under 软前置 would be the friendlier of two answers
+	// and the wrong one.
+	for name := range depend {
+		delete(soft, name)
+	}
+	out.Depend, out.SoftDepend = sortedKeys(depend), sortedKeys(soft)
+	return out
+}
+
+func sortedKeys(set map[string]bool) []string {
+	if len(set) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(set))
+	for key := range set {
+		out = append(out, key)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Version is one release of a plugin, and the jars held under it.
@@ -680,6 +801,100 @@ func (l *Library) record(id string, version Version) error {
 	item.Versions = append(item.Versions, version)
 	registry[id] = item
 	return l.save(registry)
+}
+
+// pending is one jar the rescan has to open.
+type pending struct {
+	id, tag, file string
+	sha           string
+}
+
+// Rescan reads the descriptor of every held jar the panel has never opened,
+// and records what each one says. It returns how many jars were read.
+//
+// This exists because the fields came later than the library did. A panel that
+// has been running since before jars were read holds versions with no
+// descriptor at all, and an operator has no way to ask for one — the jar is on
+// disk and correct, so nothing will ever re-download it. Without a sweep those
+// rows would stay blank forever while every new download filled in, which
+// looks exactly like the feature being broken.
+//
+// The reading happens outside the lock. Every jar is a few kilobytes of zip
+// central directory, but a library with a hundred of them on a slow disk is
+// still long enough that holding the registry lock through it would stall the
+// pages that only wanted to list what is there.
+//
+// Best effort throughout: a jar that will not open is marked as read with
+// nothing found, because the alternative is re-opening it on every start.
+func (l *Library) Rescan() int {
+	l.mu.Lock()
+	registry := l.load()
+	work := make([]pending, 0, len(registry))
+	for id, item := range registry {
+		for _, version := range item.Versions {
+			for _, artifact := range version.normalise().Artifacts {
+				if artifact.Scanned || artifact.FileName == "" {
+					continue
+				}
+				work = append(work, pending{id: id, tag: version.Tag, file: artifact.FileName, sha: artifact.SHA256})
+			}
+		}
+	}
+	l.mu.Unlock()
+
+	if len(work) == 0 {
+		return 0
+	}
+
+	found := make(map[pending]JarInfo, len(work))
+	for _, item := range work {
+		path := l.versionFile(item.id, item.tag, item.file)
+		info, _, err := readJar(path)
+		if err != nil && !errors.Is(err, ErrNotAJar) {
+			// The file is gone or unreadable. Not marked as read: describe()
+			// already hides a version whose jar is missing, and a jar that
+			// comes back — a mount that was not ready at boot — should be read
+			// then rather than written off now.
+			continue
+		}
+		found[item] = info
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	registry = l.load()
+	changed := 0
+	for item, info := range found {
+		plugin, ok := registry[item.id]
+		if !ok {
+			continue
+		}
+		for i := range plugin.Versions {
+			if plugin.Versions[i].Tag != item.tag {
+				continue
+			}
+			version := plugin.Versions[i].normalise()
+			for j := range version.Artifacts {
+				artifact := &version.Artifacts[j]
+				// Matched on both, because a record written before there were
+				// digests has only the file name to go on.
+				if artifact.FileName != item.file || (item.sha != "" && !artifact.Describes(item.sha)) {
+					continue
+				}
+				artifact.applyJarInfo(info)
+				changed++
+			}
+			plugin.Versions[i] = version.normalise()
+		}
+		registry[item.id] = plugin
+	}
+	if changed == 0 {
+		return 0
+	}
+	if err := l.save(registry); err != nil {
+		return 0
+	}
+	return changed
 }
 
 func upsertArtifact(list []Artifact, incoming Artifact) []Artifact {
