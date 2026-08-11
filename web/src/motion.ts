@@ -12,10 +12,16 @@
  *   - switching the whole colour scheme, which changes every painted pixel at
  *     once and has no single element to hang a transition on.
  *
- * All three read `prefers-reduced-motion` themselves. The stylesheet's blanket
- * override only reaches CSS animations and transitions; a WAAPI animation and a
- * setTimeout would sail straight through it, so honouring the preference has to
- * be a decision each of these makes.
+ * A fourth — a number walking to the value just polled, which no transition can
+ * reach because it is the contents of a text node — is a hook and therefore in
+ * useTween.ts, where the rest of the hooks are. It borrows its duration and its
+ * reduced-motion check from here.
+ *
+ * All of them read `prefers-reduced-motion` themselves. The stylesheet's
+ * blanket override only reaches CSS animations and transitions; a WAAPI
+ * animation, a setTimeout and a requestAnimationFrame loop would sail straight
+ * through it, so honouring the preference has to be a decision each of these
+ * makes.
  */
 
 /** Mirrors the --dur-* tokens. Kept in step with styles.css by hand: these are
@@ -30,6 +36,11 @@ export const DUR = {
   mid: 220,
   /** --dur-4: something that crosses the screen or covers it. */
   slow: 300,
+  /** --dur-data: a number or a bar walking to the value just polled. Longer
+   *  than any of the above on purpose — this one is not a response to a press
+   *  and has nobody waiting on it, and the extra time is what makes the
+   *  direction of travel readable. */
+  data: 400,
 } as const
 
 export const EASE = 'cubic-bezier(0.32, 0.72, 0, 1)'

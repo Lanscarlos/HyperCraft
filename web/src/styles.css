@@ -2727,6 +2727,23 @@ a:hover {
   width: 32px;
 }
 
+/* The wording of a power button, on its own so it can cross over while the
+   button it sits in stays exactly where it is. PowerControls.tsx has the
+   reasoning; the two things this rule has to get right are here.
+
+   --dur, because a control changing state where it stands is the definition of
+   the default duration — the button has not moved and nothing has crossed the
+   screen, one word has been replaced by another.
+
+   `backwards` and not `both`, for the reason the stagger block gives at the
+   top of this file: `both` would leave the animation's `opacity: 1` in force
+   for good, and an animated value outranks a declared one. Every disabled
+   power button — which is every one of them for the second a request is out —
+   would quietly stop dimming. */
+.power__label {
+  animation: fade var(--dur) var(--ease) backwards;
+}
+
 /* --------------------------------------------------------------- console */
 
 .console {

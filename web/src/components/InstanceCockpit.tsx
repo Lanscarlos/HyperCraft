@@ -5,6 +5,7 @@ import { formatBytes, formatPercent } from '../format'
 import type { InstanceSection } from '../routes'
 import type { InstanceMetrics, InstanceStatus, StateInfo } from '../types'
 import { STATE_LABELS, isLive, mergeState } from '../types'
+import { useTween } from '../useTween'
 import { useUptime } from '../useUptime'
 import { Console } from './Console'
 import { PowerControls } from './PowerControls'
@@ -53,7 +54,12 @@ export function InstanceCockpit({ instance, active, onChanged, onOpenSection }: 
   }, [metrics])
 
   const xmx = instance.maxMemoryMB > 0 ? instance.maxMemoryMB * 1024 * 1024 : 0
-  const used = trend.latest?.memoryBytes ?? 0
+  // null rather than 0 for "no reading": a stopped server has not got a
+  // memory figure of zero, it has not got one at all, and the tiles say so in
+  // words. It is also what keeps the readouts from counting up from zero the
+  // first time a sample lands — see useTween.
+  const used = trend.latest?.memoryBytes ?? null
+  const cpu = trend.latest?.cpuPercent ?? null
 
   const applyState = (state: StateInfo) => onChanged(mergeState(instance, state))
 
@@ -86,7 +92,7 @@ export function InstanceCockpit({ instance, active, onChanged, onOpenSection }: 
       <div className="tiles">
         <Tile
           label="CPU"
-          value={trend.latest ? formatPercent(trend.latest.cpuPercent) : live ? '等采样…' : '—'}
+          value={<Reading value={cpu} format={formatPercent} fallback={live ? '等采样…' : '—'} />}
           detail={
             metrics ? `本机 ${metrics.cpuCores} 核 · 100% 为占满一核` : '主线程基本是单线程的'
           }
@@ -104,11 +110,21 @@ export function InstanceCockpit({ instance, active, onChanged, onOpenSection }: 
         />
         <Tile
           label="内存"
-          value={trend.latest ? formatBytes(used) : live ? '等采样…' : '—'}
+          value={<Reading value={used} format={formatBytes} fallback={live ? '等采样…' : '—'} />}
           detail={
-            xmx > 0
-              ? `已分配 ${formatBytes(xmx)}${trend.latest ? ` · ${formatPercent((used / xmx) * 100)}` : ''}`
-              : '没有设置 -Xmx'
+            xmx > 0 ? (
+              <>
+                已分配 {formatBytes(xmx)}
+                {used !== null && (
+                  <>
+                    {' · '}
+                    <Reading value={used} format={(v) => formatPercent((v / xmx) * 100)} />
+                  </>
+                )}
+              </>
+            ) : (
+              '没有设置 -Xmx'
+            )
           }
           spark={
             trend.memory.length > 1 ? (
@@ -230,8 +246,8 @@ function Tile({
   onClick,
 }: {
   label: string
-  value: string
-  detail: string
+  value: React.ReactNode
+  detail: React.ReactNode
   spark?: React.ReactNode
   onClick?: () => void
 }) {
@@ -249,6 +265,29 @@ function Tile({
       {body}
     </button>
   )
+}
+
+/**
+ * One live number, and nothing else.
+ *
+ * The tween runs a frame at a time, so whichever component owns it re-renders
+ * sixty times a second for the length of the journey. Owned by the cockpit,
+ * that would be the console and both sparklines redrawn on every one of those
+ * frames — the exact cost this panel refuses to pay, on the exact page that
+ * can least afford it. Owned by a component that renders a string, it is a
+ * text node being rewritten, which is what it looked like it was all along.
+ */
+function Reading({
+  value,
+  format,
+  fallback,
+}: {
+  value: number | null
+  format: (value: number) => string
+  fallback?: React.ReactNode
+}) {
+  const shown = useTween(value)
+  return <>{shown === null ? fallback : format(shown)}</>
 }
 
 function CopyAddress({ address }: { address: string }) {

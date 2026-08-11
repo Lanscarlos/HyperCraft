@@ -77,7 +77,7 @@ export function PowerControls({ instance, onChanged, variant = 'full', onError }
         },
       ]}
     >
-      ⋯
+      <Label text="⋯" />
     </Menu>
   )
 
@@ -85,7 +85,7 @@ export function PowerControls({ instance, onChanged, variant = 'full', onError }
     <div className={`power power--${variant}`}>
       {transitioning ? (
         <button className="btn" disabled aria-busy="true">
-          {instance.state === 'starting' ? '启动中…' : '停止中…'}
+          <Label text={instance.state === 'starting' ? '启动中…' : '停止中…'} />
         </button>
       ) : down ? (
         <button
@@ -94,7 +94,7 @@ export function PowerControls({ instance, onChanged, variant = 'full', onError }
           disabled={busy}
           aria-busy={pending === 'start' || undefined}
         >
-          启动
+          <Label text="启动" />
         </button>
       ) : (
         <>
@@ -105,7 +105,7 @@ export function PowerControls({ instance, onChanged, variant = 'full', onError }
               disabled={busy}
               aria-busy={pending === 'restart' || undefined}
             >
-              重启
+              <Label text="重启" />
             </button>
           )}
           <button
@@ -114,7 +114,7 @@ export function PowerControls({ instance, onChanged, variant = 'full', onError }
             disabled={busy}
             aria-busy={pending === 'stop' || undefined}
           >
-            停止
+            <Label text="停止" />
           </button>
         </>
       )}
@@ -123,6 +123,40 @@ export function PowerControls({ instance, onChanged, variant = 'full', onError }
           card does not twitch when its server comes up. */}
       {down && variant === 'compact' && <span className="power__spacer" aria-hidden="true" />}
     </div>
+  )
+}
+
+/**
+ * A power button's wording, which crosses over instead of cutting.
+ *
+ * 启动 → 启动中… → 停止 is the server changing state, and until now the row
+ * announced it by swapping the text between two frames — the one kind of
+ * change the eye reliably fails to catch, on the one row where knowing what
+ * the server is doing matters most. The word fades in and the reader's
+ * attention goes to it.
+ *
+ * Three decisions hold this to a fifth of a second of ink and nothing else:
+ *
+ *   - The label animates, the button does not. React keeps the button element
+ *     across a wording change, so focus stays where the keyboard left it —
+ *     re-keying the button instead would drop focus to <body> mid-operation.
+ *   - Opacity on the label, never on the button. A disabled button is dimmed
+ *     with `opacity: 0.45`, and an animated value outranks a declared one: an
+ *     entrance that faded the *button* to 1 would brighten every 停止中… past
+ *     its resting state and then drop it. Nested, the two multiply, which is
+ *     the correct reading.
+ *   - No transform. These are the controls that stop a server with people on
+ *     it; a target that is still settling when the pointer arrives is not a
+ *     trade worth making for a nicer entrance.
+ *
+ * The key is what makes it replay: a CSS animation runs when its element is
+ * created, so a new wording has to be a new span.
+ */
+function Label({ text }: { text: string }) {
+  return (
+    <span className="power__label" key={text}>
+      {text}
+    </span>
   )
 }
 
