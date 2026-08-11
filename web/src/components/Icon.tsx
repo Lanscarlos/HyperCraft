@@ -30,6 +30,7 @@ export type IconName =
   | 'back'
   | 'devices'
   | 'update'
+  | 'queue'
   | 'github'
 
 const PATHS: Record<IconName, ReactElement> = {
@@ -156,6 +157,17 @@ const PATHS: Record<IconName, ReactElement> = {
     <>
       <path d="M12 3.5v11m0 0 4-4m-4 4-4-4" />
       <path d="M4.5 17.5v1a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-1" />
+    </>
+  ),
+  // A list with a download arrow beside it, which is what a download queue is.
+  // Deliberately not the `update` glyph the download *pages* use: this one is
+  // not an action, it is the several of them already in flight, and the stack
+  // of lines is the whole difference. The last line is short so the three do
+  // not read as the `menu` hamburger at 18px.
+  queue: (
+    <>
+      <path d="M4 6h8M4 11h8M4 16h5" />
+      <path d="M17.5 7v9m0 0 2.5-2.5m-2.5 2.5L15 13.5" />
     </>
   ),
   // A branch off a trunk, rather than the Octocat: the mark is a filled shape

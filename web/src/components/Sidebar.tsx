@@ -543,13 +543,15 @@ const LIBRARY_ICONS: Record<LibrarySection, IconName> = {
   plugins: 'plugins',
 }
 
-/** A page inside a shelf is one of three things: what you have, where to get
- *  more, and where the getting is configured. The icons say which. */
+/** A page inside a shelf is one of four things: what you have, where to get
+ *  more, where the getting is configured, and — since a download stopped being
+ *  one at a time — what is being got right now. The icons say which. */
 const LIBRARY_VIEW_ICONS: Record<string, IconName> = {
   stock: 'cores',
   installed: 'java',
   list: 'plugins',
   browse: 'search',
+  queue: 'queue',
   download: 'update',
   install: 'update',
   source: 'settings',
