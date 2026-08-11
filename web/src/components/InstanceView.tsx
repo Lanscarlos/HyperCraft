@@ -6,6 +6,8 @@ import type { InstanceStatus } from '../types'
 import type { CoreController } from '../useCores'
 import type { PluginController } from '../usePlugins'
 import { ConfigHistory } from './ConfigHistory'
+import type { ConfigHistoryFocus } from './ConfigHistory'
+import { ErrorBoundary } from './ErrorBoundary'
 import type { FileJump } from './FileManager'
 import { FileManager } from './FileManager'
 import { InstanceCockpit } from './InstanceCockpit'
@@ -62,6 +64,16 @@ export function InstanceView({
   // list's 配置 shortcut, which is most of what saves an operator from
   // hand-walking plugins/<Name>/ twenty times a week.
   const [jump, setJump] = useState<FileJump | undefined>()
+  // The same handoff in the other direction: a file 配置历史 should answer for.
+  // The two panes are two views of one directory — what it holds now, and what
+  // it held before — and every question that starts in one ends in the other.
+  const [historyFocus, setHistoryFocus] = useState<ConfigHistoryFocus | undefined>()
+
+  const openSectionAt = (section: InstanceSection, mark: () => void) => {
+    setVisited((prev) => new Set(prev).add(section))
+    mark()
+    onOpenSection(section)
+  }
   // The section that was on screen a moment ago, kept visible over the new one
   // for the length of its exit. Without it a switch in the sidebar was a cut:
   // the outgoing pane was `hidden` in the same frame the incoming one appeared,
@@ -109,7 +121,15 @@ export function InstanceView({
       )}
       {visited.has('files') && (
         <Pane id="files" active={section === 'files'} leaving={leaving === 'files'} scroll>
-          <FileManager instance={instance} jump={jump} />
+          <FileManager
+            instance={instance}
+            jump={jump}
+            onOpenHistory={(path) =>
+              openSectionAt('config-history', () =>
+                setHistoryFocus({ path, token: Date.now() }),
+              )
+            }
+          />
         </Pane>
       )}
       {visited.has('plugins') && (
@@ -146,7 +166,15 @@ export function InstanceView({
           leaving={leaving === 'config-history'}
           scroll
         >
-          <ConfigHistory instance={instance} />
+          <ConfigHistory
+            instance={instance}
+            focus={historyFocus}
+            onOpenInFiles={(path) =>
+              openSectionAt('files', () =>
+                setJump({ path: parentOf(path), file: path, token: Date.now() }),
+              )
+            }
+          />
         </Pane>
       )}
       {visited.has('settings') && (
@@ -162,6 +190,14 @@ export function InstanceView({
       )}
     </div>
   )
+}
+
+/** The directory a file lives in, empty for one in the server root. Paths here
+ *  are always relative and slash-separated — they come from the API, not from
+ *  the host — so this needs no path library. */
+function parentOf(path: string): string {
+  const cut = path.lastIndexOf('/')
+  return cut < 0 ? '' : path.slice(0, cut)
 }
 
 /** `hidden` rather than unmounted — and `hidden` specifically, because it is
@@ -211,7 +247,10 @@ function Pane({
       }${leaving ? ' instance__pane--leaving' : ''}`}
       id={`instance-panel-${id}`}
     >
-      {children}
+      {/* Per pane, not per instance: the panes stay mounted behind each other,
+          so one section that throws would otherwise take the console — the one
+          thing here that must not go down — with it. */}
+      <ErrorBoundary>{children}</ErrorBoundary>
     </div>
   )
 }
