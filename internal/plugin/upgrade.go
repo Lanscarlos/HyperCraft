@@ -41,6 +41,33 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/serverfiles"
 )
 
+// ConfigHistory is the config-version-management half of a plugin
+// transaction. Injected rather than imported so the plugin package keeps
+// knowing nothing about Git; nil turns the whole thing off and leaves the
+// directory copy as the only way config is kept.
+type ConfigHistory interface {
+	// Snapshot records the instance's configuration and returns the commit.
+	// An empty ref and a nil error means nothing was recorded — the module is
+	// off for this instance, or nothing had changed — and the caller falls
+	// back to copying the directory.
+	Snapshot(instanceID, directory, message, actor string) (string, error)
+	// RestoreSubtree puts one directory of a recorded commit back on disk.
+	RestoreSubtree(instanceID, directory, ref, prefix, actor string) error
+}
+
+// SetConfigHistory installs the config history. Called once at wiring time.
+func (m *Instances) SetConfigHistory(history ConfigHistory) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.configHistory = history
+}
+
+func (m *Instances) history() ConfigHistory {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.configHistory
+}
+
 // keepSnapshots bounds the undo history per instance. This is a rollback path,
 // not an archive: what anybody actually reaches for is the version they were on
 // an hour ago, and the disk cost is a full copy of a jar per entry.
@@ -82,8 +109,21 @@ type Snapshot struct {
 	BackupDir string   `json:"backupDir,omitempty"`
 	Removed   []string `json:"removed,omitempty"`
 
-	ConfigDir   string `json:"configDir,omitempty"`
-	ConfigSaved bool   `json:"configSaved"`
+	ConfigDir string `json:"configDir,omitempty"`
+	// ConfigSaved says a rollback can put the plugin's configuration back,
+	// whichever way it was kept — a commit in the config history, or the
+	// directory copy that predates it.
+	ConfigSaved bool `json:"configSaved"`
+	// ConfigCommitRef is the config history commit taken just before this
+	// transaction. It replaces copying the plugin's config directory: the
+	// history already holds every config file, deduplicated across every
+	// snapshot, so a second full copy per upgrade bought nothing but disk. See
+	// the design's §6.
+	//
+	// Empty on a snapshot taken while the config history was off for this
+	// instance, and on every snapshot written before it existed — both of which
+	// fall back to the directory copy.
+	ConfigCommitRef string `json:"configCommitRef,omitempty"`
 	// Note explains anything the snapshot could not do, in the operator's own
 	// terms. Shown on the rollback button, because it changes what that button
 	// will actually restore.
@@ -233,14 +273,25 @@ func (m *Instances) InstallArtifact(instanceID, directory, pluginID, tag, sha, a
 	}
 
 	// --- 2. back it up -----------------------------------------------------
+	//
+	// The jar goes to a backup directory; the configuration goes to the config
+	// history, which already holds it and holds it deduplicated. Only when
+	// there is no history for this instance does the old directory copy run,
+	// and it is the reason maxConfigBackup still exists.
+	snapshot.ConfigCommitRef = m.snapshotConfig(instanceID, directory, snapshot, item)
+
+	configToCopy := snapshot.ConfigDir
+	if snapshot.ConfigCommitRef != "" {
+		configToCopy = ""
+	}
 	backupDir := filepath.Join(m.backups, safeName(instanceID), snapshot.ID)
-	saved, note, err := m.backup(browser, backupDir, item.TargetDir, doomed, snapshot.ConfigDir)
+	saved, note, err := m.backup(browser, backupDir, item.TargetDir, doomed, configToCopy)
 	if err != nil {
 		_ = os.RemoveAll(backupDir)
 		return Entry{}, Snapshot{}, fmt.Errorf("升级前备份失败，没有动服务器上的任何文件：%w", err)
 	}
 	snapshot.Removed = doomed
-	snapshot.ConfigSaved = saved
+	snapshot.ConfigSaved = saved || snapshot.ConfigCommitRef != ""
 	snapshot.Note = note
 	// A first install has nothing to keep. Recording a backup directory that
 	// holds nothing would offer a rollback that restores nothing.
@@ -366,8 +417,8 @@ func (m *Instances) Rollback(instanceID, directory string, pluginID string, with
 		return Entry{}, err
 	}
 	if withConfig && snapshot.ConfigSaved {
-		if err := restoreTree(browser, filepath.Join(snapshot.BackupDir, configBackupName), snapshot.ConfigDir); err != nil {
-			return Entry{}, fmt.Errorf("jar 已回滚，但恢复配置目录失败：%w", err)
+		if err := m.restoreConfig(browser, instanceID, directory, snapshot); err != nil {
+			return Entry{}, fmt.Errorf("jar 已回滚，但恢复配置失败：%w", err)
 		}
 	}
 	if !enabled {
@@ -514,6 +565,88 @@ func artifactLoaders(artifact Artifact, version Version) []string {
 		return artifact.Loaders
 	}
 	return version.Loaders
+}
+
+// snapshotConfig records the configuration on the "before" side of a
+// transaction and returns the commit. Failing is not fatal: an upgrade that
+// refused to run because the history could not be written would be a worse
+// outcome than one whose config falls back to the directory copy, so the
+// caller carries on with an empty ref.
+func (m *Instances) snapshotConfig(instanceID, directory string, snapshot Snapshot, item Plugin) string {
+	history := m.history()
+	if history == nil {
+		return ""
+	}
+
+	name := item.Name
+	if name == "" {
+		name = snapshot.PluginID
+	}
+	message := fmt.Sprintf("安装 %s %s（前）", name, snapshot.To.Version)
+	if snapshot.From != nil {
+		message = fmt.Sprintf("升级 %s %s → %s（前）", name, snapshot.From.Version, snapshot.To.Version)
+	}
+
+	ref, err := history.Snapshot(instanceID, directory, message, snapshot.By)
+	if err != nil {
+		return ""
+	}
+	return ref
+}
+
+// restoreConfig puts a plugin's configuration back during a rollback, from
+// whichever side of the §6 change the snapshot was written on.
+func (m *Instances) restoreConfig(browser *serverfiles.Browser, instanceID, directory string, snapshot Snapshot) error {
+	if snapshot.ConfigCommitRef != "" {
+		history := m.history()
+		if history == nil {
+			return fmt.Errorf("配置历史不可用，没法从 %s 恢复配置", snapshot.ConfigCommitRef[:8])
+		}
+		return history.RestoreSubtree(instanceID, directory, snapshot.ConfigCommitRef, snapshot.ConfigDir, snapshot.By)
+	}
+	return restoreTree(browser, filepath.Join(snapshot.BackupDir, configBackupName), snapshot.ConfigDir)
+}
+
+// RemapConfigRefs rewrites the commit ids the snapshots point at.
+//
+// Compacting an instance's config history rebuilds it, which gives every
+// surviving commit a new id. Transaction snapshots are never dropped by a
+// compaction — plugin rollback depends on them — but their refs still have to
+// follow. A ref that is not in the map named a commit that is gone, and is
+// cleared rather than left dangling.
+func (m *Instances) RemapConfigRefs(instanceID string, remap map[string]string) error {
+	if len(remap) == 0 {
+		return nil
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	records := m.load()
+	book := records[instanceID]
+	if book == nil {
+		return nil
+	}
+	changed := false
+	for i := range book.Snapshots {
+		old := book.Snapshots[i].ConfigCommitRef
+		if old == "" {
+			continue
+		}
+		next := remap[old]
+		if next == old {
+			continue
+		}
+		book.Snapshots[i].ConfigCommitRef = next
+		if next == "" {
+			book.Snapshots[i].ConfigSaved = book.Snapshots[i].BackupDir != ""
+		}
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	return m.save(records)
 }
 
 // configBackupName is the subdirectory a snapshot keeps the config copy under,

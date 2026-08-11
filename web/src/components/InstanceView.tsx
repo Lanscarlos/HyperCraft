@@ -5,6 +5,7 @@ import type { InstanceSection } from '../routes'
 import type { InstanceStatus } from '../types'
 import type { CoreController } from '../useCores'
 import type { PluginController } from '../usePlugins'
+import { ConfigHistory } from './ConfigHistory'
 import type { FileJump } from './FileManager'
 import { FileManager } from './FileManager'
 import { InstanceCockpit } from './InstanceCockpit'
@@ -136,6 +137,16 @@ export function InstanceView({
           scroll
         >
           <PropertiesEditor instance={instance} />
+        </Pane>
+      )}
+      {visited.has('config-history') && (
+        <Pane
+          id="config-history"
+          active={section === 'config-history'}
+          leaving={leaving === 'config-history'}
+          scroll
+        >
+          <ConfigHistory instance={instance} />
         </Pane>
       )}
       {visited.has('settings') && (

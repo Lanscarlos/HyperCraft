@@ -136,6 +136,14 @@ func (s *Server) handleDeleteInstance(w http.ResponseWriter, r *http.Request) {
 		// ever restore them.
 		s.instancePlugins.ForgetBackups(id)
 	}
+	// The config history goes too, and the delete dialog says so before it is
+	// clicked — see the design's §9. Same ordering rule as the plugin records:
+	// only once the delete itself has succeeded.
+	if s.configHistory != nil {
+		if err := s.configHistory.Forget(id); err != nil {
+			s.log.Warn("could not remove the instance's config history", "instance", id, "err", err)
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

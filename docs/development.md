@@ -72,6 +72,8 @@ internal/hostterm/    本机终端：伪终端上的 shell，会话数上限与�
 internal/javaruntime/ Java 运行时：Adoptium 客户端、安全解压、已装运行时注册表
 internal/metrics/     CPU / 内存 / 网络采样，按进程树汇总
 internal/mcprops/     server.properties 解析 / 写回（保留格式，Java 转义）
+internal/confighist/  配置历史：收录规则、体积闸门、提交 / diff / 还原 / 压缩
+internal/gitlite/     最小 Git 对象层：松散对象、tree、单分支线性历史。不依赖 git 二进制
 internal/selfupdate/  面板自更新：下载校验、就地替换、exec 重启
 internal/store/       JSON 持久化（临时文件 + rename 原子写）
 internal/auth/        PBKDF2 凭据 + 内存会话 + 设备令牌

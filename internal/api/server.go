@@ -16,6 +16,7 @@ import (
 
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
+	"github.com/lanscarlos/hypercraft/internal/confighist"
 	"github.com/lanscarlos/hypercraft/internal/dbruntime"
 	"github.com/lanscarlos/hypercraft/internal/hostterm"
 	"github.com/lanscarlos/hypercraft/internal/instance"
@@ -98,6 +99,11 @@ type Server struct {
 	// like the pair above — without it the page loses its banner, not its
 	// ability to install anything.
 	pendingPlugins *plugin.Pending
+	// configHistory keeps a Git timeline of each server's configuration.
+	// Optional: nil turns the 配置历史 tab off and takes every lifecycle
+	// snapshot with it, which is what a panel that cannot write its data
+	// directory should do rather than failing every start.
+	configHistory *confighist.Service
 	// updater installs new panel releases. Optional in the same way: nil turns
 	// in-panel updates off.
 	updater *selfupdate.Service
@@ -138,6 +144,8 @@ type Options struct {
 	InstancePlugins *plugin.Instances
 	PendingPlugins  *plugin.Pending
 
+	ConfigHistory *confighist.Service
+
 	DatabaseInstalls *dbruntime.Installer
 	Databases        *dbruntime.Manager
 }
@@ -174,6 +182,7 @@ func NewServer(opts Options) *Server {
 
 		instancePlugins: opts.InstancePlugins,
 		pendingPlugins:  opts.PendingPlugins,
+		configHistory:   opts.ConfigHistory,
 
 		databaseInstalls: opts.DatabaseInstalls,
 		databases:        opts.Databases,
@@ -257,6 +266,20 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("PUT /api/instances/{id}/properties", s.handlePutProperties)
 	protected.HandleFunc("GET /api/instances/{id}/eula", s.handleGetEULA)
 	protected.HandleFunc("POST /api/instances/{id}/eula", s.handleAcceptEULA)
+
+	// Config history. Two segments deep below the instance for the same reason
+	// the plugin config routes are: "commits" must never be reachable as
+	// anything else. Notably absent, and staying absent: anything that hands
+	// over the repository as a whole. See handlers_confighist.go.
+	protected.HandleFunc("GET /api/instances/{id}/config-history", s.handleConfigHistory)
+	protected.HandleFunc("GET /api/instances/{id}/config-history/commits/{ref}", s.handleConfigHistoryCommit)
+	protected.HandleFunc("GET /api/instances/{id}/config-history/diff", s.handleConfigHistoryDiff)
+	protected.HandleFunc("GET /api/instances/{id}/config-history/file", s.handleConfigHistoryFile)
+	protected.HandleFunc("POST /api/instances/{id}/config-history/snapshot", s.handleConfigHistorySnapshot)
+	protected.HandleFunc("POST /api/instances/{id}/config-history/restore/preview", s.handleConfigHistoryRestorePreview)
+	protected.HandleFunc("POST /api/instances/{id}/config-history/restore", s.handleConfigHistoryRestore)
+	protected.HandleFunc("POST /api/instances/{id}/config-history/compact", s.handleConfigHistoryCompact)
+	protected.HandleFunc("PUT /api/instances/{id}/config-history/settings", s.handleConfigHistorySettings)
 
 	// Server cores. Panel-wide rather than per-instance, for the same reason
 	// Java runtimes are: one download serves every server built from it, and

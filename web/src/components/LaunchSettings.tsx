@@ -162,7 +162,9 @@ export function LaunchSettings({
                 目录 <code>{instance.directory}</code> 下的所有文件都会被永久删除，存档也在里面。
               </>
             ),
-            detail: '此操作不可撤销，面板没有为它留回收站。要保留文件请改用「从面板移除」。',
+            detail:
+              '此操作不可撤销，面板没有为它留回收站。配置历史也会一并删除 —— 那是唯一还能' +
+              '看到旧配置的地方。要保留文件请改用「从面板移除」。',
             confirmLabel: '删除实例和文件',
             danger: true,
           }
@@ -172,6 +174,7 @@ export function LaunchSettings({
             detail: (
               <>
                 服务器文件原样留在 <code>{instance.directory}</code>，之后可以用「导入现有目录」再加回来。
+                这台实例的配置历史会被删除，它存在面板的数据目录里而不是服务器目录里。
               </>
             ),
             confirmLabel: '移除',

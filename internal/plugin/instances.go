@@ -206,6 +206,10 @@ type Instances struct {
 	mu      sync.Mutex
 	records map[string]*ledger
 	loaded  bool
+	// configHistory is the config-version side of an upgrade transaction, set
+	// once at wiring time. Guarded by mu like the records it writes refs into.
+	// See ConfigHistory.
+	configHistory ConfigHistory
 
 	// jarsMu guards the descriptor cache. Separate from mu: reading a jar has
 	// nothing to do with the records, and one lock over both would make every

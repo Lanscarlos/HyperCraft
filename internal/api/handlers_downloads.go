@@ -2,10 +2,12 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 
+	"github.com/lanscarlos/hypercraft/internal/confighist"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/serverfiles"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
@@ -246,6 +248,11 @@ func (s *Server) handleApplyCore(w http.ResponseWriter, r *http.Request) {
 			s.writeDomainError(w, err)
 			return
 		}
+		// Only when the core actually changed: dropping a jar into the
+		// directory without pointing the instance at it changes nothing the
+		// history collects.
+		s.snapshotAfter(inst, confighist.TriggerTransaction, actorOf(r),
+			fmt.Sprintf("切换核心至 %s", core.FileName))
 	}
 	writeJSON(w, http.StatusOK, applyCoreResponse{FileName: core.FileName, Instance: updated})
 }

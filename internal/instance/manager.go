@@ -32,6 +32,32 @@ type Manager struct {
 
 	mu   sync.RWMutex
 	byID map[string]*Instance
+
+	// hooks are handed to every instance the manager owns, including the ones
+	// loaded from disk before the wiring runs. afterCreate is the manager's own
+	// — there is no instance to hang it off before Create returns.
+	hooksMu     sync.RWMutex
+	hooks       Hooks
+	afterCreate func(Config)
+}
+
+// SetHooks installs the lifecycle callbacks on every instance, now and in
+// future. afterCreate, when given, runs once a new instance has been
+// registered and its directory exists — which is where "出厂状态" comes from.
+func (m *Manager) SetHooks(hooks Hooks, afterCreate func(Config)) {
+	m.hooksMu.Lock()
+	m.hooks, m.afterCreate = hooks, afterCreate
+	m.hooksMu.Unlock()
+
+	for _, inst := range m.List() {
+		inst.SetHooks(hooks)
+	}
+}
+
+func (m *Manager) currentHooks() (Hooks, func(Config)) {
+	m.hooksMu.RLock()
+	defer m.hooksMu.RUnlock()
+	return m.hooks, m.afterCreate
 }
 
 func NewManager(store Persister, serversRoot string, logger *slog.Logger) *Manager {
@@ -46,6 +72,8 @@ func NewManager(store Persister, serversRoot string, logger *slog.Logger) *Manag
 // Load registers previously persisted instances. Invalid entries are skipped
 // with a warning rather than taking the whole panel down.
 func (m *Manager) Load(configs []Config) {
+	hooks, _ := m.currentHooks()
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -55,6 +83,7 @@ func (m *Manager) Load(configs []Config) {
 			m.log.Warn("skipping unusable instance config", "id", cfg.ID, "err", err)
 			continue
 		}
+		inst.SetHooks(hooks)
 		m.byID[cfg.ID] = inst
 	}
 }
@@ -121,12 +150,18 @@ func (m *Manager) Create(cfg Config) (*Instance, error) {
 		return nil, fmt.Errorf("create instance directory: %w", err)
 	}
 
+	hooks, afterCreate := m.currentHooks()
+	inst.SetHooks(hooks)
+
 	m.mu.Lock()
 	m.byID[cfg.ID] = inst
 	m.mu.Unlock()
 
 	if err := m.persist(); err != nil {
 		return nil, err
+	}
+	if afterCreate != nil {
+		afterCreate(cfg)
 	}
 	m.log.Info("instance created", "id", cfg.ID, "name", cfg.Name, "dir", cfg.Directory)
 	return inst, nil
@@ -391,6 +426,51 @@ func (m *Manager) defaultDirectory(name string) (string, error) {
 func (m *Manager) directoryTaken(dir string) bool {
 	_, taken := m.directoryOwner(dir)
 	return taken
+}
+
+// DirectoryConflict names another instance whose directory overlaps this one's
+// — the same path, or one nested inside the other.
+//
+// Two instances on one directory is already refused at create time, but an
+// imported server can be pointed at a directory that *contains* another
+// instance's, and the panel has always allowed that. It matters to anything
+// that treats a directory as belonging to one server: the config history
+// cannot tell whose edit it is recording, and restoring would write over the
+// other server's files. See the design's §10.
+func (m *Manager) DirectoryConflict(id string) (string, bool) {
+	inst, err := m.Get(id)
+	if err != nil {
+		return "", false
+	}
+	dir := inst.Config().Directory
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for otherID, other := range m.byID {
+		if otherID == id {
+			continue
+		}
+		cfg := other.Config()
+		if dir == cfg.Directory || under(dir, cfg.Directory) || under(cfg.Directory, dir) {
+			return cfg.Name, true
+		}
+	}
+	return "", false
+}
+
+// under reports whether child sits inside parent. String comparison is enough
+// here: both paths came from filepath.Abs, and the cost of a false negative
+// (two servers the panel treats as unrelated) is the state the panel was in
+// before this check existed.
+func under(child, parent string) bool {
+	if parent == "" || child == "" {
+		return false
+	}
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != "."
 }
 
 // directoryOwner names the instance already using dir, if any.
