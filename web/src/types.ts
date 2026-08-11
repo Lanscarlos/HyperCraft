@@ -138,6 +138,159 @@ export interface EulaStatus {
   path: string
 }
 
+// ------------------------------------------------------------ 配置历史
+//
+// A timeline of one server's configuration — not a backup. Worlds, player data
+// and databases are outside what it records, and the page has to keep saying
+// so; see ConfigHistory.tsx.
+
+/** What caused a snapshot. Drives the badge on each timeline row. */
+export type SnapshotTrigger = 'lifecycle' | 'transaction' | 'user' | 'restore'
+
+export interface CommitStats {
+  files: number
+  insertions: number
+  deletions: number
+}
+
+export interface ConfigSnapshot {
+  ref: string
+  short: string
+  at: string
+  message: string
+  trigger: SnapshotTrigger
+  author: string
+  running?: boolean
+  stats: CommitStats
+  /** What was installed when this was taken; a restore compares against now. */
+  core?: string
+  plugins?: string[]
+}
+
+export type ChangeStatus = 'added' | 'modified' | 'deleted'
+
+export interface ConfigFileChange {
+  path: string
+  status: ChangeStatus
+  insertions: number
+  deletions: number
+  binary?: boolean
+}
+
+export type DiffLineKind = 'context' | 'add' | 'delete'
+
+export interface DiffLine {
+  kind: DiffLineKind
+  oldLine: number
+  newLine: number
+  text: string
+  /** A credential. Rendered as `masked` until the operator clicks it. */
+  sensitive?: boolean
+  masked?: string
+}
+
+export interface DiffHunk {
+  oldStart: number
+  oldCount: number
+  newStart: number
+  newCount: number
+  lines: DiffLine[]
+}
+
+export interface ConfigFileDiff {
+  path: string
+  status: ChangeStatus
+  hunks: DiffHunk[]
+  binary: boolean
+  /** The differ gave up and reported the file as replaced whole. */
+  truncated: boolean
+  insertions: number
+  deletions: number
+}
+
+export interface OversizedFile {
+  path: string
+  size: number
+}
+
+export interface ConfigHistoryLimits {
+  fileBytes: number
+  fileCount: number
+  repoBytes: number
+}
+
+export interface ConfigHistorySettings {
+  disabled?: boolean
+  limits: ConfigHistoryLimits
+  allow?: string[]
+  exclude?: string[]
+  compactedAt?: string
+  sincePrune?: number
+}
+
+export interface ConfigHistoryStats {
+  commits: number
+  repoBytes: number
+  files: number
+  compactedAt?: string
+}
+
+/** What the rules would record right now, before any snapshot exists. */
+export interface ConfigCoverage {
+  files: number
+  bytes: number
+  /** Directories recognised as worlds by their contents, so the page can say
+   *  what was skipped and why. */
+  worlds?: string[]
+  oversized?: OversizedFile[]
+  truncated?: boolean
+}
+
+export interface ConfigHistoryOverview {
+  available: boolean
+  enabled: boolean
+  reason?: string
+  running: boolean
+  timeline: ConfigSnapshot[] | null
+  pending: ConfigFileChange[] | null
+  stats: ConfigHistoryStats
+  coverage: ConfigCoverage
+  settings: ConfigHistorySettings
+  repoPath: string
+}
+
+export interface ConfigMismatch {
+  coreThen?: string
+  coreNow?: string
+  plugins?: string[]
+}
+
+export interface RestorePlan {
+  ref: string
+  short: string
+  at: string
+  message: string
+  whole: boolean
+  path?: string
+  changes: ConfigFileChange[] | null
+  removals?: string[]
+  mismatch?: ConfigMismatch
+  blockedBy?: string
+  warning?: string
+}
+
+export interface RestoreResult {
+  result: { ref?: string; skipped: boolean; reason?: string; stats: CommitStats }
+  plan: RestorePlan
+}
+
+export interface CompactResult {
+  before: number
+  after: number
+  bytesBefore: number
+  bytesAfter: number
+}
+
 export interface JarInfo {
   name: string
   size: number

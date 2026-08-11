@@ -389,6 +389,7 @@ const INSTANCE_ICONS: Record<string, IconName> = {
   files: 'files',
   plugins: 'plugins',
   properties: 'properties',
+  'config-history': 'history',
   settings: 'settings',
 }
 

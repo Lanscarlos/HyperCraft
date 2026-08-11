@@ -18,6 +18,7 @@ export type InstanceSection =
   | 'files'
   | 'plugins'
   | 'properties'
+  | 'config-history'
   | 'settings'
 
 /** The shared-asset pages. Stock, as opposed to what one server has chosen. */
@@ -111,6 +112,10 @@ export const INSTANCE_SECTIONS: { id: InstanceSection; label: string }[] = [
   { id: 'files', label: '文件' },
   { id: 'plugins', label: '插件' },
   { id: 'properties', label: '服务器配置' },
+  // Right after 服务器配置, because that is where the question comes from:
+  // you edit a file, the server stops booting, and the next thing you want is
+  // what the file looked like yesterday.
+  { id: 'config-history', label: '配置历史' },
   { id: 'settings', label: '实例设置' },
 ]
 

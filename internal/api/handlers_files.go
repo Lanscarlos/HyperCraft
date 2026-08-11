@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/lanscarlos/hypercraft/internal/confighist"
 	"github.com/lanscarlos/hypercraft/internal/mcprops"
 )
 
@@ -127,6 +128,7 @@ func (s *Server) handlePutProperties(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.snapshotAfter(inst, confighist.TriggerUser, actorOf(r), "编辑 server.properties")
 	s.log.Info("server.properties saved", "instance", inst.Config().Name, "keys", len(req.Entries))
 	writeJSON(w, http.StatusOK, propertiesResponse{
 		Exists:  true,
@@ -195,6 +197,7 @@ func (s *Server) handleAcceptEULA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.snapshotAfter(inst, confighist.TriggerUser, actorOf(r), "接受 EULA")
 	s.log.Info("EULA accepted", "instance", inst.Config().Name)
 	writeJSON(w, http.StatusOK, s.readEULA(dir))
 }

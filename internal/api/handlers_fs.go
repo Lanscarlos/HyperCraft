@@ -10,6 +10,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/lanscarlos/hypercraft/internal/confighist"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/serverfiles"
 )
@@ -110,6 +111,7 @@ func (s *Server) handleWriteFile(w http.ResponseWriter, r *http.Request) {
 		s.writeFileError(w, err)
 		return
 	}
+	s.snapshotAfter(inst, confighist.TriggerUser, actorOf(r), "编辑 "+path.Base(req.Path))
 	s.log.Info("file saved", "instance", inst.Config().Name, "path", req.Path)
 	w.WriteHeader(http.StatusNoContent)
 }

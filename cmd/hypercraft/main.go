@@ -26,6 +26,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/api"
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
+	"github.com/lanscarlos/hypercraft/internal/confighist"
 	"github.com/lanscarlos/hypercraft/internal/dbruntime"
 	"github.com/lanscarlos/hypercraft/internal/hostterm"
 	"github.com/lanscarlos/hypercraft/internal/instance"
@@ -228,6 +229,13 @@ func run() error {
 	// will not read again, so the panel records what each server has yet to see.
 	pendingPlugins := plugin.NewPending(paths.PendingPluginsFile())
 
+	// The config history. One Git repository per instance, in the panel's data
+	// directory rather than in the server's — see internal/confighist. Wiring
+	// it up is what installs the lifecycle snapshots, so it has to happen
+	// before anything can start a server.
+	configHistory := confighist.New(paths.ConfigHistoryRoot(), paths.ConfigHistoryFile(), logger)
+	wireConfigHistory(configHistory, manager, instancePlugins, logger)
+
 	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	// A second, manually cancellable layer: an in-panel update shuts the daemon
@@ -312,6 +320,7 @@ func run() error {
 		Plugins:         pluginDownloads,
 		InstancePlugins: instancePlugins,
 		PendingPlugins:  pendingPlugins,
+		ConfigHistory:   configHistory,
 
 		DatabaseInstalls: databaseInstaller,
 		Databases:        databases,

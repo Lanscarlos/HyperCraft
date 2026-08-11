@@ -285,6 +285,20 @@ func (p Paths) InstancePluginsFile() string { return filepath.Join(p.Root, "inst
 // does, and losing it costs a banner, not a change.
 func (p Paths) PendingPluginsFile() string { return filepath.Join(p.Root, "pending-plugins.json") }
 
+// ConfigHistoryRoot holds one Git repository per instance, at
+// <root>/instances/<id>/config.git. It lives here rather than inside the
+// server directory on purpose: the history has to survive an operator tidying
+// up over SFTP, must not be dragged along when an instance is tarred up and
+// moved, and should be covered by whatever backs the panel's data directory up.
+// See internal/confighist.
+func (p Paths) ConfigHistoryRoot() string { return filepath.Join(p.Root, "instances") }
+
+// ConfigHistoryFile holds the per-instance settings of the config history —
+// size limits, the files an operator allowed past them, the ones they excluded.
+// Beside instances.json rather than under the history root so an instance id
+// can never collide with it.
+func (p Paths) ConfigHistoryFile() string { return filepath.Join(p.Root, "config-history.json") }
+
 // ResumeFile records which servers were running when the panel restarted
 // itself to install an update, so they can be brought back afterwards. It is
 // written just before the restart and consumed on the next boot.

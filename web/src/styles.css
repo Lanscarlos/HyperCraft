@@ -9900,3 +9900,466 @@ select.input-slim option {
   padding: 7px 9px;
   cursor: pointer;
 }
+
+
+/* ------------------------------------------------------------ 配置历史
+
+   Two panes: the timeline of what happened, and the files one snapshot
+   touched. A master/detail rather than a single list, because the two
+   questions are asked in that order — "what changed around the time it broke",
+   then "show me the lines" — and a timeline that inlined its files would be
+   unreadable by the fortieth row.
+
+   The split collapses below 900px. auto-fill cannot express a master/detail
+   (the two columns are not interchangeable), and 900px is the width at which
+   the diff column stops being able to hold a line of YAML without wrapping. */
+
+.chist {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .chist {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.chist__timeline,
+.chist__detail {
+  /* Both hold long file paths and long snapshot messages. Without this the
+     grid child is sized by its content and pushes the whole page sideways —
+     the most common layout bug in this sheet. */
+  min-width: 0;
+  gap: 10px;
+  padding: 14px 14px 16px;
+}
+
+.chist__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chist__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* Long histories scroll inside the pane rather than dragging the page down
+     past the detail beside them. */
+  max-height: 62vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 900px) {
+  .chist__rows {
+    max-height: none;
+  }
+}
+
+.chist__row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 9px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.chist__row:hover {
+  background: var(--surface-2);
+}
+
+.chist__row:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.chist__row--active {
+  background: var(--accent-soft);
+  border-color: var(--border-accent);
+}
+
+.chist__row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.chist__row-title {
+  font-size: 13px;
+  font-weight: 500;
+  /* One line: the message is a sentence and the row is a list item. The full
+     text is in the detail pane's heading, which does wrap. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chist__row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.chist__author {
+  color: var(--text-faint);
+}
+
+.chist__warn {
+  color: var(--caution-ink);
+  font-size: 11px;
+}
+
+.chist__none {
+  padding: 10px 4px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+/* The badge says where a snapshot came from, and the four sources are four
+   different things to an operator: something the panel did on its own, an
+   upgrade transaction, an edit somebody made, and an undo. */
+.chist__badge {
+  flex: none;
+  align-self: flex-start;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  font-size: 10.5px;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+
+.chist__badge--lifecycle {
+  color: var(--text-faint);
+}
+
+.chist__badge--transaction {
+  border-color: var(--border-accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.chist__badge--user {
+  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+}
+
+.chist__badge--restore {
+  border-color: color-mix(in srgb, var(--caution) 44%, transparent);
+  background: var(--caution-soft);
+  color: var(--caution-ink);
+}
+
+.chist__detail-head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.chist__note {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.chist__files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chist__file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chist__file-open {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: background var(--dur) var(--ease);
+}
+
+.chist__file-open:hover {
+  background: var(--surface-2);
+}
+
+.chist__file-open:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.chist__file-path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  /* A six-level plugin path is longer than the pane. Truncated with an
+     ellipsis like every other path in this sheet — see .card__path — with the
+     whole thing on the element's title for when the tail is what you needed. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chist__file-stat {
+  flex: none;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.chist__file-actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.chist__status {
+  flex: none;
+  width: 30px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.chist__status--added {
+  color: var(--ok-ink);
+}
+
+.chist__status--deleted {
+  color: var(--danger-ink);
+}
+
+.chist__add {
+  color: var(--ok-ink);
+}
+
+.chist__del {
+  color: var(--danger-ink);
+}
+
+/* ---- the diff -----------------------------------------------------------
+
+   Not a terminal, and deliberately not painted like one: the two dark canvases
+   in this panel mean "console" and "host shell", and a third dark box would
+   dilute the one thing that keeps a dangerous command out of the wrong one. */
+
+.chist__diff {
+  margin: 2px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  overflow-x: auto;
+}
+
+.chist__diff-head {
+  margin: 0;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.chist__hunk {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.chist__hunk + .chist__hunk {
+  border-top: 1px dashed var(--border);
+}
+
+.chist__line--add {
+  background: var(--ok-soft);
+}
+
+.chist__line--delete {
+  background: var(--danger-soft);
+}
+
+.chist__gutter {
+  width: 1%;
+  padding: 1px 6px;
+  border-right: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 11px;
+  text-align: right;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.chist__sign {
+  width: 1%;
+  padding: 1px 4px;
+  color: var(--text-dim);
+  text-align: center;
+  user-select: none;
+}
+
+.chist__code {
+  padding: 1px 8px;
+  white-space: pre;
+}
+
+.chist__code code {
+  background: none;
+  font: inherit;
+}
+
+/* A credential, drawn blurred until it is asked for. The value is in the
+   payload — the same session can open the file — so this is about who is
+   standing behind the operator, not about withholding anything. */
+.chist__secret {
+  padding: 0 4px;
+  background: var(--surface-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font: inherit;
+}
+
+.chist__secret:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.chist__secret:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* ---- the gate, and the footer ------------------------------------------ */
+
+.chist__gate {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chist__gate li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.chist__gate code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chist__gate-size {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.chist__footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 0 2px;
+}
+
+.chist__stats {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* The last word on the page, and the one it exists to keep repeating. */
+.chist__disclaimer {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.chist__plan {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 34vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.chist__plan h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chist__plan ul {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.chist__plan li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chist__plan code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

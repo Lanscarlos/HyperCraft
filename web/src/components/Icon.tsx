@@ -32,6 +32,7 @@ export type IconName =
   | 'update'
   | 'queue'
   | 'github'
+  | 'history'
 
 const PATHS: Record<IconName, ReactElement> = {
   dashboard: (
@@ -173,6 +174,15 @@ const PATHS: Record<IconName, ReactElement> = {
   // A branch off a trunk, rather than the Octocat: the mark is a filled shape
   // and everything else here is one stroke weight in currentColor, so a silhouette
   // would read as a smudge at 18px beside the others.
+  // A clock with its hand wound back — the timeline, not a save icon: this is
+  // not a backup and its icon should not suggest one.
+  history: (
+    <>
+      <path d="M3.5 9.5A9 9 0 1 1 3 12" />
+      <path d="M3 4.5V10h5.5" />
+      <path d="M12 7.5V12l3 1.8" />
+    </>
+  ),
   github: (
     <>
       <circle cx="6.5" cy="6" r="2.5" />

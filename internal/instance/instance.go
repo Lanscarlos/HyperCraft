@@ -112,10 +112,35 @@ type Instance struct {
 	// own without reaching into a package variable that another instance's
 	// reaper is reading at the same time.
 	drainGrace time.Duration
+
+	// hooks are the lifecycle callbacks, guarded by hooksMu. Their own lock
+	// rather than mu: they are read on the start and reap paths, which must not
+	// hold mu while the callback runs.
+	hooksMu sync.RWMutex
+	hooks   Hooks
 }
 
 // viewport is one attached console's window size, in character cells.
 type viewport struct{ cols, rows uint16 }
+
+// Hooks are panel-level callbacks around the lifecycle of the process.
+//
+// They exist because the two moments worth snapshotting a server's
+// configuration at are these, and not every start goes through the API: an
+// instance flagged AutoStart comes up at boot, and a crashed one comes back on
+// its own. Hanging the callbacks off the API's power routes would miss both,
+// and those are precisely the runs nobody was watching.
+//
+// A hook runs on the goroutine that is starting or reaping the process and
+// without any of the instance's locks held, so it may do real work — but a slow
+// one delays the start it precedes.
+type Hooks struct {
+	// BeforeStart runs just before the process is spawned, and only when the
+	// instance was not already running.
+	BeforeStart func(Config)
+	// AfterStop runs once the process has been reaped and its state published.
+	AfterStop func(Config)
+}
 
 // runningProc holds the handles that only exist while a process is alive.
 type runningProc struct {
@@ -168,6 +193,19 @@ func (i *Instance) State() State {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 	return i.state
+}
+
+// SetHooks installs the lifecycle callbacks. Called once, at wiring time.
+func (i *Instance) SetHooks(hooks Hooks) {
+	i.hooksMu.Lock()
+	defer i.hooksMu.Unlock()
+	i.hooks = hooks
+}
+
+func (i *Instance) hooksSnapshot() Hooks {
+	i.hooksMu.RLock()
+	defer i.hooksMu.RUnlock()
+	return i.hooks
 }
 
 func (i *Instance) Status() Status {
@@ -317,6 +355,15 @@ func (i *Instance) LinesSince(after uint64) []Line { return i.ring.since(after) 
 // Start launches the server process. It returns as soon as the process has
 // been spawned; readiness is reported asynchronously via state events.
 func (i *Instance) Start() error {
+	// Before the lock, so a hook that takes a moment does not freeze every
+	// reader of this instance's status while it runs. The state check is
+	// advisory — the authoritative one is under the lock below — and the cost of
+	// racing it is a snapshot of a configuration that was not about to change,
+	// which costs nothing: an unchanged config produces no commit at all.
+	if hook := i.hooksSnapshot().BeforeStart; hook != nil && !i.State().Running() {
+		hook(i.Config())
+	}
+
 	i.mu.Lock()
 
 	if i.closed {
@@ -647,11 +694,20 @@ func (i *Instance) reap(run *runningProc, pumps *sync.WaitGroup) {
 		}
 	}
 	attempt := i.restartAttempts
+	cfg := i.cfg
 	i.setStateLocked(nextState, stateMsg)
 	i.mu.Unlock()
 
 	close(run.done)
 	i.emitSystem(stateMsg)
+
+	// After the state is published and run.done is closed, so nothing waiting
+	// on the process to exit waits on the hook as well. It runs before the
+	// auto-restart timer is armed, which is what makes the pair of snapshots
+	// around one run land in the right order.
+	if hook := i.hooksSnapshot().AfterStop; hook != nil {
+		hook(cfg)
+	}
 
 	if !shouldRestart {
 		return

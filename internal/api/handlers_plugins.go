@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lanscarlos/hypercraft/internal/confighist"
+
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/plugin"
@@ -1191,10 +1193,24 @@ func (s *Server) handleInstallInstancePlugin(w http.ResponseWriter, r *http.Requ
 		Action: entry.PendingAction,
 		At:     time.Now(),
 	})
+	// The "after" half of the pair the design's §4 asks for. The transaction
+	// itself took the "before" one, so the diff between them is exactly what
+	// the new jar wrote into the configuration on its way in.
+	s.snapshotAfter(inst, confighist.TriggerTransaction, actorOf(r),
+		transactionMessage(entry, snapshot))
 	s.log.Info("plugin installed into instance",
 		"instance", cfg.Name, "plugin", req.PluginID, "tag", entry.Tag,
 		"swept", len(snapshot.Removed), "backup", snapshot.BackupDir)
 	writeJSON(w, http.StatusOK, installResponse{Entry: entry, Snapshot: snapshot})
+}
+
+// transactionMessage names an install or upgrade the way the timeline shows
+// it: what moved, and from where to where.
+func transactionMessage(entry plugin.Entry, snapshot plugin.Snapshot) string {
+	if snapshot.From != nil {
+		return fmt.Sprintf("升级 %s %s → %s（后）", entry.Name, snapshot.From.Version, entry.Version)
+	}
+	return fmt.Sprintf("安装 %s %s（后）", entry.Name, entry.Version)
 }
 
 // installResponse carries the transaction alongside its result.
@@ -1253,6 +1269,8 @@ func (s *Server) handleRollbackInstancePlugin(w http.ResponseWriter, r *http.Req
 	s.recordPending(cfg.ID, plugin.Change{
 		Key: entry.Key, Name: entry.Name, Action: entry.PendingAction, At: time.Now(),
 	})
+	s.snapshotAfter(inst, confighist.TriggerTransaction, actorOf(r),
+		fmt.Sprintf("回滚 %s 至 %s（后）", entry.Name, entry.Version))
 	s.log.Info("instance plugin rolled back",
 		"instance", cfg.Name, "plugin", req.PluginID, "to", entry.Version, "config", req.WithConfig)
 	writeJSON(w, http.StatusOK, entry)
@@ -1570,6 +1588,10 @@ func (s *Server) handleUninstallInstancePlugin(w http.ResponseWriter, r *http.Re
 	s.recordPending(cfg.ID, plugin.Change{
 		Key: key, Name: name, Action: plugin.ActionRemove, At: time.Now(),
 	})
+	// After only: an uninstall leaves the plugin's config directory in place,
+	// so what the timeline needs is the state it left behind.
+	s.snapshotAfter(inst, confighist.TriggerTransaction, actorOf(r),
+		fmt.Sprintf("卸载 %s（后）", name))
 	s.log.Info("plugin removed from instance", "instance", cfg.Name, "plugin", key)
 	w.WriteHeader(http.StatusNoContent)
 }

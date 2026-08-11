@@ -14,6 +14,12 @@ import type {
   DatabaseVersion,
   Device,
   NewDatabase,
+  CommitStats,
+  CompactResult,
+  ConfigFileChange,
+  ConfigFileDiff,
+  ConfigHistoryOverview,
+  ConfigHistorySettings,
   EulaStatus,
   HostInspection,
   HostListing,
@@ -41,6 +47,8 @@ import type {
   SourcePreview,
   PropertiesResponse,
   PropertyEntry,
+  RestorePlan,
+  RestoreResult,
   SystemInfo,
   TerminalStatus,
   UpdateChannel,
@@ -53,6 +61,18 @@ import type {
  * which is what stops another site from acting through a logged-in browser.
  */
 const CSRF_HEADER = 'X-HyperCraft'
+
+/** The 配置历史 settings form. Every field optional: the switch and the
+ *  per-file lists are edited from different places and must not reset each
+ *  other. */
+export interface ConfigHistorySettingsPatch {
+  enabled?: boolean
+  fileBytes?: number
+  fileCount?: number
+  repoBytes?: number
+  allow?: string[]
+  exclude?: string[]
+}
 
 export class ApiError extends Error {
   constructor(
@@ -146,6 +166,46 @@ export const api = {
     request<PropertiesResponse>('PUT', `/api/instances/${id}/properties`, {
       entries,
     }),
+  // 配置历史. Note what is absent and stays absent: anything that downloads
+  // the repository. It holds the rcon password and every plugin token on the
+  // server, so single files and single diffs are the only way out.
+  configHistory: (id: string) =>
+    request<ConfigHistoryOverview>('GET', `/api/instances/${id}/config-history`),
+  configHistoryChanges: (id: string, ref: string) =>
+    request<ConfigFileChange[] | null>(
+      'GET',
+      `/api/instances/${id}/config-history/commits/${encodeURIComponent(ref)}`,
+    ),
+  configHistoryDiff: (id: string, ref: string, filePath: string, againstCurrent = false) =>
+    request<ConfigFileDiff>(
+      'GET',
+      `/api/instances/${id}/config-history/diff?ref=${encodeURIComponent(ref)}` +
+        `&path=${encodeURIComponent(filePath)}` +
+        (againstCurrent ? '&against=current' : ''),
+    ),
+  configHistorySnapshot: (id: string, message: string) =>
+    request<{ ref?: string; skipped: boolean; reason?: string; stats: CommitStats }>(
+      'POST',
+      `/api/instances/${id}/config-history/snapshot`,
+      { message },
+    ),
+  configHistoryRestorePlan: (id: string, ref: string, filePath?: string) =>
+    request<RestorePlan>('POST', `/api/instances/${id}/config-history/restore/preview`, {
+      ref,
+      path: filePath ?? '',
+      confirmed: false,
+    }),
+  configHistoryRestore: (id: string, ref: string, filePath: string, confirmed: boolean) =>
+    request<RestoreResult>('POST', `/api/instances/${id}/config-history/restore`, {
+      ref,
+      path: filePath,
+      confirmed,
+    }),
+  configHistoryCompact: (id: string, keep: number) =>
+    request<CompactResult>('POST', `/api/instances/${id}/config-history/compact`, { keep }),
+  configHistorySettings: (id: string, patch: ConfigHistorySettingsPatch) =>
+    request<ConfigHistorySettings>('PUT', `/api/instances/${id}/config-history/settings`, patch),
+
   getEula: (id: string) =>
     request<EulaStatus>('GET', `/api/instances/${id}/eula`),
   acceptEula: (id: string) =>
