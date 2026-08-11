@@ -315,3 +315,112 @@ func TestVersionSlugSurvivesSlashesInTags(t *testing.T) {
 		t.Error("a tag with no usable characters should be refused")
 	}
 }
+
+func TestDescriptorFoldsWhatTheJarsDeclare(t *testing.T) {
+	library := newLibrary(t)
+	// The name in the library is the repository's; the name in the jar is what
+	// the server files the plugin under, and they are routinely different.
+	item := addPlugin(t, library, "EssentialsX", "EssentialsX/Essentials")
+	storeDeclaredJar(t, library, item.ID, "v1.0.0", "EssentialsX-1.0.0.jar", "Essentials", "1.0.0")
+
+	stored, err := library.Get(item.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	facts := stored.Descriptor()
+	if facts.Name != "Essentials" {
+		t.Errorf("declared name = %q, want Essentials", facts.Name)
+	}
+	if !facts.Scanned {
+		t.Error("a jar that was read should be marked as read")
+	}
+}
+
+func TestDescriptorIsUnscannedUntilAJarHasBeenRead(t *testing.T) {
+	library := newLibrary(t)
+	item := addPlugin(t, library, "Vault", "MilkBowl/Vault")
+	// storeVersion writes a file that is not a jar and records no descriptor —
+	// the shape of every version downloaded before the panel read them.
+	storeVersion(t, library, item.ID, "v1.0.0", "Vault-1.0.0.jar", "not a jar")
+
+	stored, err := library.Get(item.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	// "Nothing declared" and "never looked" have to be tellable apart, or the
+	// page cannot choose between showing a blank and saying it does not know.
+	if stored.Descriptor().Scanned {
+		t.Error("a version nobody has opened must not claim to have been read")
+	}
+}
+
+func TestRescanReadsJarsRecordedBeforeDescriptorsExisted(t *testing.T) {
+	library := newLibrary(t)
+	item := addPlugin(t, library, "CoolPlugin", "me/cool")
+
+	// A real jar on disk, filed by a panel that did not read descriptors: the
+	// bytes are right and the record says nothing about them. Nothing will ever
+	// re-download this, so without a sweep the row stays blank forever.
+	slug, err := versionSlug("v2.1.0")
+	if err != nil {
+		t.Fatalf("versionSlug: %v", err)
+	}
+	dir := filepath.Join(library.Root(), item.ID, slug)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	body := jarBytes(t, "plugin.yml",
+		"name: CoolPlugin\nversion: 2.1.0\napi-version: '1.20'\ndescription: Does cool things.\nauthors: [ada, grace]\ndepend: [Vault]\n")
+	if err := os.WriteFile(filepath.Join(dir, "cool-2.1.0.jar"), body, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	err = library.record(item.ID, Version{
+		Tag: "v2.1.0", Version: "2.1.0",
+		FileName: "cool-2.1.0.jar", Size: int64(len(body)),
+		PublishedAt: time.Now(), AddedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	if read := library.Rescan(); read != 1 {
+		t.Fatalf("Rescan read %d jars, want 1", read)
+	}
+
+	stored, err := library.Get(item.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	facts := stored.Descriptor()
+	if facts.Name != "CoolPlugin" || facts.APIVersion != "1.20" {
+		t.Errorf("descriptor = %+v", facts)
+	}
+	if facts.Description != "Does cool things." {
+		t.Errorf("description = %q", facts.Description)
+	}
+	if len(facts.Authors) != 2 || facts.Authors[0] != "ada" {
+		t.Errorf("authors = %v", facts.Authors)
+	}
+	if len(facts.Depend) != 1 || facts.Depend[0] != "Vault" {
+		t.Errorf("depend = %v", facts.Depend)
+	}
+
+	// And it is recorded, not recomputed: a second sweep has nothing to do.
+	if read := library.Rescan(); read != 0 {
+		t.Errorf("a second Rescan re-read %d jars", read)
+	}
+}
+
+func TestRescanMarksAJarItCannotParseAsRead(t *testing.T) {
+	library := newLibrary(t)
+	item := addPlugin(t, library, "SomeMod", "me/mod")
+	// A Forge mod's descriptor is TOML, which jarinfo deliberately does not
+	// parse. Re-opening it on every start to learn that again is the cost this
+	// avoids.
+	storeVersion(t, library, item.ID, "v1.0.0", "mod-1.0.0.jar", "not a zip at all")
+
+	library.Rescan()
+	if read := library.Rescan(); read != 0 {
+		t.Errorf("an unreadable jar was opened again by the second sweep")
+	}
+}

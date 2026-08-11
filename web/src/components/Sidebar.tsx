@@ -440,6 +440,11 @@ function LibraryScope(props: Props) {
                 <span className="badge badge--update">安装中</span>
               ) : section === 'plugins' && page.id === 'list' && plugins.updates > 0 ? (
                 <span className="badge badge--update">{plugins.updates}</span>
+              ) : // A count rather than 下载中: with a queue the interesting
+              // number is how many, and the row is the way to the page that
+              // says which.
+              section === 'plugins' && page.id === 'queue' && plugins.active > 0 ? (
+                <span className="badge badge--update">{plugins.active}</span>
               ) : null
 
             return (
@@ -539,13 +544,15 @@ const LIBRARY_ICONS: Record<LibrarySection, IconName> = {
   plugins: 'plugins',
 }
 
-/** A page inside a shelf is one of three things: what you have, where to get
- *  more, and where the getting is configured. The icons say which. */
+/** A page inside a shelf is one of four things: what you have, where to get
+ *  more, where the getting is configured, and — since a download stopped being
+ *  one at a time — what is being got right now. The icons say which. */
 const LIBRARY_VIEW_ICONS: Record<string, IconName> = {
   stock: 'cores',
   installed: 'java',
   list: 'plugins',
   browse: 'search',
+  queue: 'queue',
   download: 'update',
   install: 'update',
   source: 'settings',

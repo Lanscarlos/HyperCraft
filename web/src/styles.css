@@ -4713,6 +4713,179 @@ small.field__bad {
   margin: 0;
 }
 
+/* ------------------------------------------------------------ download queue
+
+   下载队列 and the one-line strip that points at it from 插件列表. Both exist
+   because a plugin download stopped being a single thing: one download is a
+   status line, five of them — two running, two waiting, one that failed an
+   hour ago — is a list, and a list cannot live inside a page whose subject is
+   a table. */
+
+/* The strip is deliberately not a card. It sits between the page's actions and
+   the table, and anything with a shadow there reads as a second heading. */
+.dlstrip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+.dlstrip__what {
+  /* The long half of the line, and the one that has a plugin name in it. */
+  min-width: 0;
+  flex: 1;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* The one thing on the strip that says "still moving" while the count sits at
+   the same number for a minute. */
+.dlstrip__spin {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border: 2px solid var(--accent-glow);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: dlspin 900ms linear infinite;
+}
+
+@keyframes dlspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.dlqueue {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dlqueue__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.dlqueue__count {
+  padding: 1px 8px;
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+.dlqueue__count--bad {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+
+.dlqueue__empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.dlqueue__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* One download, in every state. The same layout throughout on purpose: queued,
+   running and failed are one download at three moments, and redrawing them in
+   three shapes would hide that. */
+.dlrow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+/* The state rides the left edge as well as the badge, so a column of rows can
+   be read down the margin without stopping at each one. Colour never carries
+   it alone — every row spells the state out in the badge beside the name. */
+.dlrow--downloading {
+  border-left-color: var(--accent);
+}
+
+.dlrow--done {
+  border-left-color: var(--ok);
+}
+
+.dlrow--failed {
+  border-left-color: var(--danger);
+}
+
+.dlrow__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dlrow__what {
+  /* Holds a plugin name of any length; without this the row grows sideways
+     instead of the name wrapping. */
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+
+.dlrow__ver {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+.dlrow__cancel {
+  flex: none;
+}
+
+.dlrow__error {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--danger-ink);
+  overflow-wrap: anywhere;
+}
+
+.dlrow__meta {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+
+/* Finished rows are a record rather than news, so they recede — the section heading
+   above them is what says which half of the page you are in. */
+.dlrow--done,
+.dlrow--cancelled {
+  background: var(--surface-2);
+  box-shadow: none;
+}
+
 /* ------------------------------------------------------------- device rows */
 
 .device-list {
@@ -8662,6 +8835,18 @@ button.rows__name:hover strong {
   white-space: nowrap;
 }
 
+/* The declared-name badge shrinks alongside the name it sits beside rather
+   than pushing it out. Both carry an ellipsis and neither is flex: none: on a
+   narrow column the honest failure is two truncated names, not one name and
+   one badge that shoved it off the row. */
+.ptable__declared {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Versions are compared by eye down a column, and proportional digits make
    that harder than it needs to be. */
 .ptable__num {
@@ -9036,6 +9221,14 @@ button.rows__name:hover strong {
   .ptable__row > :nth-child(5),
   .ptable__head > :nth-child(6),
   .ptable__row > :nth-child(6) {
+    display: none;
+  }
+
+  /* The declared name goes the way of the columns above it, and for the reason
+     spelled out at 560px: it shares the name line, so past this width keeping
+     it means truncating the plugin's own name to make room for a second one.
+     It is in the row's drawer, one tap away, and the name is not. */
+  .ptable__declared {
     display: none;
   }
 

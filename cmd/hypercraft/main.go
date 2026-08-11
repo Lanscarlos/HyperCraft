@@ -211,6 +211,15 @@ func run() error {
 	pluginClient.Registry().RefreshPicks()
 	pluginDownloads := plugin.NewDownloader(pluginClient, pluginLibrary, logger)
 	defer pluginDownloads.Close()
+	// What every held jar declares about itself, for the ones downloaded before
+	// the panel started reading descriptors. In the background and off the
+	// startup path: it is decoration on a page nobody has opened yet, and a
+	// library on a slow disk must not be the reason the servers start late.
+	go func() {
+		if read := pluginLibrary.Rescan(); read > 0 {
+			logger.Info("read plugin descriptors", "jars", read)
+		}
+	}()
 	instancePlugins := plugin.NewInstances(pluginLibrary, paths.InstancePluginsFile())
 	// The merge above rewrote the library's tags; the servers' records still
 	// name the old ones. Re-pointed by digest, which is the one thing about a

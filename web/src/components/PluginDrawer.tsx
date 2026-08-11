@@ -175,8 +175,8 @@ export function PluginDrawer({
         setDone(`插件库里已经有 ${what} 了。`)
       } else {
         setProgress(`正在下载 ${what}…`)
-        await api.downloadPlugin(item.id, version.tag, wanted)
-        await waitForDownload(item.id, version.tag, setProgress)
+        const started = await api.downloadPlugin(item.id, version.tag, wanted)
+        await waitForDownload(started.id, setProgress)
         setDone(`已下载 ${what} 到插件库。`)
       }
 
@@ -446,30 +446,35 @@ function VersionRow({
 }
 
 /**
- * Waits for the library download to finish.
+ * Waits for one library download to finish.
  *
  * The download belongs to the daemon rather than to this request — closing the
  * tab does not stop it — so the only way to know it landed is to ask. Polled at
  * the same cadence the library page uses, so the progress reads the same in
  * both places.
  *
- * The job is matched against the plugin and tag that were asked for. There is
- * one download slot panel-wide, and the finished job left behind by whatever
- * used it last is still readable: without the check, an operator downloading
- * onto a panel that fetched something else a minute ago would see "done"
- * immediately for a jar that is not there yet.
+ * Followed by job id, which is what the queue made necessary. It used to match
+ * on plugin and tag against the panel's single job slot, and that was already
+ * a workaround for the finished job of whatever ran last still being readable
+ * — with four other downloads in flight it would be watching whichever one
+ * happened to be newest.
+ *
+ * A job that has not started yet says so rather than showing 0%: this drawer
+ * can be the fifth thing asked for, and a bar sitting still reads as a stall.
  */
-async function waitForDownload(
-  pluginId: string,
-  tag: string,
-  report: (text: string) => void,
-): Promise<void> {
+async function waitForDownload(jobId: string, report: (text: string) => void): Promise<void> {
   const deadline = Date.now() + 10 * 60 * 1000
   while (Date.now() < deadline) {
     await new Promise((resolve) => window.setTimeout(resolve, 700))
     const library = await api.pluginLibrary()
-    const job = library.job
-    if (!job || job.pluginId !== pluginId || job.tag !== tag) continue
+    const job = library.jobs.find((entry) => entry.id === jobId)
+    // Gone from the history entirely — the panel restarted, or thirty other
+    // downloads pushed it out. Either way there is nothing left to watch.
+    if (!job) continue
+    if (job.state === 'queued') {
+      report('排队中，前面还有别的插件在下…')
+      continue
+    }
     if (job.state === 'downloading') {
       const percent = job.total > 0 ? Math.round((job.downloaded / job.total) * 100) : 0
       report(`正在下载 ${job.version}… ${job.total > 0 ? `${percent}%` : formatBytes(job.downloaded)}`)

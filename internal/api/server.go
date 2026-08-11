@@ -322,6 +322,7 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("DELETE /api/plugins/config/tokens/{tokenId}", s.handleDeletePluginToken)
 	protected.HandleFunc("PUT /api/plugins/config/mirror", s.handlePluginMirror)
 	protected.HandleFunc("POST /api/plugins/cancel", s.handleCancelPluginDownload)
+	protected.HandleFunc("DELETE /api/plugins/downloads", s.handleClearPluginDownloads)
 	protected.HandleFunc("PUT /api/plugins/{id}", s.handleUpdatePlugin)
 	protected.HandleFunc("DELETE /api/plugins/{id}", s.handleDeletePlugin)
 	protected.HandleFunc("GET /api/plugins/{id}/releases", s.handlePluginReleases)

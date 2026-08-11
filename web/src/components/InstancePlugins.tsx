@@ -364,15 +364,45 @@ export function InstancePlugins({
                 })
               }}
               onRemove={() => {
-                void ask({
+                // The config directory is offered rather than assumed, and the
+                // checkbox sits unticked: keeping it is right for the common
+                // case, which is troubleshooting a version rather than being
+                // done with the plugin. It is also the only one of the two
+                // that can be undone.
+                //
+                // The panel only offers it when it knows which directory it
+                // is. Bukkit names that directory after plugin.yml rather than
+                // after the jar, so a row whose descriptor would not read has
+                // nothing to go on — and neither does one sharing its declared
+                // name with another jar here, where the answer is a coin flip
+                // with somebody's permission groups on it.
+                const named = entry.jar?.name ?? ''
+                const known = named !== '' && (entry.conflicts?.length ?? 0) === 0
+                const question = {
                   title: `从这台服移除「${entry.name}」？`,
                   lead: `会删掉 ${instance.name} 插件目录里的这个 jar。`,
-                  detail: '插件自己的配置目录会留着，重新装回来时还是原来的设置。',
                   confirmLabel: '移除',
                   danger: true,
-                }).then((ok) => {
+                }
+                const answer = known
+                  ? askWithToggle({
+                      ...question,
+                      toggle: {
+                        label: `连配置目录 ${entry.dir}/${named} 一起删掉`,
+                        note: '里面通常不只是设置 —— 经济余额、领地、权限组这些也在这个目录。删掉之后重装是一份全新的配置，找不回来。',
+                      },
+                    })
+                  : ask({
+                      ...question,
+                      detail:
+                        '插件自己的配置目录会留着 —— 面板读不出这个 jar 声明的名字，或者有别的 jar 也叫这个名字，没法确定哪个目录是它的。',
+                    }).then((ok) => ({ ok, toggled: false }))
+                void answer.then(({ ok, toggled }) => {
                   if (!ok) return
-                  void act(() => api.uninstallInstancePlugin(instance.id, entry.key), '移除失败')
+                  void act(
+                    () => api.uninstallInstancePlugin(instance.id, entry.key, toggled),
+                    '移除失败',
+                  )
                 })
               }}
             />

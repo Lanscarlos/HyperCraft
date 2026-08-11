@@ -69,7 +69,11 @@ type pluginView struct {
 type pluginLibraryResponse struct {
 	Root    string       `json:"root"`
 	Plugins []pluginView `json:"plugins"`
-	Job     *plugin.Job  `json:"job"`
+	// Jobs is the download queue and its history, newest first. Job is the most
+	// recent one on its own, which is all there was before downloads could run
+	// more than one at a time — kept for clients written against that.
+	Jobs []plugin.Job `json:"jobs"`
+	Job  *plugin.Job  `json:"job"`
 	// Tokens are the GitHub credentials the panel holds, default first. The
 	// secrets never travel — an entry is a name, a four-character tail and what
 	// the panel knows about that token's quota, which is everything the settings
@@ -135,6 +139,7 @@ func (s *Server) pluginLibrary() pluginLibraryResponse {
 		}
 		resp.Plugins = append(resp.Plugins, view)
 	}
+	resp.Jobs = s.plugins.Jobs()
 	if job, ok := s.plugins.Status(); ok {
 		resp.Job = &job
 	}
@@ -714,15 +719,36 @@ func (s *Server) handleDownloadPlugin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, job)
 }
 
-func (s *Server) handleCancelPluginDownload(w http.ResponseWriter, _ *http.Request) {
+// handleCancelPluginDownload stops downloads.
+//
+// One job when the request names one, everything in flight when it does not.
+// The empty form is what the single-slot panel's 取消 button sent and it still
+// means what it meant then — "stop what is running" — which with a queue is
+// every job rather than the only one.
+func (s *Server) handleCancelPluginDownload(w http.ResponseWriter, r *http.Request) {
 	if !s.pluginsAvailable(w) {
 		return
 	}
-	if err := s.plugins.Cancel(); err != nil {
-		writeError(w, http.StatusConflict, err.Error())
+	if id := strings.TrimSpace(r.URL.Query().Get("id")); id != "" {
+		if err := s.plugins.Cancel(id); err != nil {
+			s.writePluginError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	s.plugins.CancelAll()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleClearPluginDownloads forgets finished jobs. What is still queued or
+// running stays: this clears a record, it does not stop work.
+func (s *Server) handleClearPluginDownloads(w http.ResponseWriter, _ *http.Request) {
+	if !s.pluginsAvailable(w) {
+		return
+	}
+	s.plugins.ClearFinished()
+	writeJSON(w, http.StatusOK, s.pluginLibrary())
 }
 
 // handleDeletePluginVersion removes one downloaded release, or one jar of it.
@@ -1543,6 +1569,11 @@ func (s *Server) handleUninstallInstancePlugin(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Deleting the plugin's own config directory is opt-in and arrives as a
+	// query flag, so a client that has never heard of it keeps the old
+	// behaviour — which is the safe one.
+	purgeConfig := r.URL.Query().Get("config") == "delete"
+
 	cfg := inst.Config()
 	// Read before the removal, or there is no row left to take the name from.
 	name := key
@@ -1550,7 +1581,7 @@ func (s *Server) handleUninstallInstancePlugin(w http.ResponseWriter, r *http.Re
 		name = entryName(entries, key)
 	}
 
-	if err := s.instancePlugins.Uninstall(cfg.ID, cfg.Directory, key); err != nil {
+	if err := s.instancePlugins.Uninstall(cfg.ID, cfg.Directory, key, purgeConfig); err != nil {
 		s.writePluginError(w, err)
 		return
 	}

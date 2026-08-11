@@ -43,6 +43,7 @@ export type LibraryView =
   | 'source'
   | 'list'
   | 'browse'
+  | 'queue'
   | 'databases'
   | 'engines'
 
@@ -150,10 +151,16 @@ export const LIBRARY_VIEWS: Record<LibrarySection, { id: LibraryView; label: str
     { id: 'engines', label: '已装引擎' },
     { id: 'install', label: '安装引擎' },
   ],
-  // Two pages, and they are two questions rather than two lists: 插件列表 is
-  // "what is the state of what I run", 插件市场 is "is this worth installing".
+  // Three pages, and they are three questions rather than three lists: 插件列表
+  // is "what is the state of what I run", 插件市场 is "is this worth
+  // installing", 下载队列 is "where did the five I just asked for get to".
   //
-  // 插件源 used to be a third, and it was not a page — it was two unrelated
+  // The third only became a page when downloads stopped being one at a time.
+  // A single download is a status line; five of them, some queued, some done,
+  // one failed an hour ago, is a list — and a list that appeared and vanished
+  // inside another page would take that page's layout with it every time.
+  //
+  // 插件源 used to be one of these, and it was not a page — it was two unrelated
   // things wearing one heading. Adding a GitHub repository is an *action*, and
   // it belongs with the other three ways a plugin gets into the library, which
   // is the + 添加插件 menu on 插件列表. The token, the download mirror and the
@@ -162,6 +169,7 @@ export const LIBRARY_VIEWS: Record<LibrarySection, { id: LibraryView; label: str
   plugins: [
     { id: 'list', label: '插件列表' },
     { id: 'browse', label: '插件市场' },
+    { id: 'queue', label: '下载队列' },
   ],
 }
 

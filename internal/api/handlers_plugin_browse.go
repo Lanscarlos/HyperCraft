@@ -646,6 +646,15 @@ type overviewRow struct {
 	// the page fetch each plugin to find out why a badge is missing.
 	Pinned     string `json:"pinned,omitempty"`
 	SelfUpdate bool   `json:"selfUpdate,omitempty"`
+	// Jar is what this plugin's own jars declare — the plugin.yml the server
+	// itself reads at startup, folded across the versions held.
+	//
+	// The row was assembled entirely from the *source* until now: the name is
+	// the repository's or the registry listing's, and for a GitHub source that
+	// is a repository name, which is regularly not the plugin's name and never
+	// says what the plugin does. The library had all of this on disk and threw
+	// it away at the door.
+	Jar plugin.DescriptorFacts `json:"jar,omitempty"`
 }
 
 // overviewForeign is a jar sitting on a server that no record claims.
@@ -772,6 +781,7 @@ func (s *Server) handlePluginOverview(w http.ResponseWriter, r *http.Request) {
 			Versions:   len(item.Versions),
 			Pinned:     item.Policy.Pin,
 			SelfUpdate: item.Policy.AllowSelfUpdate,
+			Jar:        item.Descriptor(),
 		}
 		for _, version := range item.Versions {
 			row.Size += version.TotalSize()
