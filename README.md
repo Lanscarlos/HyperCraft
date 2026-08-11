@@ -113,7 +113,7 @@ sudo journalctl -u hypercraft -f     # 首次启动的随机管理员密码打�
 </table>
 
 <details>
-<summary><b>还有：本机终端、浅色主题、手机端</b></summary>
+<summary><b>还有：本机终端、深色主题、手机端</b></summary>
 
 <br>
 
@@ -122,8 +122,8 @@ sudo journalctl -u hypercraft -f     # 首次启动的随机管理员密码打�
 
 <br>
 
-![浅色主题](docs/images/dashboard-light.png)
-<sub>**浅色主题** —— 跟随系统，也可以手动切换</sub>
+![深色主题](docs/images/dashboard-dark.png)
+<sub>**深色主题** —— 明暗跟随系统，也可以在顶栏手动切换</sub>
 
 <br>
 
