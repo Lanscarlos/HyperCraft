@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api } from './api'
 import type { LibraryPlugin, PluginDownloadJob, PluginLibrary } from './types'
-import { hasPluginUpdate } from './types'
+import { hasPluginUpdate, isJobActive } from './types'
 
 /** Cadence while a download runs, for a progress bar that moves. */
 const ACTIVE_POLL_MS = 800
@@ -22,8 +22,14 @@ export interface PluginInput {
 export interface PluginController {
   library: PluginLibrary | null
   plugins: LibraryPlugin[]
+  /** The download queue and its history, newest first. */
+  jobs: PluginDownloadJob[]
+  /** The newest job, for the places that only ever showed one. */
   job: PluginDownloadJob | null
-  /** True while a plugin jar is coming down. */
+  /** How many jars are queued or coming down. Zero is the quiet state, and it
+   *  is what the sidebar badge and the queue page's summary both read. */
+  active: number
+  /** True while any plugin jar is queued or coming down. */
   downloading: boolean
   /** How many tracked plugins have a release nobody has downloaded yet. */
   updates: number
@@ -40,7 +46,10 @@ export interface PluginController {
    *  got — the caller is the one that has to say what the check found. */
   checkAll: () => Promise<PluginLibrary | null>
   download: (id: string, tag: string, asset?: string) => Promise<void>
-  cancel: () => Promise<void>
+  /** Stops one download by job id, or everything in flight when given none. */
+  cancel: (jobId?: string) => Promise<void>
+  /** Forgets the finished rows. Does not stop anything still running. */
+  clearFinished: () => Promise<void>
   removeVersion: (id: string, tag: string) => Promise<void>
   /** Adds a GitHub credential under an operator-chosen name. */
   addToken: (name: string, token: string) => Promise<boolean>
@@ -69,8 +78,10 @@ export function usePlugins(enabled: boolean): PluginController {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const job = library?.job ?? null
-  const downloading = job?.state === 'downloading'
+  const jobs = library?.jobs ?? []
+  const job = jobs[0] ?? library?.job ?? null
+  const active = jobs.filter((entry) => isJobActive(entry.state)).length
+  const downloading = active > 0
   const plugins = library?.plugins ?? []
   const updates = plugins.filter(hasPluginUpdate).length
 
@@ -161,19 +172,38 @@ export function usePlugins(enabled: boolean): PluginController {
     (id: string, tag: string, asset?: string) =>
       act(async () => {
         const started = await api.downloadPlugin(id, tag, asset)
-        // Show the job immediately; the poll takes over from here.
-        setLibrary((prev) => (prev ? { ...prev, job: started } : prev))
+        // Show the job immediately; the poll takes over from here. Prepended
+        // rather than replacing, because there may be four others under way —
+        // and asking for a jar already queued answers with that same job, so
+        // an id already in the list is an update rather than an addition.
+        setLibrary((prev) =>
+          prev
+            ? {
+                ...prev,
+                job: started,
+                jobs: [started, ...prev.jobs.filter((entry) => entry.id !== started.id)],
+              }
+            : prev,
+        )
       }, '下载失败').catch(() => undefined),
     [act],
   )
 
   const cancel = useCallback(
-    () =>
+    (jobId?: string) =>
       act(async () => {
-        await api.cancelPluginDownload()
+        await api.cancelPluginDownload(jobId)
         await refresh()
       }, '取消失败').catch(() => undefined),
     [act, refresh],
+  )
+
+  const clearFinished = useCallback(
+    () =>
+      act(async () => {
+        setLibrary(await api.clearPluginDownloads())
+      }, '清空记录失败').catch(() => undefined),
+    [act],
   )
 
   const removeVersion = useCallback(
@@ -226,7 +256,9 @@ export function usePlugins(enabled: boolean): PluginController {
   return {
     library,
     plugins,
+    jobs,
     job,
+    active,
     downloading,
     updates,
     busy,
@@ -240,6 +272,7 @@ export function usePlugins(enabled: boolean): PluginController {
     checkAll,
     download,
     cancel,
+    clearFinished,
     removeVersion,
     addToken,
     updateToken,

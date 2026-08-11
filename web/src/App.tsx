@@ -17,6 +17,7 @@ import { JavaPage } from './components/JavaPage'
 import { Login } from './components/Login'
 import { NewInstanceWizard } from './components/NewInstanceWizard'
 import { PluginLibraryPage } from './components/PluginLibraryPage'
+import { PluginQueuePage } from './components/PluginQueuePage'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
 import { ToastStack } from './components/Toast'
@@ -566,6 +567,12 @@ export default function App() {
                 onOpenView={(view) => openLibrary('cores', view)}
                 onOpenJava={() => openLibrary('java', 'installed')}
               />
+            ) : route.view === 'queue' ? (
+              // A page of its own rather than a block on 插件列表: five
+              // downloads at once is a list, and a list that appears and
+              // vanishes inside a table shoves that table down the screen
+              // every time somebody presses 更新入库.
+              <PluginQueuePage plugins={plugins} />
             ) : (
               <PluginLibraryPage
                 plugins={plugins}

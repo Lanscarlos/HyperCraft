@@ -525,6 +525,14 @@ export interface PluginArtifact {
   apiVersion?: string
   depend?: string[]
   softDepend?: string[]
+  /** The rest of what the descriptor says. Only prose — it belongs in a drawer
+   *  rather than in a table cell, which is where the panel shows it. */
+  description?: string
+  authors?: string[]
+  /** True once the panel has opened this jar, whatever it found inside. Tells
+   *  "declares nothing" apart from "never looked", which are different answers
+   *  and only one of them is worth showing a gap for. */
+  scanned?: boolean
   gameVersions?: string[]
   loaders?: string[]
   addedAt?: string
@@ -594,9 +602,18 @@ export function versionSize(version: PluginVersion): number {
   return pluginArtifacts(version).reduce((sum, artifact) => sum + artifact.size, 0)
 }
 
-export type PluginDownloadState = 'downloading' | 'done' | 'failed' | 'cancelled'
+export type PluginDownloadState = 'queued' | 'downloading' | 'done' | 'failed' | 'cancelled'
+
+/** True while a job is still going to do something. */
+export function isJobActive(state: PluginDownloadState): boolean {
+  return state === 'queued' || state === 'downloading'
+}
 
 export interface PluginDownloadJob {
+  /** Names the job for cancellation. Unique for as long as the daemon runs;
+   *  the queue is not persisted, because an interrupted download is one to
+   *  start again rather than resume. */
+  id: string
   pluginId: string
   pluginName: string
   tag: string
@@ -608,7 +625,10 @@ export interface PluginDownloadJob {
   downloaded: number
   state: PluginDownloadState
   error?: string
-  startedAt: string
+  queuedAt: string
+  /** When the job left the queue. Absent on one that never has — "waited four
+   *  minutes" and "took four minutes" are different complaints. */
+  startedAt?: string
   finishedAt?: string
 }
 
@@ -642,6 +662,10 @@ export interface PluginTokenInfo {
 export interface PluginLibrary {
   root: string
   plugins: LibraryPlugin[]
+  /** The download queue and its history, newest first. */
+  jobs: PluginDownloadJob[]
+  /** The most recent job on its own, which is all there was before downloads
+   *  could run more than one at a time. The panel reads `jobs`. */
   job: PluginDownloadJob | null
   /** The GitHub credentials the panel holds, default first. */
   tokens: PluginTokenInfo[]
@@ -1158,6 +1182,27 @@ export interface PluginOverviewRow {
   variants?: string[]
   pinned?: string
   selfUpdate?: boolean
+  /** What this plugin's own jars declare — the plugin.yml the server reads at
+   *  startup, folded across the versions held. The rest of the row comes from
+   *  the *source*, whose name for a plugin is a repository name as often as
+   *  not, and which never says what the plugin does. */
+  jar?: PluginDescriptor
+}
+
+/** What a plugin's jars say about themselves, folded across held versions.
+ *  Mirrors plugin.DescriptorFacts. */
+export interface PluginDescriptor {
+  /** The name the *server* files the plugin under, which is not the file name
+   *  and regularly not the source's name either. */
+  name?: string
+  description?: string
+  authors?: string[]
+  apiVersion?: string
+  depend?: string[]
+  softDepend?: string[]
+  /** False when no jar of this plugin has ever been read, in which case an
+   *  empty block means "not looked at" rather than "declares nothing". */
+  scanned?: boolean
 }
 
 export interface PluginOverview {

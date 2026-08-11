@@ -380,9 +380,30 @@ function OverviewTab({
   onAccept: (use: PluginUse) => void
 }) {
   const held = item.versions.reduce((sum, version) => sum + versionSize(version), 0)
+  const jar = row.jar
 
   return (
     <>
+      {/* What the jar says it is, before what the panel says about it.
+          Everything below this point is the panel's own bookkeeping —
+          versions, deployments, checksums — and none of it answers the
+          question somebody opening a plugin they do not recognise is asking.
+          The registries answer it for a plugin that came from one; a GitHub
+          source and an uploaded jar have no listing, and for those the
+          descriptor is the only account of the plugin that exists.
+
+          Prose belongs here rather than in the table behind: a description is
+          a paragraph, and a paragraph in a 52px row is either truncated to
+          nothing or wrecks the row heights. */}
+      {jar?.description && (
+        <section className="drawer__section">
+          <p className="jar-facts__prose">{jar.description}</p>
+          {jar.authors && jar.authors.length > 0 && (
+            <p className="jar-facts__note">作者：{jar.authors.join('、')}</p>
+          )}
+        </section>
+      )}
+
       <section className="drawer__section">
         <div className="statgrid">
           <Stat label="库内最新" value={row.newest ?? '未下载'} note={`${row.versions} 个版本 · ${formatBytes(held)}`} />

@@ -95,17 +95,12 @@ func (l *Library) ImportJar(id, fileName string, src io.Reader, limit int64) (Im
 	// re-upload repairs a corrupt file instead of growing a second entry that
 	// differs from the first in nothing an operator could see.
 	artifact := Artifact{
-		SHA256:     digest,
-		FileName:   fileName,
-		Size:       size,
-		PluginName: info.Name,
-		PluginVer:  info.Version,
-		Platform:   info.Platform,
-		APIVersion: info.APIVersion,
-		Depend:     info.Depend,
-		SoftDepend: info.SoftDepend,
-		AddedAt:    time.Now(),
+		SHA256:   digest,
+		FileName: fileName,
+		Size:     size,
+		AddedAt:  time.Now(),
 	}
+	artifact.applyJarInfo(info)
 	// What the descriptor declared, in the same two fields a download fills
 	// from its registry — so Judge treats an imported jar exactly like any
 	// other, and the install dialog can say "this one is for Velocity".

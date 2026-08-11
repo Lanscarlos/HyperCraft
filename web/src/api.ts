@@ -268,7 +268,15 @@ export const api = {
       tag,
       asset,
     }),
-  cancelPluginDownload: () => request<void>('POST', '/api/plugins/cancel'),
+  /** Stops one download, or everything in flight when no id is given. */
+  cancelPluginDownload: (id?: string) =>
+    request<void>(
+      'POST',
+      id ? `/api/plugins/cancel?id=${encodeURIComponent(id)}` : '/api/plugins/cancel',
+    ),
+  /** Forgets finished jobs. Answers with the library, so the queue page needs
+   *  no second round trip to redraw. */
+  clearPluginDownloads: () => request<PluginLibrary>('DELETE', '/api/plugins/downloads'),
   /** Deletes a release from the library, or one jar of it — deleting the
    *  Velocity build of a release while keeping the Paper one is a real thing
    *  to want on a plugin that ships both. */
@@ -418,8 +426,14 @@ export const api = {
    *  never seen, which is most of 库外来源. Returns the row it became. */
   importInstancePluginToLibrary: (id: string, key: string) =>
     request<InstancePlugin>('POST', `/api/instances/${id}/plugins/library`, { key }),
-  uninstallInstancePlugin: (id: string, key: string) =>
-    request<void>('DELETE', `/api/instances/${id}/plugins?key=${encodeURIComponent(key)}`),
+  /** Removes a plugin from one server. `purgeConfig` also deletes the config
+   *  directory the plugin wrote, which is the operator's data — opt-in, and
+   *  the panel declines when it cannot say for certain which directory it is. */
+  uninstallInstancePlugin: (id: string, key: string, purgeConfig = false) => {
+    const params = new URLSearchParams({ key })
+    if (purgeConfig) params.set('config', 'delete')
+    return request<void>('DELETE', `/api/instances/${id}/plugins?${params}`)
+  },
 
   /** Lists a directory on the host. Empty path means the panel's servers root. */
   browseHost: (dir: string) =>

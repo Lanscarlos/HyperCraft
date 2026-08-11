@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { api } from '../api'
 import { ask } from '../confirm'
@@ -93,8 +93,6 @@ export function PluginLibraryPage({
   const [importing, setImporting] = useState(false)
   const [addingSource, setAddingSource] = useState(false)
 
-  const { job } = plugins
-
   const refresh = useCallback(async () => {
     try {
       setOverview(await api.pluginOverview())
@@ -109,11 +107,25 @@ export function PluginLibraryPage({
   }, [refresh])
 
   // A finished download adds a version, which can move a row out of 库有更新.
+  //
+  // Fired on the queue *going* quiet, not on it *being* quiet, and the
+  // difference is the whole comment: the controller is a fresh object every
+  // render, so an effect that depends on it runs every render, and one whose
+  // body refreshes state it also depends on is a request loop. The previous
+  // count lives in a ref so the transition is a fact rather than a dependency.
+  //
+  // And it is the transition to zero rather than one job flipping to done:
+  // with several running, refreshing per completion redraws the table three
+  // times and is stale until the last one lands anyway.
+  const active = plugins.active
+  const wasActive = useRef(active)
   useEffect(() => {
-    if (job?.state !== 'done') return
+    const drained = wasActive.current > 0 && active === 0
+    wasActive.current = active
+    if (!drained) return
     void refresh()
     void plugins.refresh()
-  }, [job?.state, job?.tag, refresh, plugins])
+  }, [active, refresh, plugins])
 
   const rows = useMemo(() => overview?.rows ?? [], [overview])
   const foreign = overview?.foreign ?? []
@@ -222,7 +234,12 @@ export function PluginLibraryPage({
     >
       {error && <div className="alert alert--error">{error}</div>}
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
-      {job && <JobStatus job={job} onCancel={() => void plugins.cancel()} busy={plugins.busy} />}
+      {plugins.active > 0 && (
+        <QueueStrip
+          jobs={plugins.jobs}
+          onOpenQueue={() => onOpenView('queue')}
+        />
+      )}
 
       {rows.length === 0 && foreign.length === 0 ? (
         <EmptyLibrary
@@ -636,9 +653,31 @@ function PluginRow({
                 允许自更新
               </span>
             )}
+            {/* The name the jar declares, when it is not the name above it.
+                On the name line rather than in the source line below, because
+                it is an identity fact and because the source line is 230px
+                wide with a repository path already in it — appended there it
+                truncated to 「声明名 E…」, which is the one form of this that
+                is worse than not showing it.
+
+                It matters: a Bukkit server files the plugin under *this* name
+                and refuses to load a second jar claiming it, so this is the
+                name a duplicate clash, a config directory and a dependency
+                list are all written against. */}
+            {declaredName(row) && (
+              <span
+                className="badge badge--muted ptable__declared"
+                title={`jar 的 plugin.yml 声明的名字是 ${declaredName(row)}，服务端按它加载、查重和建配置目录`}
+              >
+                声明名 {declaredName(row)}
+              </span>
+            )}
           </span>
-          <span className="ptable__sub">
-            {sourceLabel(row.kind)} · {row.repo}
+          {/* Titled, because this line is 230px wide and nowrap: what it
+              cannot fit it drops, and a repository path is exactly the sort of
+              thing somebody wants the whole of. */}
+          <span className="ptable__sub" title={subLine(row)}>
+            {subLine(row)}
           </span>
         </span>
       </button>
@@ -702,6 +741,33 @@ function PluginRow({
       </span>
     </div>
   )
+}
+
+/**
+ * The name the jar declares, when it is worth saying.
+ *
+ * Empty when it matches the row's own name, which is the common case and where
+ * repeating it would be noise on every row to make one row informative.
+ */
+function declaredName(row: PluginOverviewRow): string {
+  const declared = row.jar?.name ?? ''
+  if (declared === '' || declared.toLowerCase() === row.name.toLowerCase()) return ''
+  return declared
+}
+
+/**
+ * The source line, plus the one descriptor fact that belongs on it.
+ *
+ * api-version is the field that answers "why did this stop loading after I
+ * upgraded the server", and it is short. The description is not here and is not
+ * going to be: it is prose, and prose in a 52px row is either truncated to an
+ * ellipsis or takes the row height with it. It is in the drawer, where a
+ * paragraph can be a paragraph. See jarinfo.go.
+ */
+function subLine(row: PluginOverviewRow): string {
+  const parts = [`${sourceLabel(row.kind)} · ${row.repo}`]
+  if (row.jar?.apiVersion) parts.push(`api ${row.jar.apiVersion}`)
+  return parts.join(' · ')
 }
 
 function versionTitle(row: PluginOverviewRow): string {
@@ -1422,55 +1488,42 @@ function BulkConfirm({
   )
 }
 
-function JobStatus({
-  job,
-  onCancel,
-  busy,
+/**
+ * One line saying the download queue is busy, and how to get to it.
+ *
+ * Not the queue itself. This page is a table an operator is reading; a block
+ * that grows a row per download would push that table down the screen every
+ * time they pressed 更新入库 — which, now that five of them can run at once, is
+ * exactly when they are least able to spare the space. So the detail lives on
+ * 下载队列 and this says only what cannot wait: something is happening, and it
+ * is one click away.
+ */
+function QueueStrip({
+  jobs,
+  onOpenQueue,
 }: {
-  job: PluginDownloadJob
-  onCancel: () => void
-  busy: boolean
+  jobs: PluginDownloadJob[]
+  onOpenQueue: () => void
 }) {
-  if (job.state === 'downloading') {
-    const fraction = job.total > 0 ? job.downloaded / job.total : 0
-    return (
-      <div className="download-status">
-        <div className="progress">
-          <div className="progress__bar" style={{ width: `${Math.round(fraction * 100)}%` }} />
-          <span className="progress__label">
-            {job.total > 0
-              ? `${Math.round(fraction * 100)}% · ${formatBytes(job.downloaded)} / ${formatBytes(job.total)}`
-              : formatBytes(job.downloaded)}
-          </span>
-        </div>
-        <p className="chart-note">
-          正在下载 {job.pluginName} {job.version}（{job.fileName}）
-          {job.mirror && ` · 来自 ${mirrorLabel(job.mirror)}`}
-          <button className="link link--danger" onClick={onCancel} disabled={busy}>
-            取消
-          </button>
-        </p>
-      </div>
-    )
-  }
-
-  // Done and cancelled are both finished news. They are reported by the toast
-  // the page raises when the job flips, not by a block that then sits on top
-  // of the list it was about until the next navigation.
-  if (job.state === 'done' || job.state === 'cancelled') return null
+  const running = jobs.filter((job) => job.state === 'downloading')
+  const queued = jobs.filter((job) => job.state === 'queued').length
+  // Named while there is one to name. Past that it is a count — five plugin
+  // names on one line is not a sentence anybody reads.
+  const what =
+    running.length === 1
+      ? `正在下载 ${running[0].pluginName} ${running[0].version}`
+      : `正在下载 ${running.length} 个插件`
 
   return (
-    <div className="alert alert--error">
-      下载失败：{job.error ?? '未知错误'}
-      {job.fileName && `（${job.fileName}）`}
+    <div className="dlstrip">
+      <span className="dlstrip__spin" aria-hidden="true" />
+      <span className="dlstrip__what">
+        {what}
+        {queued > 0 && ` · ${queued} 个排队`}
+      </span>
+      <button className="link" onClick={onOpenQueue}>
+        去下载队列
+      </button>
     </div>
   )
-}
-
-/**
- * Names a mirror id for the job line. Unknown ids are custom prefixes, which
- * are already their own name.
- */
-function mirrorLabel(id: string): string {
-  return id === 'direct' ? '源站直连' : id
 }

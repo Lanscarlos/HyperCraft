@@ -843,18 +843,35 @@ func (m *Instances) SetEnabled(instanceID, directory, key string, enabled bool) 
 	return browser.Rename(current, target)
 }
 
-// Uninstall removes a plugin from an instance.
+// Uninstall removes a plugin from an instance, and optionally the config
+// directory it wrote.
 //
-// The plugin's config directory is deliberately left behind: it is the
-// operator's data, an uninstall is often a version troubleshooting step, and
-// deleting a world-adjacent directory is not something a jar removal should
-// decide on its own.
-func (m *Instances) Uninstall(instanceID, directory, key string) error {
+// The config directory stays unless it is asked for. It is the operator's data
+// — economy balances, land claims, permission groups, all of which live in
+// there beside the settings — an uninstall is often a version troubleshooting
+// step, and deleting a world-adjacent directory is not something a jar removal
+// should decide on its own. But "decide on its own" was doing two jobs: it was
+// also the reason an operator who genuinely wanted the plugin gone had to go
+// and find the directory in the file manager, guess which of them it was, and
+// delete it by hand. Now the panel offers it, off by default, having worked out
+// which directory it actually is.
+//
+// The jar goes first. If removing the config fails the plugin is still gone,
+// which is the half the operator asked for either way, and the error says what
+// was left behind.
+func (m *Instances) Uninstall(instanceID, directory, key string, purgeConfig bool) error {
 	dir, name, err := m.resolveKey(instanceID, key)
 	if err != nil {
 		return err
 	}
 	browser := serverfiles.New(directory)
+
+	// Read before the jar goes: the config directory is named by what the jar
+	// declares, and after the file is deleted there is nothing left to ask.
+	config := ""
+	if purgeConfig {
+		config = m.configPath(instanceID, browser, directory, dir, key)
+	}
 
 	current, _, ok := m.locate(browser, dir, name)
 	if ok {
@@ -862,13 +879,81 @@ func (m *Instances) Uninstall(instanceID, directory, key string) error {
 			return err
 		}
 	}
+
+	var configErr error
+	if config != "" {
+		if err := browser.Remove(config); err != nil && !errors.Is(err, serverfiles.ErrNotFound) {
+			// Not fatal: the jar is gone, which is most of what was asked for.
+			configErr = fmt.Errorf("插件已移除，但配置目录 %s 没能删掉：%w", config, err)
+		}
+	}
+
 	if pluginID, found := strings.CutPrefix(key, keyPluginPrefix); found {
-		return m.forgetPlugin(instanceID, pluginID)
+		if err := m.forgetPlugin(instanceID, pluginID); err != nil {
+			return err
+		}
+		return configErr
 	}
 	if !ok {
 		return fmt.Errorf("%w: %s/%s is not there", ErrNotInstalled, dir, name)
 	}
-	return nil
+	return configErr
+}
+
+// configPath is the directory this plugin writes its settings into, as a path
+// safe to hand to Remove — or empty when the panel cannot name one it is sure
+// about.
+//
+// Empty rather than a guess, and this is the whole reason it is a function.
+// Deleting the wrong directory here costs an operator their permission groups
+// or their economy, so every case where the answer is less than certain
+// declines instead: a jar whose descriptor will not read, a name that resolves
+// to the plugin directory itself, and — the one that actually happens — a
+// directory another jar in the same folder also answers to. Two plugins
+// declaring one name is already flagged on the page as 重名; it is also exactly
+// when "delete this plugin's config" means "delete the other plugin's config".
+func (m *Instances) configPath(instanceID string, browser *serverfiles.Browser, directory, dir, key string) string {
+	entries, err := m.List(instanceID, directory)
+	if err != nil {
+		return ""
+	}
+	var self *Entry
+	for i := range entries {
+		if entries[i].Key == key {
+			self = &entries[i]
+			break
+		}
+	}
+	// A row with no descriptor read out of it has no name to go on but the file
+	// name, and a file name is not what Bukkit calls the directory.
+	if self == nil || self.Jar == nil || self.Jar.Name == "" {
+		return ""
+	}
+	if len(self.Conflicts) > 0 {
+		return ""
+	}
+
+	folder := strings.TrimSpace(self.Jar.Name)
+	// A declared name is author-supplied text and it lands in a path. Anything
+	// that is not one plain directory component is refused outright rather than
+	// cleaned up into something that might still escape.
+	if folder == "" || folder == "." || folder == ".." ||
+		strings.ContainsAny(folder, "/\\") || strings.HasPrefix(folder, ".") {
+		return ""
+	}
+	target := dir + "/" + folder
+	// Never the plugin directory itself, whatever the jar declares.
+	if strings.EqualFold(target, dir) {
+		return ""
+	}
+
+	info, err := browser.Stat(target)
+	if err != nil || !info.IsDir {
+		// A plugin that has never started has no directory yet. Nothing to do
+		// and nothing to report — the jar removal is the whole operation.
+		return ""
+	}
+	return target
 }
 
 // Forget drops every record for an instance, for when the instance itself is
