@@ -5849,6 +5849,10 @@ input.input-slim:disabled {
   display: flex;
   align-items: center;
   gap: 12px;
+  /* Wraps rather than running off the edge: .main clips, so a fourth button on
+     a phone would not be reachable at all — and on 配置历史 the one that falls
+     off the end is 整树还原. */
+  flex-wrap: wrap;
 }
 
 /* --- instance cards ---------------------------------------------------- */
@@ -10068,6 +10072,14 @@ select.input-slim option {
 .chist__badge--restore {
   border-color: color-mix(in srgb, var(--caution) 44%, transparent);
   background: var(--caution-soft);
+  color: var(--caution-ink);
+}
+
+/* 当前改动 is not a snapshot, so its badge is the one that is drawn rather than
+   filled: what is on disk has no colour of its own until somebody records it. */
+.chist__badge--pending {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--caution) 50%, transparent);
   color: var(--caution-ink);
 }
 

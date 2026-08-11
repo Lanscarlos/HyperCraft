@@ -32,6 +32,10 @@ interface Sort {
 export interface FileJump {
   path: string
   token: number
+  /** A file inside `path` to open in the editor on arrival. 配置历史 sends one:
+   *  landing in the right directory is not the answer to "let me edit the file
+   *  I was just looking at the diff of". */
+  file?: string
 }
 
 /** A pending "type a name", waiting on the dialog that will answer it. */
@@ -50,7 +54,17 @@ interface NameState {
 /** Long enough for the browser to start one download before the next click. */
 const DOWNLOAD_GAP = 400
 
-export function FileManager({ instance, jump }: { instance: InstanceStatus; jump?: FileJump }) {
+export function FileManager({
+  instance,
+  jump,
+  onOpenHistory,
+}: {
+  instance: InstanceStatus
+  jump?: FileJump
+  /** Sends the open file to 配置历史. Absent when nothing upstream can switch
+   *  sections, and when the panel has no config history at all. */
+  onOpenHistory?: (path: string) => void
+}) {
   const [dir, setDir] = useState('')
   const [listing, setListing] = useState<FileListing | null>(null)
   const [editor, setEditor] = useState<EditorState | null>(null)
@@ -105,6 +119,21 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
     [instance.id],
   )
 
+  /** Opens a file in the editor by path, for callers that never had a row to
+   *  click — the jump from 配置历史 arrives with a path and nothing else. */
+  const openPath = useCallback(
+    async (path: string) => {
+      try {
+        const file = await api.readFile(instance.id, path)
+        setEditor({ path, content: file.content, original: file.content })
+        setError(null)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '打开文件失败')
+      }
+    },
+    [instance.id],
+  )
+
   useEffect(() => {
     setEditor(null)
     void load('')
@@ -113,12 +142,19 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
   // Keyed on the token alone: the path is read when it fires, and adding it to
   // the dependencies would re-navigate on an unrelated render that happened to
   // recreate the object.
-  const jumpPath = useRef(jump?.path ?? '')
-  jumpPath.current = jump?.path ?? ''
+  const jumpTo = useRef(jump)
+  jumpTo.current = jump
   useEffect(() => {
     if (jump?.token === undefined) return
     setEditor(null)
-    void load(jumpPath.current)
+    const target = jumpTo.current
+    void (async () => {
+      await load(target?.path ?? '')
+      // The directory first, always: if the file turns out to be unreadable —
+      // binary, or deleted between the click and the request — the operator is
+      // at least standing where it should be.
+      if (target?.file) await openPath(target.file)
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jump?.token, load])
 
@@ -350,14 +386,7 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
       return
     }
     if (!entry.editable) return
-
-    try {
-      const file = await api.readFile(instance.id, entry.path)
-      setEditor({ path: entry.path, content: file.content, original: file.content })
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '打开文件失败')
-    }
+    await openPath(entry.path)
   }
 
   const saveEditor = async () => {
@@ -480,6 +509,7 @@ export function FileManager({ instance, jump }: { instance: InstanceStatus; jump
           onSave={() => void saveEditor()}
           onRevert={() => setEditor({ ...editor, content: editor.original })}
           onClose={() => void closeEditor()}
+          onOpenHistory={onOpenHistory && (() => onOpenHistory(editor.path))}
         />
         {dialogs}
       </>
@@ -912,6 +942,7 @@ function FileEditor({
   onSave,
   onRevert,
   onClose,
+  onOpenHistory,
 }: {
   editor: EditorState
   busy: boolean
@@ -920,6 +951,7 @@ function FileEditor({
   onSave: () => void
   onRevert: () => void
   onClose: () => void
+  onOpenHistory?: () => void
 }) {
   const dirty = editor.content !== editor.original
   const gutter = useRef<HTMLDivElement | null>(null)
@@ -1009,6 +1041,13 @@ function FileEditor({
           <button className="btn" onClick={onRevert} disabled={busy || !dirty}>
             撤销修改
           </button>
+          {/* The question you ask right before editing a config you did not
+              write: what did this look like before, and who moved it. */}
+          {onOpenHistory && (
+            <button className="btn" onClick={onOpenHistory} title="在配置历史里比较这个文件">
+              配置历史
+            </button>
+          )}
           <span className="editor__hint">Ctrl / ⌘ + S 也能保存</span>
           <button className="btn actions__danger" onClick={onClose}>
             返回文件列表

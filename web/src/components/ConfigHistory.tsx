@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { api, ApiError } from '../api'
 import { ask } from '../confirm'
@@ -31,10 +31,23 @@ import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
  * feeling of having history is exactly the thing that would let somebody stop
  * taking real backups. So it is in the lead, and again in the footer.
  */
-export function ConfigHistory({ instance }: { instance: InstanceStatus }) {
+export function ConfigHistory({
+  instance,
+  focus,
+  onOpenInFiles,
+}: {
+  instance: InstanceStatus
+  /** A file 文件管理 wants examined here. Carries a token for the same reason
+   *  FileJump does: this pane stays mounted, so asking twice for the same file
+   *  has to work twice. */
+  focus?: ConfigHistoryFocus
+  /** Opens a recorded file where it actually lives, in 文件管理. Absent when
+   *  nothing upstream can switch sections. */
+  onOpenInFiles?: (path: string) => void
+}) {
   const [data, setData] = useState<ConfigHistoryOverview | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<TimelineFilter>('notable')
+  const [filter, setFilter] = useState<TimelineFilter>('all')
   const [selected, setSelected] = useState<string | null>(null)
   const [changes, setChanges] = useState<ConfigFileChange[] | null>(null)
   const [openFile, setOpenFile] = useState<{ path: string; againstCurrent: boolean } | null>(null)
@@ -42,6 +55,19 @@ export function ConfigHistory({ instance }: { instance: InstanceStatus }) {
   const [busy, setBusy] = useState(false)
   const [snapshotting, setSnapshotting] = useState(false)
   const [plan, setPlan] = useState<RestorePlan | null>(null)
+  // Bumped by 刷新. Every fetch on this page hangs off it, so one click brings
+  // the timeline, the open change list and the open diff back in step with a
+  // directory that other people — and the server itself — keep writing to.
+  const [reloads, setReloads] = useState(0)
+  // 与出厂对比 wants to open a file that only exists once the oldest snapshot's
+  // change list has come back, and setting openFile at click time does not
+  // survive — the reset effect below clears it on every selection change. So
+  // the click leaves the intent here and the fetch acts on it. A ref rather
+  // than state: it must not be a dependency of the effect that reads it.
+  const pendingFactory = useRef(false)
+  // Same problem, known file: what to open once the selection lands.
+  const opening = useRef<OpenFile | null>(null)
+  const handledFocus = useRef<number | undefined>(undefined)
 
   const load = async () => {
     try {
@@ -50,9 +76,13 @@ export function ConfigHistory({ instance }: { instance: InstanceStatus }) {
       setError(null)
       // Keep the selection across a reload where it still exists; otherwise
       // fall to the newest row, which is what somebody opening the tab wants.
+      // 当前改动 is not in the timeline and outlives any reload: it is a view of
+      // the directory, not of a commit.
       const timeline = next.timeline ?? []
       setSelected((current) =>
-        current && timeline.some((row) => row.ref === current) ? current : (timeline[0]?.ref ?? null),
+        current === PENDING_REF || (current && timeline.some((row) => row.ref === current))
+          ? current
+          : (timeline[0]?.ref ?? null),
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : '读取配置历史失败')
@@ -63,18 +93,31 @@ export function ConfigHistory({ instance }: { instance: InstanceStatus }) {
     void load()
   }, [instance.id])
 
-  // The change list follows the selected row. Cleared first so a slow request
-  // cannot leave the previous commit's files sitting under a new heading.
+  // What belonged to the row you just left goes as you leave it, so a slow
+  // request cannot drop the previous commit's files under a new heading. Split
+  // from the fetch below because 刷新 refetches without closing anything.
   useEffect(() => {
     setChanges(null)
-    setOpenFile(null)
     setDiff(null)
-    if (!selected) return
+    setOpenFile(opening.current)
+    opening.current = null
+  }, [instance.id, selected])
+
+  // The change list follows the selected row. 当前改动 has none to fetch: its
+  // files come with the overview, which is the only thing that knows them.
+  useEffect(() => {
+    if (!selected || selected === PENDING_REF) return
     let live = true
     void api
       .configHistoryChanges(instance.id, selected)
       .then((next) => {
-        if (live) setChanges(next ?? [])
+        if (!live) return
+        const list = next ?? []
+        setChanges(list)
+        if (pendingFactory.current) {
+          pendingFactory.current = false
+          setOpenFile(list.length > 0 ? { path: list[0].path, againstCurrent: true } : null)
+        }
       })
       .catch((err) => {
         if (live) setError(err instanceof Error ? err.message : '读取变更列表失败')
@@ -82,14 +125,22 @@ export function ConfigHistory({ instance }: { instance: InstanceStatus }) {
     return () => {
       live = false
     }
-  }, [instance.id, selected])
+  }, [instance.id, selected, reloads])
+
+  const timeline = data?.timeline ?? []
+  const pending = data?.pending ?? []
+  const newest = timeline[0] ?? null
+  const showingPending = selected === PENDING_REF
+  // 当前改动 is the disk, so every one of its diffs is a comparison against the
+  // newest snapshot — there is no commit of its own to diff.
+  const diffRef = showingPending ? (newest?.ref ?? null) : selected
 
   useEffect(() => {
     setDiff(null)
-    if (!selected || !openFile) return
+    if (!diffRef || !openFile) return
     let live = true
     void api
-      .configHistoryDiff(instance.id, selected, openFile.path, openFile.againstCurrent)
+      .configHistoryDiff(instance.id, diffRef, openFile.path, openFile.againstCurrent)
       .then((next) => {
         if (live) setDiff(next)
       })
@@ -99,11 +150,67 @@ export function ConfigHistory({ instance }: { instance: InstanceStatus }) {
     return () => {
       live = false
     }
-  }, [instance.id, selected, openFile])
+  }, [instance.id, diffRef, openFile, reloads])
 
-  const timeline = data?.timeline ?? []
   const rows = useMemo(() => timeline.filter((row) => matches(row, filter)), [timeline, filter])
   const current = timeline.find((row) => row.ref === selected) ?? null
+  // The file list on the right, whichever row is selected.
+  const files = showingPending ? pending : changes
+  const pendingStats = pending.reduce(
+    (sum, file) => ({
+      insertions: sum.insertions + file.insertions,
+      deletions: sum.deletions + file.deletions,
+    }),
+    { insertions: 0, deletions: 0 },
+  )
+
+  /** Selects a row and opens one of its files, whether or not the selection
+   *  actually moves — see `opening`. */
+  const openAt = (ref: string, file: OpenFile) => {
+    if (selected === ref) {
+      setOpenFile(file)
+    } else {
+      opening.current = file
+      setSelected(ref)
+    }
+  }
+
+  const selectRow = (ref: string) => {
+    // Picking a row by hand cancels a pending 与出厂对比, so its change list
+    // cannot arrive later and open a file under a snapshot nobody asked for.
+    pendingFactory.current = false
+    setSelected(ref)
+  }
+
+  // 文件管理 asking about one file: show it where it can be compared against
+  // what is on disk — in 当前改动 when the file is one of the unrecorded ones,
+  // against the newest snapshot otherwise.
+  useEffect(() => {
+    // Waits for the overview: which row can answer for this file is a question
+    // only the timeline and the pending list can settle. Answered once per
+    // token, so a later 刷新 does not re-open what was already looked at.
+    if (focus?.token === undefined || !data || handledFocus.current === focus.token) return
+    handledFocus.current = focus.token
+    const path = focus.path
+    const unrecorded = (data.pending ?? []).some((entry) => entry.path === path)
+    const ref = unrecorded ? PENDING_REF : (data.timeline ?? [])[0]?.ref
+    if (!ref) {
+      setError('这个实例还没有任何快照，先打一个再来比较。')
+      return
+    }
+    openAt(ref, { path, againstCurrent: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.token, data])
+
+  const refresh = async () => {
+    setBusy(true)
+    try {
+      await load()
+      setReloads((count) => count + 1)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const takeSnapshot = async (message: string) => {
     setBusy(true)
@@ -223,8 +330,26 @@ export function ConfigHistory({ instance }: { instance: InstanceStatus }) {
   }
 
   const oversized = data.coverage.oversized ?? []
-  const pending = data.pending ?? []
   const initial = timeline.length > 0 ? timeline[timeline.length - 1] : null
+
+  /** 与出厂对比 selects the oldest snapshot and opens its first file against
+   *  what is on disk now. */
+  const compareWithFactory = () => {
+    if (!initial) return
+    // The oldest snapshot is usually a lifecycle row, which 重要 hides. Leaving
+    // the filter alone would light up a detail pane whose row is nowhere in the
+    // timeline beside it.
+    if (!matches(initial, filter)) setFilter('all')
+    if (selected === initial.ref) {
+      // Already there, so the change list is loaded and there is nothing to
+      // wait for.
+      const first = changes?.[0]
+      setOpenFile(first ? { path: first.path, againstCurrent: true } : null)
+      return
+    }
+    pendingFactory.current = true
+    setSelected(initial.ref)
+  }
 
   return (
     <div className="stack">
@@ -233,12 +358,20 @@ export function ConfigHistory({ instance }: { instance: InstanceStatus }) {
           配置历史 <span className="muted">{timeline.length}</span>
         </h2>
         <div className="chart-head__actions">
+          <button
+            className="btn"
+            onClick={() => void refresh()}
+            disabled={busy}
+            title="重新读取时间线、变更列表和当前打开的 diff"
+          >
+            刷新
+          </button>
           <button className="btn btn--primary" onClick={() => setSnapshotting(true)} disabled={busy}>
             打快照
           </button>
           <button
             className="btn"
-            onClick={() => initial && openFactory(setSelected, setOpenFile, initial.ref, changes)}
+            onClick={compareWithFactory}
             disabled={busy || !initial}
             title="与最早记录的出厂状态比较"
           >
@@ -293,7 +426,16 @@ export function ConfigHistory({ instance }: { instance: InstanceStatus }) {
       {pending.length > 0 && (
         <div className="alert alert--warn">
           有 {pending.length} 个文件的改动还没有记录。下次启服前会自动打一次快照，
-          也可以现在就 <button className="link" onClick={() => setSnapshotting(true)}>打快照</button>。
+          也可以现在就 <button className="link" onClick={() => setSnapshotting(true)}>打快照</button>
+          {timeline.length > 0 && (
+            <>
+              ，或者先{' '}
+              <button className="link" onClick={() => selectRow(PENDING_REF)}>
+                看看改了什么
+              </button>
+            </>
+          )}
+          。
         </div>
       )}
 
@@ -328,11 +470,42 @@ export function ConfigHistory({ instance }: { instance: InstanceStatus }) {
             </div>
 
             <ol className="chist__rows">
+              {/* 当前改动 sits above the snapshots and outside the filters: it
+                  is not one of them, it is the directory as it stands right
+                  now, and it is the row somebody arriving mid-incident wants
+                  first. Only when there is something to show — an empty
+                  "nothing changed" row would be noise on every other visit. */}
+              {pending.length > 0 && (
+                <li>
+                  <button
+                    className={`chist__row${showingPending ? ' chist__row--active' : ''}`}
+                    onClick={() => selectRow(PENDING_REF)}
+                    aria-current={showingPending ? 'true' : undefined}
+                  >
+                    <span className="chist__badge chist__badge--pending">未记录</span>
+                    <span className="chist__row-main">
+                      <span className="chist__row-title">当前改动</span>
+                      <span className="chist__row-meta">
+                        <span>还在磁盘上</span>
+                        <span>
+                          {pending.length} 个文件
+                          {pendingStats.insertions > 0 && (
+                            <span className="chist__add"> +{pendingStats.insertions}</span>
+                          )}
+                          {pendingStats.deletions > 0 && (
+                            <span className="chist__del"> −{pendingStats.deletions}</span>
+                          )}
+                        </span>
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              )}
               {rows.map((row) => (
                 <li key={row.ref}>
                   <button
                     className={`chist__row${row.ref === selected ? ' chist__row--active' : ''}`}
-                    onClick={() => setSelected(row.ref)}
+                    onClick={() => selectRow(row.ref)}
                     aria-current={row.ref === selected ? 'true' : undefined}
                   >
                     <span className={`chist__badge chist__badge--${row.trigger}`}>
@@ -367,34 +540,51 @@ export function ConfigHistory({ instance }: { instance: InstanceStatus }) {
           </section>
 
           <section className="chist__detail panel" aria-label="快照详情">
-            {current === null ? (
+            {!showingPending && current === null ? (
               <p className="chist__note">选一个快照。</p>
             ) : (
               <>
                 <header className="chist__detail-head">
-                  <h2 className="panel__title">{current.message}</h2>
+                  <h2 className="panel__title">{showingPending ? '当前改动' : current?.message}</h2>
                   <p className="chist__note">
-                    {formatDate(current.at)} · {current.author} · <code>{current.short}</code>
-                    {current.core && <> · 核心 {current.core}</>}
+                    {showingPending ? (
+                      <>
+                        磁盘上比最近一次快照
+                        {newest && <> 「{newest.message}」</>}多出来的改动，还没有被记录。
+                      </>
+                    ) : (
+                      current && (
+                        <>
+                          {formatDate(current.at)} · {current.author} · <code>{current.short}</code>
+                          {current.core && <> · 核心 {current.core}</>}
+                        </>
+                      )
+                    )}
                   </p>
                 </header>
 
-                {changes === null ? (
+                {files === null ? (
                   <Skeleton w="60%" h={12} />
-                ) : changes.length === 0 ? (
-                  <p className="chist__note">这个快照没有文件变更。</p>
+                ) : files.length === 0 ? (
+                  <p className="chist__note">
+                    {showingPending ? '磁盘和最近一次快照一致。' : '这个快照没有文件变更。'}
+                  </p>
                 ) : (
                   <ul className="chist__files">
-                    {changes.map((change) => (
+                    {files.map((change) => (
                       <li key={change.path}>
                         <div className="chist__file">
                           <button
                             className="chist__file-open"
+                            // 当前改动 only ever compares against the disk: the
+                            // file *is* the disk, so a diff "inside the commit"
+                            // does not exist for it.
                             onClick={() =>
                               setOpenFile((prev) =>
-                                prev?.path === change.path && !prev.againstCurrent
+                                prev?.path === change.path &&
+                                prev.againstCurrent === showingPending
                                   ? null
-                                  : { path: change.path, againstCurrent: false },
+                                  : { path: change.path, againstCurrent: showingPending },
                               )
                             }
                             aria-expanded={openFile?.path === change.path}
@@ -417,21 +607,47 @@ export function ConfigHistory({ instance }: { instance: InstanceStatus }) {
                             </span>
                           </button>
                           <div className="chist__file-actions">
+                            {!showingPending && (
+                              <button
+                                className="btn btn--row"
+                                onClick={() =>
+                                  setOpenFile({ path: change.path, againstCurrent: true })
+                                }
+                                disabled={change.status === 'deleted'}
+                              >
+                                与当前对比
+                              </button>
+                            )}
+                            {onOpenInFiles && (
+                              <button
+                                className="btn btn--row"
+                                onClick={() => onOpenInFiles(change.path)}
+                                disabled={change.status === 'deleted'}
+                                title="在文件管理里打开这个文件"
+                              >
+                                在文件里打开
+                              </button>
+                            )}
                             <button
                               className="btn btn--row"
+                              // Undoing an unrecorded change is a restore of the
+                              // newest snapshot's copy — the same operation, and
+                              // it goes through the same preview. What each side
+                              // cannot restore differs: a snapshot that deleted
+                              // a file holds no copy of it, and a file that
+                              // snapshot never had cannot come back from it.
                               onClick={() =>
-                                setOpenFile({ path: change.path, againstCurrent: true })
+                                diffRef && void previewRestore(diffRef, change.path)
                               }
-                              disabled={change.status === 'deleted'}
+                              disabled={
+                                busy ||
+                                !diffRef ||
+                                (showingPending
+                                  ? change.status === 'added'
+                                  : change.status === 'deleted')
+                              }
                             >
-                              与当前对比
-                            </button>
-                            <button
-                              className="btn btn--row"
-                              onClick={() => void previewRestore(current.ref, change.path)}
-                              disabled={busy || change.status === 'deleted'}
-                            >
-                              还原此版本
+                              {showingPending ? '撤销这次改动' : '还原此版本'}
                             </button>
                           </div>
                         </div>
@@ -489,25 +705,32 @@ export function ConfigHistory({ instance }: { instance: InstanceStatus }) {
   )
 }
 
-/** 与出厂对比 selects the oldest row and opens its first changed file. */
-function openFactory(
-  setSelected: (ref: string) => void,
-  setOpenFile: (file: { path: string; againstCurrent: boolean } | null) => void,
-  ref: string,
-  changes: ConfigFileChange[] | null,
-): void {
-  setSelected(ref)
-  setOpenFile(changes && changes.length > 0 ? { path: changes[0].path, againstCurrent: true } : null)
+type TimelineFilter = 'all' | 'notable' | 'transaction' | 'user' | 'restore'
+
+/** A file opened in the detail pane, and which side it is compared against. */
+interface OpenFile {
+  path: string
+  againstCurrent: boolean
 }
 
-type TimelineFilter = 'notable' | 'all' | 'transaction' | 'user' | 'restore'
+/** What 文件管理 hands over when it asks about one file. */
+export interface ConfigHistoryFocus {
+  path: string
+  token: number
+}
 
-/** 重要 is the default and hides the lifecycle rows. Two of those land on every
- *  start and stop, so a fleet that restarts nightly would bury every real edit
- *  under them within a week. */
+/** The synthetic row for what is on disk but not yet recorded. Not a ref any
+ *  repository would answer to, and deliberately shaped so it cannot be mistaken
+ *  for one if it ever reaches a request. */
+const PENDING_REF = '@pending'
+
+/** 全部 is the default: a timeline that hides rows by default is a timeline
+ *  somebody has to be told about before they can trust it. 重要 is still one
+ *  click away, and it is worth having — start and stop each leave a lifecycle
+ *  row, so a fleet that restarts nightly buries the real edits within a week. */
 const FILTERS: { id: TimelineFilter; label: string }[] = [
-  { id: 'notable', label: '重要' },
   { id: 'all', label: '全部' },
+  { id: 'notable', label: '重要' },
   { id: 'transaction', label: '事务' },
   { id: 'user', label: '用户' },
   { id: 'restore', label: '还原' },
@@ -549,12 +772,13 @@ function DiffView({ diff, againstCurrent }: { diff: ConfigFileDiff | null; again
   if (diff.binary) {
     return <p className="chist__note">这是二进制内容，没有可读的逐行差异。</p>
   }
-  if (diff.hunks.length === 0) {
-    return (
-      <p className="chist__note">
-        {againstCurrent ? '磁盘上的内容与这个版本一致。' : '这个快照没有改动这个文件。'}
-      </p>
-    )
+  // A diff with no lines arrives as null, not as an empty array: the differ
+  // leaves the slice nil for equal sides and Go marshals that as null. Reading
+  // .length off it threw, and one thrown render takes the whole panel down —
+  // there is no error boundary above this tab.
+  const hunks = diff.hunks ?? []
+  if (hunks.length === 0) {
+    return <p className="chist__note">{emptyDiffNote(diff, againstCurrent)}</p>
   }
 
   const key = (hunk: number, index: number) => `${hunk}:${index}`
@@ -566,10 +790,10 @@ function DiffView({ diff, againstCurrent }: { diff: ConfigFileDiff | null; again
       {diff.truncated && (
         <p className="chist__diff-head">改动过大，按整文件替换显示。</p>
       )}
-      {diff.hunks.map((hunk, h) => (
+      {hunks.map((hunk, h) => (
         <table className="chist__hunk" key={h}>
           <tbody>
-            {hunk.lines.map((line, index) => (
+            {(hunk.lines ?? []).map((line, index) => (
               <DiffRow
                 key={key(h, index)}
                 line={line}
@@ -613,6 +837,16 @@ function DiffRow({
 }
 
 const SIGNS = { context: ' ', add: '+', delete: '−' } as const
+
+/** Why a diff has nothing to show. "没有改动" would be wrong for a file that was
+ *  genuinely added — it is just empty, and saying so is the difference between
+ *  "the panel lost my file" and "the plugin wrote a zero-byte config". */
+function emptyDiffNote(diff: ConfigFileDiff, againstCurrent: boolean): string {
+  if (againstCurrent) return '磁盘上的内容与这个版本一致。'
+  if (diff.status === 'added') return '这是一个空文件，没有内容可以显示。'
+  if (diff.status === 'deleted') return '删除的是一个空文件。'
+  return '这个快照没有改动这个文件。'
+}
 
 function SnapshotDialog({
   running,

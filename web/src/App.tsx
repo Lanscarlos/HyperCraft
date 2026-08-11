@@ -8,6 +8,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { CoreLibraryPage } from './components/CoreLibraryPage'
 import { DatabasePage } from './components/DatabasePage'
 import { Dashboard } from './components/Dashboard'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { HostPage } from './components/HostPage'
 import { HostTerminal } from './components/HostTerminal'
 import { ImportInstanceDialog } from './components/ImportInstanceDialog'
@@ -524,173 +525,177 @@ export default function App() {
         <main className="main" id="main" tabIndex={-1}>
           {loadError && <div className="alert alert--error">{loadError}</div>}
 
-          {route.kind === 'settings' ? (
-            <SettingsPage
-              section={route.section}
-              update={update}
-              plugins={plugins}
-              runningNames={runningNames}
-            />
-          ) : route.kind === 'host' ? (
-            route.section === 'terminal' ? (
-              <HostTerminal
-                terminal={terminal}
-                onOpenSettings={() => navigate({ kind: 'host', section: 'config' })}
-              />
-            ) : (
-              <HostPage
+          {/* The shell survives a crashed page, and navigating away is what
+              recovers from one — hence the route as the reset key. */}
+          <ErrorBoundary resetKey={pathOf(route)}>
+            {route.kind === 'settings' ? (
+              <SettingsPage
                 section={route.section}
-                system={system}
-                instances={instances}
-                terminal={terminal}
-                onNavigate={navigate}
-              />
-            )
-          ) : route.kind === 'library' ? (
-            route.section === 'java' ? (
-              <JavaPage
-                java={java}
-                view={route.view}
-                onOpenView={(view) => openLibrary('java', view)}
-                onOpenCores={() => openLibrary('cores', 'stock')}
-              />
-            ) : route.section === 'database' ? (
-              <DatabasePage
-                databases={databases}
-                view={route.view}
-                onOpenView={(view) => openLibrary('database', view)}
-              />
-            ) : route.section === 'cores' ? (
-              <CoreLibraryPage
-                cores={cores}
-                view={route.view}
-                onOpenView={(view) => openLibrary('cores', view)}
-                onOpenJava={() => openLibrary('java', 'installed')}
-              />
-            ) : route.view === 'queue' ? (
-              // A page of its own rather than a block on 插件列表: five
-              // downloads at once is a list, and a list that appears and
-              // vanishes inside a table shoves that table down the screen
-              // every time somebody presses 更新入库.
-              <PluginQueuePage plugins={plugins} />
-            ) : (
-              <PluginLibraryPage
+                update={update}
                 plugins={plugins}
-                view={route.view}
-                against={route.against}
-                recents={recents}
-                instances={instances}
-                // The plugin id stays in the URL and opens a drawer over the
-                // list rather than replacing it. A detail *page* threw away
-                // the filter, the scroll and the row you were comparing
-                // against — which is the context the comparison was made of.
-                openPluginId={openedPlugin?.id}
-                onOpenView={(view) => openLibrary('plugins', view)}
-                onChooseAgainst={(ids) =>
-                  navigate(
-                    { kind: 'library', section: 'plugins', view: 'browse', against: ids },
-                    true,
+                runningNames={runningNames}
+              />
+            ) : route.kind === 'host' ? (
+              route.section === 'terminal' ? (
+                <HostTerminal
+                  terminal={terminal}
+                  onOpenSettings={() => navigate({ kind: 'host', section: 'config' })}
+                />
+              ) : (
+                <HostPage
+                  section={route.section}
+                  system={system}
+                  instances={instances}
+                  terminal={terminal}
+                  onNavigate={navigate}
+                />
+              )
+            ) : route.kind === 'library' ? (
+              route.section === 'java' ? (
+                <JavaPage
+                  java={java}
+                  view={route.view}
+                  onOpenView={(view) => openLibrary('java', view)}
+                  onOpenCores={() => openLibrary('cores', 'stock')}
+                />
+              ) : route.section === 'database' ? (
+                <DatabasePage
+                  databases={databases}
+                  view={route.view}
+                  onOpenView={(view) => openLibrary('database', view)}
+                />
+              ) : route.section === 'cores' ? (
+                <CoreLibraryPage
+                  cores={cores}
+                  view={route.view}
+                  onOpenView={(view) => openLibrary('cores', view)}
+                  onOpenJava={() => openLibrary('java', 'installed')}
+                />
+              ) : route.view === 'queue' ? (
+                // A page of its own rather than a block on 插件列表: five
+                // downloads at once is a list, and a list that appears and
+                // vanishes inside a table shoves that table down the screen
+                // every time somebody presses 更新入库.
+                <PluginQueuePage plugins={plugins} />
+              ) : (
+                <PluginLibraryPage
+                  plugins={plugins}
+                  view={route.view}
+                  against={route.against}
+                  recents={recents}
+                  instances={instances}
+                  // The plugin id stays in the URL and opens a drawer over the
+                  // list rather than replacing it. A detail *page* threw away
+                  // the filter, the scroll and the row you were comparing
+                  // against — which is the context the comparison was made of.
+                  openPluginId={openedPlugin?.id}
+                  onOpenView={(view) => openLibrary('plugins', view)}
+                  onChooseAgainst={(ids) =>
+                    navigate(
+                      { kind: 'library', section: 'plugins', view: 'browse', against: ids },
+                      true,
+                    )
+                  }
+                  onOpenPlugin={(id) =>
+                    navigate({
+                      kind: 'library',
+                      section: 'plugins',
+                      view: 'list',
+                      pluginId: id ?? undefined,
+                    })
+                  }
+                  onOpenSettings={() => navigate({ kind: 'settings', section: 'plugins' })}
+                  onOpenInstance={(id) => openInstance(id, 'plugins')}
+                />
+              )
+            ) : route.kind === 'new-instance' ? (
+              <NewInstanceWizard
+                cores={cores}
+                java={java}
+                system={system.info}
+                // Upsert rather than append: the wizard reports the instance
+                // twice — once when it is created, once if 立即开服 is pressed —
+                // and the second report is a state change, not a second server.
+                onCreated={(instance) =>
+                  setInstances((prev) =>
+                    prev.some((item) => item.id === instance.id)
+                      ? prev.map((item) =>
+                          item.id === instance.id ? mergeState(item, instance) : item,
+                        )
+                      : [...prev, instance],
                   )
                 }
-                onOpenPlugin={(id) =>
-                  navigate({
-                    kind: 'library',
-                    section: 'plugins',
-                    view: 'list',
-                    pluginId: id ?? undefined,
-                  })
+                onOpenInstance={(id) => openInstance(id)}
+                onCancel={
+                  goBack ?? (() => navigate({ kind: 'instances', query: '', state: 'all' }))
                 }
-                onOpenSettings={() => navigate({ kind: 'settings', section: 'plugins' })}
-                onOpenInstance={(id) => openInstance(id, 'plugins')}
               />
-            )
-          ) : route.kind === 'new-instance' ? (
-            <NewInstanceWizard
-              cores={cores}
-              java={java}
-              system={system.info}
-              // Upsert rather than append: the wizard reports the instance
-              // twice — once when it is created, once if 立即开服 is pressed —
-              // and the second report is a state change, not a second server.
-              onCreated={(instance) =>
-                setInstances((prev) =>
-                  prev.some((item) => item.id === instance.id)
-                    ? prev.map((item) =>
-                        item.id === instance.id ? mergeState(item, instance) : item,
-                      )
-                    : [...prev, instance],
-                )
-              }
-              onOpenInstance={(id) => openInstance(id)}
-              onCancel={
-                goBack ?? (() => navigate({ kind: 'instances', query: '', state: 'all' }))
-              }
-            />
-          ) : route.kind === 'instances' ? (
-            <InstanceList
-              instances={instances}
-              query={route.query}
-              state={route.state}
-              onFilter={(next: { query: string; state: StateFilter }) =>
-                // Replaces rather than pushes: typing five characters into the
-                // search box must not put five entries in the back stack.
-                navigate({ kind: 'instances', ...next }, true)
-              }
-              onNavigate={navigate}
-              onCreate={() => navigate({ kind: 'new-instance' })}
-              onImport={() => setShowImport(true)}
-              onChanged={applyInstance}
-            />
-          ) : route.kind === 'instance' ? (
-            selected ? (
-              <InstanceView
-                key={selected.id}
-                instance={selected}
-                section={route.section}
-                cores={cores}
-                plugins={plugins}
+            ) : route.kind === 'instances' ? (
+              <InstanceList
+                instances={instances}
+                query={route.query}
+                state={route.state}
+                onFilter={(next: { query: string; state: StateFilter }) =>
+                  // Replaces rather than pushes: typing five characters into the
+                  // search box must not put five entries in the back stack.
+                  navigate({ kind: 'instances', ...next }, true)
+                }
+                onNavigate={navigate}
+                onCreate={() => navigate({ kind: 'new-instance' })}
+                onImport={() => setShowImport(true)}
                 onChanged={applyInstance}
-                onDeleted={() => {
-                  navigate({ kind: 'instances', query: '', state: 'all' })
-                  void refresh()
-                }}
-                onOpenSection={(section) => openInstance(route.id, section)}
-                // Acquiring a plugin is a panel-wide act, so it happens in one
-                // place. The instance travels along as the compatibility
-                // reference, which is the context that would otherwise be lost
-                // on the way there.
-                onOpenBrowse={() =>
-                  navigate({
-                    kind: 'library',
-                    section: 'plugins',
-                    view: 'browse',
-                    against: [route.id],
-                  })
-                }
-                onOpenCoreLibrary={() => openLibrary('cores', 'stock')}
               />
+            ) : route.kind === 'instance' ? (
+              selected ? (
+                <InstanceView
+                  key={selected.id}
+                  instance={selected}
+                  section={route.section}
+                  cores={cores}
+                  plugins={plugins}
+                  onChanged={applyInstance}
+                  onDeleted={() => {
+                    navigate({ kind: 'instances', query: '', state: 'all' })
+                    void refresh()
+                  }}
+                  onOpenSection={(section) => openInstance(route.id, section)}
+                  // Acquiring a plugin is a panel-wide act, so it happens in one
+                  // place. The instance travels along as the compatibility
+                  // reference, which is the context that would otherwise be lost
+                  // on the way there.
+                  onOpenBrowse={() =>
+                    navigate({
+                      kind: 'library',
+                      section: 'plugins',
+                      view: 'browse',
+                      against: [route.id],
+                    })
+                  }
+                  onOpenCoreLibrary={() => openLibrary('cores', 'stock')}
+                />
+              ) : (
+                <div className="alert">
+                  找不到这个实例，它可能已经被删除了。
+                  <button
+                    className="link"
+                    onClick={() => navigate({ kind: 'instances', query: '', state: 'all' })}
+                  >
+                    回到实例列表
+                  </button>
+                </div>
+              )
             ) : (
-              <div className="alert">
-                找不到这个实例，它可能已经被删除了。
-                <button
-                  className="link"
-                  onClick={() => navigate({ kind: 'instances', query: '', state: 'all' })}
-                >
-                  回到实例列表
-                </button>
-              </div>
-            )
-          ) : (
-            <Dashboard
-              instances={instances}
-              system={system.info}
-              alerts={alerts}
-              onSelect={openInstance}
-              onCreate={() => navigate({ kind: 'new-instance' })}
-              onNavigate={navigate}
-              onChanged={applyInstance}
-            />
-          )}
+              <Dashboard
+                instances={instances}
+                system={system.info}
+                alerts={alerts}
+                onSelect={openInstance}
+                onCreate={() => navigate({ kind: 'new-instance' })}
+                onNavigate={navigate}
+                onChanged={applyInstance}
+              />
+            )}
+          </ErrorBoundary>
         </main>
       </div>
 

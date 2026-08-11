@@ -200,7 +200,10 @@ export interface DiffHunk {
 export interface ConfigFileDiff {
   path: string
   status: ChangeStatus
-  hunks: DiffHunk[]
+  /** Null whenever the diff has no lines at all — an empty file recorded as
+   *  added, or a 与当前对比 on a file the disk still matches. Go marshals the
+   *  nil slice as null, so this must be read through `?? []`. */
+  hunks: DiffHunk[] | null
   binary: boolean
   /** The differ gave up and reported the file as replaced whole. */
   truncated: boolean
