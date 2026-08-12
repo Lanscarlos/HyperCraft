@@ -198,6 +198,26 @@ func (f *File) Entries(section string, skip ...string) []Entry {
 	return out
 }
 
+// ListEntry is one key of a table whose values are string arrays —
+// [forced-hosts], where a hostname maps to the servers it sends players to.
+type ListEntry struct {
+	Key    string   `json:"key"`
+	Values []string `json:"values"`
+}
+
+// ListEntries returns every array-valued key in a table, in file order. A key
+// in that table holding something else is skipped rather than mangled.
+func (f *File) ListEntries(section string) []ListEntry {
+	out := []ListEntry{}
+	for _, l := range f.lines {
+		if !l.isKey() || l.section != section || !strings.HasPrefix(strings.TrimSpace(l.value), "[") {
+			continue
+		}
+		out = append(out, ListEntry{Key: l.key, Values: decodeStringArray(l.value)})
+	}
+	return out
+}
+
 // ------------------------------------------------------------------ writing
 
 // SetString writes a string value, quoting and escaping it.
@@ -241,17 +261,38 @@ func (f *File) set(section, key, encoded string) {
 // Rewriting rather than merging is what the sub-server list needs: removing a
 // server has to remove its line, and there is no other call that can say so.
 func (f *File) SetEntries(section string, entries []Entry, keep ...string) {
+	order := make([]string, 0, len(entries))
 	want := make(map[string]string, len(entries))
 	for _, entry := range entries {
+		order = append(order, entry.Key)
 		want[entry.Key] = EncodeString(entry.Value)
 	}
+	f.setEncoded(section, order, want, keep)
+}
 
-	out := make([]line, 0, len(f.lines)+len(entries))
+// SetListEntries does the same for a table of string arrays: [forced-hosts] is
+// rewritten rather than merged, so deleting a hostname deletes its line.
+func (f *File) SetListEntries(section string, entries []ListEntry, keep ...string) {
+	order := make([]string, 0, len(entries))
+	want := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		quoted := make([]string, 0, len(entry.Values))
+		for _, value := range entry.Values {
+			quoted = append(quoted, EncodeString(value))
+		}
+		order = append(order, entry.Key)
+		want[entry.Key] = "[" + strings.Join(quoted, ", ") + "]"
+	}
+	f.setEncoded(section, order, want, keep)
+}
+
+func (f *File) setEncoded(section string, order []string, want map[string]string, keep []string) {
+	out := make([]line, 0, len(f.lines)+len(order))
 	// Where a key this table does not have yet should go: after the last one
 	// it still has, or right after the header when it has none. Never after
 	// the kept keys — a new server belongs above the try list, not below it.
 	insertAt := -1
-	seen := make(map[string]bool, len(entries))
+	seen := make(map[string]bool, len(order))
 
 	for _, l := range f.lines {
 		switch {
@@ -272,16 +313,16 @@ func (f *File) SetEntries(section string, entries []Entry, keep ...string) {
 		}
 	}
 
-	fresh := make([]line, 0, len(entries))
-	for _, entry := range entries {
-		if seen[entry.Key] {
+	fresh := make([]line, 0, len(order))
+	for _, key := range order {
+		if seen[key] {
 			continue
 		}
 		fresh = append(fresh, line{
 			section: section,
-			keyRaw:  encodeKey(entry.Key),
-			key:     entry.Key,
-			value:   want[entry.Key],
+			keyRaw:  encodeKey(key),
+			key:     key,
+			value:   want[key],
 		})
 	}
 

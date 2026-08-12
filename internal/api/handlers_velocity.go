@@ -50,9 +50,10 @@ type velocitySetting struct {
 }
 
 const (
-	velocityServersTable = "servers"
-	velocityTryKey       = "try"
-	forwardingSecretKey  = "forwarding-secret-file"
+	velocityServersTable     = "servers"
+	velocityForcedHostsTable = "forced-hosts"
+	velocityTryKey           = "try"
+	forwardingSecretKey      = "forwarding-secret-file"
 )
 
 var velocitySettings = []velocitySetting{
@@ -120,6 +121,15 @@ type velocityCandidate struct {
 	Added bool `json:"added"`
 }
 
+// velocityForcedHost maps a hostname players connect to onto the sub-servers
+// that hostname sends them to. It is how one proxy serves mc.example.com and
+// creative.example.com as if they were two servers, and it is the one part of
+// velocity.toml that is not a setting but a routing table.
+type velocityForcedHost struct {
+	Host    string   `json:"host"`
+	Servers []string `json:"servers"`
+}
+
 type velocitySecret struct {
 	// File is the name from forwarding-secret-file, relative to the proxy's
 	// directory.
@@ -129,14 +139,15 @@ type velocitySecret struct {
 }
 
 type velocityResponse struct {
-	Exists   bool                `json:"exists"`
-	Path     string              `json:"path"`
-	Entries  []velocitycfg.Entry `json:"entries"`
-	Known    []velocitySettingUI `json:"known"`
-	Servers  []velocityServer    `json:"servers"`
-	Try      []string            `json:"try"`
-	Secret   velocitySecret      `json:"secret"`
-	Suggests []velocityCandidate `json:"suggests"`
+	Exists   bool                 `json:"exists"`
+	Path     string               `json:"path"`
+	Entries  []velocitycfg.Entry  `json:"entries"`
+	Known    []velocitySettingUI  `json:"known"`
+	Servers  []velocityServer     `json:"servers"`
+	Try      []string             `json:"try"`
+	Forced   []velocityForcedHost `json:"forcedHosts"`
+	Secret   velocitySecret       `json:"secret"`
+	Suggests []velocityCandidate  `json:"suggests"`
 }
 
 // proxyFromPath resolves the instance and refuses the ones this page is not
@@ -215,6 +226,11 @@ func (s *Server) velocityResponse(inst *instance.Instance, file *velocitycfg.Fil
 		try = []string{}
 	}
 
+	forced := make([]velocityForcedHost, 0)
+	for _, entry := range file.ListEntries(velocityForcedHostsTable) {
+		forced = append(forced, velocityForcedHost{Host: entry.Key, Servers: entry.Values})
+	}
+
 	return velocityResponse{
 		Exists:   exists,
 		Path:     filepath.Join(inst.Config().Directory, velocitycfg.FileName),
@@ -222,6 +238,7 @@ func (s *Server) velocityResponse(inst *instance.Instance, file *velocitycfg.Fil
 		Known:    known,
 		Servers:  servers,
 		Try:      try,
+		Forced:   forced,
 		Secret:   s.readForwardingSecret(inst, file),
 		Suggests: s.subServerSuggestions(inst, servers),
 	}
@@ -357,9 +374,10 @@ type putVelocityRequest struct {
 	// All three are optional: a nil field is one this request is not about, so
 	// the sub-server list and the settings form can save on their own without
 	// either of them having to send the other's state back.
-	Entries []velocitycfg.Entry `json:"entries"`
-	Servers *[]velocityServer   `json:"servers"`
-	Try     *[]string           `json:"try"`
+	Entries []velocitycfg.Entry   `json:"entries"`
+	Servers *[]velocityServer     `json:"servers"`
+	Try     *[]string             `json:"try"`
+	Forced  *[]velocityForcedHost `json:"forcedHosts"`
 	// ForwardingSecret writes the secret file. Empty is not "clear it" — it is
 	// "leave it alone", so a form that renders the secret masked cannot wipe it.
 	ForwardingSecret string `json:"forwardingSecret"`
@@ -430,6 +448,15 @@ func (s *Server) handlePutVelocity(w http.ResponseWriter, r *http.Request) {
 			try = append(try, name)
 		}
 		file.SetList(velocityServersTable, velocityTryKey, try)
+	}
+
+	if req.Forced != nil {
+		entries, err := velocityForcedEntries(*req.Forced, file)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		file.SetListEntries(velocityForcedHostsTable, entries)
 	}
 
 	dir := inst.Config().Directory
@@ -507,6 +534,52 @@ func velocityServerEntries(servers []velocityServer) ([]velocitycfg.Entry, error
 		}
 		seen[strings.ToLower(name)] = true
 		entries = append(entries, velocitycfg.Entry{Key: name, Value: address})
+	}
+	return entries, nil
+}
+
+// hostPattern is what can sensibly stand on the left of a forced host: a
+// domain name, optionally with a port, or the "*" Velocity reads as a wildcard.
+var hostPattern = regexp.MustCompile(`^[*A-Za-z0-9][*A-Za-z0-9_.-]*(:[0-9]{1,5})?$`)
+
+// velocityForcedEntries checks the routing table against the sub-servers as
+// they stand after this request. A forced host naming a server that does not
+// exist is not a typo Velocity forgives — it refuses to start.
+func velocityForcedEntries(hosts []velocityForcedHost, file *velocitycfg.File) ([]velocitycfg.ListEntry, error) {
+	defined := make(map[string]bool)
+	for _, entry := range file.Entries(velocityServersTable, velocityTryKey) {
+		defined[entry.Key] = true
+	}
+
+	entries := make([]velocitycfg.ListEntry, 0, len(hosts))
+	seen := make(map[string]bool, len(hosts))
+	for _, host := range hosts {
+		name := strings.ToLower(strings.TrimSpace(host.Host))
+		if name == "" && len(host.Servers) == 0 {
+			continue
+		}
+		if !hostPattern.MatchString(name) {
+			return nil, errors.New("域名 " + host.Host + " 不可用：写成 mc.example.com 这样的形式")
+		}
+		if seen[name] {
+			return nil, errors.New("域名 " + name + " 重复了")
+		}
+		servers := make([]string, 0, len(host.Servers))
+		for _, server := range host.Servers {
+			server = strings.TrimSpace(server)
+			if server == "" {
+				continue
+			}
+			if !defined[server] {
+				return nil, errors.New("域名 " + name + " 指向的 " + server + " 不在子服列表中")
+			}
+			servers = append(servers, server)
+		}
+		if len(servers) == 0 {
+			return nil, errors.New("域名 " + name + " 至少要指向一个子服")
+		}
+		seen[name] = true
+		entries = append(entries, velocitycfg.ListEntry{Key: name, Values: servers})
 	}
 	return entries, nil
 }

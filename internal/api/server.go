@@ -279,11 +279,24 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("GET /api/instances/{id}/eula", s.handleGetEULA)
 	protected.HandleFunc("POST /api/instances/{id}/eula", s.handleAcceptEULA)
 
+	// The settings that live outside server.properties: bukkit.yml, spigot.yml
+	// and whichever layout of Paper's config this server reads.
+	protected.HandleFunc("GET /api/instances/{id}/configs", s.handleGetServerConfigs)
+	protected.HandleFunc("PUT /api/instances/{id}/configs/{file}", s.handlePutServerConfig)
+
 	// The proxy's own configuration. Beside the properties routes rather than
 	// folded into them: velocity.toml is a different file with different keys,
 	// and an instance answers to one pair or the other, never to both.
 	protected.HandleFunc("GET /api/instances/{id}/velocity", s.handleGetVelocity)
 	protected.HandleFunc("PUT /api/instances/{id}/velocity", s.handlePutVelocity)
+
+	// Which proxy stands in front of which servers. Panel-wide rather than
+	// per-instance because a link is a fact about two instances, and neither of
+	// them owns it.
+	protected.HandleFunc("GET /api/network", s.handleNetwork)
+	protected.HandleFunc("POST /api/network/link", s.handleNetworkLink)
+	protected.HandleFunc("POST /api/network/repair", s.handleNetworkRepair)
+	protected.HandleFunc("POST /api/network/unlink", s.handleNetworkUnlink)
 
 	// Config history. Two segments deep below the instance for the same reason
 	// the plugin config routes are: "commits" must never be reachable as
