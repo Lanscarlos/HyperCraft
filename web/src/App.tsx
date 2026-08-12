@@ -19,6 +19,8 @@ import { Login } from './components/Login'
 import { NewInstanceWizard } from './components/NewInstanceWizard'
 import { PluginLibraryPage } from './components/PluginLibraryPage'
 import { PluginQueuePage } from './components/PluginQueuePage'
+import { SchematicLibraryPage } from './components/SchematicLibraryPage'
+import { SchematicMarket } from './components/SchematicMarket'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
 import { ToastStack } from './components/Toast'
@@ -48,6 +50,7 @@ import { useJava } from './useJava'
 import { useMediaQuery } from './useMediaQuery'
 import { usePlugins } from './usePlugins'
 import { useRecents } from './useRecents'
+import { useSchematics } from './useSchematics'
 import { useSystem } from './useSystem'
 import { useTerminal } from './useTerminal'
 import { updateLabel, useUpdate } from './useUpdate'
@@ -99,7 +102,9 @@ function labelOf<T extends string>(list: { id: T; label: string }[], id: T): str
 function crumbsFor(
   route: Route,
   selected: InstanceStatus | null,
-  pluginName: string | undefined,
+  /** The name of whatever the library page has open — a plugin, a build —
+   *  since both stand in the URL as the last step of the trail. */
+  openName: string | undefined,
   link: (route: Route) => Pick<Crumb, 'href' | 'onClick'>,
 ): Crumb[] {
   switch (route.kind) {
@@ -132,8 +137,8 @@ function crumbsFor(
         view: defaultView(route.section),
       }
       const base: Crumb[] = [{ label: '资源库' }]
-      if (pluginName) {
-        return [...base, { label: section, ...link(home) }, { label: pluginName }]
+      if (openName) {
+        return [...base, { label: section, ...link(home) }, { label: openName }]
       }
       const view = labelOf(LIBRARY_VIEWS[route.section], route.view)
       // The first page of a section is the section: repeating its name under
@@ -173,7 +178,7 @@ function labelOfRoute(route: Route, instances: InstanceStatus[]): string {
     }
     case 'library': {
       const section = labelOf(LIBRARY_SECTIONS, route.section)
-      if (route.pluginId) return section
+      if (route.pluginId || route.schemId) return section
       return route.view === defaultView(route.section)
         ? section
         : `${section} · ${labelOf(LIBRARY_VIEWS[route.section], route.view)}`
@@ -232,6 +237,11 @@ export default function App() {
   const databases = useDatabases(signedIn)
   const cores = useCores(signedIn)
   const plugins = usePlugins(signedIn)
+  // Not polled, unlike the four above it: a schematic has no download job to
+  // watch — the request that fetches one is over before a progress bar would
+  // have drawn a frame — so it is loaded once and refreshed after the actions
+  // that change it. It still lives up here because the sidebar counts it.
+  const schematics = useSchematics(signedIn)
   const system = useSystem(signedIn)
   // Not polled, unlike the others: nothing turns the terminal on but a person
   // clicking the switch, and that path already refreshes the status.
@@ -427,8 +437,14 @@ export default function App() {
     route.kind === 'library' && route.section === 'plugins' && route.pluginId
       ? (plugins.plugins.find((item) => item.id === route.pluginId) ?? null)
       : null
+  // Same story as openedPlugin: a build id from the URL that no longer names
+  // anything falls back to the shelf rather than to an error page.
+  const openedSchem =
+    route.kind === 'library' && route.section === 'schematics' && route.schemId
+      ? (schematics.entries.find((item) => item.id === route.schemId) ?? null)
+      : null
   const updateNotice = updateLabel(update.status)
-  const crumbs = crumbsFor(route, selected, openedPlugin?.name, (target) => ({
+  const crumbs = crumbsFor(route, selected, openedPlugin?.name ?? openedSchem?.name, (target) => ({
     href: pathOf(target),
     onClick: follow(() => navigate(target)),
   }))
@@ -496,6 +512,7 @@ export default function App() {
         databases={databases}
         cores={cores}
         plugins={plugins}
+        schematics={schematics}
         terminal={terminal}
         onCreate={() => navigate({ kind: 'new-instance' })}
         onOpenPalette={() => setPaletteOpen(true)}
@@ -564,6 +581,30 @@ export default function App() {
                   view={route.view}
                   onOpenView={(view) => openLibrary('database', view)}
                 />
+              ) : route.section === 'schematics' ? (
+                route.view === 'list' ? (
+                  <SchematicLibraryPage
+                    schematics={schematics}
+                    // The build stays in the URL and opens its preview over the
+                    // list, so a link to one opens the thing itself rather than
+                    // the shelf it is on.
+                    openId={route.schemId}
+                    onOpen={(id) =>
+                      navigate({
+                        kind: 'library',
+                        section: 'schematics',
+                        view: 'list',
+                        schemId: id ?? undefined,
+                      })
+                    }
+                  />
+                ) : (
+                  <SchematicMarket
+                    schematics={schematics}
+                    view={route.view === 'source' ? 'source' : 'browse'}
+                    onOpenView={(view) => openLibrary('schematics', view)}
+                  />
+                )
               ) : route.section === 'cores' ? (
                 <CoreLibraryPage
                   cores={cores}

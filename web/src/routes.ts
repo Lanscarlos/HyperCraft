@@ -22,7 +22,7 @@ export type InstanceSection =
   | 'settings'
 
 /** The shared-asset pages. Stock, as opposed to what one server has chosen. */
-export type LibrarySection = 'cores' | 'java' | 'database' | 'plugins'
+export type LibrarySection = 'cores' | 'java' | 'database' | 'plugins' | 'schematics'
 
 /**
  * The pages inside one library section.
@@ -71,6 +71,14 @@ export type Route =
       section: LibrarySection
       view: LibraryView
       pluginId?: string
+      /**
+       * Which build the 建筑列表 page has open, as a drawer over the list.
+       *
+       * Its own field rather than sharing pluginId: the two open different
+       * drawers on different pages, and one name covering both is the kind of
+       * saving that turns into "why does a plugin id open a schematic".
+       */
+      schemId?: string
       /**
        * Which instances 插件市场 judges compatibility against.
        *
@@ -128,6 +136,10 @@ export const LIBRARY_SECTIONS: { id: LibrarySection; label: string }[] = [
   { id: 'cores', label: '服务端核心' },
   { id: 'database', label: '数据库环境' },
   { id: 'plugins', label: '插件库' },
+  // Last, because it is the only shelf a server does not need to start: Java,
+  // the core and the plugins are what a server *is*, and a building is what
+  // somebody puts inside one afterwards.
+  { id: 'schematics', label: '建筑库' },
 ]
 
 /** The pages inside each library section, in order. The first is the default —
@@ -170,6 +182,17 @@ export const LIBRARY_VIEWS: Record<LibrarySection, { id: LibraryView; label: str
     { id: 'list', label: '插件列表' },
     { id: 'browse', label: '插件市场' },
     { id: 'queue', label: '下载队列' },
+  ],
+  // The same three questions the plugin shelf asks, minus the queue: a
+  // schematic is a few hundred kilobytes, so a download is over before there is
+  // anything to queue. 索引源 is a page rather than panel settings — unlike the
+  // GitHub token, which is one credential shared by everything, a build source
+  // is a *shelf* somebody added, and adding one is browsing rather than
+  // configuring.
+  schematics: [
+    { id: 'list', label: '建筑列表' },
+    { id: 'browse', label: '建筑市场' },
+    { id: 'source', label: '索引源' },
   ],
 }
 
@@ -256,7 +279,9 @@ export function parentOf(route: Route): Route | null {
         : { kind: 'instance', id: route.id, section: 'console' }
     case 'library': {
       const home = defaultView(route.section)
-      if (route.pluginId) return { kind: 'library', section: route.section, view: 'list' }
+      if (route.pluginId || route.schemId) {
+        return { kind: 'library', section: route.section, view: 'list' }
+      }
       return route.view === home
         ? { kind: 'overview' }
         : { kind: 'library', section: route.section, view: home }
@@ -319,6 +344,9 @@ function readRoute(path: string, search: string): Route {
       if (section === 'plugins' && view === 'list' && library[3]) {
         return { kind: 'library', section, view, pluginId: decodeURIComponent(library[3]) }
       }
+      if (section === 'schematics' && view === 'list' && library[3]) {
+        return { kind: 'library', section, view, schemId: decodeURIComponent(library[3]) }
+      }
       const against = (params.get('against') ?? '')
         .split(',')
         .map((entry) => decodeURIComponent(entry).trim())
@@ -330,10 +358,15 @@ function readRoute(path: string, search: string): Route {
     // A plugin used to live directly under its section — /library/plugins/<id>
     // — which is what every bookmark and every link in an older release says.
     // The views took that slot, so anything that is not one of them is still
-    // read as a plugin id.
-    return section === 'plugins' && second
-      ? { kind: 'library', section, view: 'list', pluginId: decodeURIComponent(second) }
-      : { kind: 'library', section, view: defaultView(section) }
+    // read as a plugin id. A build never lived there, but the same shape is
+    // the obvious thing to type by hand, so it is read the same way.
+    if (section === 'plugins' && second) {
+      return { kind: 'library', section, view: 'list', pluginId: decodeURIComponent(second) }
+    }
+    if (section === 'schematics' && second) {
+      return { kind: 'library', section, view: 'list', schemId: decodeURIComponent(second) }
+    }
+    return { kind: 'library', section, view: defaultView(section) }
   }
 
   // Ahead of the list below, which would otherwise swallow it: /instances/…
@@ -380,6 +413,7 @@ function readRoute(path: string, search: string): Route {
     }
   }
   if (path === '/plugins') return { kind: 'library', section: 'plugins', view: 'list' }
+  if (path === '/schematics') return { kind: 'library', section: 'schematics', view: 'list' }
   if (path === '/terminal') return { kind: 'host', section: 'terminal' }
 
   return { kind: 'overview' }
@@ -394,6 +428,9 @@ export function pathOf(route: Route): string {
     case 'library': {
       if (route.pluginId) {
         return `/library/plugins/list/${encodeURIComponent(route.pluginId)}`
+      }
+      if (route.schemId) {
+        return `/library/schematics/list/${encodeURIComponent(route.schemId)}`
       }
       const base = `/library/${route.section}/${route.view}`
       return route.view === 'browse' && route.against?.length
@@ -429,7 +466,8 @@ export function samePage(a: Route, b: Route): boolean {
         b.kind === 'library' &&
         a.section === b.section &&
         a.view === b.view &&
-        a.pluginId === b.pluginId
+        a.pluginId === b.pluginId &&
+        a.schemId === b.schemId
       )
     case 'settings':
       return b.kind === 'settings' && a.section === b.section

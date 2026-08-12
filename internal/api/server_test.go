@@ -21,6 +21,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/mcprops"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
 	"github.com/lanscarlos/hypercraft/internal/plugin"
+	"github.com/lanscarlos/hypercraft/internal/schemlib"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
 )
@@ -104,6 +105,12 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 		),
 		InstancePlugins: plugin.NewInstances(pluginLibrary, paths.InstancePluginsFile()),
 		PendingPlugins:  plugin.NewPending(paths.PendingPluginsFile()),
+
+		Schematics: schemlib.NewLibrary(paths.SchematicsRoot()),
+		// No mirrors and no token: the market's own sources are exercised in
+		// internal/schemlib against a test server, and nothing here should be
+		// able to reach the real internet by accident.
+		SchematicMarket: schemlib.NewMarket(paths.SchematicsRoot(), "test"),
 
 		DatabaseInstalls: dbruntime.NewInstaller(
 			dbruntime.NewClient("test"),

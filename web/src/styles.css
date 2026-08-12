@@ -4852,6 +4852,298 @@ details[open]::details-content {
   }
 }
 
+/* ----------------------------------------------------- 建筑库 / 建筑市场
+
+   Tiles rather than the rows the other four shelves use, and that is the one
+   place this page deliberately differs from them. A plugin row is read for its
+   name and its version — one line each, so a list is the denser shape. A build
+   is read for its *shape*: 120×40×90, thirty thousand blocks, mostly spruce.
+   Those are numbers you compare across a shelf rather than down a list, and the
+   colour band that says "this one is a garden and that one is a castle" needs
+   width to be legible at all.
+
+   The grid is intrinsic — no breakpoints. 240px is where a tile stops being
+   able to hold "128 × 64 × 128" beside its label, so that is the floor, and the
+   column count falls out of whatever the page was given. */
+
+.schemlib__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.schemlib__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.schemlib__bar .filters__search {
+  flex: 1 1 220px;
+  /* The search box is the flex child most likely to be handed a long value,
+     and without this it refuses to shrink past its content and pushes the
+     buttons off the row. */
+  min-width: 0;
+}
+
+.schemlib__bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.schemlib__failures {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.schemsources {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.schemsource {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.schemsource--off {
+  background: var(--sunken);
+}
+
+.schemsource__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.schemsource__title {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.schemsource__name {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  font-size: 13.5px;
+}
+
+/* A manifest URL is long enough to push the buttons off the row, and the
+   interesting half of it is the start. Aligned to the start so the code box
+   hugs the address instead of stretching across the row as a flex child. */
+.schemsource__url {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schemsource__actions {
+  display: flex;
+  flex: none;
+  gap: 12px;
+}
+
+.schemlib__sample {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.schemcard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color var(--dur) var(--ease);
+}
+
+.schemcard:hover {
+  border-color: var(--border-strong);
+}
+
+/* The whole head is the way in, so it is one button rather than a card with a
+   link in it: the question a shelf of builds raises is "which one is this",
+   and the preview is the answer to all of them. */
+.schemcard__open {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.schemcard__open--static {
+  cursor: default;
+}
+
+/* The focus ring itself comes from the sheet-wide :focus-visible rule; this
+   only gives it a shape to follow, since an outline traces the element's own
+   corners. */
+.schemcard__open:focus-visible {
+  border-radius: var(--radius-sm);
+}
+
+.schemcard__title {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.schemcard__title strong {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schemcard__file {
+  min-width: 0;
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
+.schemcard__file code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* What the build is made of, as one band. The colours are the renderer's own
+   (blockcolors.ts), so a tile and the preview it opens never disagree. */
+.schemcard__bar {
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+}
+
+.schemcard__bar--empty {
+  opacity: 0.5;
+}
+
+.schemcard__facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 8px;
+  margin: 0;
+}
+
+.schemcard__facts > div {
+  min-width: 0;
+}
+
+.schemcard__facts dt {
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+.schemcard__facts dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schemcard__note {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  line-height: 1.6;
+  /* Two lines: a note is a sentence about the build, and a card that grows to
+     fit a paragraph drags every tile in its row with it. */
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.schemcard__warn {
+  margin: 0;
+  color: var(--caution-ink);
+  font-size: 12px;
+  line-height: 1.6;
+  /* A source's complaint can carry a URL, which has no spaces to break at. */
+  overflow-wrap: anywhere;
+}
+
+.schemcard__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+}
+
+/* .badge carries a left margin for its use inside a title; in a row of them
+   that margin is the gap counted twice. */
+.schemcard__tags .badge {
+  margin-left: 0;
+}
+
+.schemcard__meta {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
+.schemcard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.schemcard__actions .btn--row {
+  margin-right: auto;
+}
+
 .namelist {
   margin: 0 0 8px;
   padding-left: 18px;
