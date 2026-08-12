@@ -61,6 +61,8 @@ import type {
   UpdateChannel,
   UpdateStatus,
   User,
+  VelocityInput,
+  VelocityResponse,
 } from './types'
 
 /**
@@ -217,6 +219,13 @@ export const api = {
     request<EulaStatus>('GET', `/api/instances/${id}/eula`),
   acceptEula: (id: string) =>
     request<EulaStatus>('POST', `/api/instances/${id}/eula`),
+
+  // 代理配置. The other half of the pair above: an instance answers to these or
+  // to the properties routes, never to both — the daemon refuses the wrong kind.
+  getVelocity: (id: string) =>
+    request<VelocityResponse>('GET', `/api/instances/${id}/velocity`),
+  saveVelocity: (id: string, patch: VelocityInput) =>
+    request<VelocityResponse>('PUT', `/api/instances/${id}/velocity`, patch),
 
   listCoreProjects: () => request<CoreProject[]>('GET', '/api/downloads/projects'),
   listCoreVersions: (project: string) =>

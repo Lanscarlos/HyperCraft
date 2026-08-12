@@ -24,12 +24,31 @@ func (s State) Running() bool {
 	return s == StateStarting || s == StateRunning || s == StateStopping
 }
 
+// The two things an instance can be. A proxy is not a smaller server: it has
+// no world, no server.properties and no EULA, it reads a config file of its own
+// and it answers a different console command to shut down. Everything the panel
+// shows for one is wrong for the other, so the difference is recorded on the
+// instance rather than guessed from the jar's name every time it is needed.
+//
+// Only Velocity is supported as a proxy for now. BungeeCord and Waterfall are
+// deliberately absent: their config is a different file with different keys,
+// and pretending one setting page fits both would be worse than not offering
+// them at all.
+const (
+	KindServer = "server"
+	KindProxy  = "proxy"
+)
+
 // Config is the persisted description of one Minecraft server instance.
 type Config struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Directory string    `json:"directory"`
 	CreatedAt time.Time `json:"createdAt"`
+
+	// Kind is "server" or "proxy". Blank means server, which is what every
+	// instance written before this field existed is.
+	Kind string `json:"kind"`
 
 	// Launch settings. The usual case is a Java jar; Command overrides the
 	// whole argv for servers that are not jars at all (Bedrock's
@@ -65,17 +84,28 @@ type Config struct {
 // Defaults for fields the user left blank. Applied on create and on load, so
 // configs written by older versions keep working.
 func (c *Config) applyDefaults() {
+	if c.Kind == "" {
+		c.Kind = KindServer
+	}
 	if c.Java == "" {
 		c.Java = "java"
 	}
 	if c.StopCommand == "" {
-		c.StopCommand = "stop"
+		c.StopCommand = DefaultStopCommand(c.Kind)
 	}
 	if c.StopTimeoutSec <= 0 {
 		c.StopTimeoutSec = 60
 	}
 	if c.MaxMemoryMB <= 0 {
-		c.MaxMemoryMB = 2048
+		// A proxy holds connections, not chunks. Velocity's own docs put it at
+		// half a gig and warn against giving it more, since a large heap only
+		// makes its GC pauses longer — and a GC pause on the proxy is a pause
+		// for everyone behind it.
+		if c.IsProxy() {
+			c.MaxMemoryMB = 512
+		} else {
+			c.MaxMemoryMB = 2048
+		}
 	}
 	if c.MinMemoryMB < 0 {
 		c.MinMemoryMB = 0
@@ -84,7 +114,7 @@ func (c *Config) applyDefaults() {
 		c.JVMArgs = []string{}
 	}
 	if c.ServerArgs == nil {
-		c.ServerArgs = []string{"--nogui"}
+		c.ServerArgs = DefaultServerArgs(c.Kind)
 	}
 	if canonical, ok := canonicalEncoding(c.Encoding); ok {
 		c.Encoding = canonical
@@ -115,6 +145,9 @@ func (c *Config) validate() error {
 	if strings.TrimSpace(c.Name) == "" {
 		return fmt.Errorf("%w: name is required", ErrInvalidConfig)
 	}
+	if c.Kind != KindServer && c.Kind != KindProxy {
+		return fmt.Errorf("%w: unknown instance kind %q", ErrInvalidConfig, c.Kind)
+	}
 	if strings.TrimSpace(c.Directory) == "" {
 		return fmt.Errorf("%w: directory is required", ErrInvalidConfig)
 	}
@@ -137,6 +170,32 @@ func (c *Config) validate() error {
 		return fmt.Errorf("%w: unknown console encoding %q", ErrInvalidConfig, c.Encoding)
 	}
 	return nil
+}
+
+// IsProxy reports whether this instance runs a proxy rather than a world.
+func (c Config) IsProxy() bool { return c.Kind == KindProxy }
+
+// DefaultStopCommand is the console command that asks this kind of software to
+// shut down.
+//
+// Velocity has no "stop": typing it into a proxy console prints an
+// unknown-command line, and the panel then waits out the whole stop timeout
+// before signalling the process. "end" is the alias Velocity documents.
+func DefaultStopCommand(kind string) string {
+	if kind == KindProxy {
+		return "end"
+	}
+	return "stop"
+}
+
+// DefaultServerArgs are the arguments a fresh instance of this kind launches
+// with. --nogui is a Minecraft server flag; Velocity exits on an argument it
+// does not know, so a proxy starts with none.
+func DefaultServerArgs(kind string) []string {
+	if kind == KindProxy {
+		return []string{}
+	}
+	return []string{"--nogui"}
 }
 
 // colorForced reports whether the panel should make the server emit ANSI

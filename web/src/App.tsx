@@ -28,11 +28,11 @@ import { TopBar } from './components/TopBar'
 import type { Crumb } from './components/TopBar'
 import {
   HOST_SECTIONS,
-  INSTANCE_SECTIONS,
   LIBRARY_SECTIONS,
   LIBRARY_VIEWS,
   SETTINGS_SECTIONS,
   defaultView,
+  instanceSections,
   navKeyOf,
   parentOf,
   pathOf,
@@ -116,7 +116,7 @@ function crumbsFor(
         { label: '新建实例' },
       ]
     case 'instance': {
-      const section = labelOf(INSTANCE_SECTIONS, route.section)
+      const section = labelOf(instanceSections(selected?.kind), route.section)
       return [
         { label: '所有实例', ...link({ kind: 'instances', query: '', state: 'all' }) },
         selected
@@ -171,10 +171,11 @@ function labelOfRoute(route: Route, instances: InstanceStatus[]): string {
     case 'new-instance':
       return '新建实例'
     case 'instance': {
-      const name = instances.find((item) => item.id === route.id)?.name ?? '实例'
+      const instance = instances.find((item) => item.id === route.id)
+      const name = instance?.name ?? '实例'
       return route.section === 'console'
         ? name
-        : `${name} · ${labelOf(INSTANCE_SECTIONS, route.section)}`
+        : `${name} · ${labelOf(instanceSections(instance?.kind), route.section)}`
     }
     case 'library': {
       const section = labelOf(LIBRARY_SECTIONS, route.section)

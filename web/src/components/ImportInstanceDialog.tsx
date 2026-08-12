@@ -89,13 +89,18 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
     setBusy(true)
     setError(null)
     try {
+      // A directory with a velocity.toml in it is a proxy, and adopting it as
+      // a server would hand it --nogui, "stop" and a 服务器配置 page about a
+      // file it does not have.
+      const proxy = found?.proxy === true
       const created = await api.createInstance({
+        kind: proxy ? 'proxy' : 'server',
         name: name.trim(),
         directory: directory.trim(),
         jar: jar.trim(),
         maxMemoryMB,
         minMemoryMB: Math.min(1024, maxMemoryMB),
-        serverArgs: ['--nogui'],
+        serverArgs: proxy ? [] : ['--nogui'],
       })
       onImported(created)
     } catch (err) {
@@ -231,23 +236,39 @@ function Inspection({ found, scanning }: { found: HostInspection | null; scannin
       : found.jars.length > 0
         ? `${found.jars.length} 个 jar，认不出哪个是服务端`
         : '没有 jar',
-    found.worlds && found.worlds.length > 0 ? `世界 ${found.worlds.join('、')}` : '还没有世界存档',
+    // A proxy has neither of these, and saying it has no world reads as a
+    // problem with the directory rather than as what a proxy is.
+    found.proxy
+      ? ''
+      : found.worlds && found.worlds.length > 0
+        ? `世界 ${found.worlds.join('、')}`
+        : '还没有世界存档',
     found.plugins > 0 ? `${found.plugins} 个插件` : '',
     found.mods > 0 ? `${found.mods} 个模组` : '',
     found.properties?.port ? `端口 ${found.properties.port}` : '',
-    found.eula === 'accepted' ? 'EULA 已同意' : found.eula === 'declined' ? 'EULA 未同意' : '',
+    found.proxy
+      ? ''
+      : found.eula === 'accepted'
+        ? 'EULA 已同意'
+        : found.eula === 'declined'
+          ? 'EULA 未同意'
+          : '',
   ].filter(Boolean)
 
   return (
     <div className={found.server ? 'alert alert--ok' : 'alert'}>
-      {found.server ? '这看着是一个服务端目录。' : '目录里没有服务端的痕迹，确认一下是不是选错了。'}
+      {found.proxy
+        ? '这看着是一个 Velocity 代理端目录，会按代理端导入。'
+        : found.server
+          ? '这看着是一个服务端目录。'
+          : '目录里没有服务端的痕迹，确认一下是不是选错了。'}
       <p className="meta-chips">
         {facts.map((fact) => (
           <span key={fact}>{fact}</span>
         ))}
       </p>
       {found.properties?.motd && <p className="chart-note">MOTD：{found.properties.motd}</p>}
-      {found.eula !== 'accepted' && found.server && (
+      {found.eula !== 'accepted' && found.server && !found.proxy && (
         <p className="chart-note">
           EULA 还没同意，导入之后在「服务器配置」页勾一下就能启动。
         </p>

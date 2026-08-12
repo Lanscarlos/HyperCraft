@@ -279,6 +279,12 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("GET /api/instances/{id}/eula", s.handleGetEULA)
 	protected.HandleFunc("POST /api/instances/{id}/eula", s.handleAcceptEULA)
 
+	// The proxy's own configuration. Beside the properties routes rather than
+	// folded into them: velocity.toml is a different file with different keys,
+	// and an instance answers to one pair or the other, never to both.
+	protected.HandleFunc("GET /api/instances/{id}/velocity", s.handleGetVelocity)
+	protected.HandleFunc("PUT /api/instances/{id}/velocity", s.handlePutVelocity)
+
 	// Config history. Two segments deep below the instance for the same reason
 	// the plugin config routes are: "commits" must never be reachable as
 	// anything else. Notably absent, and staying absent: anything that hands

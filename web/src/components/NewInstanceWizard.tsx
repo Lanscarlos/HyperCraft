@@ -10,6 +10,7 @@ import { CoreCatalogue, useCoreCatalogue } from './CoreCatalogue'
 import { Page } from './Page'
 import { DirectoryField } from './PathPicker'
 import { Select } from './Select'
+import { randomSecret } from './VelocityConfig'
 
 interface Props {
   cores: CoreController
@@ -22,7 +23,7 @@ interface Props {
   onCancel: () => void
 }
 
-type StepId = 'core' | 'java' | 'basics' | 'server' | 'confirm'
+type StepId = 'core' | 'java' | 'basics' | 'server' | 'proxy' | 'confirm'
 
 /** How the core for this instance is being obtained. */
 type CoreMode = 'library' | 'download' | 'none'
@@ -51,6 +52,24 @@ const PROPERTY_DEFAULTS: Record<string, string> = {
   'level-name': 'world',
   'level-seed': '',
 }
+
+/**
+ * What the wizard asks a proxy, which is a much shorter list.
+ *
+ * Velocity's own defaults are right for everything else; these three are the
+ * ones that are either about this machine (the port) or that nobody should be
+ * left to discover later (the forwarding mode, which decides whether the
+ * servers behind it see real players or anonymous ones).
+ */
+const PROXY_PORT_DEFAULT = '25577'
+const PROXY_MOTD_DEFAULT = '<#09add3>A Velocity Server'
+
+const FORWARDING_MODES = [
+  { value: 'modern', label: 'modern（1.13 以上，推荐）' },
+  { value: 'bungeeguard', label: 'bungeeguard（1.12 及以下）' },
+  { value: 'legacy', label: 'legacy（BungeeCord 兼容）' },
+  { value: 'none', label: 'none（不转发）' },
+]
 
 const DIFFICULTIES = [
   { value: 'peaceful', label: '和平' },
@@ -166,6 +185,13 @@ export function NewInstanceWizard({
   const [autoRestart, setAutoRestart] = useState(true)
   const [props, setProps] = useState<Record<string, string>>(PROPERTY_DEFAULTS)
   const [eula, setEula] = useState(false)
+  const [proxyPort, setProxyPort] = useState(PROXY_PORT_DEFAULT)
+  const [proxyMotd, setProxyMotd] = useState(PROXY_MOTD_DEFAULT)
+  const [forwarding, setForwarding] = useState('modern')
+  // Generated once per wizard rather than per render: it is written to disk and
+  // shown on screen to be copied into every sub-server, and a value that
+  // changed under the operator's cursor would be copied wrong.
+  const [secret] = useState(randomSecret)
 
   const [tasks, setTasks] = useState<Task[] | null>(null)
   const [created, setCreated] = useState<InstanceStatus | null>(null)
@@ -306,7 +332,9 @@ export function NewInstanceWizard({
     // A proxy has no world, no EULA and no server.properties — Velocity reads
     // its own toml. Asking about MOTD and 难度 would be asking about a file
     // that will never exist.
-    if (!proxy) list.push({ id: 'server', label: '服务器设置' })
+    list.push(
+      proxy ? { id: 'proxy', label: '代理端设置' } : { id: 'server', label: '服务器设置' },
+    )
     list.push({ id: 'confirm', label: '确认创建' })
     return list
   }, [proxy])
@@ -317,12 +345,16 @@ export function NewInstanceWizard({
     if (!steps.some((entry) => entry.id === step)) setStep('confirm')
   }, [steps, step])
 
-  const port = Number(props['server-port'])
+  const validPort = (value: string) => {
+    const port = Number(value)
+    return Number.isFinite(port) && port > 0 && port < 65536
+  }
   const valid: Record<StepId, boolean> = {
     core: coreMode === 'none' || core !== undefined,
     java: !customJava || javaPath.trim() !== '',
     basics: name.trim() !== '',
-    server: Number.isFinite(port) && port > 0 && port < 65536,
+    server: validPort(props['server-port']),
+    proxy: validPort(proxyPort),
     confirm: true,
   }
 
@@ -369,19 +401,23 @@ export function NewInstanceWizard({
         state: core ? 'pending' : 'skipped',
         note: core ? undefined : '这一步跳过：没有选核心',
       },
-      {
-        id: 'eula',
-        label: '同意 EULA',
-        state: writeEula ? 'pending' : 'skipped',
-        note: writeEula ? undefined : proxy ? '代理端不需要' : '这一步跳过：还没有同意',
-      },
-      {
+      proxy
+        ? { id: 'velocity', label: '写入 velocity.toml', state: 'pending' }
+        : {
+            id: 'eula',
+            label: '同意 EULA',
+            state: writeEula ? 'pending' : 'skipped',
+            note: writeEula ? undefined : '这一步跳过：还没有同意',
+          },
+    ]
+    if (!proxy) {
+      plan.push({
         id: 'props',
         label: '写入 server.properties',
         state: writeProps ? 'pending' : 'skipped',
-        note: writeProps ? undefined : proxy ? '代理端不需要' : '这一步跳过：全部保持默认',
-      },
-    ]
+        note: writeProps ? undefined : '这一步跳过：全部保持默认',
+      })
+    }
     setTasks(plan)
 
     const mark = (id: string, state: TaskState, note?: string) =>
@@ -392,6 +428,10 @@ export function NewInstanceWizard({
     let instance: InstanceStatus
     try {
       instance = await api.createInstance({
+        // What it is, recorded once here and read by every page that differs
+        // between the two — the config page, the launch defaults, the plugin
+        // compatibility badges.
+        kind: proxy ? 'proxy' : 'server',
         name: name.trim(),
         directory: directory.trim(),
         java: customJava ? javaPath.trim() : javaPath,
@@ -423,6 +463,26 @@ export function NewInstanceWizard({
         mark('core', 'done')
       } catch (err) {
         mark('core', 'failed', err instanceof Error ? err.message : '复制失败')
+      }
+    }
+
+    if (proxy) {
+      mark('velocity', 'active')
+      try {
+        await api.saveVelocity(instance.id, {
+          entries: [
+            { key: 'bind', value: `0.0.0.0:${proxyPort.trim()}` },
+            { key: 'motd', value: proxyMotd },
+            { key: 'player-info-forwarding-mode', value: forwarding },
+          ],
+          // Written even when the mode does not need one: switching to modern
+          // later is then one dropdown rather than a dropdown and a hunt for
+          // where the secret was supposed to come from.
+          forwardingSecret: secret,
+        })
+        mark('velocity', 'done', `监听 ${proxyPort.trim()} · 转发 ${forwarding}`)
+      } catch (err) {
+        mark('velocity', 'failed', err instanceof Error ? err.message : '写入失败')
       }
     }
 
@@ -590,6 +650,18 @@ export function NewInstanceWizard({
             <ServerStep props={props} onChange={setProp} eula={eula} onEula={setEula} />
           )}
 
+          {step === 'proxy' && (
+            <ProxyStep
+              port={proxyPort}
+              onPort={setProxyPort}
+              motd={proxyMotd}
+              onMotd={setProxyMotd}
+              forwarding={forwarding}
+              onForwarding={setForwarding}
+              secret={secret}
+            />
+          )}
+
           {step === 'confirm' && (
             <ConfirmStep
               core={core}
@@ -611,6 +683,8 @@ export function NewInstanceWizard({
               autoStart={autoStart}
               autoRestart={autoRestart}
               proxy={proxy}
+              proxyPort={proxyPort}
+              forwarding={forwarding}
               eula={eula}
               changed={changedProps}
               tasks={tasks}
@@ -1379,6 +1453,94 @@ function ServerStep({
   )
 }
 
+/**
+ * What a proxy is asked before it is created.
+ *
+ * Three questions instead of the server step's eight, and none of them is a
+ * world: the port this machine will answer on, the line players see, and the
+ * one decision that is painful to change later — whether the servers behind it
+ * learn who is connecting. Sub-servers are deliberately not here: they do not
+ * exist yet on a first proxy, and adding them is the whole of 代理配置.
+ */
+function ProxyStep({
+  port,
+  onPort,
+  motd,
+  onMotd,
+  forwarding,
+  onForwarding,
+  secret,
+}: {
+  port: string
+  onPort: (value: string) => void
+  motd: string
+  onMotd: (value: string) => void
+  forwarding: string
+  onForwarding: (value: string) => void
+  secret: string
+}) {
+  return (
+    <>
+      <section className="panel panel--form">
+        <h2 className="panel__title">代理端设置</h2>
+        <p className="chart-note">
+          这些写进 <code>velocity.toml</code>，之后在「代理配置」页随时能改。
+          子服务器留到那一页添加 —— 那时候它们才存在。
+        </p>
+
+        <label className="field">
+          <span>监听端口</span>
+          <input
+            type="number"
+            min={1}
+            max={65535}
+            value={port}
+            onChange={(e) => onPort(e.target.value)}
+          />
+          <small>玩家连的是这个端口。子服要用别的端口，不能和它撞。</small>
+        </label>
+
+        <label className="field">
+          <span>玩家信息转发</span>
+          <Select
+            ariaLabel="玩家信息转发"
+            value={forwarding}
+            options={FORWARDING_MODES}
+            onChange={onForwarding}
+          />
+          <small>决定子服看到的是真实玩家还是代理端自己。</small>
+        </label>
+
+        <label className="field field--full">
+          <span>服务器标语 (MOTD)</span>
+          <input value={motd} onChange={(e) => onMotd(e.target.value)} />
+          <small>
+            MiniMessage 格式：<code>&lt;red&gt;</code>、<code>&lt;#09add3&gt;</code>{' '}
+            这类标签会生效，和服务端的 <code>§</code> 颜色码不是一套。
+          </small>
+        </label>
+      </section>
+
+      <section className="panel">
+        <h2 className="panel__title">转发密钥</h2>
+        <p className="chart-note">
+          面板会把它写进实例目录的 <code>forwarding.secret</code>。
+          {(forwarding === 'modern' || forwarding === 'bungeeguard') && (
+            <>
+              {' '}
+              每个子服也要填同一个值 —— Paper 是{' '}
+              <code>config/paper-global.yml</code> 里的 <code>proxies.velocity</code>：
+              打开 <code>enabled</code>、粘贴 <code>secret</code>，同时把子服自己的
+              <code> online-mode</code> 关掉。
+            </>
+          )}
+        </p>
+        <code className="asset__conn">{secret}</code>
+      </section>
+    </>
+  )
+}
+
 function ConfirmStep({
   core,
   jar,
@@ -1392,6 +1554,8 @@ function ConfirmStep({
   autoStart,
   autoRestart,
   proxy,
+  proxyPort,
+  forwarding,
   eula,
   changed,
   tasks,
@@ -1409,6 +1573,8 @@ function ConfirmStep({
   autoStart: boolean
   autoRestart: boolean
   proxy: boolean
+  proxyPort: string
+  forwarding: string
   eula: boolean
   changed: [string, string][]
   tasks: Task[] | null
@@ -1471,6 +1637,15 @@ function ConfirmStep({
           <dt>内存</dt>
           <dd>最大 {maxMemoryMB} MB{habits && ` · ${habits}`}</dd>
         </div>
+        {proxy && (
+          <div>
+            <dt>代理端设置</dt>
+            <dd>
+              监听 {proxyPort} · 转发模式 <code>{forwarding}</code>
+              {forwarding !== 'none' && ' · 创建时生成转发密钥'}
+            </dd>
+          </div>
+        )}
         {!proxy && (
           <div>
             <dt>服务器设置</dt>

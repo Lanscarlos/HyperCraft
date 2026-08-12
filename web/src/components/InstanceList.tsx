@@ -185,6 +185,10 @@ function Row({
       </span>
       <span className="rows__cell" role="cell">
         {instance.jar ? instance.jar.split(/[\\/]/).pop() : '未设置核心'}
+        {/* A proxy and a server are told apart by their jar name at best, and
+            not at all once it has been renamed. The list is where you pick
+            which one to open, so it says which is which. */}
+        {instance.kind === 'proxy' && <span className="badge">代理端</span>}
       </span>
       <span className="rows__cell rows__cell--end" role="cell">
         <PowerControls

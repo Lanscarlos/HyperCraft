@@ -11,8 +11,12 @@ import (
 // instanceRequest is the editable subset of instance.Config. ID and CreatedAt
 // are server-owned and deliberately absent.
 type instanceRequest struct {
-	Name           string   `json:"name"`
-	Directory      string   `json:"directory"`
+	Name      string `json:"name"`
+	Directory string `json:"directory"`
+	// Kind is "server" or "proxy". Blank is not "server" here: on update it
+	// means "leave it alone", so a client that saves the launch settings
+	// without echoing the field back cannot turn a proxy into a server.
+	Kind           string   `json:"kind"`
 	Java           string   `json:"java"`
 	Jar            string   `json:"jar"`
 	MinMemoryMB    int      `json:"minMemoryMB"`
@@ -33,6 +37,7 @@ func (req instanceRequest) toConfig() instance.Config {
 	return instance.Config{
 		Name:        strings.TrimSpace(req.Name),
 		Directory:   strings.TrimSpace(req.Directory),
+		Kind:        strings.TrimSpace(req.Kind),
 		Java:        strings.TrimSpace(req.Java),
 		Jar:         strings.TrimSpace(req.Jar),
 		MinMemoryMB: req.MinMemoryMB,
@@ -106,7 +111,17 @@ func (s *Server) handleUpdateInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inst, err := s.mgr.Update(r.PathValue("id"), req.toConfig())
+	cfg := req.toConfig()
+	// Whether this instance is a proxy is decided when it is created and when
+	// a core is applied to it, not by whoever last saved the launch settings.
+	// An omitted kind keeps the one on record.
+	if cfg.Kind == "" {
+		if current, err := s.mgr.Get(r.PathValue("id")); err == nil {
+			cfg.Kind = current.Config().Kind
+		}
+	}
+
+	inst, err := s.mgr.Update(r.PathValue("id"), cfg)
 	if err != nil {
 		s.writeDomainError(w, err)
 		return

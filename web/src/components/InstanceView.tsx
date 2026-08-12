@@ -15,6 +15,7 @@ import { InstancePlugins } from './InstancePlugins'
 import { LaunchSettings } from './LaunchSettings'
 import { PropertiesEditor } from './PropertiesEditor'
 import { ResourcePanel } from './ResourcePanel'
+import { VelocityConfig } from './VelocityConfig'
 
 interface Props {
   instance: InstanceStatus
@@ -156,7 +157,14 @@ export function InstanceView({
           leaving={leaving === 'properties'}
           scroll
         >
-          <PropertiesEditor instance={instance} />
+          {/* One instance answers to one of these, never to both: a proxy has
+              no server.properties and a server has no velocity.toml, and the
+              daemon refuses the wrong pair outright. */}
+          {instance.kind === 'proxy' ? (
+            <VelocityConfig instance={instance} />
+          ) : (
+            <PropertiesEditor instance={instance} />
+          )}
         </Pane>
       )}
       {visited.has('config-history') && (

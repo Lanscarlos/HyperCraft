@@ -80,6 +80,11 @@ export function LaunchSettings({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // A proxy launches differently enough to be worth saying so in two
+  // placeholders: it answers "end" rather than "stop", and it exits on the
+  // --nogui every Minecraft server wants.
+  const proxy = instance.kind === 'proxy'
+
   // Whether this host has pseudo-terminals at all. A switch that silently
   // falls back is worse than one that is visibly unavailable.
   const ttySupported = instance.ttySupported ?? true
@@ -346,10 +351,13 @@ export function LaunchSettings({
             rows={2}
             value={serverText}
             onChange={(e) => setServerText(e.target.value)}
-            placeholder="--nogui"
+            placeholder={proxy ? '' : '--nogui'}
             disabled={usingCustomCommand}
           />
-          <small>一行一个参数，会放在 jar 之后。</small>
+          <small>
+            一行一个参数，会放在 jar 之后。
+            {proxy && ' Velocity 遇到不认识的参数会直接退出，一般这里留空。'}
+          </small>
         </label>
 
         <label className="field field--full">
@@ -455,7 +463,7 @@ export function LaunchSettings({
             <input
               value={form.stopCommand}
               onChange={(e) => update('stopCommand', e.target.value)}
-              placeholder="stop"
+              placeholder={proxy ? 'end' : 'stop'}
             />
           </label>
           <label className="field">

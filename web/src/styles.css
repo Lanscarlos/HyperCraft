@@ -3037,6 +3037,87 @@ a:hover {
   margin-left: auto;
 }
 
+/* ---- the proxy's sub-servers -------------------------------------------
+   The one part of 代理配置 that is a list rather than a form: a name, an
+   address, whether it is in the login order, and the three buttons that move
+   or drop it.
+
+   Wrapping flex rather than a grid with a breakpoint: the two inputs each ask
+   for 180px and take an equal share of whatever is left, so on a phone they
+   drop to a line each and the switch and the buttons close ranks underneath —
+   no media query, and nothing that can hang off the edge of the card. */
+.subservers {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.subserver {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* min-width: 0 because the address is a monospace string that does not wrap:
+   without it the input's intrinsic width wins and the row grows past the card. */
+.subserver > .field {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+/* The switch and the buttons sit on the inputs' bottom edge, which is what
+   stops the row reading as four things at four heights. */
+.subserver__try {
+  flex: 0 0 auto;
+  align-items: center;
+  padding-bottom: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.subserver__actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  margin-left: auto;
+  padding-bottom: 8px;
+}
+
+/* The other instances on this machine, offered as one click each. A chip
+   rather than a row: it is a shortcut into the list above, and it disappears
+   from use — not from view — once that address is already in it. */
+.subserver-picks {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.subserver-picks__label {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.subserver-picks .chip small {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.subserver-picks .chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* ---------------------------------------------------------------- update */
 
 .update {
