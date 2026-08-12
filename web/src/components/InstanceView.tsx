@@ -13,8 +13,8 @@ import { FileManager } from './FileManager'
 import { InstanceCockpit } from './InstanceCockpit'
 import { InstancePlugins } from './InstancePlugins'
 import { LaunchSettings } from './LaunchSettings'
-import { PropertiesEditor } from './PropertiesEditor'
 import { ResourcePanel } from './ResourcePanel'
+import { ServerConfigPage } from './ServerConfigPage'
 import { VelocityConfig } from './VelocityConfig'
 
 interface Props {
@@ -163,7 +163,7 @@ export function InstanceView({
           {instance.kind === 'proxy' ? (
             <VelocityConfig instance={instance} />
           ) : (
-            <PropertiesEditor instance={instance} />
+            <ServerConfigPage instance={instance} />
           )}
         </Pane>
       )}

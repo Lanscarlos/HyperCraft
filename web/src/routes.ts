@@ -60,6 +60,15 @@ export type Route =
   | { kind: 'overview' }
   | { kind: 'instances'; query: string; state: StateFilter }
   /**
+   * Which proxy stands in front of which servers, as a picture you draw on.
+   *
+   * A page of its own rather than a section of one instance, because a link is
+   * a fact about two instances and neither of them owns it — putting it on the
+   * proxy would hide it from everyone looking at the server, and the other way
+   * round would be worse.
+   */
+  | { kind: 'network' }
+  /**
    * The creation wizard. A page rather than a dialog because it is five steps
    * long and two of them start a download that outlives the click — a modal
    * you can dismiss by pressing Escape is the wrong container for that.
@@ -287,6 +296,7 @@ export function navKeyOf(route: Route): string | null {
 export function parentOf(route: Route): Route | null {
   switch (route.kind) {
     case 'instances':
+    case 'network':
       return { kind: 'overview' }
     case 'new-instance':
       return { kind: 'instances', query: '', state: 'all' }
@@ -386,6 +396,8 @@ function readRoute(path: string, search: string): Route {
     return { kind: 'library', section, view: defaultView(section) }
   }
 
+  if (path === '/network') return { kind: 'network' }
+
   // Ahead of the list below, which would otherwise swallow it: /instances/…
   // is the list with a filter, and 新建 is not a filter.
   if (path === '/instances/new') return { kind: 'new-instance' }
@@ -458,6 +470,8 @@ export function pathOf(route: Route): string {
       return `/settings/${route.section}`
     case 'new-instance':
       return '/instances/new'
+    case 'network':
+      return '/network'
     case 'instances': {
       const params = new URLSearchParams()
       if (route.query.trim() !== '') params.set('q', route.query)

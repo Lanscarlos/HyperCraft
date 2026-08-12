@@ -94,6 +94,25 @@ const MEMORY_PRESETS: { mb: number; note: string }[] = [
 ]
 
 /**
+ * The same question for a proxy, which is a different question.
+ *
+ * A proxy holds connections, not chunks — its heap does not grow with the
+ * world or the player count the way a server's does. Velocity's own docs put
+ * it at half a gig and warn against more: a large heap only makes its GC
+ * pauses longer, and a GC pause on the proxy is a pause for everyone behind
+ * it. Handing it the server presets would have people giving 8 GB to the one
+ * process on the machine that has nothing to do with the memory.
+ */
+const PROXY_MEMORY_PRESETS: { mb: number; note: string }[] = [
+  { mb: 512, note: '够用了' },
+  { mb: 1024, note: '几百人在线' },
+  { mb: 2048, note: '插件很多' },
+]
+
+const SERVER_MEMORY_DEFAULT = 4096
+const PROXY_MEMORY_DEFAULT = 512
+
+/**
  * Which Java major a Minecraft version needs.
  *
  * The same table the Java page shows, applied the other way round: there it
@@ -180,7 +199,7 @@ export function NewInstanceWizard({
   const [name, setName] = useState('')
   const [directory, setDirectory] = useState('')
   const [jar, setJar] = useState('')
-  const [maxMemoryMB, setMaxMemoryMB] = useState(4096)
+  const [maxMemoryMB, setMaxMemoryMB] = useState(SERVER_MEMORY_DEFAULT)
   const [autoStart, setAutoStart] = useState(false)
   const [autoRestart, setAutoRestart] = useState(true)
   const [props, setProps] = useState<Record<string, string>>(PROPERTY_DEFAULTS)
@@ -207,6 +226,8 @@ export function NewInstanceWizard({
   const namedByHand = useRef(false)
   // Same for the three-way switch above the core step.
   const modeByHand = useRef(false)
+  // And for the memory, which otherwise follows what the chosen core is.
+  const memoryByHand = useRef(false)
 
   const catalogue = useCoreCatalogue(coreMode === 'download')
   const { jars, exists: directoryExists } = useHostJars(directory)
@@ -226,6 +247,14 @@ export function NewInstanceWizard({
   const core = stored.find((entry) => entry.id === coreId)
   const proxy = core?.kind === 'proxy'
   const required = core && !proxy ? requiredJavaFor(core.version) : 0
+
+  // Picking a proxy core changes what "how much memory" means, so the default
+  // follows the choice — until somebody types a number, after which it is
+  // theirs and nothing moves it.
+  useEffect(() => {
+    if (memoryByHand.current) return
+    setMaxMemoryMB(proxy ? PROXY_MEMORY_DEFAULT : SERVER_MEMORY_DEFAULT)
+  }, [proxy])
 
   const runtimes = java.overview?.runtimes ?? []
   const systemJava = java.overview?.system ?? null
@@ -637,7 +666,16 @@ export function NewInstanceWizard({
               onJar={setJar}
               needsJar={core === undefined}
               maxMemoryMB={maxMemoryMB}
-              onMemory={setMaxMemoryMB}
+              onMemory={(value) => {
+                memoryByHand.current = true
+                setMaxMemoryMB(value)
+              }}
+              memoryPresets={proxy ? PROXY_MEMORY_PRESETS : MEMORY_PRESETS}
+              memoryHint={
+                proxy
+                  ? '代理端不加载世界，512 MB 就够。给太多只会让它的 GC 停顿变长，而代理端一停顿，后面所有子服的玩家一起卡。'
+                  : undefined
+              }
               system={system}
               autoStart={autoStart}
               onAutoStart={setAutoStart}
@@ -1188,6 +1226,8 @@ function BasicsStep({
   needsJar,
   maxMemoryMB,
   onMemory,
+  memoryPresets,
+  memoryHint,
   system,
   autoStart,
   onAutoStart,
@@ -1205,6 +1245,8 @@ function BasicsStep({
   needsJar: boolean
   maxMemoryMB: number
   onMemory: (value: number) => void
+  memoryPresets: { mb: number; note: string }[]
+  memoryHint?: string
   system: SystemInfo | null
   autoStart: boolean
   onAutoStart: (value: boolean) => void
@@ -1274,7 +1316,7 @@ function BasicsStep({
       <div className="field">
         <span>最大内存</span>
         <div className="segmented" role="group" aria-label="最大内存">
-          {MEMORY_PRESETS.map((preset) => (
+          {memoryPresets.map((preset) => (
             <button
               key={preset.mb}
               type="button"
@@ -1284,7 +1326,7 @@ function BasicsStep({
               aria-pressed={maxMemoryMB === preset.mb}
               onClick={() => onMemory(preset.mb)}
             >
-              <strong>{preset.mb / 1024} GB</strong>
+              <strong>{preset.mb < 1024 ? `${preset.mb} MB` : `${preset.mb / 1024} GB`}</strong>
               <small>{preset.note}</small>
             </button>
           ))}
@@ -1298,8 +1340,12 @@ function BasicsStep({
           onChange={(e) => onMemory(Number(e.target.value))}
         />
         <small>
-          单位 MB。{total > 0 && `本机共 ${formatBytes(total)}。`}
-          最小内存跟着设成 1 GB（或与这里相同，取小的那个）。
+          {memoryHint ?? (
+            <>
+              单位 MB。{total > 0 && `本机共 ${formatBytes(total)}。`}
+              最小内存跟着设成 1 GB（或与这里相同，取小的那个）。
+            </>
+          )}
         </small>
       </div>
 

@@ -34,8 +34,19 @@ export type IconName =
   | 'github'
   | 'history'
   | 'schematics'
+  | 'network'
 
 const PATHS: Record<IconName, ReactElement> = {
+  // One node on the left, two on the right, wires between them: the shape the
+  // 代理连线 page draws, at 16px.
+  network: (
+    <>
+      <rect x="2.5" y="9" width="6" height="6" rx="1.6" />
+      <rect x="15.5" y="3" width="6" height="6" rx="1.6" />
+      <rect x="15.5" y="15" width="6" height="6" rx="1.6" />
+      <path d="M8.5 11.5h3.5V6h3.5M8.5 12.5h3.5V18h3.5" />
+    </>
+  ),
   dashboard: (
     <>
       <rect x="3.5" y="3.5" width="7" height="7" rx="1.6" />

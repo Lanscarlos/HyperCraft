@@ -3118,6 +3118,344 @@ a:hover {
   cursor: not-allowed;
 }
 
+/* ---- 服务器配置 的文件切换 -----------------------------------------------
+   A server's settings live in four files, and the tab row is what turns "which
+   file is this setting in" from a thing you have to know into a thing you can
+   read. Chips rather than a .segmented: there are up to five of them, they are
+   filenames of very different lengths, and a segmented control would either
+   stretch them to equal widths or spill. */
+.configtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ---- 代理连线 ------------------------------------------------------------
+   Proxies on the left, servers on the right, wires between them. Two fixed
+   columns rather than auto-fit: the whole layout means "left is in front of
+   right", and a column count that changes with the width would sometimes mean
+   nothing at all. Below 900px the page does not render this at all — see
+   NetworkPage's CANVAS_QUERY — so there is no breakpoint here to keep in step
+   with anything.
+
+   The horizontal gap is not spacing, it is the gutter the wires run through:
+   at less than ~72px the curves leave and re-enter at almost the same angle
+   and read as one blob. */
+.netmap {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 88px;
+  align-items: start;
+}
+
+/* Under the cards on purpose: the wires are the picture, the cards are what
+   you press, and a wire crossing a button must not swallow the click. */
+.netmap__wires {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.netmap__column {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* Long instance names and monospace addresses both want to be wider than
+     their column; without this the grid track grows and the two columns stop
+     being halves. */
+  min-width: 0;
+}
+
+.netmap__heading {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.netmap__hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+}
+
+.netwire {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.netwire--ok {
+  stroke: var(--ok);
+}
+
+.netwire--warn {
+  stroke: var(--caution);
+}
+
+/* A link that will greet a player as an error message says so in the picture,
+   not only in the list under it. */
+.netwire--broken {
+  stroke: var(--danger);
+  stroke-dasharray: 6 5;
+}
+
+.netwire--draft {
+  stroke: var(--accent);
+  stroke-dasharray: 4 6;
+}
+
+.netcard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 16px;
+  background: var(--surface-1);
+  background-image: linear-gradient(180deg, var(--sheen), transparent 64px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+/* The card the pointer is over while a wire is being dragged. */
+.netcard--target {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.netcard__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.netcard__name {
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.netcard__name:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.netcard__name:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--ring);
+}
+
+.netcard__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.netcard__meta > span:first-child {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* The connector. It straddles the card's edge because that is where the wire
+   is measured from — the anchor is the edge midpoint, so a port drawn anywhere
+   else would leave the line hanging in the gutter. */
+.netport {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
+  padding: 0;
+  background: var(--surface-4);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  cursor: grab;
+  /* Dragging a wire on a touch screen must not scroll the page under it. */
+  touch-action: none;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.netport--right {
+  right: -11px;
+}
+
+.netport--left {
+  left: -11px;
+}
+
+.netport > span {
+  width: 8px;
+  height: 8px;
+  background: var(--text-faint);
+  border-radius: 50%;
+  transition: background var(--dur) var(--ease);
+}
+
+.netport:hover {
+  border-color: var(--accent);
+}
+
+.netport:hover > span {
+  background: var(--accent);
+}
+
+.netport:active {
+  cursor: grabbing;
+  transform: scale(1.1);
+}
+
+.netport:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.netport--armed {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.netport--armed > span {
+  background: var(--accent);
+}
+
+/* One end is chosen, so the other end's ports are where the answer is. */
+.netmap[data-armed='proxy'] .netport--left,
+.netmap[data-armed='server'] .netport--right {
+  border-color: var(--accent);
+}
+
+.netlinks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.netlink {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.netlink--foreign {
+  color: var(--text-dim);
+}
+
+.netlink__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.netlink__dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.netlink__dot--ok {
+  background: var(--ok);
+}
+
+.netlink__dot--warn {
+  background: var(--caution);
+}
+
+.netlink__dot--broken {
+  background: var(--danger);
+}
+
+.netlink__to {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* What will otherwise be discovered by a player being kicked. */
+.netlink__issues {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.netlink__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.netnotes {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* The picker that replaces dragging on a narrow screen. Flex rather than the
+   two-column .field-row: the button is a button, not half the width, and it
+   sits on the select's bottom edge instead of at the top of its own column. */
+.netadd {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+}
+
+.netadd > .field {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
 /* ---------------------------------------------------------------- update */
 
 .update {

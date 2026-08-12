@@ -201,16 +201,137 @@ export interface VelocityResponse {
   known: VelocitySetting[]
   servers: VelocityServer[]
   try: string[]
+  forcedHosts: VelocityForcedHost[]
   secret: ForwardingSecret
   suggests: VelocitySuggestion[]
+}
+
+/** One row of [forced-hosts]: a hostname players connect to, and the servers it
+ *  sends them to. The one part of velocity.toml that is a routing table rather
+ *  than a setting. */
+export interface VelocityForcedHost {
+  host: string
+  servers: string[]
 }
 
 export interface VelocityInput {
   entries?: PropertyEntry[]
   servers?: VelocityServer[]
   try?: string[]
+  forcedHosts?: VelocityForcedHost[]
   /** Empty means "leave it alone", never "clear it". */
   forwardingSecret?: string
+}
+
+// ------------------------------------------------- 服务端的其它配置文件
+//
+// bukkit.yml, spigot.yml and whichever layout of Paper's config this server
+// reads. Same shape as the two above — a whitelist of settings worth a control
+// — because they are the same job on a third file format.
+
+export interface ServerConfigSetting {
+  /** The dotted path inside the file: "world-settings.default.view-distance". */
+  key: string
+  label: string
+  type: 'text' | 'number' | 'boolean' | 'select'
+  options?: string[]
+  hint?: string
+  default: string
+  group: string
+}
+
+export interface ServerConfigGroup {
+  id: string
+  label: string
+  hint?: string
+}
+
+export interface ServerConfigFile {
+  id: string
+  label: string
+  lead: string
+  path: string
+  /** False before the server has written it — the settings still edit, and
+   *  saving creates a file holding exactly what was changed. */
+  exists: boolean
+  groups: ServerConfigGroup[]
+  known: ServerConfigSetting[]
+  /** Only the keys the file actually carries, so the page can tell a chosen
+   *  value from a default. */
+  entries: PropertyEntry[]
+}
+
+export interface ServerConfigResponse {
+  files: ServerConfigFile[]
+  missing: string[]
+}
+
+// ------------------------------------------------------------ 代理连线
+//
+// Which proxy stands in front of which servers. Nothing here is stored: the
+// links are read back out of the config files themselves, so a network wired
+// up by hand looks exactly like one drawn on the page.
+
+export type LinkStatus = 'ok' | 'warn' | 'broken'
+
+export type ForwardingMode = 'none' | 'legacy' | 'bungeeguard' | 'modern'
+
+export interface NetworkProxyEntry {
+  name: string
+  address: string
+  /** Empty when the entry points somewhere this panel does not manage — a
+   *  server on another machine, which is a real setup and stays visible. */
+  instanceId?: string
+  try: boolean
+}
+
+export interface NetworkProxy {
+  id: string
+  name: string
+  state: InstanceState
+  configExists: boolean
+  bind: string
+  forwarding: ForwardingMode | string
+  hasSecret: boolean
+  onlineMode: boolean
+  entries: NetworkProxyEntry[]
+}
+
+export interface NetworkServer {
+  id: string
+  name: string
+  state: InstanceState
+  /** host:port, from this server's own server.properties. */
+  address: string
+  onlineMode: boolean
+  /** Whether this server can do Velocity's modern forwarding at all. */
+  paper: boolean
+  paperLayout?: 'modern' | 'legacy'
+  velocityForwarding: boolean
+  bungeeForwarding: boolean
+}
+
+export interface NetworkLink {
+  proxyId: string
+  serverId: string
+  name: string
+  address: string
+  try: boolean
+  status: LinkStatus
+  /** What is still wrong, in the words the operator would otherwise meet as a
+   *  kick message. Empty when the link is complete. */
+  issues: string[]
+}
+
+export interface NetworkResponse {
+  proxies: NetworkProxy[]
+  servers: NetworkServer[]
+  links: NetworkLink[]
+}
+
+export interface NetworkLinkResult extends NetworkResponse {
+  /** A plain account of what the one gesture changed, file by file. */
+  notes: string[]
 }
 
 // ------------------------------------------------------------ 配置历史

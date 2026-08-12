@@ -230,6 +230,15 @@ function GlobalScope(props: Props) {
             </a>
           ))}
           {instances.length === 0 && <p className="sidebar__empty">还没有实例，先新建一个吧。</p>}
+          {/* Under the instances rather than in 系统: it is about which of them
+              stand in front of which, and it is meaningless without them. */}
+          <NavLink
+            {...props}
+            icon="network"
+            label="代理连线"
+            target={{ kind: 'network' }}
+            active={route.kind === 'network'}
+          />
         </nav>
 
         {/* Two whole groups rather than six loose entries: a non-admin sub-user

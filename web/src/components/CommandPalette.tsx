@@ -80,6 +80,13 @@ export function CommandPalette({
         keywords: 'instances list',
         run: go({ kind: 'instances', query: '', state: 'all' }),
       },
+      {
+        id: 'p:network',
+        group: '页面',
+        label: '代理连线',
+        keywords: 'network proxy velocity 拓扑 子服 群组 跨服',
+        run: go({ kind: 'network' }),
+      },
     )
     for (const section of LIBRARY_SECTIONS) {
       // Every second-level page too: 插件源 and 下载核心 are exactly the kind

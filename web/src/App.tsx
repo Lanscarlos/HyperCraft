@@ -16,6 +16,7 @@ import { InstanceList } from './components/InstanceList'
 import { InstanceView } from './components/InstanceView'
 import { JavaPage } from './components/JavaPage'
 import { Login } from './components/Login'
+import { NetworkPage } from './components/NetworkPage'
 import { NewInstanceWizard } from './components/NewInstanceWizard'
 import { PluginLibraryPage } from './components/PluginLibraryPage'
 import { PluginQueuePage } from './components/PluginQueuePage'
@@ -115,6 +116,8 @@ function crumbsFor(
         { label: '所有实例', ...link({ kind: 'instances', query: '', state: 'all' }) },
         { label: '新建实例' },
       ]
+    case 'network':
+      return [{ label: '概览', ...link({ kind: 'overview' }) }, { label: '代理连线' }]
     case 'instance': {
       const section = labelOf(instanceSections(selected?.kind), route.section)
       return [
@@ -170,6 +173,8 @@ function labelOfRoute(route: Route, instances: InstanceStatus[]): string {
       return '所有实例'
     case 'new-instance':
       return '新建实例'
+    case 'network':
+      return '代理连线'
     case 'instance': {
       const instance = instances.find((item) => item.id === route.id)
       const name = instance?.name ?? '实例'
@@ -671,6 +676,12 @@ export default function App() {
                 onCancel={
                   goBack ?? (() => navigate({ kind: 'instances', query: '', state: 'all' }))
                 }
+              />
+            ) : route.kind === 'network' ? (
+              <NetworkPage
+                instances={instances}
+                onOpenInstance={(id) => openInstance(id)}
+                onCreate={() => navigate({ kind: 'new-instance' })}
               />
             ) : route.kind === 'instances' ? (
               <InstanceList

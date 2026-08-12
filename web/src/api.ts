@@ -36,6 +36,8 @@ import type {
   LibraryPlugin,
   PluginBrowseDetail,
   ImportedPlugin,
+  NetworkLinkResult,
+  NetworkResponse,
   PluginBrowseResult,
   PluginInstallTargets,
   PluginDownloadJob,
@@ -56,6 +58,8 @@ import type {
   SchematicMarketResult,
   SchematicPreview,
   SchematicSource,
+  ServerConfigFile,
+  ServerConfigResponse,
   SystemInfo,
   TerminalStatus,
   UpdateChannel,
@@ -226,6 +230,23 @@ export const api = {
     request<VelocityResponse>('GET', `/api/instances/${id}/velocity`),
   saveVelocity: (id: string, patch: VelocityInput) =>
     request<VelocityResponse>('PUT', `/api/instances/${id}/velocity`, patch),
+
+  // bukkit.yml / spigot.yml / paper 的配置。The file id comes from the daemon,
+  // which is also what decides which Paper layout this server reads.
+  getServerConfigs: (id: string) =>
+    request<ServerConfigResponse>('GET', `/api/instances/${id}/configs`),
+  saveServerConfig: (id: string, file: string, entries: PropertyEntry[]) =>
+    request<ServerConfigFile>('PUT', `/api/instances/${id}/configs/${file}`, { entries }),
+
+  // 代理连线. Panel-wide: a link is a fact about two instances, and neither of
+  // them owns it.
+  getNetwork: () => request<NetworkResponse>('GET', '/api/network'),
+  linkNetwork: (proxyId: string, serverId: string, name?: string) =>
+    request<NetworkLinkResult>('POST', '/api/network/link', { proxyId, serverId, name: name ?? '' }),
+  repairNetwork: (proxyId: string, serverId: string) =>
+    request<NetworkLinkResult>('POST', '/api/network/repair', { proxyId, serverId }),
+  unlinkNetwork: (proxyId: string, serverId: string) =>
+    request<NetworkLinkResult>('POST', '/api/network/unlink', { proxyId, serverId }),
 
   listCoreProjects: () => request<CoreProject[]>('GET', '/api/downloads/projects'),
   listCoreVersions: (project: string) =>

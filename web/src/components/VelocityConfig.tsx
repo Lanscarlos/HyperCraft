@@ -22,6 +22,14 @@ interface ServerRow extends VelocityServer {
   inTry: boolean
 }
 
+/** A row of the 域名映射 table. Same story as ServerRow: the key has to be
+ *  stable across edits or the input remounts and loses focus. */
+interface HostRow {
+  id: number
+  host: string
+  servers: string[]
+}
+
 let nextRowID = 1
 
 /**
@@ -42,6 +50,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
   const [dirty, setDirty] = useState<Set<string>>(new Set())
   const [present, setPresent] = useState<Set<string>>(new Set())
   const [rows, setRows] = useState<ServerRow[]>([])
+  const [hosts, setHosts] = useState<HostRow[]>([])
   const [secret, setSecret] = useState('')
   const [secretDirty, setSecretDirty] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -58,6 +67,13 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
         ...server,
         id: nextRowID++,
         inTry: loaded.try.includes(server.name),
+      })),
+    )
+    setHosts(
+      loaded.forcedHosts.map((entry) => ({
+        id: nextRowID++,
+        host: entry.host,
+        servers: entry.servers,
       })),
     )
     setSecret(loaded.secret.value)
@@ -123,6 +139,14 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
 
   const tryNames = rows.filter((row) => row.inTry && row.name.trim() !== '').map((row) => row.name)
 
+  /** The sub-server names a forced host can point at: whatever is in the table
+   *  above right now, since adding a server and routing a domain at it has to
+   *  be one save. */
+  const serverNames = rows.map((row) => row.name.trim()).filter((name) => name !== '')
+
+  const patchHost = (id: number, patch: Partial<HostRow>) =>
+    setHosts((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)))
+
   const save = async (event: React.FormEvent) => {
     event.preventDefault()
     setBusy(true)
@@ -135,6 +159,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
           .map(([key, value]) => ({ key, value })),
         servers: rows.map((row) => ({ name: row.name.trim(), address: row.address.trim() })),
         try: tryNames,
+        forcedHosts: hosts.map((row) => ({ host: row.host.trim(), servers: row.servers })),
         forwardingSecret: secretDirty ? secret.trim() : '',
       })
       adopt(saved)
@@ -291,6 +316,91 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
             })}
           </div>
         )}
+      </section>
+
+      {/* Right under the sub-servers, because it is about them: a forced host
+          is a name for a route into that list, and it is unreadable — and
+          unsavable — without the list above it. */}
+      <section className="panel">
+        <h3 className="panel__title">域名映射</h3>
+        <p className="muted">
+          玩家从哪个域名连进来，就直接落到哪个子服。
+          <code> creative.example.com</code> 进创造服，主域名进大厅 ——
+          对玩家来说像两个服务器，其实是同一个代理端。域名的 DNS 要先指到这台机器。
+        </p>
+
+        {hosts.length === 0 ? (
+          <p className="muted">还没有映射。不填的话所有域名都走上面的登录顺序。</p>
+        ) : (
+          <ul className="subservers">
+            {hosts.map((row) => (
+              <li className="subserver" key={row.id}>
+                <label className="field">
+                  <span>域名</span>
+                  <input
+                    value={row.host}
+                    onChange={(e) => patchHost(row.id, { host: e.target.value })}
+                    placeholder="mc.example.com"
+                    spellCheck={false}
+                  />
+                </label>
+                <label className="field">
+                  <span>落到哪个子服</span>
+                  <Select
+                    ariaLabel={`${row.host || '这个域名'} 落到哪个子服`}
+                    value={row.servers[0] ?? ''}
+                    options={[
+                      // A name the table no longer has must not silently
+                      // become the first server in the list.
+                      ...(row.servers[0] && !serverNames.includes(row.servers[0])
+                        ? [{ value: row.servers[0], label: `${row.servers[0]}（已不存在）` }]
+                        : []),
+                      ...(row.servers[0] ? [] : [{ value: '', label: '(未选择)' }]),
+                      ...serverNames.map((name) => ({ value: name, label: name })),
+                    ]}
+                    // Velocity takes a list here — the ones after the first are
+                    // fallbacks — and the page offers only the first. The tail
+                    // is carried through untouched rather than dropped: a
+                    // config written by hand must survive a save it was not
+                    // about.
+                    onChange={(value) =>
+                      patchHost(row.id, { servers: [value, ...row.servers.slice(1)] })
+                    }
+                  />
+                  {row.servers.length > 1 && (
+                    <small>连不上时依次尝试：{row.servers.slice(1).join('、')}</small>
+                  )}
+                </label>
+                <div className="subserver__actions">
+                  <button
+                    className="btn btn--icon btn--row"
+                    type="button"
+                    aria-label={`删除 ${row.host || '这一行'}`}
+                    onClick={() => setHosts((prev) => prev.filter((entry) => entry.id !== row.id))}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="actions">
+          <button
+            className="btn"
+            type="button"
+            disabled={serverNames.length === 0}
+            onClick={() =>
+              setHosts((prev) => [
+                ...prev,
+                { id: nextRowID++, host: '', servers: [serverNames[0] ?? ''] },
+              ])
+            }
+          >
+            + 添加域名
+          </button>
+        </div>
       </section>
 
       <section className="panel panel--form">
