@@ -33,6 +33,7 @@ export type IconName =
   | 'queue'
   | 'github'
   | 'history'
+  | 'schematics'
 
 const PATHS: Record<IconName, ReactElement> = {
   dashboard: (
@@ -181,6 +182,16 @@ const PATHS: Record<IconName, ReactElement> = {
       <path d="M3.5 9.5A9 9 0 1 1 3 12" />
       <path d="M3 4.5V10h5.5" />
       <path d="M12 7.5V12l3 1.8" />
+    </>
+  ),
+  // A building with a doorway, not another cube: the core library already owns
+  // the isometric block, and two shelves that look alike in a collapsed rail
+  // is a rail nobody can navigate.
+  schematics: (
+    <>
+      <path d="M4 20.5V10l8-6 8 6v10.5" />
+      <path d="M9.5 20.5v-5.5h5v5.5" />
+      <path d="M2.5 20.5h19" />
     </>
   ),
   github: (

@@ -49,7 +49,13 @@ import type {
   PropertyEntry,
   RestorePlan,
   RestoreResult,
+  SchematicEntry,
+  SchematicImportResult,
+  SchematicInstallResult,
+  SchematicLibrary,
+  SchematicMarketResult,
   SchematicPreview,
+  SchematicSource,
   SystemInfo,
   TerminalStatus,
   UpdateChannel,
@@ -585,6 +591,63 @@ export const api = {
       'GET',
       `/api/instances/${id}/files/schematic?path=${encodeURIComponent(filePath)}`,
     ),
+
+  // 建筑库. Panel-wide, like the plugin library: a build is held once and
+  // copied into whichever server wants it.
+  schematics: () => request<SchematicLibrary>('GET', '/api/schematics'),
+  /** The same preview the file manager shows, pointed at the library — same
+   *  parse, same payload, same renderer. */
+  schematicPreview: (id: string) =>
+    request<SchematicPreview>('GET', `/api/schematics/${encodeURIComponent(id)}/preview`),
+  editSchematic: (id: string, patch: { name?: string; note?: string; tags?: string[] }) =>
+    request<SchematicEntry>('PUT', `/api/schematics/${encodeURIComponent(id)}`, {
+      name: patch.name ?? '',
+      note: patch.note ?? '',
+      tags: patch.tags ?? [],
+    }),
+  deleteSchematic: (id: string) =>
+    request<void>('DELETE', `/api/schematics/${encodeURIComponent(id)}`),
+  installSchematic: (id: string, instanceId: string, dir?: string, overwrite = false) =>
+    request<SchematicInstallResult>('POST', `/api/schematics/${encodeURIComponent(id)}/install`, {
+      instanceId,
+      dir: dir ?? '',
+      overwrite,
+    }),
+  /** Adopts .schem files dropped into the library directory by hand, and
+   *  forgets entries whose files have gone. */
+  rescanSchematics: () =>
+    request<{ added: number; dropped: number }>('POST', '/api/schematics/rescan'),
+  /** The other direction of 安装到实例: a build saved in-game with
+   *  //schem save, taken into the library. The server's copy stays put. */
+  importSchematic: (instanceId: string, filePath: string, name?: string) =>
+    request<SchematicEntry>('POST', `/api/instances/${instanceId}/schematics`, {
+      path: filePath,
+      name: name ?? '',
+    }),
+
+  // 建筑市场.
+  browseSchematics: (query: string, source: string, refresh = false) => {
+    const params = new URLSearchParams()
+    if (query.trim() !== '') params.set('q', query.trim())
+    if (source !== '') params.set('source', source)
+    if (refresh) params.set('refresh', '1')
+    const search = params.toString()
+    return request<SchematicMarketResult>(
+      'GET',
+      search === '' ? '/api/schematics/market' : `/api/schematics/market?${search}`,
+    )
+  },
+  installMarketSchematic: (sourceId: string, itemId: string) =>
+    request<SchematicEntry>('POST', '/api/schematics/market/install', { sourceId, itemId }),
+  addSchematicSource: (kind: 'index' | 'github', url: string, name = '', note = '') =>
+    request<SchematicSource>('POST', '/api/schematics/market/sources', { kind, url, name, note }),
+  updateSchematicSource: (id: string, patch: { name?: string; disabled?: boolean }) =>
+    request<SchematicSource>('PUT', `/api/schematics/market/sources/${encodeURIComponent(id)}`, {
+      name: patch.name ?? '',
+      ...(patch.disabled === undefined ? {} : { disabled: patch.disabled }),
+    }),
+  deleteSchematicSource: (id: string) =>
+    request<void>('DELETE', `/api/schematics/market/sources/${encodeURIComponent(id)}`),
 }
 
 /**
@@ -679,6 +742,54 @@ export function importPluginJars(
     xhr.onerror = () => reject(new ApiError(0, '导入失败：网络错误'))
     xhr.send(form)
   })
+}
+
+/**
+ * Uploads .schem files straight into the building library.
+ *
+ * XHR for the same reason the other two uploads use it: only XHR reports
+ * progress, and a folder of builds dragged in with no progress bar looks like a
+ * hang. Every file is parsed on the daemon before it is kept, so a corrupt one
+ * comes back as a per-file error rather than failing the batch.
+ */
+export function uploadSchematics(
+  files: File[],
+  onProgress: (fraction: number) => void,
+): Promise<{ results: SchematicImportResult[] }> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData()
+    for (const file of files) form.append('file', file, file.name)
+
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/schematics/upload')
+    xhr.setRequestHeader(CSRF_HEADER, '1')
+    xhr.withCredentials = true
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded / event.total)
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText))
+        return
+      }
+      let message = `上传失败 (HTTP ${xhr.status})`
+      try {
+        const parsed = JSON.parse(xhr.responseText)
+        if (parsed?.error) message = parsed.error
+      } catch {
+        /* non-JSON error body */
+      }
+      reject(new ApiError(xhr.status, message))
+    }
+    xhr.onerror = () => reject(new ApiError(0, '上传失败：网络错误'))
+    xhr.send(form)
+  })
+}
+
+/** Direct link for downloading one build out of the library. */
+export function schematicDownloadURL(id: string): string {
+  return `/api/schematics/${encodeURIComponent(id)}/download`
 }
 
 /** Direct link for a download; the browser handles the transfer itself. */

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 
-import { api, downloadURL } from '../api'
+import { ApiError, api, downloadURL } from '../api'
 import { bareName, blockColor, isAirBlock, isTranslucentBlock } from '../blockcolors'
 import { formatBytes, formatDate } from '../format'
+import { toast } from '../toast'
 import type { FileEntry, SchematicPreview as Schematic } from '../types'
 import { Modal } from './Modal'
 import { Skeleton } from './Skeleton'
@@ -19,6 +21,12 @@ import { Skeleton } from './Skeleton'
  *
  * It is a preview and not an editor. Nothing here writes to the file, and
  * nothing places a block in a world.
+ *
+ * Two things open it now — a file in one server's directory, and an entry in
+ * the panel-wide building library — and they differ only in which endpoint
+ * hands over the payload. So the dialog takes a loader rather than a file: the
+ * renderer below has no idea whose directory anything is in, which is what
+ * keeps one way of reading a schematic in this panel instead of two that drift.
  */
 
 type ViewMode = 'solid' | 'plan'
@@ -27,6 +35,68 @@ type ViewMode = 'solid' | 'plan'
 const SKIP = 0
 const OPAQUE = 1
 const SEE_THROUGH = 2
+
+/**
+ * The preview dialog, over whatever `load` fetches.
+ *
+ * `load` has to be stable — wrap it in useCallback at the call site — because
+ * it is the effect's dependency, and a new function per render would re-fetch
+ * the schematic on every keystroke anywhere in the page above it.
+ */
+export function SchematicDialog({
+  title,
+  lead,
+  load,
+  actions,
+  onClose,
+}: {
+  title: string
+  lead?: ReactNode
+  load: () => Promise<Schematic>
+  /** Buttons beside 关闭 — 下载, 入库, 安装到实例 — since what you want to do
+   *  next depends on where the file you are looking at lives. */
+  actions?: ReactNode
+  onClose: () => void
+}) {
+  const [data, setData] = useState<Schematic | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let live = true
+    setData(null)
+    setError(null)
+    load()
+      .then((result) => {
+        if (live) setData(result)
+      })
+      .catch((err: unknown) => {
+        if (live) setError(err instanceof Error ? err.message : '读取失败')
+      })
+    return () => {
+      live = false
+    }
+  }, [load])
+
+  return (
+    <Modal onClose={onClose} label={`预览 ${title}`}>
+      <div className="modal__card modal__card--schem">
+        <h2 className="modal__title">{title}</h2>
+        {lead !== undefined && <p className="modal__lead">{lead}</p>}
+
+        {error && <div className="alert alert--error">{error}</div>}
+        {!error && !data && <SchematicSkeleton />}
+        {data && <SchematicBody data={data} />}
+
+        <div className="modal__actions">
+          {actions}
+          <button className="btn btn--primary" onClick={onClose}>
+            关闭
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
 
 export function SchematicPreview({
   instanceId,
@@ -37,48 +107,55 @@ export function SchematicPreview({
   entry: FileEntry
   onClose: () => void
 }) {
-  const [data, setData] = useState<Schematic | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [imported, setImported] = useState(false)
+  const [importing, setImporting] = useState(false)
 
-  useEffect(() => {
-    let live = true
-    setData(null)
-    setError(null)
-    api
-      .schematic(instanceId, entry.path)
-      .then((result) => {
-        if (live) setData(result)
-      })
-      .catch((err: unknown) => {
-        if (live) setError(err instanceof Error ? err.message : '读取失败')
-      })
-    return () => {
-      live = false
+  const load = useCallback(
+    () => api.schematic(instanceId, entry.path),
+    [instanceId, entry.path],
+  )
+
+  // 入库 is here because this is where the question comes up: you opened a file
+  // in one server's schematics folder to find out what it is, and the answer
+  // was "the spawn we spent a month on". Keeping it is one click from there
+  // rather than a download and an upload through another page.
+  const keep = async () => {
+    setImporting(true)
+    try {
+      const stored = await api.importSchematic(instanceId, entry.path)
+      setImported(true)
+      toast(`已加入建筑库：${stored.name}`)
+    } catch (err) {
+      // 409 means the same bytes are already held, which is not a failure —
+      // it is the answer to the question the button asks.
+      if (err instanceof ApiError && err.status === 409) {
+        setImported(true)
+        toast(err.message)
+      } else {
+        toast(err instanceof Error ? err.message : '入库失败')
+      }
+    } finally {
+      setImporting(false)
     }
-  }, [instanceId, entry.path])
+  }
 
   return (
-    <Modal onClose={onClose} label={`预览 ${entry.name}`}>
-      <div className="modal__card modal__card--schem">
-        <h2 className="modal__title">{entry.name}</h2>
-        <p className="modal__lead">
-          {formatBytes(entry.size)} · {formatDate(entry.modified)}
-        </p>
-
-        {error && <div className="alert alert--error">{error}</div>}
-        {!error && !data && <SchematicSkeleton />}
-        {data && <SchematicBody data={data} />}
-
-        <div className="modal__actions">
+    <SchematicDialog
+      title={entry.name}
+      lead={`${formatBytes(entry.size)} · ${formatDate(entry.modified)}`}
+      load={load}
+      onClose={onClose}
+      actions={
+        <>
           <a className="btn" href={downloadURL(instanceId, entry.path)} download>
             下载
           </a>
-          <button className="btn btn--primary" onClick={onClose}>
-            关闭
+          <button className="btn" onClick={() => void keep()} disabled={importing || imported}>
+            {imported ? '已在建筑库' : importing ? '入库中…' : '加入建筑库'}
           </button>
-        </div>
-      </div>
-    </Modal>
+        </>
+      }
+    />
   )
 }
 

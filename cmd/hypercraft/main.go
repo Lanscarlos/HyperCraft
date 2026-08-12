@@ -33,6 +33,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
 	"github.com/lanscarlos/hypercraft/internal/plugin"
+	"github.com/lanscarlos/hypercraft/internal/schemlib"
 	"github.com/lanscarlos/hypercraft/internal/selfupdate"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
@@ -229,6 +230,34 @@ func run() error {
 	// will not read again, so the panel records what each server has yet to see.
 	pendingPlugins := plugin.NewPending(paths.PendingPluginsFile())
 
+	// Builds are a panel-wide library too, on the same reasoning as plugins: a
+	// spawn schematic gets pasted into next season's world and onto the test
+	// server, and a copy per server is how three of them stop being the same
+	// file. Unlike a plugin it has no version history — WorldEdit saves a new
+	// file rather than a new release — so the library holds one file per entry.
+	schematics := schemlib.NewLibrary(paths.SchematicsRoot())
+	// Files dropped into the library directory by hand are adopted, which is
+	// the migration path off another panel. In the background and off the
+	// startup path: it parses every loose file it finds, and a directory of a
+	// hundred builds on a slow disk must not be why the servers start late.
+	go func() {
+		if added, dropped := schematics.Rescan(); added > 0 || dropped > 0 {
+			logger.Info("schematic library rescanned", "added", added, "dropped", dropped)
+		}
+	}()
+	// The market reads JSON indexes and GitHub repositories — there is no
+	// registry for schematics the way there is for plugins; see
+	// internal/schemlib/market.go. Downloads go through the same proxies plugin
+	// jars do, because they come from the same host and fail the same way from
+	// the same networks.
+	schematicMarket := schemlib.NewMarket(paths.SchematicsRoot(), userAgent)
+	schematicMarket.SetMirrors(mirrorPrefixes(panel.PluginMirror))
+	if len(panel.GitHubTokens) > 0 {
+		// The default token, which is the one every source that names none is
+		// read with. It only ever reaches api.github.com.
+		schematicMarket.SetToken(panel.GitHubTokens[0].Token)
+	}
+
 	// The config history. One Git repository per instance, in the panel's data
 	// directory rather than in the server's — see internal/confighist. Wiring
 	// it up is what installs the lifecycle snapshots, so it has to happen
@@ -321,6 +350,9 @@ func run() error {
 		InstancePlugins: instancePlugins,
 		PendingPlugins:  pendingPlugins,
 		ConfigHistory:   configHistory,
+
+		Schematics:      schematics,
+		SchematicMarket: schematicMarket,
 
 		DatabaseInstalls: databaseInstaller,
 		Databases:        databases,
@@ -529,6 +561,39 @@ func gcSessions(ctx context.Context, sessions *auth.SessionStore, server *api.Se
 			flush()
 		}
 	}
+}
+
+// mirrorPrefixes turns the panel's plugin-mirror setting into the list of URL
+// prefixes a schematic download is tried through, most preferred first.
+//
+// The same setting rather than one of its own: both download from GitHub's
+// hosts, both fail the same way from the same networks, and an operator who has
+// already worked out which proxy their machine can reach should not have to do
+// it twice. Direct is not in the list because the market appends it itself —
+// every choice ends at the origin.
+func mirrorPrefixes(chosen string) []string {
+	var out []string
+	switch chosen {
+	case "", plugin.MirrorAuto:
+		for _, mirror := range plugin.Mirrors() {
+			if mirror.Prefix != "" {
+				out = append(out, mirror.Prefix)
+			}
+		}
+		return out
+	case plugin.MirrorDirect:
+		return nil
+	}
+	for _, mirror := range plugin.Mirrors() {
+		if mirror.ID == chosen && mirror.Prefix != "" {
+			return []string{mirror.Prefix}
+		}
+	}
+	// A proxy the operator runs themselves, stored as a URL prefix.
+	if strings.HasPrefix(chosen, "https://") || strings.HasPrefix(chosen, "http://") {
+		return []string{strings.TrimSuffix(chosen, "/") + "/"}
+	}
+	return nil
 }
 
 func newLogger(level string) *slog.Logger {

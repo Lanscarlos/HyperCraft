@@ -273,6 +273,17 @@ func (p Paths) CoresRoot() string { return filepath.Join(p.Root, "cores") }
 // pinning and rolling back a plugin is routine, so the history is the point.
 func (p Paths) PluginsRoot() string { return filepath.Join(p.Root, "plugins") }
 
+// SchematicsRoot is the panel-wide building library: the .schem files an
+// operator keeps around to paste into worlds. It sits beside the plugin library
+// rather than inside any server for the same reason that one does — a build is
+// pasted into whichever world needs it, and a copy per server is how you end up
+// with four spawn.schem that are no longer the same file.
+//
+// Unlike a plugin, a schematic has no version history: WorldEdit saves a new
+// file rather than a new release of an old one, so the library holds one file
+// per entry and the index beside them says what each one is.
+func (p Paths) SchematicsRoot() string { return filepath.Join(p.Root, "schematics") }
+
 // InstancePluginsFile records which library plugins each instance was given,
 // and at which version. It sits beside instances.json rather than inside the
 // plugin library, so a plugin id can never collide with it.

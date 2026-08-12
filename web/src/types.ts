@@ -1859,6 +1859,163 @@ export interface SchematicPreview {
   omitted?: string
 }
 
+// ------------------------------------------------------------ schematics
+
+/** One palette entry and how much of a build it accounts for.
+ *  Mirrors schemlib.Block. */
+export interface SchematicBlock {
+  name: string
+  count: number
+}
+
+/**
+ * What the daemon found when it parsed a build, stored beside the file.
+ *
+ * Cached rather than parsed per page load: this is what every row of the
+ * library is drawn from, and a full parse per row would be megabytes of gzipped
+ * NBT to answer "how big is it". The full preview — the block payload the
+ * canvas renders — is fetched only when a build is opened.
+ *
+ * Mirrors schemlib.Facts.
+ */
+export interface SchematicFacts {
+  format?: 'sponge' | 'mcedit'
+  version?: number
+  dataVersion?: number
+
+  width: number
+  height: number
+  length: number
+  volume: number
+  nonAir: number
+  /** Distinct non-air block states: the closest single number to "how
+   *  detailed is this". */
+  kinds: number
+  blockEntities?: number
+  entities?: number
+
+  /** The name and author written inside the file, which is routinely not what
+   *  the file is called — hence both, and hence the entry's own name. */
+  savedName?: string
+  author?: string
+  created?: string
+
+  top?: SchematicBlock[]
+  /** Why this file could not be read, for one the panel is holding anyway —
+   *  only ever set on a file adopted from the library directory. */
+  unreadable?: string
+}
+
+/** Where a build came from. Decoration on a row; nothing is decided from it. */
+export interface SchematicOrigin {
+  kind: 'upload' | 'instance' | 'market' | 'found'
+  from?: string
+  url?: string
+  itemId?: string
+}
+
+/** One build in the library. Mirrors schemlib.Entry. */
+export interface SchematicEntry {
+  id: string
+  name: string
+  /** The name on disk, which is also what lands on a server and what
+   *  //schem load takes. Renaming the entry never changes it. */
+  fileName: string
+  note?: string
+  tags?: string[]
+  origin: SchematicOrigin
+  sha256?: string
+  size: number
+  addedAt: string
+  facts: SchematicFacts
+}
+
+/** One directory a build can be installed into. Mirrors schemlib.Target. */
+export interface SchematicDir {
+  dir: string
+  editor: string
+  /** True when the server already has this editor, which is the whole signal:
+   *  nobody should have to know whether their server runs FAWE. */
+  present: boolean
+}
+
+/** One server a build can be installed onto. */
+export interface SchematicTarget {
+  id: string
+  name: string
+  state: InstanceState
+  dirs: SchematicDir[]
+}
+
+/** Mirrors schematicLibraryResponse in internal/api/handlers_schematics.go. */
+export interface SchematicLibrary {
+  root: string
+  entries: SchematicEntry[]
+  totalSize: number
+  targets: SchematicTarget[]
+}
+
+/** One file's outcome in an upload. A failure is per file: dragging in thirty
+ *  builds where two are corrupt stores twenty-eight and says which two. */
+export interface SchematicImportResult {
+  fileName: string
+  entry?: SchematicEntry
+  error?: string
+}
+
+export interface SchematicInstallResult {
+  path: string
+  /** The //schem load line for what just landed — the next thing that
+   *  happens after an install is somebody typing it. */
+  command: string
+}
+
+/** A place the market reads builds from. Mirrors schemlib.Source. */
+export interface SchematicSource {
+  id: string
+  name: string
+  kind: 'index' | 'github'
+  url: string
+  note?: string
+  /** Ships with the panel: it can be switched off, never removed. */
+  builtin?: boolean
+  disabled?: boolean
+}
+
+/** One build a source offers. Nothing here is verified until it is
+ *  downloaded — see schemlib.Item. */
+export interface SchematicItem {
+  id: string
+  sourceId: string
+  source: string
+  name: string
+  author?: string
+  description?: string
+  tags?: string[]
+  gameVersion?: string
+  fileName: string
+  size?: number
+  width?: number
+  height?: number
+  length?: number
+  sha256?: string
+  page?: string
+}
+
+/** Mirrors schematicMarketResponse in internal/api/handlers_schematics.go. */
+export interface SchematicMarketResult {
+  sources: SchematicSource[]
+  items: SchematicItem[]
+  /** Market item id → the library entry that came from it, so a build already
+   *  held says so instead of offering 入库 twice. */
+  held?: Record<string, string>
+  /** Per source, why it contributed nothing. Shown under the results rather
+   *  than as an error: the other sources answered. */
+  notes?: Record<string, string>
+  fetchedAt?: string
+  total: number
+}
+
 // -------------------------------------------------------------- terminal
 
 /** Mirrors terminalStatus in internal/api/handlers_terminal.go. */

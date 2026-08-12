@@ -23,6 +23,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/metrics"
 	"github.com/lanscarlos/hypercraft/internal/plugin"
+	"github.com/lanscarlos/hypercraft/internal/schemlib"
 	"github.com/lanscarlos/hypercraft/internal/selfupdate"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
@@ -99,6 +100,11 @@ type Server struct {
 	// like the pair above — without it the page loses its banner, not its
 	// ability to install anything.
 	pendingPlugins *plugin.Pending
+	// schematics is the panel-wide building library and schemMarket is where
+	// new builds come from. Optional as a pair, like the plugin services:
+	// without the library there is nothing for the market to download into.
+	schematics  *schemlib.Library
+	schemMarket *schemlib.Market
 	// configHistory keeps a Git timeline of each server's configuration.
 	// Optional: nil turns the 配置历史 tab off and takes every lifecycle
 	// snapshot with it, which is what a panel that cannot write its data
@@ -144,6 +150,9 @@ type Options struct {
 	InstancePlugins *plugin.Instances
 	PendingPlugins  *plugin.Pending
 
+	Schematics      *schemlib.Library
+	SchematicMarket *schemlib.Market
+
 	ConfigHistory *confighist.Service
 
 	DatabaseInstalls *dbruntime.Installer
@@ -183,6 +192,9 @@ func NewServer(opts Options) *Server {
 		instancePlugins: opts.InstancePlugins,
 		pendingPlugins:  opts.PendingPlugins,
 		configHistory:   opts.ConfigHistory,
+
+		schematics:  opts.Schematics,
+		schemMarket: opts.SchematicMarket,
 
 		databaseInstalls: opts.DatabaseInstalls,
 		databases:        opts.Databases,
@@ -341,6 +353,27 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("POST /api/instances/{id}/plugins/rollback", s.handleRollbackInstancePlugin)
 	protected.HandleFunc("POST /api/instances/{id}/plugins/accept", s.handleAcceptInstancePlugin)
 	protected.HandleFunc("DELETE /api/instances/{id}/plugins", s.handleUninstallInstancePlugin)
+
+	// Schematics. Panel-wide for the same reason plugins are: a build is held
+	// once and copied into whichever server wants it. The market is two
+	// segments deep, like the plugin config routes, so "market" can never be
+	// reachable as the id of a build somebody happened to name that.
+	protected.HandleFunc("GET /api/schematics", s.handleSchematicLibrary)
+	protected.HandleFunc("POST /api/schematics/upload", s.handleUploadSchematics)
+	protected.HandleFunc("POST /api/schematics/rescan", s.handleRescanSchematics)
+	protected.HandleFunc("GET /api/schematics/market", s.handleBrowseSchematics)
+	protected.HandleFunc("POST /api/schematics/market/install", s.handleInstallMarketSchematic)
+	protected.HandleFunc("POST /api/schematics/market/sources", s.handleAddSchematicSource)
+	protected.HandleFunc("PUT /api/schematics/market/sources/{sourceId}", s.handleUpdateSchematicSource)
+	protected.HandleFunc("DELETE /api/schematics/market/sources/{sourceId}", s.handleDeleteSchematicSource)
+	protected.HandleFunc("PUT /api/schematics/{id}", s.handleUpdateSchematic)
+	protected.HandleFunc("DELETE /api/schematics/{id}", s.handleDeleteSchematic)
+	protected.HandleFunc("GET /api/schematics/{id}/preview", s.handleSchematicPreview)
+	protected.HandleFunc("GET /api/schematics/{id}/download", s.handleDownloadSchematic)
+	protected.HandleFunc("POST /api/schematics/{id}/install", s.handleInstallSchematic)
+	// The other direction: a build saved in-game with //schem save, taken out
+	// of the server it was made on and into the library.
+	protected.HandleFunc("POST /api/instances/{id}/schematics", s.handleImportInstanceSchematic)
 
 	// Java runtimes. Panel-wide rather than per-instance: one download serves
 	// every server that needs that version.

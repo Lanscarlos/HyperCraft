@@ -20,6 +20,7 @@ import type { CoreController } from '../useCores'
 import type { DatabaseController } from '../useDatabases'
 import type { JavaController } from '../useJava'
 import type { PluginController } from '../usePlugins'
+import type { SchematicController } from '../useSchematics'
 import type { TerminalController } from '../useTerminal'
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
@@ -46,6 +47,7 @@ interface Props {
   databases: DatabaseController
   cores: CoreController
   plugins: PluginController
+  schematics: SchematicController
   terminal: TerminalController
   onCreate: () => void
   onOpenPalette: () => void
@@ -280,6 +282,16 @@ function GlobalScope(props: Props) {
               ) : null
             }
           />
+          {/* Last of the five, and the only one a server can start without:
+              the other four are what a server *is*, this is what somebody
+              puts inside one. */}
+          <NavLink
+            {...props}
+            icon="schematics"
+            label="建筑库"
+            target={{ kind: 'library', section: 'schematics', view: 'list' }}
+            navKey="library:schematics"
+          />
         </nav>
 
         <Group label="系统" />
@@ -456,7 +468,13 @@ function LibraryScope(props: Props) {
                 title={page.label}
                 aria-current={current ? 'page' : undefined}
               >
-                <Icon name={LIBRARY_VIEW_ICONS[page.id]} />
+                <Icon
+                  name={
+                    section === 'schematics' && page.id === 'list'
+                      ? 'schematics'
+                      : LIBRARY_VIEW_ICONS[page.id]
+                  }
+                />
                 <span className="sidebar__name">{page.label}</span>
                 {badge}
               </a>
@@ -518,7 +536,10 @@ function resetLabel(at: string): string {
 
 /** What is on the shelf, under its name — the same job the instance header's
  *  state line does: enough to know whether you need to be here at all. */
-function libraryMeta({ java, databases, cores, plugins }: Props, section: LibrarySection): string {
+function libraryMeta(
+  { java, databases, cores, plugins, schematics }: Props,
+  section: LibrarySection,
+): string {
   switch (section) {
     case 'cores':
       return cores.cores.length > 0 ? `${cores.cores.length} 个核心` : '还没有核心'
@@ -532,6 +553,10 @@ function libraryMeta({ java, databases, cores, plugins }: Props, section: Librar
       if (services.length === 0) return '还没建数据库'
       return live > 0 ? `${services.length} 个库，${live} 个在跑` : `${services.length} 个库，都停着`
     }
+    case 'schematics': {
+      const count = schematics.entries.length
+      return count > 0 ? `${count} 个建筑` : '还没有建筑'
+    }
     default:
       return plugins.plugins.length > 0 ? `${plugins.plugins.length} 个插件` : '还没有插件'
   }
@@ -542,6 +567,7 @@ const LIBRARY_ICONS: Record<LibrarySection, IconName> = {
   java: 'java',
   database: 'database',
   plugins: 'plugins',
+  schematics: 'schematics',
 }
 
 /** A page inside a shelf is one of four things: what you have, where to get
