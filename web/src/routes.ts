@@ -119,6 +119,23 @@ export const INSTANCE_SECTIONS: { id: InstanceSection; label: string }[] = [
   { id: 'settings', label: '实例设置' },
 ]
 
+/**
+ * The same list, named for what this instance actually is.
+ *
+ * Only one label differs, and it is the one that would otherwise lie: a proxy
+ * has no server.properties, so 服务器配置 points at a page about velocity.toml.
+ * The section id stays 'properties' — it is in every bookmark, and renaming a
+ * route to fix a label would break links for the servers it was right about.
+ */
+export function instanceSections(
+  kind: string | undefined,
+): { id: InstanceSection; label: string }[] {
+  if (kind !== 'proxy') return INSTANCE_SECTIONS
+  return INSTANCE_SECTIONS.map((section) =>
+    section.id === 'properties' ? { ...section, label: '代理配置' } : section,
+  )
+}
+
 /** In build order: Java runs the core, the core loads the plugins, and the
  *  database is what a plugin asks for once it is loaded. The navigation group
  *  and the command palette both read this, so someone setting a server up for

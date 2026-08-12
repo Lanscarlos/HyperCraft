@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 
 	"github.com/lanscarlos/hypercraft/internal/confighist"
 	"github.com/lanscarlos/hypercraft/internal/instance"
@@ -261,10 +262,26 @@ func (s *Server) handleApplyCore(w http.ResponseWriter, r *http.Request) {
 func (s *Server) setLaunchJar(inst *instance.Instance, core serverjar.Core) (instance.Status, error) {
 	cfg := inst.Config()
 	cfg.Jar = core.FileName
-	if core.IsProxy() {
-		// A proxy is not a Minecraft server: it takes no --nogui, and the
-		// default server args would make it refuse to start.
-		cfg.ServerArgs = []string{}
+	// The jar decides what the instance is. Applying a Velocity core to an
+	// instance created as a server is how most proxies come into being — the
+	// operator picks the core first and never thinks about "kind" at all — so
+	// the switch happens here rather than being a setting to remember.
+	if was := cfg.Kind; core.IsProxy() != cfg.IsProxy() {
+		if core.IsProxy() {
+			cfg.Kind = instance.KindProxy
+		} else {
+			cfg.Kind = instance.KindServer
+		}
+		// Only the launch settings still sitting at the old kind's defaults
+		// follow it across. A stop command or a set of arguments the operator
+		// typed themselves is theirs, and switching the jar is not permission
+		// to overwrite it.
+		if cfg.StopCommand == instance.DefaultStopCommand(was) {
+			cfg.StopCommand = instance.DefaultStopCommand(cfg.Kind)
+		}
+		if slices.Equal(cfg.ServerArgs, instance.DefaultServerArgs(was)) {
+			cfg.ServerArgs = instance.DefaultServerArgs(cfg.Kind)
+		}
 	}
 	updated, err := s.mgr.Update(cfg.ID, cfg)
 	if err != nil {

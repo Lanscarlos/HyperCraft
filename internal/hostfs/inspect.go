@@ -59,6 +59,12 @@ type Inspection struct {
 	// or is meant to. A false verdict is not a refusal — the operator may know
 	// better — it only changes what the dialog says.
 	Server bool `json:"server"`
+	// Proxy says this directory holds a Velocity proxy rather than a world
+	// server. It decides which kind the imported instance is created as, and
+	// with it which config page, launch defaults and stop command it gets —
+	// importing a proxy as a server is a mistake that only shows up as a
+	// failure to start.
+	Proxy bool `json:"proxy"`
 }
 
 // serverJarHints are the file names a server jar is likely to have, best first.
@@ -123,6 +129,13 @@ func Inspect(dir string) (Inspection, error) {
 	// still has the world you want back.
 	out.Server = out.Jar != "" || out.Properties != nil || len(out.Worlds) > 0 ||
 		out.EULA != EULAMissing
+	// Its own config file first: a jar renamed to server.jar says nothing, and
+	// a directory Velocity has run in always has a velocity.toml.
+	if _, err := os.Stat(filepath.Join(listing.Path, "velocity.toml")); err == nil {
+		out.Proxy = true
+	} else {
+		out.Proxy = strings.HasPrefix(strings.ToLower(out.Jar), "velocity")
+	}
 	return out, nil
 }
 

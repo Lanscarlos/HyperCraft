@@ -91,3 +91,65 @@ func TestCreatePersistsAndListsSorted(t *testing.T) {
 		}
 	}
 }
+
+// A proxy is not a server with a different jar: --nogui makes Velocity exit
+// before it starts, "stop" is not one of its commands, and two gigabytes of
+// heap is both wasteful and worse for it than half a gig.
+func TestProxyGetsItsOwnDefaults(t *testing.T) {
+	mgr, _ := newTestManager(t)
+
+	proxy, err := mgr.Create(Config{Name: "velocity", Kind: KindProxy, Jar: "velocity.jar"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	cfg := proxy.Config()
+
+	if !cfg.IsProxy() {
+		t.Fatalf("kind = %q, want proxy", cfg.Kind)
+	}
+	if len(cfg.ServerArgs) != 0 {
+		t.Errorf("serverArgs = %#v, want none", cfg.ServerArgs)
+	}
+	if cfg.StopCommand != "end" {
+		t.Errorf("stopCommand = %q, want end", cfg.StopCommand)
+	}
+	if cfg.MaxMemoryMB != 512 {
+		t.Errorf("maxMemoryMB = %d, want 512", cfg.MaxMemoryMB)
+	}
+
+	server, err := mgr.Create(Config{Name: "paper", Jar: "paper.jar"})
+	if err != nil {
+		t.Fatalf("Create server: %v", err)
+	}
+	switch cfg := server.Config(); {
+	case cfg.Kind != KindServer:
+		t.Errorf("an instance created without a kind is %q", cfg.Kind)
+	case len(cfg.ServerArgs) != 1 || cfg.ServerArgs[0] != "--nogui":
+		t.Errorf("serverArgs = %#v, want --nogui", cfg.ServerArgs)
+	case cfg.StopCommand != "stop":
+		t.Errorf("stopCommand = %q, want stop", cfg.StopCommand)
+	}
+}
+
+// Every instance written before the field existed is a server. Loading one has
+// to say so, or its first save would fail validation.
+func TestLoadFillsInTheKindOfAnOlderConfig(t *testing.T) {
+	mgr, root := newTestManager(t)
+	mgr.Load([]Config{{ID: "abc", Name: "old", Directory: filepath.Join(root, "old")}})
+
+	inst, err := mgr.Get("abc")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got := inst.Config().Kind; got != KindServer {
+		t.Errorf("kind = %q, want server", got)
+	}
+}
+
+func TestUnknownKindIsRejected(t *testing.T) {
+	mgr, _ := newTestManager(t)
+
+	if _, err := mgr.Create(Config{Name: "weird", Kind: "bungeecord"}); err == nil {
+		t.Fatal("an unknown kind was accepted")
+	}
+}

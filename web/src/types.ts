@@ -7,11 +7,17 @@ export type InstanceState =
   | 'stopping'
   | 'crashed'
 
+/** What an instance runs. A proxy has no world, no server.properties and no
+ *  EULA — it reads velocity.toml — so the panel shows it a different config
+ *  page and a different set of launch defaults. Only Velocity is supported. */
+export type InstanceKind = 'server' | 'proxy'
+
 export interface InstanceConfig {
   id: string
   name: string
   directory: string
   createdAt: string
+  kind: InstanceKind
   java: string
   jar: string
   minMemoryMB: number
@@ -54,11 +60,15 @@ export interface InstanceStatus extends InstanceConfig {
   ttySupported: boolean
 }
 
-/** The editable subset the API accepts on create/update. */
+/** The editable subset the API accepts on create/update.
+ *
+ *  `kind` is optional and omitting it means "keep what it is": what an instance
+ *  runs is decided when it is created and when a core is applied to it, never
+ *  by a form that happens to save the launch settings. */
 export type InstanceInput = Omit<
   InstanceConfig,
-  'id' | 'createdAt' | 'command'
-> & { command: string[] }
+  'id' | 'createdAt' | 'command' | 'kind'
+> & { command: string[]; kind?: InstanceKind }
 
 /** Console encodings the daemon accepts, in the order the dropdown shows them. */
 export const ENCODING_OPTIONS: { value: string; label: string }[] = [
@@ -136,6 +146,71 @@ export interface EulaStatus {
   exists: boolean
   accepted: boolean
   path: string
+}
+
+// ------------------------------------------------------------ 代理配置
+//
+// velocity.toml, which is to a proxy what server.properties is to a server —
+// a different file with different keys, edited on its own page.
+
+/** One setting the panel renders as a real control. Shaped like KnownProperty
+ *  and read the same way; `group` is which panel it belongs in. */
+export type VelocitySettingGroup = 'basic' | 'forwarding' | 'advanced' | 'query'
+
+export interface VelocitySetting {
+  key: string
+  label: string
+  type: 'text' | 'number' | 'boolean' | 'select'
+  options?: string[]
+  hint?: string
+  /** What Velocity uses when the key is absent from the file. */
+  default: string
+  group: VelocitySettingGroup
+}
+
+/** One entry of the [servers] table: the name players type after /server, and
+ *  the address the proxy sends them to. */
+export interface VelocityServer {
+  name: string
+  address: string
+}
+
+/** A sub-server the panel already knows about, with the address that server's
+ *  own server.properties says it listens on. */
+export interface VelocitySuggestion extends VelocityServer {
+  instanceId: string
+  instance: string
+  /** True when the [servers] table already points at this address. */
+  added: boolean
+}
+
+/** The forwarding secret, which the proxy and every sub-server behind it have
+ *  to agree on. */
+export interface ForwardingSecret {
+  file: string
+  exists: boolean
+  value: string
+}
+
+export interface VelocityResponse {
+  /** False before the proxy has ever started: what is shown then is Velocity's
+   *  own default config, not something read off the disk. */
+  exists: boolean
+  path: string
+  entries: PropertyEntry[]
+  known: VelocitySetting[]
+  servers: VelocityServer[]
+  try: string[]
+  secret: ForwardingSecret
+  suggests: VelocitySuggestion[]
+}
+
+export interface VelocityInput {
+  entries?: PropertyEntry[]
+  servers?: VelocityServer[]
+  try?: string[]
+  /** Empty means "leave it alone", never "clear it". */
+  forwardingSecret?: string
 }
 
 // ------------------------------------------------------------ 配置历史
@@ -1022,7 +1097,8 @@ export interface PluginCompat {
 export interface PluginTarget {
   mcVersion?: string
   loader?: string
-  /** Where the panel learned it: version-history, core-library or jar-name. */
+  /** Where the panel learned it: version-history, core-library, jar-name,
+   *  or instance-kind for a proxy that could not be read off its jar. */
   source?: string
 }
 
@@ -1481,6 +1557,9 @@ export interface HostInspection {
   mods: number
   /** The panel's verdict: something here says a server has run, or is meant to. */
   server: boolean
+  /** A Velocity directory rather than a world server's — velocity.toml is
+   *  there, or the jar says so. Decides which kind the import creates. */
+  proxy: boolean
   /** Name of the instance already pointing at this directory, if any. */
   takenBy?: string
 }

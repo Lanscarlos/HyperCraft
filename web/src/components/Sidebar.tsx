@@ -5,11 +5,11 @@ import { DUR } from '../motion'
 import type { LibrarySection, Route, Scope } from '../routes'
 import {
   HOST_SECTIONS,
-  INSTANCE_SECTIONS,
   LIBRARY_SECTIONS,
   LIBRARY_VIEWS,
   SETTINGS_SECTIONS,
   defaultView,
+  instanceSections,
   pathOf,
   samePage,
 } from '../routes'
@@ -355,7 +355,7 @@ function InstanceScope(props: Props) {
 
       <div className="sidebar__scroll">
         <nav className="sidebar__nav" aria-label="实例页面">
-          {INSTANCE_SECTIONS.map((section) => (
+          {instanceSections(instance?.kind).map((section) => (
             <a
               key={section.id}
               className={`sidebar__link${

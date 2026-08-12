@@ -39,7 +39,7 @@ export function InstanceCockpit({ instance, active, onChanged, onOpenSection }: 
   const live = isLive(instance.state)
   const uptime = useUptime(instance.startedAt, live)
   const metrics = useSeries(instance.id, active && live)
-  const address = useAddress(instance.id, active)
+  const address = useAddress(instance, active)
 
   const trend = useMemo(() => {
     if (!metrics) return { cpu: [] as number[], memory: [] as number[], latest: null }
@@ -74,6 +74,10 @@ export function InstanceCockpit({ instance, active, onChanged, onOpenSection }: 
           </div>
           <div className="cockpit__facts">
             <span title={instance.jar}>{basename(instance.jar) || '未设置核心'}</span>
+            {/* Which of the two this is decides half of what the rest of the
+                panel shows, so it is said once, here, beside the jar it comes
+                from. */}
+            {instance.kind === 'proxy' && <span className="badge">代理端</span>}
             <span title={instance.java}>{javaLabel(instance.java)}</span>
             {uptime ? <span>已运行 {uptime}</span> : <span>{stopNote(instance)}</span>}
             {instance.pid ? <span>PID {instance.pid}</span> : null}
@@ -176,6 +180,7 @@ function QuickPanel({
   const [busy, setBusy] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const live = instance.state === 'running'
+  const proxy = instance.kind === 'proxy'
 
   const send = async (command: string) => {
     setBusy(command)
@@ -198,7 +203,7 @@ function QuickPanel({
         <p className="quick__idle">服务器没有在运行，控制台命令发不出去。</p>
       ) : (
         <div className="quick__list">
-          {QUICK_COMMANDS.map((item) => (
+          {(proxy ? PROXY_COMMANDS : QUICK_COMMANDS).map((item) => (
             <button
               key={item.command}
               className="quick__item"
@@ -221,7 +226,7 @@ function QuickPanel({
           看曲线
         </button>
         <button className="link" onClick={() => onOpenSection('properties')}>
-          服务器配置
+          {proxy ? '代理配置' : '服务器配置'}
         </button>
         <button className="link" onClick={() => onOpenSection('files')}>
           文件
@@ -236,6 +241,16 @@ const QUICK_COMMANDS = [
   { label: '保存世界', command: 'save-all', note: '立刻落盘，重启前先来一下' },
   { label: '重载白名单', command: 'whitelist reload', note: '改完 whitelist.json 后生效' },
   { label: '看 TPS', command: 'tps', note: 'Paper / Spigot 有这个命令' },
+]
+
+/** A proxy answers to none of the four above — it has no world to save and no
+ *  whitelist of its own. These are Velocity's own console commands, and the
+ *  first one is the reason anybody opens a proxy console: who is where. */
+const PROXY_COMMANDS = [
+  { label: '在线玩家', command: 'glist', note: '按子服分组的在线名单' },
+  { label: '重载配置', command: 'velocity reload', note: '改完 velocity.toml 不用重启' },
+  { label: '插件列表', command: 'velocity plugins', note: '代理端这一层装了什么' },
+  { label: '版本', command: 'velocity version', note: '连同它支持的协议版本' },
 ]
 
 function Tile({
@@ -343,37 +358,54 @@ function useSeries(id: string, enabled: boolean): InstanceMetrics | null {
 /**
  * Where players type to get in.
  *
- * Read from the instance's own server.properties rather than assumed, because
- * a second server on the same box is not on 25565 and the person asking for
- * the address is usually about to paste it to someone else. The host part is
- * whatever this panel was reached on, which is the best guess available from
- * inside the browser and is right whenever the panel and the server share a
- * machine — which, this being a single-host panel, they do.
+ * Read from the instance's own config rather than assumed, because a second
+ * server on the same box is not on 25565 and the person asking for the address
+ * is usually about to paste it to someone else. The host part is whatever this
+ * panel was reached on, which is the best guess available from inside the
+ * browser and is right whenever the panel and the server share a machine —
+ * which, this being a single-host panel, they do.
+ *
+ * Which file holds the port depends on what the instance is: a server writes it
+ * to server.properties, a proxy binds to an address in velocity.toml. The proxy
+ * is the one people are actually given, so it is worth reading the other file
+ * for.
  */
-function useAddress(id: string, enabled: boolean): string | null {
+function useAddress(instance: InstanceStatus, enabled: boolean): string | null {
   const [port, setPort] = useState<string | null>(null)
+  const { id, kind } = instance
 
   useEffect(() => {
     setPort(null)
     if (!enabled) return
     let cancelled = false
 
-    api
-      .getProperties(id)
-      .then((props) => {
-        if (cancelled || !props.exists) return
-        const entry = props.entries.find((row) => row.key === 'server-port')
-        if (entry?.value) setPort(entry.value)
-      })
-      .catch(() => {
-        // A proxy core has no server.properties; there is simply no address to
-        // show, which is not an error worth a banner.
-      })
+    const read = async () => {
+      if (kind === 'proxy') {
+        const config = await api.getVelocity(id)
+        if (cancelled || !config.exists) return
+        // bind is host:port, and the host is 0.0.0.0 nine times in ten — it is
+        // the port that is worth handing over.
+        const bind = config.entries.find((row) => row.key === 'bind')?.value ?? ''
+        const found = bind.slice(bind.lastIndexOf(':') + 1)
+        if (found) setPort(found)
+        return
+      }
+
+      const props = await api.getProperties(id)
+      if (cancelled || !props.exists) return
+      const entry = props.entries.find((row) => row.key === 'server-port')
+      if (entry?.value) setPort(entry.value)
+    }
+
+    read().catch(() => {
+      // An instance that has never started has neither file yet; there is
+      // simply no address to show, which is not an error worth a banner.
+    })
 
     return () => {
       cancelled = true
     }
-  }, [id, enabled])
+  }, [id, kind, enabled])
 
   return port ? `${window.location.hostname}:${port}` : null
 }

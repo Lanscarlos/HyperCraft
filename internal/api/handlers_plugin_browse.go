@@ -552,7 +552,16 @@ func (s *Server) detectTarget(cfg instance.Config) plugin.Target {
 			return "", "", false
 		}
 	}
-	return plugin.DetectTarget(cfg.Directory, cfg.Jar, lookup)
+	target := plugin.DetectTarget(cfg.Directory, cfg.Jar, lookup)
+	// What the instance says it is, when nothing on disk could say. A proxy
+	// whose jar was renamed to server.jar detects as nothing at all, and a
+	// nothing means every proxy plugin in the market is badged 未知 — while the
+	// one fact needed to judge them is recorded on the instance itself.
+	if target.Loader == "" && cfg.IsProxy() {
+		target.Loader = "velocity"
+		target.Source = "instance-kind"
+	}
+	return target
 }
 
 // ------------------------------------------------- cross-instance overview

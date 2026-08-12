@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/lanscarlos/hypercraft/internal/confighist"
+	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/mcprops"
 )
 
@@ -57,8 +58,26 @@ func (s *Server) propertiesPath(dir string) string {
 	return filepath.Join(dir, "server.properties")
 }
 
-func (s *Server) handleGetProperties(w http.ResponseWriter, r *http.Request) {
+// serverFromPath resolves the instance and refuses a proxy.
+//
+// A proxy has no server.properties and no EULA — it reads velocity.toml, which
+// has its own routes. Writing either file into a Velocity directory produces
+// something that looks like configuration, is read by nothing, and is then very
+// hard to tell apart from a setting that simply did not take effect.
+func (s *Server) serverFromPath(w http.ResponseWriter, r *http.Request) (*instance.Instance, bool) {
 	inst, ok := s.instanceFromPath(w, r)
+	if !ok {
+		return nil, false
+	}
+	if inst.Config().IsProxy() {
+		writeError(w, http.StatusBadRequest, "代理端没有 server.properties 和 EULA，请在「代理配置」里设置")
+		return nil, false
+	}
+	return inst, true
+}
+
+func (s *Server) handleGetProperties(w http.ResponseWriter, r *http.Request) {
+	inst, ok := s.serverFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -93,7 +112,7 @@ type putPropertiesRequest struct {
 // keys this build has never heard of. Silently dropping them on save would be
 // a nasty way to lose configuration.
 func (s *Server) handlePutProperties(w http.ResponseWriter, r *http.Request) {
-	inst, ok := s.instanceFromPath(w, r)
+	inst, ok := s.serverFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -167,7 +186,7 @@ func (s *Server) readEULA(dir string) eulaResponse {
 }
 
 func (s *Server) handleGetEULA(w http.ResponseWriter, r *http.Request) {
-	inst, ok := s.instanceFromPath(w, r)
+	inst, ok := s.serverFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -177,7 +196,7 @@ func (s *Server) handleGetEULA(w http.ResponseWriter, r *http.Request) {
 // handleAcceptEULA writes eula=true. The operator clicks this in the UI next to
 // a link to Mojang's terms; the panel is only recording their decision.
 func (s *Server) handleAcceptEULA(w http.ResponseWriter, r *http.Request) {
-	inst, ok := s.instanceFromPath(w, r)
+	inst, ok := s.serverFromPath(w, r)
 	if !ok {
 		return
 	}

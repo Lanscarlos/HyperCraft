@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 )
 
@@ -256,6 +257,39 @@ func TestApplyingVelocityClearsServerArgs(t *testing.T) {
 	}
 	if len(applied.Instance.ServerArgs) != 0 {
 		t.Errorf("a proxy should not keep %v as server args", applied.Instance.ServerArgs)
+	}
+	// The jar is what makes it a proxy, and the panel has to remember: every
+	// page that differs between the two reads this and nothing else.
+	if applied.Instance.Kind != instance.KindProxy {
+		t.Errorf("kind = %q, want proxy", applied.Instance.Kind)
+	}
+	if applied.Instance.StopCommand != "end" {
+		t.Errorf("stopCommand = %q, want end", applied.Instance.StopCommand)
+	}
+}
+
+// A stop command the operator typed themselves is theirs. Switching the jar
+// changes what the instance is, not what they decided.
+func TestApplyingVelocityKeepsACustomStopCommand(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	id := env.downloadCore("velocity", "1.21.11")
+	created := env.createInstance("proxy-with-opinions")
+
+	resp := env.do(http.MethodPut, "/api/instances/"+created.ID,
+		instanceRequest{Name: created.Name, Directory: created.Directory, StopCommand: "save-all"})
+	resp.Body.Close()
+
+	resp = env.do(http.MethodPost, "/api/instances/"+created.ID+"/core",
+		applyCoreRequest{CoreID: id, SetAsJar: true})
+	var applied applyCoreResponse
+	decodeBody(t, resp, &applied)
+
+	if applied.Instance.Kind != instance.KindProxy {
+		t.Errorf("kind = %q, want proxy", applied.Instance.Kind)
+	}
+	if applied.Instance.StopCommand != "save-all" {
+		t.Errorf("stopCommand = %q, want the operator's own", applied.Instance.StopCommand)
 	}
 }
 

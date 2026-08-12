@@ -146,3 +146,41 @@ func TestInspectFallsBackToTheLargestJar(t *testing.T) {
 		t.Errorf("Jar = %q, want the largest when no name is recognised", got.Jar)
 	}
 }
+
+// A Velocity directory imported as a server would be launched with --nogui,
+// stopped with a command it does not have, and given a config page about a file
+// it does not own. The one signal that survives a renamed jar is its own config
+// file, so that is the one checked first.
+func TestInspectRecognisesAProxy(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("server.jar", "renamed by hand")
+	write("velocity.toml", "bind = \"0.0.0.0:25577\"\n")
+
+	got, err := Inspect(dir)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if !got.Proxy {
+		t.Error("a directory with a velocity.toml was not read as a proxy")
+	}
+
+	// And by the jar's name, for a proxy that has never been started and so has
+	// no velocity.toml yet.
+	fresh := t.TempDir()
+	if err := os.WriteFile(filepath.Join(fresh, "velocity-3.4.0-462.jar"), []byte("jar"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Inspect(fresh); err != nil || !got.Proxy {
+		t.Errorf("a velocity jar was not read as a proxy: %+v (%v)", got, err)
+	}
+
+	if got, err := Inspect(server(t)); err != nil || got.Proxy {
+		t.Errorf("a paper server was read as a proxy: %+v (%v)", got, err)
+	}
+}
