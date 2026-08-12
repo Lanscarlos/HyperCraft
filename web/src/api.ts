@@ -49,6 +49,7 @@ import type {
   PropertyEntry,
   RestorePlan,
   RestoreResult,
+  SchematicPreview,
   SystemInfo,
   TerminalStatus,
   UpdateChannel,
@@ -579,6 +580,11 @@ export const api = {
     request<void>('POST', `/api/instances/${id}/files/rename`, { from, to }),
   deleteFile: (id: string, filePath: string) =>
     request<void>('DELETE', `/api/instances/${id}/files?path=${encodeURIComponent(filePath)}`),
+  schematic: (id: string, filePath: string) =>
+    request<SchematicPreview>(
+      'GET',
+      `/api/instances/${id}/files/schematic?path=${encodeURIComponent(filePath)}`,
+    ),
 }
 
 /**

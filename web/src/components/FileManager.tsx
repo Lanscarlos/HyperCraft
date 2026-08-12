@@ -7,6 +7,7 @@ import { formatBytes, formatDate, formatSince } from '../format'
 import { toast } from '../toast'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
 import { Modal } from './Modal'
+import { SchematicPreview } from './SchematicPreview'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
 interface EditorState {
@@ -381,7 +382,7 @@ export function FileManager({
       void load(entry.path)
       return
     }
-    if (isImage(entry.name)) {
+    if (isImage(entry.name) || isSchematic(entry.name)) {
       setPreview(entry)
       return
     }
@@ -469,13 +470,20 @@ export function FileManager({
   const dialogs = (
     <>
       {naming && <NameDialog request={naming} onAnswer={settleName} />}
-      {preview && (
-        <ImagePreview
-          instanceId={instance.id}
-          entry={preview}
-          onClose={() => setPreview(null)}
-        />
-      )}
+      {preview &&
+        (isSchematic(preview.name) ? (
+          <SchematicPreview
+            instanceId={instance.id}
+            entry={preview}
+            onClose={() => setPreview(null)}
+          />
+        ) : (
+          <ImagePreview
+            instanceId={instance.id}
+            entry={preview}
+            onClose={() => setPreview(null)}
+          />
+        ))}
     </>
   )
 
@@ -778,7 +786,7 @@ function FileRow({
   onDelete: () => void
 }) {
   const kind = kindOf(entry)
-  const openable = entry.isDir || entry.editable || isImage(entry.name)
+  const openable = entry.isDir || entry.editable || isImage(entry.name) || isSchematic(entry.name)
 
   return (
     <tr data-ticked={ticked || undefined}>
@@ -805,9 +813,11 @@ function FileRow({
                 ? '打开目录'
                 : entry.editable
                   ? '编辑'
-                  : isImage(entry.name)
-                    ? '预览'
-                    : '此文件不支持在线打开，可以下载后查看'
+                  : isSchematic(entry.name)
+                    ? '预览建筑'
+                    : isImage(entry.name)
+                      ? '预览'
+                      : '此文件不支持在线打开，可以下载后查看'
             }
           >
             {entry.name}
@@ -1178,6 +1188,7 @@ function NameList({ names }: { names: string[] }) {
 /* --------------------------------------------------------------- glyphs */
 
 type GlyphName =
+  | 'cube'
   | 'up'
   | 'home'
   | 'upload'
@@ -1308,6 +1319,14 @@ const GLYPHS: Record<GlyphName, ReactElement> = {
       <path d="M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3" />
     </>
   ),
+  // An isometric block, the same projection the preview draws in.
+  cube: (
+    <>
+      <path d="M12 3.2 20.5 8v8L12 20.8 3.5 16V8Z" />
+      <path d="M3.5 8 12 12.6 20.5 8" />
+      <path d="M12 12.6v8.2" />
+    </>
+  ),
 }
 
 /**
@@ -1339,7 +1358,17 @@ function Glyph({ name, className }: { name: GlyphName; className?: string }) {
 
 /* ----------------------------------------------------------- file kinds */
 
-type Kind = 'dir' | 'jar' | 'archive' | 'image' | 'config' | 'text' | 'script' | 'data' | 'plain'
+type Kind =
+  | 'dir'
+  | 'jar'
+  | 'archive'
+  | 'image'
+  | 'schem'
+  | 'config'
+  | 'text'
+  | 'script'
+  | 'data'
+  | 'plain'
 
 const KIND_BY_EXT: Record<string, Kind> = {
   '.jar': 'jar',
@@ -1385,6 +1414,8 @@ const KIND_BY_EXT: Record<string, Kind> = {
   '.mca': 'data',
   '.mcr': 'data',
   '.nbt': 'data',
+  '.schem': 'schem',
+  '.schematic': 'schem',
   '.db': 'data',
   '.lock': 'data',
 }
@@ -1394,6 +1425,7 @@ const GLYPH: Record<Kind, GlyphName> = {
   jar: 'jar',
   archive: 'archive',
   image: 'image',
+  schem: 'cube',
   config: 'config',
   text: 'doc',
   script: 'script',
@@ -1409,6 +1441,9 @@ const TONE: Record<Kind, string> = {
   jar: 'pkg',
   archive: 'pkg',
   image: 'media',
+  // Same tint as an image, and for the same reason: this is a file the panel
+  // can show you rather than one you have to take away and open.
+  schem: 'media',
   config: 'conf',
   script: 'conf',
   text: 'plain',
@@ -1435,6 +1470,14 @@ const PREVIEWABLE = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '
 
 function isImage(name: string): boolean {
   return PREVIEWABLE.has(extensionOf(name))
+}
+
+/** The two WorldEdit formats the daemon can read; see IsSchematic in
+ *  internal/api/handlers_schem.go, which this has to agree with. */
+const SCHEMATICS = new Set(['.schem', '.schematic'])
+
+function isSchematic(name: string): boolean {
+  return SCHEMATICS.has(extensionOf(name))
 }
 
 /* -------------------------------------------------------------- helpers */

@@ -1816,6 +1816,49 @@ export interface FileListing {
   maxUploadBytes: number
 }
 
+/** Mirrors schematicResponse in internal/api/handlers_schem.go. */
+export interface SchematicPreview {
+  path: string
+  /** The file's own name. `name` below is the one saved inside it. */
+  file: string
+  size: number
+  modified: string
+
+  format: 'sponge' | 'mcedit'
+  version: number
+  dataVersion: number
+
+  width: number
+  height: number
+  length: number
+  volume: number
+
+  offset?: number[]
+  weOffset?: number[]
+
+  name?: string
+  author?: string
+  created?: string
+
+  /** Block states, index-aligned with `counts` and with the indices `blocks`
+   *  refers to. */
+  palette: string[]
+  counts: number[]
+
+  nonAir: number
+  blockEntities: number
+  entities: number
+  hasBiomes: boolean
+
+  /** The whole region run-length encoded, base64. Six bytes per run: a
+   *  big-endian uint16 palette index then a big-endian uint32 length, in the
+   *  Y→Z→X order the file itself uses. Absent when `omitted` says why. */
+  blocks?: string
+  runs: number
+  /** Which cap cost this file its picture: 'volume' | 'runs' | 'palette'. */
+  omitted?: string
+}
+
 // -------------------------------------------------------------- terminal
 
 /** Mirrors terminalStatus in internal/api/handlers_terminal.go. */

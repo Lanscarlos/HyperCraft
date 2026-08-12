@@ -381,6 +381,7 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("POST /api/instances/{id}/files/upload", s.handleUploadFile)
 	protected.HandleFunc("POST /api/instances/{id}/files/mkdir", s.handleMkdir)
 	protected.HandleFunc("POST /api/instances/{id}/files/rename", s.handleRenameFile)
+	protected.HandleFunc("GET /api/instances/{id}/files/schematic", s.handleSchematic)
 
 	// Directories on the host, for the instance directory picker. Read-only,
 	// and not confined to an instance — see handlers_hostfs.go.
