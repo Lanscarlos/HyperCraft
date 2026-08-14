@@ -362,8 +362,12 @@ function NetworkCanvas({ data, busy, onLink, onRepair, onUnlink, onOpenInstance 
           const to = anchors[`server:${link.serverId}`]
           if (!from || !to) return null
           return (
+            // Keyed by the sub-server's name, not the instance: one backend
+            // listed twice under two names is a real setup (an alias for a
+            // warp plugin), and two links keyed by the same instance are two
+            // React children claiming one key.
             <path
-              key={`${link.proxyId}-${link.serverId}`}
+              key={`${link.proxyId}-${link.name}`}
               className={`netwire netwire--${link.status}`}
               d={curve(from, to)}
             />
@@ -542,7 +546,7 @@ function ProxyCard({
           {links.map((link) => {
             const server = serverOf(link.serverId)
             return (
-              <li className="netlink" key={link.serverId}>
+              <li className="netlink" key={link.name}>
                 <div className="netlink__head">
                   <span className={`netlink__dot netlink__dot--${link.status}`} aria-hidden="true" />
                   <strong>{link.name}</strong>
@@ -703,7 +707,7 @@ function NetworkList({ data, busy, onLink, onRepair, onUnlink, onOpenInstance }:
                 {links.map((link) => {
                   const server = data.servers.find((entry) => entry.id === link.serverId)
                   return (
-                    <li className="netlink" key={link.serverId}>
+                    <li className="netlink" key={link.name}>
                       <div className="netlink__head">
                         <span
                           className={`netlink__dot netlink__dot--${link.status}`}

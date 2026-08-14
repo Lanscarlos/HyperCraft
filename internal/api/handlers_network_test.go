@@ -338,3 +338,175 @@ func TestSameBackendMatchesEverySpellingOfThisMachine(t *testing.T) {
 		}
 	}
 }
+
+// Two instances on one address is the case the [servers] table cannot express:
+// it names an address, so a link to either of them reads as a link to
+// whichever one the panel saw first. Refusing is the only honest answer, and
+// it has to happen before either backend is touched.
+func TestNetworkLinkRefusesAnAmbiguousAddress(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	proxy := env.createProxy("代理")
+	first := env.backend("生存", "25566", true)
+	second := env.backend("创造", "25566", true)
+
+	for _, server := range []instance.Status{first, second} {
+		resp := env.do(http.MethodPost, "/api/network/link",
+			networkLinkRequest{ProxyID: proxy.ID, ServerID: server.ID})
+		var body struct {
+			Error string `json:"error"`
+		}
+		decodeBody(t, resp, &body)
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s: expected 400, got %d", server.Name, resp.StatusCode)
+		}
+		if !strings.Contains(body.Error, "25566") {
+			t.Errorf("%s: the error does not say what clashes: %s", server.Name, body.Error)
+		}
+	}
+
+	// A refused link leaves both backends exactly as they were — the failure
+	// mode this replaces silently disabled the second server's online-mode and
+	// then never listed it.
+	for _, server := range []instance.Status{first, second} {
+		if _, err := os.Stat(filepath.Join(server.Directory, pathSpigot)); !os.IsNotExist(err) {
+			t.Errorf("%s was edited by a refused link", server.Name)
+		}
+	}
+}
+
+// A hand-wired network where the two ends disagree about whether the proxy
+// authenticates. Nobody is kicked — every player just gets a UUID minted the
+// wrong way, which in game is indistinguishable from the world losing their
+// inventory — so it has to be said here rather than found there.
+func TestNetworkFlagsVelocityOnlineModeMismatch(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	proxy := env.createProxy("代理")
+	server := env.backend("survival", "25566", true)
+
+	seed(t, proxy, velocitycfg.FileName, strings.Join([]string{
+		`online-mode = true`,
+		`player-info-forwarding-mode = "modern"`,
+		"[servers]",
+		`lobby = "127.0.0.1:25566"`,
+		`try = ["lobby"]`,
+	}, "\n")+"\n")
+	seed(t, proxy, velocitycfg.DefaultSecretFile, "sekrit")
+	seed(t, server, "server.properties", "server-port=25566\nonline-mode=false\n")
+	seed(t, server, pathPaperGlobal,
+		"proxies:\n  velocity:\n    enabled: true\n    online-mode: false\n    secret: sekrit\n")
+
+	link := env.network().Links[0]
+	if link.Status != linkBroken {
+		t.Fatalf("status = %q, issues = %#v", link.Status, link.Issues)
+	}
+	if !strings.Contains(strings.Join(link.Issues, " / "), "online-mode") {
+		t.Errorf("issues did not name the key: %#v", link.Issues)
+	}
+
+	if fixed := env.link("repair", proxy, server); fixed.Links[0].Status != linkOK {
+		t.Fatalf("repair left it %q: %#v", fixed.Links[0].Status, fixed.Links[0].Issues)
+	}
+}
+
+// modern forwarding without a secret file is not the sub-server's fault and is
+// not survivable: Velocity refuses to start at all.
+func TestNetworkFlagsAMissingProxySecret(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	proxy := env.createProxy("代理")
+	server := env.backend("survival", "25566", true)
+
+	seed(t, proxy, velocitycfg.FileName, strings.Join([]string{
+		`player-info-forwarding-mode = "modern"`,
+		"[servers]",
+		`lobby = "127.0.0.1:25566"`,
+		`try = ["lobby"]`,
+	}, "\n")+"\n")
+	seed(t, server, "server.properties", "server-port=25566\nonline-mode=false\n")
+	seed(t, server, pathPaperGlobal,
+		"proxies:\n  velocity:\n    enabled: true\n    online-mode: true\n    secret: sekrit\n")
+
+	link := env.network().Links[0]
+	if link.Status != linkBroken {
+		t.Fatalf("status = %q, issues = %#v", link.Status, link.Issues)
+	}
+	if !strings.Contains(strings.Join(link.Issues, " / "), "代理端还没有转发密钥") {
+		t.Errorf("the missing secret was blamed on the wrong end: %#v", link.Issues)
+	}
+}
+
+// Disconnecting the lobby must not take the rest of the network with it: a
+// proxy whose try list is empty kicks every player who connects, including the
+// ones on the servers that are still linked.
+func TestNetworkUnlinkKeepsALandingSpot(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	proxy := env.createProxy("代理")
+	first := env.backend("lobby", "25566", true)
+	second := env.backend("survival", "25567", true)
+
+	env.link("link", proxy, first)
+	env.link("link", proxy, second)
+	out := env.link("unlink", proxy, first)
+
+	if len(out.Links) != 1 {
+		t.Fatalf("links = %#v", out.Links)
+	}
+	if !out.Links[0].Try {
+		t.Errorf("nothing is left to land on: %#v", out.Links[0])
+	}
+	if out.Links[0].Status != linkOK {
+		t.Errorf("the surviving link is %q: %#v", out.Links[0].Status, out.Links[0].Issues)
+	}
+	// A changed landing spot is a decision, so it is reported rather than made
+	// quietly.
+	if !strings.Contains(strings.Join(out.Notes, " / "), "落点") {
+		t.Errorf("the new landing spot was not mentioned: %#v", out.Notes)
+	}
+}
+
+// The last server leaving takes the try list with it — there is nothing to
+// promote, and inventing an entry would name a server that no longer exists.
+func TestNetworkUnlinkOfTheLastServerEmptiesTry(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	proxy := env.createProxy("代理")
+	server := env.backend("lobby", "25566", true)
+
+	env.link("link", proxy, server)
+	env.link("unlink", proxy, server)
+
+	if got := readFile(t, proxy, velocitycfg.FileName); !strings.Contains(got, "try = []") {
+		t.Errorf("try list:\n%s", got)
+	}
+}
+
+// An empty landing spot is exactly the half-wired state 修复 exists for, so it
+// is reported against the links behind it and repairing one restores it.
+func TestNetworkRepairRestoresTheLandingSpot(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	proxy := env.createProxy("代理")
+	server := env.backend("survival", "25566", true)
+
+	env.link("link", proxy, server)
+	// Emptied by hand — the try list is an ordinary field of the 代理配置 page.
+	toml := readFile(t, proxy, velocitycfg.FileName)
+	seed(t, proxy, velocitycfg.FileName,
+		strings.ReplaceAll(toml, `try = ["survival"]`, "try = []"))
+
+	link := env.network().Links[0]
+	if link.Status != linkBroken {
+		t.Fatalf("status = %q, issues = %#v", link.Status, link.Issues)
+	}
+	if !strings.Contains(strings.Join(link.Issues, " / "), "登录顺序") {
+		t.Errorf("issues did not mention the try list: %#v", link.Issues)
+	}
+
+	fixed := env.link("repair", proxy, server)
+	if fixed.Links[0].Status != linkOK || !fixed.Links[0].Try {
+		t.Fatalf("repair left it %q: %#v", fixed.Links[0].Status, fixed.Links[0].Issues)
+	}
+}

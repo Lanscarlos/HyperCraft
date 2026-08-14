@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/lanscarlos/hypercraft/internal/confighist"
@@ -122,7 +123,12 @@ type backendState struct {
 	legacyPaper        bool
 	velocityForwarding bool
 	velocitySecret     string
-	bungeeForwarding   bool
+	// velocityOnline is what the backend believes about the proxy in front of
+	// it. Paper mints the player's UUID from it, so a backend that disagrees
+	// with the proxy hands everyone a different UUID than the one they own —
+	// which reads in game as every player's inventory and home being gone.
+	velocityOnline   bool
+	bungeeForwarding bool
 }
 
 func (s *Server) readBackend(inst *instance.Instance) backendState {
@@ -155,16 +161,20 @@ func (s *Server) readBackend(inst *instance.Instance) backendState {
 		state.paper = looksLikePaper(cfg.Jar)
 	}
 
+	// false is Paper's own default for both online-mode keys, so an absent key
+	// reads as the behaviour the server actually has.
 	if state.legacyPaper {
 		if paper, _, err := s.loadServerConfig(inst, pathPaperLegacy); err == nil {
 			state.velocityForwarding = paper.Bool("settings.velocity-support.enabled", false)
 			state.velocitySecret, _ = paper.Get("settings.velocity-support.secret")
+			state.velocityOnline = paper.Bool("settings.velocity-support.online-mode", false)
 		}
 		return state
 	}
 	if paper, _, err := s.loadServerConfig(inst, pathPaperGlobal); err == nil {
 		state.velocityForwarding = paper.Bool("proxies.velocity.enabled", false)
 		state.velocitySecret, _ = paper.Get("proxies.velocity.secret")
+		state.velocityOnline = paper.Bool("proxies.velocity.online-mode", false)
 	}
 	return state
 }
@@ -220,11 +230,18 @@ func (s *Server) networkResponse() (networkResponse, error) {
 		servers = append(servers, inst)
 	}
 
+	// Which instances claim each address. Two servers cannot both listen on one
+	// port, so more than one name here is a misconfiguration — and one the
+	// panel has to say out loud, because the [servers] table can only ever name
+	// the address, which means a link to either of them looks like a link to
+	// whichever this loop happened to see first.
+	claiming := make(map[string][]string, len(servers))
 	backends := make(map[string]backendState, len(servers))
 	for _, inst := range servers {
 		cfg := inst.Config()
 		state := s.readBackend(inst)
 		backends[cfg.ID] = state
+		claiming[state.address] = append(claiming[state.address], cfg.Name)
 		out.Servers = append(out.Servers, networkServer{
 			ID:                 cfg.ID,
 			Name:               cfg.Name,
@@ -254,6 +271,15 @@ func (s *Server) networkResponse() (networkResponse, error) {
 		}
 
 		try, _ := file.List(velocityServersTable, velocityTryKey)
+		side := proxyState{
+			mode:       mode,
+			secret:     secret,
+			onlineMode: online,
+			// An arriving player is routed by the try list, or by a forced host
+			// when they came in on one of its names. Neither means the proxy
+			// kicks everybody the moment it has somewhere to send them.
+			landing: len(try) > 0 || len(file.ListEntries(velocityForcedHostsTable)) > 0,
+		}
 		proxy := networkProxy{
 			ID:           cfg.ID,
 			Name:         cfg.Name,
@@ -287,78 +313,156 @@ func (s *Server) networkResponse() (networkResponse, error) {
 				continue
 			}
 			state := backends[row.InstanceID]
-			link := networkLink{
+			issues := linkIssues(side, state, claiming[state.address])
+			out.Links = append(out.Links, networkLink{
 				ProxyID:  cfg.ID,
 				ServerID: row.InstanceID,
 				Name:     row.Name,
 				Address:  row.Address,
 				Try:      row.Try,
-				Issues:   linkIssues(mode, secret, online, state),
-			}
-			link.Status = statusOf(link.Issues)
-			out.Links = append(out.Links, link)
+				Status:   statusOf(issues),
+				Issues:   issueTexts(issues),
+			})
 		}
 		out.Proxies = append(out.Proxies, proxy)
 	}
 	return out, nil
 }
 
+// proxyState is the proxy half of a link, read once per proxy rather than once
+// per sub-server.
+type proxyState struct {
+	mode       string
+	secret     string
+	onlineMode bool
+	// landing is false when nothing routes an arriving player anywhere: an
+	// empty try list and no forced hosts is a proxy that kicks everybody the
+	// moment they connect, no matter how well the links behind it are wired.
+	landing bool
+}
+
+// linkIssue is one thing wrong with a link, and how wrong. fatal is the
+// difference between a player being kicked and an operator being told
+// something they may already know — grading by the text, which is what this
+// used to do, breaks the moment a sentence is reworded.
+type linkIssue struct {
+	text  string
+	fatal bool
+}
+
+func fatal(text string) linkIssue { return linkIssue{text: text, fatal: true} }
+func warn(text string) linkIssue  { return linkIssue{text: text} }
+
 // linkIssues is the difference between "these two files mention each other" and
 // "a player can walk from one to the other". Every string here is something
 // that will otherwise be discovered by a player being kicked.
-func linkIssues(mode, secret string, proxyOnline bool, state backendState) []string {
-	issues := []string{}
+//
+// claiming is every instance sitting on this backend's address, which is
+// normally just the one.
+func linkIssues(proxy proxyState, state backendState, claiming []string) []linkIssue {
+	issues := []linkIssue{}
 
-	if state.onlineMode {
-		issues = append(issues, "子服自己还开着正版验证。验证要交给代理端做，否则玩家会被子服判定为盗版号踢出")
+	// Two instances on one address is not a link problem, it is the reason
+	// this link cannot be trusted to mean what it says: the [servers] table
+	// names an address, so the panel — and Velocity — can only reach whichever
+	// of them managed to bind the port.
+	if len(claiming) > 1 {
+		issues = append(issues, fatal("有 "+strconv.Itoa(len(claiming))+" 个实例都在 "+state.address+
+			"（"+strings.Join(claiming, "、")+"）。两台服务器不可能同时监听一个端口，"+
+			"代理端也分不清这条线连的是哪一台 —— 先去「服务器配置」给其中一个改端口"))
 	}
 
-	switch mode {
+	if !proxy.landing {
+		issues = append(issues, fatal("代理端的登录顺序（try）是空的，也没有域名映射，玩家一连上来就会被踢"))
+	}
+
+	if state.onlineMode {
+		issues = append(issues, fatal("子服自己还开着正版验证。验证要交给代理端做，否则玩家会被子服判定为盗版号踢出"))
+	}
+
+	secret := strings.TrimSpace(proxy.secret)
+	switch proxy.mode {
 	case forwardModern:
 		if !state.paper {
-			issues = append(issues, "代理端用的是 modern 转发，但这个子服不像 Paper 系核心 —— Spigot 只支持 legacy 转发")
+			issues = append(issues, fatal("代理端用的是 modern 转发，但这个子服不像 Paper 系核心 —— Spigot 只支持 legacy 转发"))
 			break
 		}
 		if !state.velocityForwarding {
-			issues = append(issues, "子服没有打开 Velocity 转发")
+			issues = append(issues, fatal("子服没有打开 Velocity 转发"))
 		}
-		if strings.TrimSpace(state.velocitySecret) == "" {
-			issues = append(issues, "子服没有填转发密钥")
-		} else if secret != "" && strings.TrimSpace(state.velocitySecret) != secret {
-			issues = append(issues, "子服的转发密钥和代理端的对不上")
+		// The proxy's own secret first: an empty one is not the sub-server's
+		// fault, and Velocity refuses to start at all without it — so blaming
+		// the sub-server sends the operator to edit the wrong file.
+		if secret == "" {
+			issues = append(issues, fatal("代理端还没有转发密钥。modern 转发少了密钥文件，Velocity 会直接拒绝启动"))
+		} else if strings.TrimSpace(state.velocitySecret) == "" {
+			issues = append(issues, fatal("子服没有填转发密钥"))
+		} else if strings.TrimSpace(state.velocitySecret) != secret {
+			issues = append(issues, fatal("子服的转发密钥和代理端的对不上"))
+		}
+		if state.velocityOnline != proxy.onlineMode {
+			// Both sides "work" — nobody is kicked — and every player gets a
+			// UUID minted the wrong way, which in game looks like the world
+			// eating everyone's inventory and home.
+			issues = append(issues, fatal(velocityOnlineIssue(proxy.onlineMode, state.legacyPaper)))
 		}
 		if state.bungeeForwarding {
-			issues = append(issues, "子服的 spigot.yml 还开着 bungeecord，和 modern 转发冲突")
+			issues = append(issues, fatal("子服的 spigot.yml 还开着 bungeecord，和 modern 转发冲突"))
 		}
 	case forwardLegacy, forwardBungeeGuard:
 		if !state.bungeeForwarding {
-			issues = append(issues, "子服的 spigot.yml 没有打开 bungeecord")
+			issues = append(issues, fatal("子服的 spigot.yml 没有打开 bungeecord"))
 		}
 		if state.velocityForwarding {
-			issues = append(issues, "子服还开着 Velocity 转发，和传统转发冲突")
+			issues = append(issues, fatal("子服还开着 Velocity 转发，和传统转发冲突"))
+		}
+		if proxy.mode == forwardBungeeGuard {
+			// BungeeGuard's token lives in a plugin's own config, which the
+			// panel does not read — so this is the one part of the wiring it
+			// can only point at, not check.
+			issues = append(issues, warn("bungeeguard 转发还要把代理端的转发密钥填进子服 BungeeGuard 插件的配置里，这一步面板代劳不了"))
 		}
 	default:
-		issues = append(issues, "代理端没有开玩家信息转发，子服看到的会是代理端的 IP 和离线 UUID")
+		issues = append(issues, fatal("代理端没有开玩家信息转发，子服看到的会是代理端的 IP 和离线 UUID"))
 	}
 
-	if !proxyOnline && !state.onlineMode {
+	if !proxy.onlineMode && !state.onlineMode {
 		// Not a fault, but the thing people forget they chose.
-		issues = append(issues, "整条链路都是离线模式，任何人都能用任意 ID 进服")
+		issues = append(issues, warn("整条链路都是离线模式，任何人都能用任意 ID 进服"))
 	}
 	return issues
 }
 
-// statusOf grades the issues. Everything that stops a player joining is broken;
-// the offline-mode notice is the one that is merely worth saying.
-func statusOf(issues []string) string {
+func velocityOnlineIssue(proxyOnline, legacyPaper bool) string {
+	key := "paper-global.yml 的 proxies.velocity.online-mode"
+	if legacyPaper {
+		key = "paper.yml 的 settings.velocity-support.online-mode"
+	}
+	if proxyOnline {
+		return "代理端开着正版验证，但 " + key + " 是关的 —— 玩家拿到的会是离线 UUID，进服后存档对不上"
+	}
+	return "代理端没开正版验证，但 " + key + " 是开的 —— 子服会按正版 UUID 认人，和代理端发过来的对不上"
+}
+
+// statusOf grades the issues. Anything that stops a player joining, or hands
+// them the wrong identity, is broken; the rest is merely worth saying.
+func statusOf(issues []linkIssue) string {
 	switch {
 	case len(issues) == 0:
 		return linkOK
-	case len(issues) == 1 && strings.HasPrefix(issues[0], "整条链路"):
-		return linkWarn
-	default:
+	case slices.ContainsFunc(issues, func(issue linkIssue) bool { return issue.fatal }):
 		return linkBroken
+	default:
+		return linkWarn
 	}
+}
+
+func issueTexts(issues []linkIssue) []string {
+	out := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		out = append(out, issue.text)
+	}
+	return out
 }
 
 func forwardingMode(file *velocitycfg.File) string {
@@ -543,6 +647,17 @@ func (s *Server) wireLink(proxy, server *instance.Instance, name, actor string) 
 	}
 	state := s.readBackend(server)
 
+	// A [servers] entry names an address, nothing else. If a second instance is
+	// sitting on the same one, writing this link would either silently adopt
+	// the other one's entry or hand the proxy an address that reaches whichever
+	// server won the port — so it is refused here rather than half-done and
+	// drawn as a line that points at the wrong card. Two servers on one port do
+	// not both start anyway; this is the moment that gets said out loud.
+	if other, ok := s.addressClash(server, state.address); ok {
+		return nil, errLinkf("%s 和 %s 都在 %s 上。两台服务器不可能同时监听一个端口，代理端也没法区分它们 —— 先去「服务器配置」给其中一个改端口再连线",
+			server.Config().Name, other, state.address)
+	}
+
 	// Which forwarding this network runs on. A proxy that already made the
 	// choice keeps it — changing a working network's forwarding mode because
 	// somebody added a sixth server would take the other five offline.
@@ -597,14 +712,17 @@ func (s *Server) wireLink(proxy, server *instance.Instance, name, actor string) 
 		entries = append(entries, velocitycfg.Entry{Key: linkName, Value: state.address})
 		file.SetEntries(velocityServersTable, entries, velocityTryKey)
 		notes = append(notes, "代理端的子服列表里加了 "+linkName+" → "+state.address)
+	}
 
-		// A proxy whose try list is empty kicks everyone who connects, so the
-		// first server linked becomes the lobby. Later ones do not: which
-		// server new players land on is a decision, not a side effect.
-		if try, _ := file.List(velocityServersTable, velocityTryKey); len(try) == 0 {
-			file.SetList(velocityServersTable, velocityTryKey, []string{linkName})
-			notes = append(notes, linkName+" 是第一个子服，已设为玩家登录时的落点")
-		}
+	// A proxy whose try list is empty kicks everyone who connects, so the first
+	// server linked becomes the lobby. Later ones do not: which server new
+	// players land on is a decision, not a side effect. This sits outside the
+	// branch above because an empty try list is exactly the kind of half-wired
+	// state 修复 exists for — and a link that was made before this check
+	// existed is the common way to arrive at it.
+	if try, _ := file.List(velocityServersTable, velocityTryKey); len(try) == 0 {
+		file.SetList(velocityServersTable, velocityTryKey, []string{linkName})
+		notes = append(notes, linkName+" 是唯一/第一个子服，已设为玩家登录时的落点")
 	}
 
 	if err := s.saveVelocityFile(proxy, file, secret); err != nil {
@@ -621,6 +739,21 @@ func (s *Server) wireLink(proxy, server *instance.Instance, name, actor string) 
 
 	notes = append(notes, "两端都要重启才会生效")
 	return notes, nil
+}
+
+// addressClash names another server instance listening where this one says it
+// does, if there is one.
+func (s *Server) addressClash(server *instance.Instance, address string) (string, bool) {
+	for _, other := range s.mgr.List() {
+		cfg := other.Config()
+		if cfg.ID == server.Config().ID || cfg.IsProxy() {
+			continue
+		}
+		if sameBackend(backendAddress(cfg.Directory), address) {
+			return cfg.Name, true
+		}
+	}
+	return "", false
 }
 
 // applyBackendForwarding teaches one server to accept players from a proxy.
@@ -727,6 +860,7 @@ func (s *Server) unwireLink(proxy, server *instance.Instance, actor string) ([]s
 	}
 
 	file.SetEntries(velocityServersTable, kept, velocityTryKey)
+	promoted := ""
 	if try, ok := file.List(velocityServersTable, velocityTryKey); ok {
 		left := make([]string, 0, len(try))
 		for _, name := range try {
@@ -734,7 +868,20 @@ func (s *Server) unwireLink(proxy, server *instance.Instance, actor string) ([]s
 				left = append(left, name)
 			}
 		}
-		if len(left) != len(try) {
+		// Taking the lobby out of a proxy that still has servers behind it
+		// would leave every one of them unreachable: an empty try list kicks
+		// each player as they connect. Disconnecting one server must not take
+		// the rest of the network down with it, so whatever is left becomes
+		// the landing spot — a decision worth saying out loud, which is why it
+		// is a note rather than a quiet edit.
+		// Compared before the promotion below: a one-name try list swapped for
+		// another one is still a change, and length alone cannot see it.
+		changed := len(left) != len(try)
+		if len(left) == 0 && len(kept) > 0 {
+			promoted = kept[0].Key
+			left = append(left, promoted)
+		}
+		if changed {
 			file.SetList(velocityServersTable, velocityTryKey, left)
 		}
 	}
@@ -762,6 +909,9 @@ func (s *Server) unwireLink(proxy, server *instance.Instance, actor string) ([]s
 		return nil, err
 	}
 	notes = append(notes, "代理端的子服列表里去掉了 "+strings.Join(removed, "、"))
+	if promoted != "" {
+		notes = append(notes, "它原本是玩家登录时的落点，落点改成了 "+promoted+" —— 落点空着的话代理端会把所有人踢出去")
+	}
 	s.snapshotAfter(proxy, confighist.TriggerUser, actor, "断开子服 "+strings.Join(removed, "、"))
 
 	if state.velocityForwarding {
