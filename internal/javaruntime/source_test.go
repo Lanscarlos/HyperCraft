@@ -12,6 +12,8 @@ import (
 
 func testRelease(link string) Release {
 	return Release{
+		Distribution: DistTemurin,
+
 		Major:     21,
 		ImageType: ImageJRE,
 		OS:        "linux",
@@ -56,9 +58,9 @@ func TestProxyLinkOnlyWrapsGitHub(t *testing.T) {
 }
 
 func TestAttemptsAutoTriesEveryMirrorThenOfficial(t *testing.T) {
-	tries := attempts(SourceAuto, testRelease(officialLink))
-	if len(tries) != len(mirrors) {
-		t.Fatalf("got %d attempts, want %d", len(tries), len(mirrors))
+	tries := attempts(DistTemurin, SourceAuto, testRelease(officialLink))
+	if len(tries) != len(temurinSources) {
+		t.Fatalf("got %d attempts, want %d", len(tries), len(temurinSources))
 	}
 	if tries[0].id != "tuna" {
 		t.Errorf("first attempt is %q, want the first mirror", tries[0].id)
@@ -71,7 +73,7 @@ func TestAttemptsAutoTriesEveryMirrorThenOfficial(t *testing.T) {
 // A named mirror still ends at the official link: mirrors sync on a schedule,
 // and a release they have not picked up yet must not fail the install.
 func TestAttemptsNamedMirrorFallsBackToOfficial(t *testing.T) {
-	tries := attempts("tuna", testRelease(officialLink))
+	tries := attempts(DistTemurin, "tuna", testRelease(officialLink))
 	if len(tries) != 2 || tries[0].id != "tuna" || tries[1].id != SourceOfficial {
 		t.Fatalf("unexpected attempts: %+v", tries)
 	}
@@ -85,7 +87,7 @@ func TestAttemptsNamedMirrorFallsBackToOfficial(t *testing.T) {
 // Picking the official source is a decision to stay off the mirrors — usually
 // because the machine is not in China — so nothing else is tried.
 func TestAttemptsOfficialStaysOfficial(t *testing.T) {
-	tries := attempts(SourceOfficial, testRelease(officialLink))
+	tries := attempts(DistTemurin, SourceOfficial, testRelease(officialLink))
 	if len(tries) != 1 || tries[0].id != SourceOfficial {
 		t.Fatalf("unexpected attempts: %+v", tries)
 	}
@@ -93,21 +95,21 @@ func TestAttemptsOfficialStaysOfficial(t *testing.T) {
 
 func TestResolveSource(t *testing.T) {
 	for _, id := range []string{"", SourceAuto, SourceOfficial, "tuna", "ghproxy"} {
-		if _, err := ResolveSource(id); err != nil {
+		if _, err := ResolveSource(DistTemurin, id); err != nil {
 			t.Errorf("ResolveSource(%q): %v", id, err)
 		}
 	}
-	if got, _ := ResolveSource(""); got != SourceAuto {
+	if got, _ := ResolveSource(DistTemurin, ""); got != SourceAuto {
 		t.Errorf("an unstated source should be %q, got %q", SourceAuto, got)
 	}
-	if _, err := ResolveSource("mirrors.evil.example"); !errors.Is(err, ErrUnknownSource) {
+	if _, err := ResolveSource(DistTemurin, "mirrors.evil.example"); !errors.Is(err, ErrUnknownSource) {
 		t.Errorf("got %v, want ErrUnknownSource", err)
 	}
 }
 
 func TestSourcesListsAutoFirstAndExactlyOneDefault(t *testing.T) {
-	list := Sources()
-	if len(list) != len(mirrors)+1 || list[0].ID != SourceAuto || !list[0].Default {
+	list := Sources(DistTemurin)
+	if len(list) != len(temurinSources)+1 || list[0].ID != SourceAuto || !list[0].Default {
 		t.Fatalf("unexpected source list: %+v", list)
 	}
 	defaults := 0
@@ -146,9 +148,9 @@ func TestFetchFallsBackToTheNextSource(t *testing.T) {
 	})
 	defer restore()
 
-	// The client's base URL is http, which is what lets these test servers be
+	// The base URL is http, which is what lets these test servers be
 	// downloaded from at all; see checkDownloadURL.
-	client := NewClient("http://api.invalid", "test")
+	client := newTestClient(DistTemurin, "http://api.invalid")
 	body, served, err := client.Fetch(context.Background(), testRelease(cdn.URL+"/jre.tar.gz"), "stale")
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
@@ -177,7 +179,7 @@ func TestFetchReportsTheSourceThatFailed(t *testing.T) {
 	}})
 	defer restore()
 
-	client := NewClient("http://api.invalid", "test")
+	client := newTestClient(DistTemurin, "http://api.invalid")
 	_, _, err := client.Fetch(context.Background(), testRelease(dead.URL+"/jre.tar.gz"), SourceOfficial)
 	if !errors.Is(err, ErrUpstream) {
 		t.Fatalf("got %v, want ErrUpstream", err)
@@ -189,7 +191,83 @@ func TestFetchReportsTheSourceThatFailed(t *testing.T) {
 
 func swapMirrors(t *testing.T, replacement []source) func() {
 	t.Helper()
-	previous := mirrors
-	mirrors = replacement
-	return func() { mirrors = previous }
+	previous := temurinSources
+	temurinSources = replacement
+	return func() { temurinSources = previous }
+}
+
+func zuluRelease() Release {
+	return Release{
+		Distribution: DistZulu,
+		Major:        21,
+		ImageType:    ImageJRE,
+		OS:           "linux",
+		Arch:         "x64",
+		FileName:     "zulu21.52.203-ca-jre21.0.12.1-linux_x64.tar.gz",
+		URL:          "https://cdn.azul.com/zulu/bin/zulu21.52.203-ca-jre21.0.12.1-linux_x64.tar.gz",
+	}
+}
+
+// Zulu's CDN lays its archives out flat, so a custom mirror only needs the
+// file name appended — unlike Adoptium, whose mirrors copy a nested tree.
+func TestZuluCustomPrefixIsPrefixPlusFileName(t *testing.T) {
+	tries := attempts(DistZulu, "https://mirror.example/zulu/bin/", zuluRelease())
+	if len(tries) != 2 {
+		t.Fatalf("expected the custom prefix then the official link, got %+v", tries)
+	}
+	want := "https://mirror.example/zulu/bin/zulu21.52.203-ca-jre21.0.12.1-linux_x64.tar.gz"
+	if tries[0].url != want {
+		t.Errorf("custom link = %q, want %q", tries[0].url, want)
+	}
+	if last := tries[1]; last.id != SourceOfficial || last.url != zuluRelease().URL {
+		t.Errorf("the official link should still be the fallback, got %+v", last)
+	}
+}
+
+// A prefix without its trailing slash is the easy typo; accepting it costs one
+// line and saves a 404 that looks like a broken mirror.
+func TestResolveSourceNormalisesACustomPrefix(t *testing.T) {
+	got, err := ResolveSource(DistZulu, "https://mirror.example/zulu/bin")
+	if err != nil {
+		t.Fatalf("ResolveSource: %v", err)
+	}
+	if got != "https://mirror.example/zulu/bin/" {
+		t.Errorf("resolved to %q", got)
+	}
+	// Temurin's mirrors are a fixed list copied from Adoptium's tree; a custom
+	// prefix there would need the nested path, so it is not offered.
+	if _, err := ResolveSource(DistTemurin, "https://mirror.example/adoptium/"); !errors.Is(err, ErrUnknownSource) {
+		t.Errorf("got %v, want ErrUnknownSource", err)
+	}
+}
+
+// The Adoptium mirrors carry no Zulu, so offering them for it would be a
+// guaranteed 404.
+func TestSourcesAreScopedToTheDistribution(t *testing.T) {
+	for _, id := range []string{"tuna", "nju", "huawei", "ghproxy"} {
+		if _, err := ResolveSource(DistZulu, id); !errors.Is(err, ErrUnknownSource) {
+			t.Errorf("%q should not be a Zulu source, got err %v", id, err)
+		}
+	}
+	if _, err := ResolveSource(DistTemurin, "tuna"); err != nil {
+		t.Errorf("tuna should still be a Temurin source: %v", err)
+	}
+	// Both lists share the two ids that mean the same thing everywhere, which
+	// is what lets a remembered source survive a change of distribution.
+	for _, dist := range []string{DistZulu, DistTemurin} {
+		for _, id := range []string{SourceAuto, SourceOfficial} {
+			if _, err := ResolveSource(dist, id); err != nil {
+				t.Errorf("%s/%s: %v", dist, id, err)
+			}
+		}
+	}
+}
+
+// Zulu downloads do not come off GitHub, so the GitHub proxy has nothing to
+// offer and must not appear in its chain.
+func TestZuluAutoIsJustTheOfficialCDN(t *testing.T) {
+	tries := attempts(DistZulu, SourceAuto, zuluRelease())
+	if len(tries) != 1 || tries[0].id != SourceOfficial {
+		t.Fatalf("expected only the official CDN, got %+v", tries)
+	}
 }

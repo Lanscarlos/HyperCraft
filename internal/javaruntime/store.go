@@ -120,6 +120,18 @@ func (s *Store) inspect(id string) (Runtime, error) {
 	}
 	applyReleaseFile(&runtime, dir)
 
+	// Zulu's release file carries no IMAGE_TYPE, and a runtime somebody
+	// unpacked here by hand may carry no release file at all. javac is the
+	// actual difference between the two images, so ask the directory rather
+	// than the metadata — that also covers the builds the panel never fetched.
+	if runtime.ImageType == "" && runtime.JavaPath != "" {
+		if _, err := os.Stat(filepath.Join(filepath.Dir(runtime.JavaPath), javacBinary())); err == nil {
+			runtime.ImageType = ImageJDK
+		} else {
+			runtime.ImageType = ImageJRE
+		}
+	}
+
 	if runtime.Version == "" && runtime.JavaPath != "" {
 		// No release file (a stripped or hand-built runtime): ask the binary.
 		if probed, ok := probe(context.Background(), runtime.JavaPath); ok {

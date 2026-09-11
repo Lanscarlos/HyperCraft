@@ -67,6 +67,16 @@ type Panel struct {
 	// page: "this machine's line to GitHub is bad" is true for every download,
 	// and re-picking the mirror each time would be the annoyance.
 	JavaSource string `json:"javaSource,omitempty"`
+	// JavaDistribution is which OpenJDK distribution new installs come from,
+	// by the id of one of javaruntime's distributions. Empty means the
+	// default, which is both what a config written before this setting existed
+	// carries and what a fresh panel gets — so no pointer is needed to tell
+	// them apart.
+	//
+	// Remembered from the last install rather than set on a settings page, for
+	// the same reason JavaSource is: it describes this machine's situation,
+	// not one download's.
+	JavaDistribution string `json:"javaDistribution,omitempty"`
 	// PluginMirror is the proxy plugin jars are downloaded through, by the id
 	// of one of plugin.Mirrors() or as a custom URL prefix. Empty means the
 	// automatic order, which is both the default and what a config written

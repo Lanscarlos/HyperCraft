@@ -148,7 +148,7 @@ func run() error {
 	// Java runtimes live beside the servers, in the data directory, so a panel
 	// that manages its own JDKs stays as movable as one that does not.
 	javaInstaller := javaruntime.NewInstaller(
-		javaruntime.NewClient("", userAgent),
+		javaruntime.NewClient(userAgent, nil),
 		javaruntime.NewStore(paths.JavaRoot()),
 		logger,
 	)

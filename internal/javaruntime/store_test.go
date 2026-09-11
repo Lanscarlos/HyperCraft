@@ -122,3 +122,46 @@ func TestCurrentPlatformIsKnown(t *testing.T) {
 		t.Errorf("platform not filled in: %+v", platform)
 	}
 }
+
+// Zulu's release file carries no IMAGE_TYPE. Without a fallback the panel
+// would show an empty badge next to every Zulu runtime.
+func TestInspectFallsBackToJavacForImageType(t *testing.T) {
+	root := t.TempDir()
+	for _, tc := range []struct {
+		id    string
+		javac bool
+		want  string
+	}{
+		{id: "zulu-21.0.12.1-jre", javac: false, want: ImageJRE},
+		{id: "zulu-21.0.12.1-jdk", javac: true, want: ImageJDK},
+	} {
+		bin := filepath.Join(root, tc.id, "bin")
+		if err := os.MkdirAll(bin, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// A Zulu release file: IMPLEMENTOR and JAVA_VERSION but no IMAGE_TYPE.
+		release := "IMPLEMENTOR=\"Azul Systems, Inc.\"\nJAVA_VERSION=\"21.0.12.1\"\n"
+		if err := os.WriteFile(filepath.Join(root, tc.id, "release"), []byte(release), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(bin, javaBinary()), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if tc.javac {
+			if err := os.WriteFile(filepath.Join(bin, javacBinary()), []byte("#!/bin/sh\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		runtime, err := NewStore(root).Get(tc.id)
+		if err != nil {
+			t.Fatalf("Get(%s): %v", tc.id, err)
+		}
+		if runtime.ImageType != tc.want {
+			t.Errorf("%s: image type = %q, want %q", tc.id, runtime.ImageType, tc.want)
+		}
+		if runtime.Vendor != "Azul Systems, Inc." {
+			t.Errorf("%s: vendor = %q", tc.id, runtime.Vendor)
+		}
+	}
+}

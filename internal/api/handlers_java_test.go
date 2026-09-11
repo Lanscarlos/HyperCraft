@@ -56,6 +56,46 @@ func newFakeAdoptium(t *testing.T) *fakeAdoptium {
 
 func (f *fakeAdoptium) URL() string { return f.server.URL }
 
+// fakeAzul serves the Azul metadata shape over the same archive fakeAdoptium
+// hands out, so an install through either distribution drives the same unpack.
+type fakeAzul struct {
+	server  *httptest.Server
+	archive []byte
+}
+
+func newFakeAzul(t *testing.T) *fakeAzul {
+	t.Helper()
+	fake := &fakeAzul{archive: fakeJREArchive(t)}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /packages/", func(w http.ResponseWriter, r *http.Request) {
+		// The real API has one endpoint for both questions; only the feature
+		// lookup names a platform. The version listing is per package, so a
+		// feature release repeats — which is what Majors has to fold down.
+		if r.URL.Query().Get("os") == "" {
+			fmt.Fprint(w, `[{"java_version":[21,0,12,1],"support_term":"lts"},
+				{"java_version":[21,0,11],"support_term":"lts"},
+				{"java_version":[17,0,13],"support_term":"lts"},
+				{"java_version":[8,0,432],"support_term":"lts"}]`)
+			return
+		}
+		sum := sha256.Sum256(fake.archive)
+		fmt.Fprintf(w, `[{"name":"zulu21.52.203-ca-jre21.0.12.1-linux_x64.tar.gz",
+			"java_version":[21,0,12,1],"download_url":"%s/zulu.tar.gz",
+			"sha256_hash":%q,"size":%d,"support_term":"lts"}]`,
+			fake.URL(), hex.EncodeToString(sum[:]), len(fake.archive))
+	})
+	mux.HandleFunc("GET /zulu.tar.gz", func(w http.ResponseWriter, r *http.Request) {
+		w.Write(fake.archive)
+	})
+
+	fake.server = httptest.NewServer(mux)
+	t.Cleanup(fake.server.Close)
+	return fake
+}
+
+func (f *fakeAzul) URL() string { return f.server.URL }
+
 // fakeJREArchive builds a tarball shaped like a Temurin JRE: one wrapper
 // directory holding release and bin/java.
 func fakeJREArchive(t *testing.T) []byte {
@@ -146,7 +186,8 @@ func TestInstallJavaThenDelete(t *testing.T) {
 	env.login()
 
 	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{
-		Major: 21, ImageType: "jre", Source: javaruntime.SourceOfficial,
+		Distribution: javaruntime.DistTemurin,
+		Major:        21, ImageType: "jre", Source: javaruntime.SourceOfficial,
 	})
 	var started javaruntime.Job
 	decodeBody(t, resp, &started)
@@ -179,7 +220,8 @@ func TestInstallJavaThenDelete(t *testing.T) {
 
 	// Installing the same build again has nothing to do.
 	again := env.do(http.MethodPost, "/api/java/install", installJavaRequest{
-		Major: 21, ImageType: "jre", Source: javaruntime.SourceOfficial,
+		Distribution: javaruntime.DistTemurin,
+		Major:        21, ImageType: "jre", Source: javaruntime.SourceOfficial,
 	})
 	again.Body.Close()
 	if again.StatusCode != http.StatusConflict {
@@ -210,7 +252,8 @@ func TestRuntimeReportsTheInstancesUsingIt(t *testing.T) {
 	env.login()
 
 	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{
-		Major: 21, ImageType: "jre", Source: javaruntime.SourceOfficial,
+		Distribution: javaruntime.DistTemurin,
+		Major:        21, ImageType: "jre", Source: javaruntime.SourceOfficial,
 	})
 	resp.Body.Close()
 	if job := env.awaitInstall(); job.State != javaruntime.JobDone {
@@ -245,7 +288,8 @@ func TestInstallUnknownMajorIsRejected(t *testing.T) {
 	env.login()
 
 	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{
-		Major: 99, ImageType: "jre", Source: javaruntime.SourceOfficial,
+		Distribution: javaruntime.DistTemurin,
+		Major:        99, ImageType: "jre", Source: javaruntime.SourceOfficial,
 	})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
@@ -266,12 +310,16 @@ func TestInstallRemembersTheDownloadSource(t *testing.T) {
 		t.Errorf("a panel that has never installed should default to %q, got %q",
 			javaruntime.SourceAuto, fresh.Source)
 	}
-	if len(fresh.Sources) < 2 || fresh.Sources[0].ID != javaruntime.SourceAuto {
-		t.Errorf("the page needs the source list, got %+v", fresh.Sources)
+	for _, dist := range fresh.Distributions {
+		if len(dist.Sources) < 2 || dist.Sources[0].ID != javaruntime.SourceAuto {
+			t.Errorf("%s needs a source list led by %q, got %+v",
+				dist.ID, javaruntime.SourceAuto, dist.Sources)
+		}
 	}
 
 	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{
-		Major: 21, ImageType: "jre", Source: javaruntime.SourceOfficial,
+		Distribution: javaruntime.DistTemurin,
+		Major:        21, ImageType: "jre", Source: javaruntime.SourceOfficial,
 	})
 	resp.Body.Close()
 	if job := env.awaitInstall(); job.State != javaruntime.JobDone {
@@ -350,5 +398,106 @@ func TestCancelJavaInstallWithoutOne(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("expected 409, got %d", resp.StatusCode)
+	}
+}
+
+// A panel that has never installed anything offers Zulu, and says so.
+func TestJavaOverviewDefaultsToZulu(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	var overview javaOverview
+	decodeBody(t, env.do(http.MethodGet, "/api/java", nil), &overview)
+
+	if overview.Distribution != javaruntime.DistZulu {
+		t.Errorf("default distribution = %q, want %q", overview.Distribution, javaruntime.DistZulu)
+	}
+	if len(overview.Distributions) != 2 || overview.Distributions[0].ID != javaruntime.DistZulu {
+		t.Errorf("unexpected distribution list: %+v", overview.Distributions)
+	}
+	// Every distribution carries its own sources, so the page can follow a
+	// change of distribution without another request — and Zulu must not be
+	// offered the Adoptium mirrors, which carry no byte of it.
+	for _, dist := range overview.Distributions {
+		if len(dist.Sources) == 0 {
+			t.Errorf("%s carries no sources", dist.ID)
+		}
+		for _, source := range dist.Sources {
+			if dist.ID == javaruntime.DistZulu && source.ID == "tuna" {
+				t.Error("the Adoptium mirrors must not be offered for Zulu")
+			}
+		}
+		if dist.ID == javaruntime.DistTemurin && len(dist.Sources) < 4 {
+			t.Errorf("Temurin should keep its mirrors, got %+v", dist.Sources)
+		}
+	}
+}
+
+// Installing from the default distribution works end to end, and the runtime
+// lands under its own prefix so a Temurin build of the same version could sit
+// beside it.
+func TestInstallZuluByDefault(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{
+		Major: 21, ImageType: "jre",
+	})
+	var started javaruntime.Job
+	decodeBody(t, resp, &started)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", resp.StatusCode)
+	}
+	if started.Distribution != javaruntime.DistZulu {
+		t.Errorf("job distribution = %q", started.Distribution)
+	}
+	if started.RuntimeID != "zulu-21.0.12.1-jre" {
+		t.Errorf("runtime id = %q, want zulu-21.0.12.1-jre", started.RuntimeID)
+	}
+	if job := env.awaitInstall(); job.State != javaruntime.JobDone {
+		t.Fatalf("install ended %s: %s", job.State, job.Error)
+	}
+}
+
+// The distribution an install named is remembered, the same way the source is.
+func TestInstallRemembersTheDistribution(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{
+		Distribution: javaruntime.DistTemurin,
+		Major:        21, ImageType: "jre", Source: javaruntime.SourceOfficial,
+	})
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", resp.StatusCode)
+	}
+	if job := env.awaitInstall(); job.State != javaruntime.JobDone {
+		t.Fatalf("install ended %s: %s", job.State, job.Error)
+	}
+
+	var overview javaOverview
+	decodeBody(t, env.do(http.MethodGet, "/api/java", nil), &overview)
+	if overview.Distribution != javaruntime.DistTemurin {
+		t.Errorf("overview distribution = %q", overview.Distribution)
+	}
+	panel, err := env.store.LoadPanel()
+	if err != nil {
+		t.Fatalf("LoadPanel: %v", err)
+	}
+	if panel.JavaDistribution != javaruntime.DistTemurin {
+		t.Errorf("panel.json holds %q", panel.JavaDistribution)
+	}
+}
+
+// An unknown distribution is a bad request, not a silent fallback.
+func TestInstallRefusesAnUnknownDistribution(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{
+		Distribution: "graalvm", Major: 21, ImageType: "jre",
+	})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 for an unknown distribution, got %d", resp.StatusCode)
 	}
 }

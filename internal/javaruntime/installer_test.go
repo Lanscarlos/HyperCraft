@@ -67,7 +67,7 @@ func newTestInstaller(t *testing.T, fake *fakeAdoptium) (*Installer, string) {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "java")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewInstaller(NewClient(fake.URL, "test"), NewStore(root), logger), root
+	return NewInstaller(newTestClient(DistTemurin, fake.URL), NewStore(root), logger), root
 }
 
 func awaitInstall(t *testing.T, installer *Installer) Job {
@@ -91,7 +91,7 @@ func TestInstallUnpacksAndRegistersRuntime(t *testing.T) {
 	fake := newFakeAdoptium(t, buildTarGz(t, jdkEntries()))
 	installer, root := newTestInstaller(t, fake)
 
-	job, err := installer.Start(21, ImageJRE, SourceOfficial)
+	job, err := installer.Start(DistTemurin, 21, ImageJRE, SourceOfficial)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestExtractIntoClosesStagingHandle(t *testing.T) {
 	if err := os.MkdirAll(staging, 0o755); err != nil {
 		t.Fatalf("create staging: %v", err)
 	}
-	release := Release{Version: "21.0.1+12", ImageType: ImageJRE, FileName: "jre.tar.gz"}
+	release := Release{Distribution: DistTemurin, Version: "21.0.1+12", ImageType: ImageJRE, FileName: "jre.tar.gz"}
 
 	err := extractInto(context.Background(), staging, release, openArchive(t, buildTarGz(t, jdkEntriesForThisOS())))
 	if err != nil {
@@ -171,7 +171,7 @@ func TestExtractIntoClosesStagingHandle(t *testing.T) {
 func TestUnpackMovesRuntimeIntoPlace(t *testing.T) {
 	root := t.TempDir()
 	staging := filepath.Join(root, ".installing-temurin-21.0.1-12-jre")
-	release := Release{Version: "21.0.1+12", ImageType: ImageJRE, FileName: "jre.tar.gz"}
+	release := Release{Distribution: DistTemurin, Version: "21.0.1+12", ImageType: ImageJRE, FileName: "jre.tar.gz"}
 
 	installer := NewInstaller(nil, NewStore(root), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	err := installer.unpack(context.Background(), staging, release, openArchive(t, buildTarGz(t, jdkEntriesForThisOS())))
@@ -204,7 +204,7 @@ func TestInstallDiscardsStaleStagingDirectory(t *testing.T) {
 		t.Fatalf("stage leftovers: %v", err)
 	}
 
-	if _, err := installer.Start(21, ImageJRE, SourceOfficial); err != nil {
+	if _, err := installer.Start(DistTemurin, 21, ImageJRE, SourceOfficial); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	if done := awaitInstall(t, installer); done.State != JobDone {
@@ -274,7 +274,7 @@ func TestInstallRejectsCorruptArchive(t *testing.T) {
 	fake.corrupt = true
 	installer, root := newTestInstaller(t, fake)
 
-	if _, err := installer.Start(21, ImageJRE, SourceOfficial); err != nil {
+	if _, err := installer.Start(DistTemurin, 21, ImageJRE, SourceOfficial); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	done := awaitInstall(t, installer)
@@ -300,10 +300,10 @@ func TestInstallRefusesDuplicateAndConcurrent(t *testing.T) {
 	fake.gate = make(chan struct{})
 	installer, _ := newTestInstaller(t, fake)
 
-	if _, err := installer.Start(21, ImageJRE, SourceOfficial); err != nil {
+	if _, err := installer.Start(DistTemurin, 21, ImageJRE, SourceOfficial); err != nil {
 		t.Fatalf("first Start: %v", err)
 	}
-	if _, err := installer.Start(17, ImageJRE, SourceOfficial); !errors.Is(err, ErrBusy) {
+	if _, err := installer.Start(DistTemurin, 17, ImageJRE, SourceOfficial); !errors.Is(err, ErrBusy) {
 		t.Fatalf("second Start: got %v, want ErrBusy", err)
 	}
 
@@ -313,7 +313,7 @@ func TestInstallRefusesDuplicateAndConcurrent(t *testing.T) {
 	}
 
 	// Same version again: already on disk, so there is nothing to do.
-	if _, err := installer.Start(21, ImageJRE, SourceOfficial); !errors.Is(err, ErrExists) {
+	if _, err := installer.Start(DistTemurin, 21, ImageJRE, SourceOfficial); !errors.Is(err, ErrExists) {
 		t.Fatalf("repeat install: got %v, want ErrExists", err)
 	}
 }
@@ -324,7 +324,7 @@ func TestCancelInstall(t *testing.T) {
 	defer close(fake.gate)
 
 	installer, root := newTestInstaller(t, fake)
-	if _, err := installer.Start(21, ImageJRE, SourceOfficial); err != nil {
+	if _, err := installer.Start(DistTemurin, 21, ImageJRE, SourceOfficial); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	if err := installer.Cancel(); err != nil {
@@ -347,11 +347,21 @@ func TestInstallUnknownMajor(t *testing.T) {
 	fake := newFakeAdoptium(t, buildTarGz(t, jdkEntries()))
 	installer, _ := newTestInstaller(t, fake)
 
-	if _, err := installer.Start(99, ImageJRE, SourceOfficial); !errors.Is(err, ErrUnknownRelease) {
+	if _, err := installer.Start(DistTemurin, 99, ImageJRE, SourceOfficial); !errors.Is(err, ErrUnknownRelease) {
 		t.Fatalf("got %v, want ErrUnknownRelease", err)
 	}
 	job, ok := installer.Status()
 	if !ok || job.State != JobFailed {
 		t.Errorf("the failed attempt should be visible as a job: %+v", job)
+	}
+}
+
+// Two distributions' builds of the same version have to be able to sit side by
+// side, which is what the prefix is for. The Temurin side of this is covered
+// by TestInstallIDDropsTheLTSSuffix.
+func TestInstallIDCarriesTheDistribution(t *testing.T) {
+	zulu := installID(Release{Distribution: DistZulu, Version: "21.0.12.1", ImageType: ImageJRE})
+	if zulu != "zulu-21.0.12.1-jre" {
+		t.Errorf("zulu install id = %q, want zulu-21.0.12.1-jre", zulu)
 	}
 }

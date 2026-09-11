@@ -627,7 +627,10 @@ export interface SystemJava {
 export interface JavaPlatform {
   os: string
   arch: string
-  /** Non-fatal note, e.g. musl systems where Temurin will not run. */
+  /** "glibc" or "musl" on Linux, absent elsewhere. */
+  libc?: string
+  /** Non-fatal note about the selected distribution on this platform, e.g.
+   *  musl systems where Temurin will not run. */
   warning?: string
 }
 
@@ -639,6 +642,20 @@ export type JavaInstallState =
   | 'cancelled'
 
 /** Somewhere the panel can download a Java archive from. */
+/** An OpenJDK build the panel can install from, with the places it can be
+ *  downloaded from. The sources belong to the distribution — the Adoptium
+ *  mirrors carry no Zulu — so they travel together and the page can follow a
+ *  change of distribution without another request. */
+export interface JavaDistribution {
+  id: string
+  name: string
+  note: string
+  /** The one an install gets when it names none. */
+  default?: boolean
+  /** Where this distribution can be downloaded from, automatic first. */
+  sources: JavaSource[]
+}
+
 export interface JavaSource {
   id: string
   name: string
@@ -648,6 +665,8 @@ export interface JavaSource {
 }
 
 export interface JavaInstallJob {
+  /** Who built the runtime being installed. */
+  distribution: string
   major: number
   imageType: string
   /** The source serving this download — the fallback's, if one kicked in. */
@@ -669,9 +688,11 @@ export interface JavaOverview {
   runtimes: JavaRuntime[]
   system: SystemJava | null
   job: JavaInstallJob | null
-  /** Where an install can download from, automatic first. */
-  sources: JavaSource[]
-  /** The source the last install used; what the picker starts on. */
+  /** The OpenJDK builds an install can pick from, default first, each with
+   *  its own download sources. */
+  distributions: JavaDistribution[]
+  /** What the last install used; what the pickers start on. */
+  distribution: string
   source: string
 }
 

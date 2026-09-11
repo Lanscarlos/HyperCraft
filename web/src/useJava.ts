@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { api } from './api'
-import type { JavaInstallJob, JavaMajor, JavaOverview, JavaSource } from './types'
+import type {
+  JavaDistribution,
+  JavaInstallJob,
+  JavaMajor,
+  JavaOverview,
+} from './types'
 
 /** Cadence while an install runs, for a progress bar that moves. */
 const ACTIVE_POLL_MS = 800
@@ -9,8 +14,9 @@ const ACTIVE_POLL_MS = 800
 export interface JavaController {
   overview: JavaOverview | null
   majors: JavaMajor[]
-  /** Where an install can download from, automatic first. */
-  sources: JavaSource[]
+  /** The OpenJDK builds an install can pick from, default first, each with
+   *  its own download sources. */
+  distributions: JavaDistribution[]
   job: JavaInstallJob | null
   /** True while an install is downloading or extracting. */
   installing: boolean
@@ -18,7 +24,12 @@ export interface JavaController {
   busy: boolean
   error: string | null
   clearError: () => void
-  install: (major: number, imageType: 'jre' | 'jdk', source: string) => Promise<void>
+  install: (
+    distribution: string,
+    major: number,
+    imageType: 'jre' | 'jdk',
+    source: string,
+  ) => Promise<void>
   cancel: () => Promise<void>
   remove: (id: string) => Promise<void>
 }
@@ -48,15 +59,22 @@ export function useJava(enabled: boolean): JavaController {
     }
   }, [])
 
+  // Which versions exist depends on the distribution — Zulu ships 13, 14 and
+  // 15 and Adoptium does not — so this list has to be refetched when it
+  // changes, not just on mount.
+  const distribution = overview?.distribution ?? ''
+
   const refreshMajors = useCallback(async () => {
+    if (!distribution) return
     try {
-      setMajors(await api.javaMajors())
+      setMajors(await api.javaMajors(distribution))
     } catch {
-      // The installable list comes from Adoptium; without it the page still
-      // shows what is installed, which is the half that matters offline.
+      // The installable list comes from the distribution's own API; without it
+      // the page still shows what is installed, which is the half that matters
+      // offline.
       setMajors([])
     }
-  }, [])
+  }, [distribution])
 
   useEffect(() => {
     if (!enabled) return
@@ -90,9 +108,9 @@ export function useJava(enabled: boolean): JavaController {
   }, [])
 
   const install = useCallback(
-    (major: number, imageType: 'jre' | 'jdk', source: string) =>
+    (distribution: string, major: number, imageType: 'jre' | 'jdk', source: string) =>
       act(async () => {
-        const started = await api.installJava(major, imageType, source)
+        const started = await api.installJava(distribution, major, imageType, source)
         // Show the job immediately; the poll takes over from here.
         setOverview((prev) => (prev ? { ...prev, job: started } : prev))
       }, '安装失败'),
@@ -121,7 +139,7 @@ export function useJava(enabled: boolean): JavaController {
   return {
     overview,
     majors,
-    sources: overview?.sources ?? [],
+    distributions: overview?.distributions ?? [],
     job,
     installing,
     busy,
