@@ -14,6 +14,11 @@ import (
 // them apart from an instance directory when the old ones are pruned.
 const backupPrefix = "rollback-"
 
+// RollbackBackupsKept is how many of these directories survive. The panel only
+// ever rolls back to the build next door, so older copies describe a state
+// nothing can return to anyway.
+const RollbackBackupsKept = 3
+
 // StateFiles are the files the panel writes for itself, as opposed to the
 // server directories it manages. These are what a downgrade puts at risk: an
 // older build does not know this build's fields, and Go writes back only the

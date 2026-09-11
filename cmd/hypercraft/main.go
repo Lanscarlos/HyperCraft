@@ -300,11 +300,38 @@ func run() error {
 			logger.Info("update abandoned, starting the servers it stopped", "count", len(resume))
 			manager.StartEach(resume)
 		},
+		// Which version <exe>.old holds. Re-read and re-written rather than
+		// saved from the copy loaded at startup: the panel settings may have
+		// changed through the API since, and writing a stale copy back would
+		// undo that. A restart follows immediately either way.
+		RecordPrevious: func(previous string) {
+			stored, err := st.LoadPanel()
+			if err != nil {
+				logger.Error("could not record the version being replaced", "err", err)
+				return
+			}
+			stored.PreviousVersion = previous
+			if err := st.SavePanel(stored); err != nil {
+				logger.Error("could not record the version being replaced", "err", err)
+				return
+			}
+			logger.Info("recorded the build left beside the panel", "version", previous)
+		},
+		// Taken before a downgrade only. The older build drops every field it
+		// does not know the first time it saves one of these files, so this
+		// copy is the only way back up afterwards.
+		BackupState: func(from, to string) (string, error) {
+			return config.BackupState(paths, from, to, config.RollbackBackupsKept)
+		},
 		TriggerRestart: func(binary string) {
 			newBinary.Store(&binary)
 			cancel()
 		},
 	}, logger)
+
+	// What the last update left behind, checked once here so the update page
+	// can offer the way back without probing that binary on every poll.
+	updater.SetPreviousVersion(panel.PreviousVersion)
 
 	// The shell the terminal page hands out. Constructed unconditionally so the
 	// settings page can describe what enabling it would give you; it starts no

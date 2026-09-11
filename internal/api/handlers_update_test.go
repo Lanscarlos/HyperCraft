@@ -31,6 +31,7 @@ func TestUpdateEndpointsRequireASession(t *testing.T) {
 		{http.MethodGet, "/api/update"},
 		{http.MethodPost, "/api/update/check"},
 		{http.MethodPost, "/api/update/apply"},
+		{http.MethodPost, "/api/update/rollback"},
 	} {
 		resp := env.do(c.method, c.path, nil)
 		resp.Body.Close()
@@ -253,5 +254,25 @@ func TestUpdateEndpointsReportUnavailableWithoutAnUpdater(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("status without an updater = %d, want 503", resp.StatusCode)
+	}
+}
+
+func TestRollbackRefusesWithNothingToRollBackTo(t *testing.T) {
+	// A panel that has never updated itself has no previous build beside it.
+	// Saying so with the reason beats a bare 400: the UI shows the reason.
+	env := newTestEnv(t, withUpdater("v1.0.0"))
+	env.login()
+
+	resp := env.do(http.MethodPost, "/api/update/rollback", nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("rollback with no target = %d, want 400", resp.StatusCode)
+	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	decodeBody(t, resp, &body)
+	if body.Error == "" {
+		t.Error("the refusal carried no reason for the operator to read")
 	}
 }
