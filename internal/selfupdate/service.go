@@ -64,6 +64,15 @@ type Hooks struct {
 	// servers on some later, unrelated restart.
 	ServersAborted func()
 
+	// RecordPrevious persists the version the update just replaced, which is
+	// the version <exe>.old now holds. Nothing on disk says what that file is,
+	// so without this a rollback has no target it can name or verify.
+	//
+	// Called only after the swap succeeded: a panel that failed to install
+	// would otherwise claim a rollback target that is the binary it is already
+	// running.
+	RecordPrevious func(version string)
+
 	// TriggerRestart asks the panel to shut down and then exec the newly
 	// installed binary, whose path it is given. By the time it runs the servers
 	// are already down. It must not block, and it must use that path rather
@@ -397,6 +406,13 @@ func (s *Service) apply(ctx context.Context, rel *Release) error {
 		return err
 	}
 	s.log.Info("new binary installed", "version", rel.Version)
+
+	// The binary this replaced is now <exe>.old. Recorded here, between the
+	// swap and the restart, because it is the last moment this process knows
+	// both versions.
+	if s.hooks.RecordPrevious != nil {
+		s.hooks.RecordPrevious(s.up.CurrentVersion())
+	}
 
 	s.mu.Lock()
 	s.phase = PhaseRestarting
