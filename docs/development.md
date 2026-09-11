@@ -77,6 +77,8 @@ internal/gitlite/     最小 Git 对象层：松散对象、tree、单分支线�
 internal/selfupdate/  面板自更新：下载校验、就地替换、exec 重启
 internal/store/       JSON 持久化（临时文件 + rename 原子写）
 internal/auth/        PBKDF2 凭据 + 内存会话 + 设备令牌
+internal/authz/       权限词表：能力常量与元数据，路由和角色都引用它
+internal/users/       账号与角色：注册表、校验、出厂预设
 internal/webui/       go:embed 前端产物
 web/src/              前端源码；全部样式在 web/src/styles.css 一个文件里
 deploy/               systemd unit

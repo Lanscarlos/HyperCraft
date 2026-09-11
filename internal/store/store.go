@@ -13,6 +13,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/dbruntime"
 	"github.com/lanscarlos/hypercraft/internal/instance"
+	"github.com/lanscarlos/hypercraft/internal/users"
 )
 
 // Store serialises access to the panel's JSON files.
@@ -61,6 +62,47 @@ func (s *Store) SavePanel(panel config.Panel) error {
 		return fmt.Errorf("encode panel config: %w", err)
 	}
 	return writeFileAtomic(s.paths.PanelFile(), append(data, '\n'), 0o600)
+}
+
+// LoadUsers reads the accounts and roles. A missing file is the normal case on
+// a panel that has not been through the migration yet, and is reported as such
+// rather than as an error: the caller turns it into the first administrator.
+func (s *Store) LoadUsers() (users.File, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	data, err := os.ReadFile(s.paths.UsersFile())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return users.File{}, false, nil
+		}
+		return users.File{}, false, fmt.Errorf("read users: %w", err)
+	}
+
+	var file users.File
+	if err := json.Unmarshal(data, &file); err != nil {
+		return users.File{}, false, fmt.Errorf("parse users: %w", err)
+	}
+	return file, true, nil
+}
+
+// SaveUsers writes the accounts and roles. 0600 like the other files that hold
+// a secret: this one holds every password hash on the panel.
+func (s *Store) SaveUsers(file users.File) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if file.Users == nil {
+		file.Users = []users.User{}
+	}
+	if file.Roles == nil {
+		file.Roles = []users.Role{}
+	}
+	data, err := json.MarshalIndent(file, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode users: %w", err)
+	}
+	return writeFileAtomic(s.paths.UsersFile(), append(data, '\n'), 0o600)
 }
 
 // LoadInstances reads the instance registry.

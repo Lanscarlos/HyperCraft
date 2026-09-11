@@ -113,7 +113,15 @@ type Panel struct {
 	TrustedProxies []string `json:"trustedProxies,omitempty"`
 	// Terminal configures the host shell terminal. Off unless the operator
 	// turns it on — see Terminal.
-	Terminal   Terminal        `json:"terminal"`
+	Terminal Terminal `json:"terminal"`
+	// Credential is the single operator's password, from before the panel had
+	// accounts. Read once at startup and folded into users.json, which is
+	// authoritative from then on; this field is cleared by that migration and
+	// never read again — see openAccounts in cmd/hypercraft.
+	//
+	// It stays declared so an upgrade can find it. A panel that has been
+	// through the migration writes it back empty, which is also what makes a
+	// downgrade lose the password rather than silently use a stale one.
 	Credential auth.Credential `json:"credential"`
 	// Devices are the paired native clients. Unlike sessions, which are
 	// deliberately in-memory, these survive a restart — a phone app should not
@@ -239,6 +247,13 @@ func (p Paths) PanelFile() string { return filepath.Join(p.Root, "panel.json") }
 
 // InstancesFile is the registry of managed servers.
 func (p Paths) InstancesFile() string { return filepath.Join(p.Root, "instances.json") }
+
+// UsersFile is the accounts and roles. Beside panel.json rather than inside it
+// because it is the one file an operator edits by hand to recover from a
+// locked-out panel, and mixing it into the panel's own settings would mean
+// hand-editing the listen address to fix a password. It holds password hashes,
+// so it is one of the files written 0600.
+func (p Paths) UsersFile() string { return filepath.Join(p.Root, "users.json") }
 
 // ServersRoot is the default parent directory for new instances.
 func (p Paths) ServersRoot() string { return filepath.Join(p.Root, "servers") }

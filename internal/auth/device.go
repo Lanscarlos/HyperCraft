@@ -42,7 +42,11 @@ var ErrDeviceNameRequired = errors.New("device name is required")
 // The fast digest is also what lets Validate index straight to the right device
 // instead of testing candidates one at a time.
 type DeviceToken struct {
-	ID        string    `json:"id"`
+	ID string `json:"id"`
+	// UserID is the account this pairing belongs to. Empty means a token minted
+	// before the panel had accounts; the migration adopts those to the first
+	// administrator, so an empty one reaching Validate is a hand-edited file.
+	UserID    string    `json:"userId,omitempty"`
 	Name      string    `json:"name"`
 	Hash      string    `json:"hash"`
 	CreatedAt time.Time `json:"createdAt"`
@@ -89,7 +93,7 @@ func NewDeviceStore(devices []DeviceToken) *DeviceStore {
 
 // Issue mints a token for a new device. The plaintext is returned exactly once:
 // the store keeps only its digest, so it cannot be recovered afterwards.
-func (s *DeviceStore) Issue(name string) (DeviceToken, string, error) {
+func (s *DeviceStore) Issue(userID, name string) (DeviceToken, string, error) {
 	name, err := CleanDeviceName(name)
 	if err != nil {
 		return DeviceToken{}, "", err
@@ -107,6 +111,7 @@ func (s *DeviceStore) Issue(name string) (DeviceToken, string, error) {
 	token := devicePrefix + hex.EncodeToString(raw)
 	dev := DeviceToken{
 		ID:        hex.EncodeToString(id),
+		UserID:    userID,
 		Name:      name,
 		Hash:      HashDeviceToken(token),
 		CreatedAt: time.Now(),
@@ -193,17 +198,60 @@ func (s *DeviceStore) Revoke(id string) bool {
 	return true
 }
 
-// RevokeAll unpairs every device and reports how many there were. A password
-// change triggers it: the operator is saying the old credential should stop
-// working, and every device token was minted by presenting that credential.
-func (s *DeviceStore) RevokeAll() int {
+// RevokeUser unpairs every device belonging to one account and reports how many
+// there were. A password change triggers it for its own account: the operator is
+// saying the old credential should stop working, and every device token was
+// minted by presenting exactly that credential. It no longer triggers it for
+// everybody else's — one person changing their password is not a statement
+// about anyone else's phone.
+func (s *DeviceStore) RevokeUser(userID string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	n := len(s.byID)
-	s.byID = make(map[string]DeviceToken)
-	s.byHash = make(map[string]string)
+	n := 0
+	for id, dev := range s.byID {
+		if dev.UserID != userID {
+			continue
+		}
+		delete(s.byHash, dev.Hash)
+		delete(s.byID, id)
+		n++
+	}
 	return n
+}
+
+// AdoptOrphanDevices hands every device with no owner to one account, and
+// reports how many it moved. It runs once, when a panel that had a single
+// operator grows accounts: those tokens were minted by that operator's
+// password, so that is whose they are.
+//
+// A function over the stored slice rather than a method on the store, because
+// it runs during startup — before the store exists — and its result has to
+// reach panel.json in the same write as the rest of the migration.
+func AdoptOrphanDevices(devices []DeviceToken, userID string) int {
+	n := 0
+	for i := range devices {
+		if devices[i].UserID != "" {
+			continue
+		}
+		devices[i].UserID = userID
+		n++
+	}
+	return n
+}
+
+// ListUser returns one account's devices, oldest first.
+func (s *DeviceStore) ListUser(userID string) []DeviceToken {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]DeviceToken, 0, len(s.byID))
+	for _, dev := range s.sortedLocked() {
+		if dev.UserID == userID {
+			out = append(out, dev)
+		}
+	}
+	return out
 }
 
 func (s *DeviceStore) sortedLocked() []DeviceToken {

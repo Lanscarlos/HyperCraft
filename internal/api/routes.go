@@ -70,6 +70,27 @@ func (s *Server) protectedRoutes() []route {
 		// page an operator opens to find out who has been knocking.
 		rt("GET /api/auth/events", s.handleAuthEvents, authz.CapPanelSecurity),
 
+		// Accounts and roles. All one capability, and a dangerous one: whoever
+		// can edit a role can put themselves in one that holds everything.
+		// Splitting it into read and write would suggest a boundary that is not
+		// there — seeing the list is most of the way to editing it, because the
+		// thing you would do with the list is grant yourself something.
+		rt("GET /api/users", s.handleListUsers, authz.CapPanelUsers),
+		rt("POST /api/users", s.handleCreateUser, authz.CapPanelUsers),
+		rt("PUT /api/users/{id}", s.handleUpdateUser, authz.CapPanelUsers),
+		rt("POST /api/users/{id}/password", s.handleSetUserPassword, authz.CapPanelUsers),
+		rt("POST /api/users/{id}/signout", s.handleSignOutUser, authz.CapPanelUsers),
+		rt("DELETE /api/users/{id}", s.handleDeleteUser, authz.CapPanelUsers),
+
+		rt("GET /api/roles", s.handleListRoles, authz.CapPanelUsers),
+		rt("POST /api/roles", s.handleCreateRole, authz.CapPanelUsers),
+		rt("PUT /api/roles/{id}", s.handleUpdateRole, authz.CapPanelUsers),
+		rt("DELETE /api/roles/{id}", s.handleDeleteRole, authz.CapPanelUsers),
+		// The vocabulary the role editor is built from. Behind the same
+		// capability as the editor: on its own it is only a list of names, but
+		// it is a list of exactly what there is to grant.
+		rt("GET /api/capabilities", s.handleCapabilities, authz.CapPanelUsers),
+
 		rt("GET /api/instances", s.handleListInstances, authz.CapInstanceView),
 		rt("POST /api/instances", s.handleCreateInstance, authz.CapPanelCreate),
 		rt("GET /api/instances/{id}", s.handleGetInstance, authz.CapInstanceView),

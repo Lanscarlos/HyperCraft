@@ -1347,7 +1347,7 @@ func (s *Server) handleReconcileInstancePlugins(w http.ResponseWriter, r *http.R
 // operator needs the snapshot to say which of them moved production.
 func actorOf(r *http.Request) string {
 	who, _ := principalFrom(r.Context())
-	return who.username
+	return who.username()
 }
 
 // importedResult is one uploaded jar's outcome, per file rather than per

@@ -87,13 +87,9 @@ func TestPublicRoutesArePinned(t *testing.T) {
 func TestEveryCapabilityIsReachable(t *testing.T) {
 	env := newTestEnv(t)
 
-	// Capabilities whose routes have not been written yet. This list shrinks to
-	// empty; it is not a place to park a capability nobody got round to.
-	pending := []authz.Cap{
-		// The user and role endpoints arrive with users.json — step 2 of
-		// docs/proposal-multi-user.md.
-		authz.CapPanelUsers,
-	}
+	// Capabilities whose routes have not been written yet. Empty, and meant to
+	// stay that way: it is not a place to park a capability nobody got round to.
+	var pending []authz.Cap
 
 	used := make(map[authz.Cap]bool)
 	for _, rt := range env.api.protectedRoutes() {

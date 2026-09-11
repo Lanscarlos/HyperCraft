@@ -24,6 +24,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/schemlib"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
+	"github.com/lanscarlos/hypercraft/internal/users"
 )
 
 const (
@@ -40,7 +41,9 @@ type testEnv struct {
 	api   *Server
 	mgr   *instance.Manager
 	store *store.Store
-	paths config.Paths
+	// accounts is the registry behind api, for tests that add a second account.
+	accounts *users.Registry
+	paths    config.Paths
 	// fill stands in for the PaperMC API and its CDN; see handlers_downloads_test.go.
 	fill *fakeFill
 	// adoptium stands in for the Java download API; see handlers_java_test.go.
@@ -66,7 +69,20 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 		t.Fatalf("NewCredential: %v", err)
 	}
 	panel := config.Defaults()
-	panel.Credential = cred
+	// The panel's own credential is the pre-accounts field: openAccounts folds
+	// it into users.json and clears it. Tests take the same path, so the
+	// account they sign in as is a real one from the registry.
+	file, err := users.Initial(cred)
+	if err != nil {
+		t.Fatalf("users.Initial: %v", err)
+	}
+	accounts, complaints, err := users.New(file)
+	if err != nil {
+		t.Fatalf("users.New: %v", err)
+	}
+	if len(complaints) > 0 {
+		t.Fatalf("users.New complained about a file it just built: %v", complaints)
+	}
 	// Small enough that an upload test can exceed it without moving megabytes.
 	panel.MaxUploadMB = 1
 
@@ -119,6 +135,7 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 		),
 		Databases: databases,
 		Panel:     panel,
+		Users:     accounts,
 		Version:   "test",
 		Logger:    logger,
 	}
@@ -136,7 +153,7 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 	}
 	return &testEnv{
 		t: t, server: srv, client: &http.Client{Jar: jar}, api: api,
-		mgr: mgr, store: st, paths: paths, fill: fill, adoptium: adoptium, github: gh,
+		mgr: mgr, store: st, accounts: accounts, paths: paths, fill: fill, adoptium: adoptium, github: gh,
 	}
 }
 
@@ -400,4 +417,16 @@ func TestLogoutInvalidatesTheSession(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("expected 401 after logout, got %d", resp.StatusCode)
 	}
+}
+
+// readAll returns a response body as a string, for the assertions that are
+// about what is not in it.
+func readAll(t *testing.T, resp *http.Response) string {
+	t.Helper()
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	return string(body)
 }

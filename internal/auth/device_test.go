@@ -9,7 +9,7 @@ import (
 func TestDeviceIssueAndValidate(t *testing.T) {
 	store := NewDeviceStore(nil)
 
-	dev, token, err := store.Issue("Lans 的手机")
+	dev, token, err := store.Issue("u1", "Lans 的手机")
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestDeviceIssueAndValidate(t *testing.T) {
 
 func TestDeviceValidateRejects(t *testing.T) {
 	store := NewDeviceStore(nil)
-	dev, token, err := store.Issue("phone")
+	dev, token, err := store.Issue("u1", "phone")
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestDeviceValidateRejects(t *testing.T) {
 
 func TestDeviceRevoke(t *testing.T) {
 	store := NewDeviceStore(nil)
-	dev, token, err := store.Issue("phone")
+	dev, token, err := store.Issue("u1", "phone")
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -77,23 +77,92 @@ func TestDeviceRevokeAll(t *testing.T) {
 	store := NewDeviceStore(nil)
 	var tokens []string
 	for _, name := range []string{"phone", "tablet", "laptop"} {
-		_, token, err := store.Issue(name)
+		_, token, err := store.Issue("u1", name)
 		if err != nil {
 			t.Fatalf("Issue(%s): %v", name, err)
 		}
 		tokens = append(tokens, token)
 	}
 
-	if n := store.RevokeAll(); n != 3 {
-		t.Errorf("RevokeAll reported %d devices, want 3", n)
+	if n := store.RevokeUser("u1"); n != 3 {
+		t.Errorf("RevokeUser reported %d devices, want 3", n)
 	}
 	for _, token := range tokens {
 		if _, ok := store.Validate(token); ok {
-			t.Error("a token survived RevokeAll")
+			t.Error("a token survived RevokeUser")
 		}
 	}
 	if got := store.List(); len(got) != 0 {
-		t.Errorf("List returned %d devices after RevokeAll", len(got))
+		t.Errorf("List returned %d devices after RevokeUser", len(got))
+	}
+}
+
+// RevokeUser must leave everybody else paired: one person changing their
+// password is not a statement about anyone else's phone.
+func TestDeviceRevokeUserSparesOthers(t *testing.T) {
+	store := NewDeviceStore(nil)
+	_, mine, err := store.Issue("u1", "my phone")
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	_, theirs, err := store.Issue("u2", "their phone")
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	if n := store.RevokeUser("u1"); n != 1 {
+		t.Errorf("RevokeUser reported %d devices, want 1", n)
+	}
+	if _, ok := store.Validate(mine); ok {
+		t.Error("u1's token survived")
+	}
+	if _, ok := store.Validate(theirs); !ok {
+		t.Error("u2's token was revoked along with u1's")
+	}
+}
+
+// AdoptOrphanDevices is the migration: tokens minted before the panel had
+// accounts belong to whoever the single operator was.
+func TestAdoptOrphanDevices(t *testing.T) {
+	devices := []DeviceToken{
+		{ID: "a", Name: "old phone"},
+		{ID: "b", UserID: "u2", Name: "new phone"},
+	}
+
+	if n := AdoptOrphanDevices(devices, "u1"); n != 1 {
+		t.Fatalf("AdoptOrphanDevices reported %d devices, want 1", n)
+	}
+	if devices[0].UserID != "u1" {
+		t.Errorf("orphan went to %q, want u1", devices[0].UserID)
+	}
+	if devices[1].UserID != "u2" {
+		t.Errorf("an owned device was reassigned to %q", devices[1].UserID)
+	}
+
+	// Idempotent: a second run has nothing left to move, which is what makes a
+	// migration that ran but failed to persist safe to repeat.
+	if n := AdoptOrphanDevices(devices, "u1"); n != 0 {
+		t.Errorf("a second run moved %d devices, want 0", n)
+	}
+}
+
+// ListUser is how an account sees its own pairings and nobody else's.
+func TestDeviceListUser(t *testing.T) {
+	store := NewDeviceStore(nil)
+	for _, spec := range []struct{ user, name string }{{"u1", "phone"}, {"u2", "laptop"}, {"u1", "tablet"}} {
+		if _, _, err := store.Issue(spec.user, spec.name); err != nil {
+			t.Fatalf("Issue: %v", err)
+		}
+	}
+
+	got := store.ListUser("u1")
+	if len(got) != 2 {
+		t.Fatalf("ListUser(u1) returned %d devices, want 2", len(got))
+	}
+	for _, dev := range got {
+		if dev.UserID != "u1" {
+			t.Errorf("ListUser(u1) returned a device owned by %q", dev.UserID)
+		}
 	}
 }
 
@@ -101,7 +170,7 @@ func TestDeviceRevokeAll(t *testing.T) {
 // per-request disk write.
 func TestDeviceDirtyTracking(t *testing.T) {
 	store := NewDeviceStore(nil)
-	_, token, err := store.Issue("phone")
+	_, token, err := store.Issue("u1", "phone")
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -123,7 +192,7 @@ func TestDeviceDirtyTracking(t *testing.T) {
 
 func TestDeviceStoreSeeding(t *testing.T) {
 	store := NewDeviceStore(nil)
-	dev, token, err := store.Issue("phone")
+	dev, token, err := store.Issue("u1", "phone")
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -158,7 +227,7 @@ func TestDeviceStoreSkipsMalformedEntries(t *testing.T) {
 func TestDeviceListIsOrdered(t *testing.T) {
 	store := NewDeviceStore(nil)
 	for _, name := range []string{"first", "second", "third"} {
-		if _, _, err := store.Issue(name); err != nil {
+		if _, _, err := store.Issue("u1", name); err != nil {
 			t.Fatalf("Issue(%s): %v", name, err)
 		}
 	}
@@ -218,7 +287,7 @@ func TestCleanDeviceName(t *testing.T) {
 // panel.json operators are told they can read.
 func TestUnusedDeviceOmitsLastUsed(t *testing.T) {
 	store := NewDeviceStore(nil)
-	if _, _, err := store.Issue("phone"); err != nil {
+	if _, _, err := store.Issue("u1", "phone"); err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
 
@@ -236,7 +305,7 @@ func TestUnusedDeviceOmitsLastUsed(t *testing.T) {
 
 func TestIssueRejectsBadName(t *testing.T) {
 	store := NewDeviceStore(nil)
-	if _, _, err := store.Issue("  "); err == nil {
+	if _, _, err := store.Issue("u1", "  "); err == nil {
 		t.Fatal("Issue accepted a blank name")
 	}
 	if got := store.List(); len(got) != 0 {

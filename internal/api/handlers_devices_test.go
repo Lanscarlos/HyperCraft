@@ -19,8 +19,16 @@ import (
 // password, with no session and no CSRF header involved.
 func (e *testEnv) pair(name string) createDeviceResponse {
 	e.t.Helper()
+	return e.pairAs(testUser, testPass, name)
+}
 
-	body, err := json.Marshal(createDeviceRequest{Username: testUser, Password: testPass, Name: name})
+// pairAs pairs on behalf of one account. Pairing is authenticated by the
+// password rather than by a session, so which account a token belongs to is
+// decided here and nowhere else — see handleCreateDevice.
+func (e *testEnv) pairAs(username, password, name string) createDeviceResponse {
+	e.t.Helper()
+
+	body, err := json.Marshal(createDeviceRequest{Username: username, Password: password, Name: name})
 	if err != nil {
 		e.t.Fatalf("marshal: %v", err)
 	}

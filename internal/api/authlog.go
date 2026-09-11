@@ -30,6 +30,14 @@ const (
 	// does not know. Almost always a client that was unpaired and has not been
 	// told; the row exists so that case is visible instead of silent.
 	eventTokenRejected = "token-rejected"
+	// Account management. These belong in the credential trail rather than only
+	// in the log because "who else can get in" is the same question the rest of
+	// this view answers, and an account quietly added is the one change an
+	// operator most needs to see they did not make. Username is who did it and
+	// Detail is who it was done to.
+	eventUserCreated = "user-created"
+	eventUserUpdated = "user-updated"
+	eventUserDeleted = "user-deleted"
 )
 
 // authLogSize is how many events are kept. Two hundred rows is more history

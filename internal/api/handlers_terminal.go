@@ -127,7 +127,7 @@ func (s *Server) handleTerminalToggle(w http.ResponseWriter, r *http.Request) {
 
 	who, _ := principalFrom(r.Context())
 	s.log.Warn("host terminal switched",
-		"enabled", req.Enabled, "by", who.username, "sessionsClosed", hungUp)
+		"enabled", req.Enabled, "by", who.username(), "sessionsClosed", hungUp)
 	writeJSON(w, http.StatusOK, s.terminalStatus())
 }
 
@@ -178,8 +178,8 @@ func (s *Server) handleTerminalSocket(w http.ResponseWriter, r *http.Request) {
 	defer sess.Close()
 
 	who, _ := principalFrom(r.Context())
-	s.log.Info("terminal attached", "user", who.username, "pid", sess.PID(), "remote", r.RemoteAddr)
-	defer s.log.Info("terminal detached", "user", who.username, "pid", sess.PID())
+	s.log.Info("terminal attached", "user", who.username(), "pid", sess.PID(), "remote", r.RemoteAddr)
+	defer s.log.Info("terminal detached", "user", who.username(), "pid", sess.PID())
 
 	// Every write to the socket happens on this goroutine; gorilla allows only
 	// one concurrent writer. The two pumps below only ever hand it work.

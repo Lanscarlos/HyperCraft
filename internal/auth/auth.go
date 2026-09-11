@@ -32,8 +32,13 @@ const (
 // whether it was the username or the password that was wrong.
 var ErrInvalidCredentials = errors.New("invalid username or password")
 
-// Credential is the stored form of the operator's password.
+// Credential is the stored form of one account's password.
 type Credential struct {
+	// Username is the name this credential was derived under. It is a record,
+	// not an authority: internal/users owns who an account is, and a rename
+	// leaves this field behind. Nothing authenticates against it — see
+	// VerifyPassword, and note that the paired username+password check this
+	// type used to offer is gone precisely so it cannot be reached by accident.
 	Username   string `json:"username"`
 	Salt       string `json:"salt"`
 	Hash       string `json:"hash"`
@@ -69,8 +74,14 @@ func NewCredential(username, password string) (Credential, error) {
 // IsZero reports whether no password has been configured yet.
 func (c Credential) IsZero() bool { return c.Hash == "" || c.Salt == "" }
 
-// Verify checks a login attempt in constant time.
-func (c Credential) Verify(username, password string) error {
+// VerifyPassword checks a password against this credential.
+//
+// It says nothing about who the account is: the caller has already found the
+// account by name, and a second comparison here would only re-check a field
+// that goes stale on a rename. Keeping the lookup honest — spending the same
+// CPU whether or not the name existed — is the caller's job, because only the
+// caller knows there was no account to look up. See users.Registry.Authenticate.
+func (c Credential) VerifyPassword(password string) error {
 	if c.IsZero() {
 		return ErrInvalidCredentials
 	}
@@ -92,11 +103,7 @@ func (c Credential) Verify(username, password string) error {
 		return ErrInvalidCredentials
 	}
 
-	// Compare both factors unconditionally so a wrong username and a wrong
-	// password take the same amount of time.
-	userOK := subtle.ConstantTimeCompare([]byte(username), []byte(c.Username))
-	passOK := subtle.ConstantTimeCompare(got, want)
-	if userOK&passOK != 1 {
+	if subtle.ConstantTimeCompare(got, want) != 1 {
 		return ErrInvalidCredentials
 	}
 	return nil
@@ -104,7 +111,13 @@ func (c Credential) Verify(username, password string) error {
 
 // Session is an authenticated browser session.
 type Session struct {
-	Token     string
+	Token string
+	// UserID is who signed in. The account is looked up by it on every request
+	// rather than trusted from here, so deleting or disabling an account takes
+	// effect on its next request instead of whenever the session expires.
+	UserID string
+	// Username is a copy for logging. Never used to find the account: it goes
+	// stale the moment somebody is renamed.
 	Username  string
 	CreatedAt time.Time
 	ExpiresAt time.Time
@@ -129,7 +142,7 @@ func NewSessionStore(ttl time.Duration) *SessionStore {
 func (s *SessionStore) TTL() time.Duration { return s.ttl }
 
 // Create issues a new session token.
-func (s *SessionStore) Create(username string) (Session, error) {
+func (s *SessionStore) Create(userID, username string) (Session, error) {
 	raw := make([]byte, tokenBytes)
 	if _, err := rand.Read(raw); err != nil {
 		return Session{}, fmt.Errorf("generate session token: %w", err)
@@ -138,6 +151,7 @@ func (s *SessionStore) Create(username string) (Session, error) {
 	now := time.Now()
 	sess := Session{
 		Token:     hex.EncodeToString(raw),
+		UserID:    userID,
 		Username:  username,
 		CreatedAt: now,
 		ExpiresAt: now.Add(s.ttl),
@@ -175,11 +189,21 @@ func (s *SessionStore) Revoke(token string) {
 	s.mu.Unlock()
 }
 
-// RevokeAll drops every session, used after a password change.
-func (s *SessionStore) RevokeAll() {
+// RevokeUser drops every session belonging to one account and reports how many
+// there were. A password change triggers it for its own account, and an
+// administrator can trigger it for somebody else's.
+func (s *SessionStore) RevokeUser(userID string) int {
 	s.mu.Lock()
-	s.sessions = make(map[string]Session)
-	s.mu.Unlock()
+	defer s.mu.Unlock()
+
+	n := 0
+	for token, sess := range s.sessions {
+		if sess.UserID == userID {
+			delete(s.sessions, token)
+			n++
+		}
+	}
+	return n
 }
 
 // GC removes expired sessions; call it periodically.

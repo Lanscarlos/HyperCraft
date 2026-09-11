@@ -158,6 +158,9 @@ const KIND_LABELS: Record<AuthEventKind, string> = {
   unpaired: '解除配对',
   'password-changed': '修改密码',
   'token-rejected': '设备令牌无效',
+  'user-created': '新增账号',
+  'user-updated': '修改账号',
+  'user-deleted': '删除账号',
 }
 
 const KIND_BADGE: Record<AuthEventKind, string> = {
@@ -169,6 +172,9 @@ const KIND_BADGE: Record<AuthEventKind, string> = {
   unpaired: '',
   'password-changed': 'badge--warn',
   'token-rejected': 'badge--warn',
+  'user-created': 'badge--warn',
+  'user-updated': 'badge--warn',
+  'user-deleted': 'badge--danger',
 }
 
 /**

@@ -1687,6 +1687,17 @@ export interface HostInspection {
 
 export interface User {
   username: string
+  displayName?: string
+  /** The role this account holds, and what it resolves to. */
+  roleId: string
+  roleName: string
+  /**
+   * Every capability this account has, in the vocabulary's own order. The
+   * browser hides what it cannot use from this rather than from the role name:
+   * a role is a set that an operator edits, so re-deriving it here would be a
+   * second copy of a table that is already on the server.
+   */
+  capabilities: Capability[]
   version: string
   /** Name of the paired client, set only when a device token authenticated. */
   device?: string
@@ -1724,6 +1735,58 @@ export type AuthEventKind =
   | 'unpaired'
   | 'password-changed'
   | 'token-rejected'
+  | 'user-created'
+  | 'user-updated'
+  | 'user-deleted'
+
+/**
+ * A capability id, as the panel's vocabulary spells it — "instance:power",
+ * "panel:terminal". Kept as a plain string rather than a union: the list is the
+ * server's, served by GET /api/capabilities, and a union here would be a second
+ * copy that goes stale the release a capability is added.
+ */
+export type Capability = string
+
+/** One capability, as the role editor shows it. */
+export interface CapabilityInfo {
+  id: Capability
+  title: string
+  note?: string
+  /** Instance capabilities are further narrowed by which servers an account is granted. */
+  scope: 'instance' | 'panel'
+  /**
+   * Marks a capability that is, in practice, equivalent to handing over the
+   * account the panel runs as. The editor has to say so out loud rather than
+   * letting an operator find out.
+   */
+  dangerous: boolean
+}
+
+/** One account. Never carries anything derived from a password. */
+export interface Account {
+  id: string
+  username: string
+  displayName?: string
+  roleId: string
+  roleName: string
+  disabled: boolean
+  /** How many pairings this account holds, so the UI can say what deleting it cuts off. */
+  devices: number
+  createdAt: string
+  /** The caller's own row. */
+  self: boolean
+}
+
+/** One role: a named set of capabilities. */
+export interface Role {
+  id: string
+  name: string
+  capabilities: Capability[]
+  /** The administrator role, which holds everything and cannot be edited. */
+  builtIn: boolean
+  /** How many accounts hold it. */
+  users: number
+}
 
 /**
  * One credential event, as kept in the panel's memory. The list is cleared by a

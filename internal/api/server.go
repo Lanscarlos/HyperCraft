@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/lanscarlos/hypercraft/internal/auth"
+	"github.com/lanscarlos/hypercraft/internal/authz"
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/confighist"
 	"github.com/lanscarlos/hypercraft/internal/dbruntime"
@@ -27,6 +28,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/selfupdate"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
+	"github.com/lanscarlos/hypercraft/internal/users"
 )
 
 // sessionCookie is the browser cookie holding the session token. It is also
@@ -56,6 +58,9 @@ type Server struct {
 	// devices holds the paired native clients. It is seeded from the panel
 	// config and is the runtime owner of that list from then on.
 	devices *auth.DeviceStore
+	// accounts holds who exists and what they may do. Like devices, it is the
+	// runtime owner of its list; users.json is where it is parked between runs.
+	accounts *users.Registry
 	// loginLimit throttles the two endpoints that check the panel password,
 	// and kdf caps how many of those checks run at once. Both are public and
 	// both are expensive; see ratelimit.go.
@@ -143,6 +148,7 @@ type Options struct {
 	Updater  *selfupdate.Service
 	Terminal *hostterm.Service
 	Panel    config.Panel
+	Users    *users.Registry
 	Version  string
 	Logger   *slog.Logger
 
@@ -172,6 +178,7 @@ func NewServer(opts Options) *Server {
 		store:    opts.Store,
 		sessions: opts.Sessions,
 		devices:  auth.NewDeviceStore(opts.Panel.Devices),
+		accounts: opts.Users,
 
 		loginLimit:     newRateLimiter(loginBurst, loginRefill),
 		kdf:            newKDFGate(defaultKDFSlots(), kdfWait),
@@ -225,6 +232,15 @@ func (s *Server) persistPanel() error {
 	return s.store.SavePanel(panel)
 }
 
+// persistUsers writes users.json.
+//
+// The server is the sole writer once it is running, for the same reason it is
+// the sole writer of panel.json: a caller saving its own copy would race a
+// concurrent edit and could put a deleted account back.
+func (s *Server) persistUsers() error {
+	return s.store.SaveUsers(s.accounts.Snapshot())
+}
+
 // FlushDevices persists the device list if a token has been used since the last
 // write. LastUsed moves on every authenticated request, which is far too often
 // to touch the disk, so the panel flushes it on a slow timer and accepts losing
@@ -252,9 +268,14 @@ func (s *Server) routes() http.Handler {
 		api.HandleFunc(rt.pattern, rt.handler)
 	}
 
+	// Capabilities are enforced by wrapping each handler here rather than by a
+	// middleware in front of the mux: the mux is what decides which route
+	// matched, and a middleware sitting before it would have to work that out a
+	// second time — a second implementation of routing, which is a second place
+	// to get it wrong.
 	protected := http.NewServeMux()
 	for _, rt := range s.protectedRoutes() {
-		protected.HandleFunc(rt.pattern, rt.handler)
+		protected.HandleFunc(rt.pattern, s.requireCaps(rt.need, rt.handler))
 	}
 
 	api.Handle("/api/", s.requireAuth(s.requireCSRF(protected)))
@@ -276,6 +297,12 @@ const sessionKey ctxKey = iota
 // an Authorization header, which is how native clients authenticate, or the
 // session cookie the browser UI uses. They are not interchangeable — see
 // bearerScheme.
+//
+// Either way the account is resolved from the registry on every request rather
+// than taken from the credential. A name carried in a session goes stale on a
+// rename, and — the reason that matters — an account that has just been deleted
+// or switched off must stop working now, not when its session happens to
+// expire.
 func (s *Server) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if token, ok := bearerToken(r); ok {
@@ -292,11 +319,16 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 				writeError(w, http.StatusUnauthorized, "invalid or revoked device token")
 				return
 			}
-			// A device token authenticates the panel's single operator; the
-			// username comes from the credential rather than from the token,
-			// so renaming the operator does not strand paired devices.
-			who := principal{username: s.credential().Username, device: &dev}
-			next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), who)))
+			user, ok := s.accounts.ByID(dev.UserID)
+			if !ok || user.Disabled {
+				// The pairing outlived its owner. Recorded as a rejected token
+				// because that is what it is from the outside, and because the
+				// app will keep presenting it until somebody notices.
+				s.recordAuth(r, eventTokenRejected, "", dev.Name)
+				writeError(w, http.StatusUnauthorized, "该设备所属的账号已停用或删除")
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), s.principalFor(user, auth.Session{}, &dev))))
 			return
 		}
 
@@ -311,8 +343,62 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "session expired")
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), principal{username: sess.Username, session: sess})))
+		user, ok := s.accounts.ByID(sess.UserID)
+		if !ok || user.Disabled {
+			s.sessions.Revoke(sess.Token)
+			s.clearSessionCookie(w, r)
+			writeError(w, http.StatusUnauthorized, "账号已停用或删除")
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), s.principalFor(user, sess, nil))))
 	})
+}
+
+// principalFor resolves an account's capabilities once per request, so a
+// handler asking twice is a map lookup rather than a second walk of the role.
+func (s *Server) principalFor(user users.User, sess auth.Session, dev *auth.DeviceToken) principal {
+	return principal{
+		user:    user,
+		caps:    s.accounts.Capabilities(user),
+		session: sess,
+		device:  dev,
+	}
+}
+
+// requireCaps refuses a request whose account lacks any of the capabilities its
+// route declared. See routes.go for the table those come from.
+func (s *Server) requireCaps(need []authz.Cap, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		who, ok := principalFrom(r.Context())
+		if !ok {
+			// requireAuth runs first and never passes a request through
+			// without one, so this is a wiring mistake rather than a caller's.
+			writeError(w, http.StatusUnauthorized, "not signed in")
+			return
+		}
+		for _, cap := range need {
+			if cap == authz.CapSignedIn || who.can(cap) {
+				continue
+			}
+			// Naming the missing capability is safe — the caller is
+			// authenticated, and the vocabulary is in the docs — and it is the
+			// difference between "403" and knowing which box to tick.
+			s.log.Debug("refused for want of a capability",
+				"user", who.username(), "capability", cap, "path", r.URL.Path)
+			writeError(w, http.StatusForbidden, "当前角色没有这项权限："+capTitle(cap))
+			return
+		}
+		next(w, r)
+	}
+}
+
+// capTitle names a capability the way the role editor does, falling back to the
+// id for one this build does not know.
+func capTitle(cap authz.Cap) string {
+	if info, ok := authz.Lookup(cap); ok {
+		return info.Title
+	}
+	return string(cap)
 }
 
 // bearerToken pulls a credential out of the Authorization header. RFC 7235

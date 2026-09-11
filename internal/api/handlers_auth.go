@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/lanscarlos/hypercraft/internal/auth"
+	"github.com/lanscarlos/hypercraft/internal/authz"
+	"github.com/lanscarlos/hypercraft/internal/users"
 )
 
 // errDerivationBusy reports that every password-derivation slot was taken for
@@ -21,13 +23,24 @@ var errDerivationBusy = errors.New("no derivation slot available")
 // credential kinds is set: a browser authenticates with a session cookie, a
 // native client with a device token.
 type principal struct {
-	username string
+	// user is the account, resolved from the registry on this request. Not a
+	// copy of what the credential said: see requireAuth.
+	user users.User
+	// caps is what the account's role allows, resolved once per request.
+	caps map[authz.Cap]bool
 	// session is the cookie-borne session; its zero value means the request
 	// arrived with a device token instead.
 	session auth.Session
 	// device is the paired client, nil for a browser session.
 	device *auth.DeviceToken
 }
+
+// username is what log lines and the credential trail call this principal.
+// A method rather than a field so there is no second copy to go stale when an
+// account is renamed.
+func (p principal) username() string { return p.user.Username }
+
+func (p principal) can(cap authz.Cap) bool { return p.caps[cap] }
 
 func withPrincipal(ctx context.Context, who principal) context.Context {
 	return context.WithValue(ctx, sessionKey, who)
@@ -36,12 +49,6 @@ func withPrincipal(ctx context.Context, who principal) context.Context {
 func principalFrom(ctx context.Context) (principal, bool) {
 	who, ok := ctx.Value(sessionKey).(principal)
 	return who, ok
-}
-
-func (s *Server) credential() auth.Credential {
-	s.panelMu.RLock()
-	defer s.panelMu.RUnlock()
-	return s.panel.Credential
 }
 
 // beginCredentialCheck throttles a public endpoint that is about to verify the
@@ -75,12 +82,16 @@ func (s *Server) beginCredentialCheck(w http.ResponseWriter, r *http.Request) (s
 // verifyCredential checks a username and password with only a few derivations
 // running at once, so an unauthenticated flood cannot take the machine's CPU
 // away from the Minecraft servers sharing it.
-func (s *Server) verifyCredential(ctx context.Context, username, password string) error {
+//
+// The derivation slot is held across the lookup as well as the comparison,
+// because the registry spends one on a username that does not exist too — that
+// is what stops the clock from answering "does this account exist".
+func (s *Server) verifyCredential(ctx context.Context, username, password string) (users.User, error) {
 	if !s.kdf.enter(ctx) {
-		return errDerivationBusy
+		return users.User{}, errDerivationBusy
 	}
 	defer s.kdf.leave()
-	return s.credential().Verify(username, password)
+	return s.accounts.Authenticate(username, password)
 }
 
 // writeBusy refuses a request that could not get a derivation slot. 503 rather
@@ -104,8 +115,17 @@ type loginRequest struct {
 }
 
 type userResponse struct {
-	Username string `json:"username"`
-	Version  string `json:"version"`
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName,omitempty"`
+	// RoleID and RoleName say which role the account holds; Capabilities is
+	// what that resolves to. The browser needs the resolved set rather than the
+	// role name: hiding a button is a question about one capability, and
+	// re-deriving the answer from a role would put a second copy of the role
+	// table in the front end.
+	RoleID       string      `json:"roleId"`
+	RoleName     string      `json:"roleName"`
+	Capabilities []authz.Cap `json:"capabilities"`
+	Version      string      `json:"version"`
 	// Device names the pairing when the request authenticated with a device
 	// token, and is absent for a browser session. It gives an app somewhere to
 	// show which pairing it is running under.
@@ -131,7 +151,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch err := s.verifyCredential(r.Context(), req.Username, req.Password); {
+	user, err := s.verifyCredential(r.Context(), req.Username, req.Password)
+	switch {
 	case errors.Is(err, errDerivationBusy):
 		writeBusy(w)
 		return
@@ -146,7 +167,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// followed by the right password is an operator, not an attack.
 	s.loginLimit.reset(key)
 
-	sess, err := s.sessions.Create(req.Username)
+	sess, err := s.sessions.Create(user.ID, user.Username)
 	if err != nil {
 		s.writeDomainError(w, err)
 		return
@@ -160,12 +181,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// client is who the panel believes is behind it.
 	s.log.Info("signed in", "username", sess.Username, "remote", r.RemoteAddr, "client", key)
 	s.recordAuth(r, eventSignIn, sess.Username, "")
-	writeJSON(w, http.StatusOK, userResponse{
-		Username: sess.Username,
-		Version:  s.version,
-		Client:   key,
-		Remote:   peerHost(r),
-	})
+	writeJSON(w, http.StatusOK, s.describeUser(principal{user: user, caps: s.accounts.Capabilities(user)}, key, peerHost(r)))
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -182,7 +198,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			s.log.Info("device signed out", "device", who.device.Name, "id", who.device.ID)
-			s.recordAuth(r, eventUnpaired, who.username, who.device.Name)
+			s.recordAuth(r, eventUnpaired, who.username(), who.device.Name)
 		}
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -201,16 +217,42 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "not signed in")
 		return
 	}
-	resp := userResponse{
-		Username: who.username,
-		Version:  s.version,
-		Client:   s.clientAddr(r),
-		Remote:   peerHost(r),
-	}
+	resp := s.describeUser(who, s.clientAddr(r), peerHost(r))
 	if who.device != nil {
 		resp.Device = who.device.Name
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// describeUser is what both signing in and asking "who am I" return, so the two
+// can never disagree about what the browser was told.
+//
+// Capabilities come out in the vocabulary's own order rather than the role's,
+// so a role edited by hand does not change how the list reads.
+func (s *Server) describeUser(who principal, client, remote string) userResponse {
+	caps := make([]authz.Cap, 0, len(who.caps))
+	for _, info := range authz.All() {
+		if who.caps[info.Cap] {
+			caps = append(caps, info.Cap)
+		}
+	}
+	roleName := who.user.RoleID
+	for _, role := range s.accounts.Roles() {
+		if role.ID == who.user.RoleID {
+			roleName = role.Name
+			break
+		}
+	}
+	return userResponse{
+		Username:     who.user.Username,
+		DisplayName:  who.user.DisplayName,
+		RoleID:       who.user.RoleID,
+		RoleName:     roleName,
+		Capabilities: caps,
+		Version:      s.version,
+		Client:       client,
+		Remote:       remote,
+	}
 }
 
 // handleAuthEvents serves the in-memory credential trail. It is behind
@@ -247,47 +289,49 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch err := s.verifyCredential(r.Context(), who.username, req.CurrentPassword); {
+	switch _, err := s.verifyCredential(r.Context(), who.username(), req.CurrentPassword); {
 	case errors.Is(err, errDerivationBusy):
 		writeBusy(w)
 		return
 	case err != nil:
 		s.loginLimit.penalise(key)
-		s.log.Warn("failed password change", "username", who.username, "remote", r.RemoteAddr, "client", key)
-		s.recordAuth(r, eventSignInFailed, who.username, "修改密码")
+		s.log.Warn("failed password change", "username", who.username(), "remote", r.RemoteAddr, "client", key)
+		s.recordAuth(r, eventSignInFailed, who.username(), "修改密码")
 		writeError(w, http.StatusUnauthorized, "当前密码不正确")
 		return
 	}
 	s.loginLimit.reset(key)
 
-	cred, err := auth.NewCredential(who.username, req.NewPassword)
-	if err != nil {
+	if _, err := s.accounts.SetPassword(who.user.ID, req.NewPassword); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	s.panelMu.Lock()
-	panel := s.panel
-	panel.Credential = cred
-	s.panel = panel
-	s.panelMu.Unlock()
-
 	// Everything issued against the old password stops working, paired devices
-	// included: changing the password is usually the operator saying the old
-	// credential should not open anything any more, and a device token was
-	// minted by presenting exactly that credential. Both are revoked before the
-	// write, so the file that lands on disk already reflects it.
-	s.sessions.RevokeAll()
-	unpaired := s.devices.RevokeAll()
+	// included: changing the password is usually the account's owner saying the
+	// old credential should not open anything any more, and a device token was
+	// minted by presenting exactly that credential.
+	//
+	// Only this account's, though. It used to be everybody's, which was the
+	// right behaviour when there was only ever one account and is the wrong one
+	// now: one person rotating their password must not sign the whole team out.
+	s.sessions.RevokeUser(who.user.ID)
+	unpaired := s.devices.RevokeUser(who.user.ID)
 
-	if err := s.persistPanel(); err != nil {
+	if err := s.persistUsers(); err != nil {
 		s.writeDomainError(w, err)
 		return
 	}
+	if unpaired > 0 {
+		if err := s.persistPanel(); err != nil {
+			s.writeDomainError(w, err)
+			return
+		}
+	}
 
 	s.clearSessionCookie(w, r)
-	s.log.Info("panel password changed", "username", who.username, "devicesUnpaired", unpaired)
-	s.recordAuth(r, eventPasswordChanged, who.username, fmt.Sprintf("解除了 %d 台设备", unpaired))
+	s.log.Info("password changed", "username", who.username(), "devicesUnpaired", unpaired)
+	s.recordAuth(r, eventPasswordChanged, who.username(), fmt.Sprintf("解除了 %d 台设备", unpaired))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -345,7 +389,8 @@ func (s *Server) handleCreateDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch err := s.verifyCredential(r.Context(), req.Username, req.Password); {
+	user, err := s.verifyCredential(r.Context(), req.Username, req.Password)
+	switch {
 	case errors.Is(err, errDerivationBusy):
 		writeBusy(w)
 		return
@@ -358,7 +403,9 @@ func (s *Server) handleCreateDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	s.loginLimit.reset(key)
 
-	dev, token, err := s.devices.Issue(req.Name)
+	// The pairing belongs to the account whose password just opened it, and
+	// inherits that account's role: a token is another way in, not a way round.
+	dev, token, err := s.devices.Issue(user.ID, req.Name)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -393,7 +440,11 @@ func (s *Server) handleCreateDevice(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListDevices(w http.ResponseWriter, r *http.Request) {
 	who, _ := principalFrom(r.Context())
 
-	devices := s.devices.List()
+	// One account's own pairings. An administrator does not get everybody's
+	// here — that belongs on the user management page, next to the account it
+	// is about, rather than mixed into the list somebody manages their own
+	// phone from.
+	devices := s.devices.ListUser(who.user.ID)
 	out := make([]deviceResponse, 0, len(devices))
 	for _, dev := range devices {
 		out = append(out, deviceResponse{
@@ -408,9 +459,14 @@ func (s *Server) handleListDevices(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteDevice(w http.ResponseWriter, r *http.Request) {
+	who, _ := principalFrom(r.Context())
+
 	id := r.PathValue("id")
 	dev, ok := s.devices.Get(id)
-	if !ok {
+	// Somebody else's pairing is reported as missing rather than refused: this
+	// route is "my devices", and an id that is not in that list does not exist
+	// as far as the caller is concerned.
+	if !ok || dev.UserID != who.user.ID {
 		writeError(w, http.StatusNotFound, "device not found")
 		return
 	}
@@ -421,8 +477,7 @@ func (s *Server) handleDeleteDevice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.log.Info("device unpaired", "device", dev.Name, "id", dev.ID)
-	who, _ := principalFrom(r.Context())
-	s.recordAuth(r, eventUnpaired, who.username, dev.Name)
+	s.recordAuth(r, eventUnpaired, who.username(), dev.Name)
 	w.WriteHeader(http.StatusNoContent)
 }
 

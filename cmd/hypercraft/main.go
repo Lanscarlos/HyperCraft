@@ -37,6 +37,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/selfupdate"
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
+	"github.com/lanscarlos/hypercraft/internal/users"
 )
 
 // version is overridden at build time with -ldflags "-X main.version=...".
@@ -102,27 +103,15 @@ func run() error {
 		panel.Listen = *listen
 	}
 
-	if *resetPassword {
-		return resetOperatorPassword(st, panel, *username)
+	accounts, err := openAccounts(st, &panel, *username, logger)
+	if err != nil {
+		return err
 	}
 
-	// First run: nobody can reach the panel until a credential exists, so mint
-	// one and print it. This is better than a well-known default password.
-	if panel.Credential.IsZero() {
-		password, err := auth.GeneratePassword()
-		if err != nil {
-			return err
-		}
-		cred, err := auth.NewCredential(*username, password)
-		if err != nil {
-			return err
-		}
-		panel.Credential = cred
-		if err := st.SavePanel(panel); err != nil {
-			return err
-		}
-		printCredentialBanner(cred.Username, password)
+	if *resetPassword {
+		return resetOperatorPassword(st, accounts, panel, *username)
 	}
+
 	if err := st.SavePanel(panel); err != nil {
 		return err
 	}
@@ -343,6 +332,7 @@ func run() error {
 		Updater:  updater,
 		Terminal: shells,
 		Panel:    panel,
+		Users:    accounts,
 		Version:  version,
 		Logger:   logger,
 
@@ -501,23 +491,125 @@ func loadTLS(certFile, keyFile string) (*tls.Config, error) {
 	}, nil
 }
 
-func resetOperatorPassword(st *store.Store, panel config.Panel, username string) error {
-	if panel.Credential.Username != "" {
-		username = panel.Credential.Username
+// openAccounts loads users.json, creating it on a panel that does not have one
+// yet — either because this is a first run or because it predates accounts.
+//
+// The two cases end in the same place and differ only in where the credential
+// comes from: a first run mints one and prints it, an upgrade adopts the single
+// operator's. Either way panel.Credential stops being authoritative afterwards,
+// and the caller writes the panel config that says so.
+//
+// Write order is load-bearing. users.json lands first; only then is the legacy
+// credential cleared. If the panel dies in between, the next boot finds
+// users.json and skips this entirely — the stale credential in panel.json is
+// ignored from that point, which is untidy but not a way in.
+func openAccounts(st *store.Store, panel *config.Panel, username string, logger *slog.Logger) (*users.Registry, error) {
+	file, existed, err := st.LoadUsers()
+	if err != nil {
+		return nil, err
 	}
+
+	if !existed {
+		cred := panel.Credential
+		fresh := ""
+		if cred.IsZero() {
+			// First run: nobody can reach the panel until a credential exists,
+			// so mint one and print it. Better than a well-known default.
+			password, err := auth.GeneratePassword()
+			if err != nil {
+				return nil, err
+			}
+			if cred, err = auth.NewCredential(username, password); err != nil {
+				return nil, err
+			}
+			fresh = password
+		}
+
+		if file, err = users.Initial(cred); err != nil {
+			return nil, err
+		}
+		// Paired devices were minted by the credential that just became the
+		// administrator's, so that is whose they are. Done here so the panel
+		// write below carries it.
+		adopted := auth.AdoptOrphanDevices(panel.Devices, file.Users[0].ID)
+
+		if err := st.SaveUsers(file); err != nil {
+			return nil, err
+		}
+		panel.Credential = auth.Credential{}
+
+		switch {
+		case fresh != "":
+			printCredentialBanner(file.Users[0].Username, fresh)
+		default:
+			logger.Info("migrated the single operator into users.json",
+				"username", file.Users[0].Username, "devicesAdopted", adopted)
+		}
+	}
+
+	registry, complaints, err := users.New(file)
+	if err != nil {
+		return nil, err
+	}
+	for _, complaint := range complaints {
+		// Warn rather than refuse: users.json is a file operators are invited
+		// to edit, and a panel that will not start over one bad row is a panel
+		// that has locked its owner out.
+		logger.Warn("users.json", "problem", complaint)
+	}
+	if _, ok := registry.FirstAdmin(); !ok {
+		return nil, errors.New("users.json 里没有可用的管理员账号；删掉它让面板重新生成，或手动修复")
+	}
+	return registry, nil
+}
+
+// resetOperatorPassword is the way back in after a forgotten password.
+//
+// It resets the account the -username flag names, falling back to the oldest
+// administrator when that name does not exist — which is the common case, since
+// the flag has a default and the operator has probably renamed themselves since
+// the panel was set up.
+func resetOperatorPassword(st *store.Store, accounts *users.Registry, panel config.Panel, username string) error {
+	target, ok := accounts.ByUsername(username)
+	if !ok {
+		if target, ok = accounts.FirstAdmin(); !ok {
+			return errors.New("没有可以重置的账号")
+		}
+	}
+
 	password, err := auth.GeneratePassword()
 	if err != nil {
 		return err
 	}
-	cred, err := auth.NewCredential(username, password)
-	if err != nil {
+	if _, err := accounts.SetPassword(target.ID, password); err != nil {
 		return err
 	}
-	panel.Credential = cred
-	if err := st.SavePanel(panel); err != nil {
+	if err := st.SaveUsers(accounts.Snapshot()); err != nil {
 		return err
 	}
-	printCredentialBanner(username, password)
+
+	// Every pairing this account holds was minted by the password just
+	// replaced, exactly as when the password is changed from inside the panel.
+	kept := panel.Devices[:0]
+	unpaired := 0
+	for _, dev := range panel.Devices {
+		if dev.UserID == target.ID {
+			unpaired++
+			continue
+		}
+		kept = append(kept, dev)
+	}
+	if unpaired > 0 {
+		panel.Devices = kept
+		if err := st.SavePanel(panel); err != nil {
+			return err
+		}
+	}
+
+	printCredentialBanner(target.Username, password)
+	if unpaired > 0 {
+		fmt.Printf("  已解除该账号的 %d 台配对设备，需要重新配对。\n\n", unpaired)
+	}
 	return nil
 }
 

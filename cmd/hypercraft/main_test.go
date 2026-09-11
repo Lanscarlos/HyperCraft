@@ -8,6 +8,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"os"
@@ -15,6 +17,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lanscarlos/hypercraft/internal/auth"
+	"github.com/lanscarlos/hypercraft/internal/config"
+	"github.com/lanscarlos/hypercraft/internal/store"
 )
 
 func TestLoadTLSWithoutFlagsServesPlainHTTP(t *testing.T) {
@@ -107,4 +113,117 @@ func writeSelfSigned(t *testing.T) (certPath, keyPath string) {
 	write(certPath, &pem.Block{Type: "CERTIFICATE", Bytes: der})
 	write(keyPath, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
 	return certPath, keyPath
+}
+
+// The migration from a single operator to accounts. This is the one path every
+// existing panel takes exactly once, and getting it wrong locks somebody out of
+// their own machine, so it is checked end to end rather than in pieces.
+func TestOpenAccountsMigratesTheSingleOperator(t *testing.T) {
+	paths := config.NewPaths(t.TempDir())
+	st, err := store.New(paths)
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+
+	const password = "the-old-password"
+	cred, err := auth.NewCredential("carlos", password)
+	if err != nil {
+		t.Fatalf("NewCredential: %v", err)
+	}
+	panel := config.Defaults()
+	panel.Credential = cred
+	// A device paired before accounts existed: it was minted by this very
+	// password, so it has to end up belonging to the account that inherits it.
+	panel.Devices = []auth.DeviceToken{{ID: "dev1", Name: "phone", Hash: "deadbeef"}}
+	if err := st.SavePanel(panel); err != nil {
+		t.Fatalf("SavePanel: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	accounts, err := openAccounts(st, &panel, "admin", logger)
+	if err != nil {
+		t.Fatalf("openAccounts: %v", err)
+	}
+
+	// The operator is now an administrator, and their password still works.
+	admin, ok := accounts.FirstAdmin()
+	if !ok {
+		t.Fatal("no administrator after the migration")
+	}
+	if admin.Username != "carlos" {
+		t.Errorf("the administrator is %q, want carlos — the -username default overrode the stored name", admin.Username)
+	}
+	if _, err := accounts.Authenticate("carlos", password); err != nil {
+		t.Errorf("the operator's password stopped working: %v", err)
+	}
+	if panel.Devices[0].UserID != admin.ID {
+		t.Errorf("the existing pairing went to %q, want the administrator", panel.Devices[0].UserID)
+	}
+	// users.json is authoritative now, so the field it replaced is cleared.
+	if !panel.Credential.IsZero() {
+		t.Error("the legacy credential is still in the panel config")
+	}
+
+	// Running again must not migrate a second time or disturb what is there.
+	if err := st.SavePanel(panel); err != nil {
+		t.Fatalf("SavePanel: %v", err)
+	}
+	again, err := openAccounts(st, &panel, "admin", logger)
+	if err != nil {
+		t.Fatalf("openAccounts (second run): %v", err)
+	}
+	if got := again.List(); len(got) != 1 || got[0].ID != admin.ID {
+		t.Errorf("a second start changed the accounts: %+v", got)
+	}
+}
+
+// A brand-new panel takes the same path, minting the credential rather than
+// adopting one.
+func TestOpenAccountsBootstrapsAFreshPanel(t *testing.T) {
+	paths := config.NewPaths(t.TempDir())
+	st, err := store.New(paths)
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+
+	panel := config.Defaults()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	accounts, err := openAccounts(st, &panel, "lans", logger)
+	if err != nil {
+		t.Fatalf("openAccounts: %v", err)
+	}
+
+	admin, ok := accounts.FirstAdmin()
+	if !ok {
+		t.Fatal("a fresh panel has no administrator")
+	}
+	if admin.Username != "lans" {
+		t.Errorf("the administrator is %q, want the -username value", admin.Username)
+	}
+	if _, _, err := st.LoadUsers(); err != nil {
+		t.Errorf("users.json was not written: %v", err)
+	}
+}
+
+// users.json holds every password hash on the panel, so it must not be
+// readable by anyone else on the machine.
+func TestUsersFileIsNotWorldReadable(t *testing.T) {
+	paths := config.NewPaths(t.TempDir())
+	st, err := store.New(paths)
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	panel := config.Defaults()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if _, err := openAccounts(st, &panel, "admin", logger); err != nil {
+		t.Fatalf("openAccounts: %v", err)
+	}
+
+	info, err := os.Stat(paths.UsersFile())
+	if err != nil {
+		t.Fatalf("stat users.json: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("users.json is %o, want 600", perm)
+	}
 }
