@@ -106,6 +106,14 @@ type Status struct {
 	CurrentIsSnapshot bool `json:"currentIsSnapshot"`
 	// LatestIsPrerelease marks the offered version as a snapshot or rc.
 	LatestIsPrerelease bool `json:"latestIsPrerelease"`
+	// PreviousVersion is the build <exe>.old holds — what a rollback would put
+	// back. Empty means no update has ever run on this panel.
+	PreviousVersion string `json:"previousVersion,omitempty"`
+	// RollbackAvailable means that binary is there, runs, and reports the
+	// version that was recorded. RollbackWhy carries the reason when it does
+	// not, so the UI can say what is wrong instead of hiding the button.
+	RollbackAvailable bool   `json:"rollbackAvailable"`
+	RollbackWhy       string `json:"rollbackWhy,omitempty"`
 	// Downgrade means installing the offered version moves backwards; see
 	// Updater.Offer for the one case that happens in.
 	Downgrade bool `json:"downgrade"`
@@ -129,6 +137,16 @@ type Service struct {
 	progress  int
 	lastErr   string
 	shutdown  *Shutdown
+
+	// previous is the version <exe>.old holds, as recorded by the update that
+	// put it there, and rollbackPath/rollbackWhy are what asking that file
+	// about itself concluded. Cached rather than derived on demand: deciding
+	// costs a process launch, and the UI polls this status every few seconds.
+	// Refreshed when the record changes, which is the only thing that can make
+	// the answer change while the panel runs.
+	previous     string
+	rollbackPath string
+	rollbackWhy  string
 }
 
 func NewService(repo, currentVersion, mirror string, channel Channel, hooks Hooks, log *slog.Logger) *Service {
@@ -173,6 +191,24 @@ func (s *Service) SetChannel(c Channel) error {
 	s.checkedAt = time.Time{}
 	s.checkErr = ""
 	return nil
+}
+
+// SetPreviousVersion records which version <exe>.old holds and works out
+// whether it can be rolled back to, caching the answer for Status.
+//
+// Called at startup with what panel.json remembers, and again whenever an
+// update replaces the binary. Both are the moments the answer can change; the
+// probe it runs is why this is not done per status poll.
+func (s *Service) SetPreviousVersion(v string) {
+	// Deliberately outside the lock: this launches a process, and the status
+	// the UI polls should not queue behind it.
+	path, why := s.up.InspectRollback(v)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.previous = v
+	s.rollbackPath = path
+	s.rollbackWhy = why
 }
 
 // Run checks on startup and then on a timer until ctx is cancelled.
@@ -241,6 +277,9 @@ func (s *Service) statusLocked() Status {
 		Mirror:            s.up.Mirror(),
 		Channel:           s.up.Channel(),
 		CurrentIsSnapshot: IsReleaseVersion(s.up.CurrentVersion()) && !IsStableVersion(s.up.CurrentVersion()),
+		PreviousVersion:   s.previous,
+		RollbackAvailable: s.rollbackPath != "",
+		RollbackWhy:       s.rollbackWhy,
 		Eligible:          true,
 	}
 	if !s.checkedAt.IsZero() {
@@ -413,6 +452,7 @@ func (s *Service) apply(ctx context.Context, rel *Release) error {
 	if s.hooks.RecordPrevious != nil {
 		s.hooks.RecordPrevious(s.up.CurrentVersion())
 	}
+	s.SetPreviousVersion(s.up.CurrentVersion())
 
 	s.mu.Lock()
 	s.phase = PhaseRestarting
