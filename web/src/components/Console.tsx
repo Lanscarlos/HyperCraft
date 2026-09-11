@@ -8,6 +8,7 @@ import { useConsole } from '../useConsole'
 import { commonPrefix, complete, trackPlayers, type Candidate } from '../completion'
 import { onThemeChange, terminalTheme } from '../theme'
 import type { ConsoleLine, InstanceState, StateInfo } from '../types'
+import { CAP, useCan } from '../useCan'
 import { isLive } from '../types'
 
 interface ConsoleProps {
@@ -70,6 +71,7 @@ interface Suggestions {
  * because on the other side of a pipe there is nobody to answer a Tab.
  */
 export function Console({ instanceId, state, onState }: ConsoleProps) {
+  const can = useCan()
   const hostRef = useRef<HTMLDivElement | null>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -234,7 +236,12 @@ export function Console({ instanceId, state, onState }: ConsoleProps) {
     setTtyActive(undefined)
   }, [instanceId])
 
-  const canType = isLive(state) && status === 'open'
+  // Watching and typing are two capabilities on one socket: a role with only
+  // the first gets a read-only console rather than a refused connection, and
+  // the input has to say so instead of accepting a line the panel will bounce.
+  // See docs/security.md.
+  const maySend = can(CAP.instanceConsole)
+  const canType = maySend && isLive(state) && status === 'open'
 
   const setInput = (text: string) => {
     setCommand(text)
@@ -393,11 +400,13 @@ export function Console({ instanceId, state, onState }: ConsoleProps) {
             spellCheck={false}
             autoComplete="off"
             placeholder={
-              canType
-                ? '输入服务器命令，回车发送（Tab 补全，↑↓ 翻历史）'
-                : status !== 'open'
-                  ? `控制台${CONNECTION_LABEL[status]}`
-                  : '服务器未运行'
+              !maySend
+                ? '当前角色只能查看控制台输出，不能发送命令'
+                : canType
+                  ? '输入服务器命令，回车发送（Tab 补全，↑↓ 翻历史）'
+                  : status !== 'open'
+                    ? `控制台${CONNECTION_LABEL[status]}`
+                    : '服务器未运行'
             }
           />
           <button type="submit" disabled={!canType || !command.trim()}>

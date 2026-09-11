@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { formatBytes, formatPercent } from '../format'
 import type { Route, StateFilter } from '../routes'
 import type { InstanceStatus } from '../types'
+import { CAP, useCan } from '../useCan'
 import { STATE_LABELS, byUrgency, isLive } from '../types'
 import { useLiveMetrics } from '../useLiveMetrics'
 import { useUptime } from '../useUptime'
@@ -47,6 +48,7 @@ export function InstanceList({
   onImport,
   onChanged,
 }: Props) {
+  const can = useCan()
   const needle = query.trim().toLowerCase()
   const shown = byUrgency(
     instances.filter((item) => {
@@ -71,12 +73,16 @@ export function InstanceList({
               stake, so it sits beside 新建 rather than inside it — but it is
               here, on the list, because that is where someone who has just
               realised the panel does not know about their server looks. */}
-          <button className="btn" onClick={onImport}>
-            导入现有目录
-          </button>
-          <button className="btn btn--primary" onClick={onCreate}>
-            + 新建实例
-          </button>
+          {can(CAP.panelCreate) && (
+            <>
+              <button className="btn" onClick={onImport}>
+                导入现有目录
+              </button>
+              <button className="btn btn--primary" onClick={onCreate}>
+                + 新建实例
+              </button>
+            </>
+          )}
         </div>
       }
     >

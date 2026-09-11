@@ -35,6 +35,7 @@ export type IconName =
   | 'history'
   | 'schematics'
   | 'network'
+  | 'users'
 
 const PATHS: Record<IconName, ReactElement> = {
   // One node on the left, two on the right, wires between them: the shape the
@@ -162,6 +163,16 @@ const PATHS: Record<IconName, ReactElement> = {
       <path d="M3 5.5h11v8H3z" />
       <path d="M1.5 17h14" />
       <rect x="17" y="8" width="5.5" height="9" rx="1.4" />
+    </>
+  ),
+  // Two people rather than one: this is the page about the *other* accounts,
+  // and a single head reads as "my profile" in every other panel there is.
+  users: (
+    <>
+      <circle cx="9" cy="7.5" r="3.2" />
+      <path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" />
+      <path d="M16 4.8a3.2 3.2 0 0 1 0 5.6" />
+      <path d="M17.4 14.4c2 .7 3.3 2.4 3.3 4.6" />
     </>
   ),
   // An arrow coming down into the panel itself, rather than a circular refresh:

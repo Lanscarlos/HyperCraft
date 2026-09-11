@@ -4,6 +4,7 @@ import { api } from '../api'
 import { formatBytes, formatPercent } from '../format'
 import type { InstanceSection } from '../routes'
 import type { InstanceMetrics, InstanceStatus, StateInfo } from '../types'
+import { CAP, useCan } from '../useCan'
 import { STATE_LABELS, isLive, mergeState } from '../types'
 import { useTween } from '../useTween'
 import { useUptime } from '../useUptime'
@@ -177,6 +178,7 @@ function QuickPanel({
   instance: InstanceStatus
   onOpenSection: (section: InstanceSection) => void
 }) {
+  const can = useCan()
   const [busy, setBusy] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const live = instance.state === 'running'
@@ -199,7 +201,11 @@ function QuickPanel({
     <aside className="quick">
       <h2 className="panel__title">快捷操作</h2>
 
-      {!live ? (
+      {!can(CAP.instanceConsole) ? (
+        // These are console commands wearing buttons, so they answer to the
+        // capability the console input does — not to whether the server is up.
+        <p className="quick__idle">当前角色只能查看控制台输出，不能发送命令。</p>
+      ) : !live ? (
         <p className="quick__idle">服务器没有在运行，控制台命令发不出去。</p>
       ) : (
         <div className="quick__list">
@@ -221,6 +227,9 @@ function QuickPanel({
 
       {note && <p className="quick__note">{note}</p>}
 
+      {/* The same pages the sidebar offers, so they follow the same rule: a
+          shortcut to a page this account cannot open is a 404 with a friendly
+          label on it. */}
       <div className="quick__links">
         <button className="link" onClick={() => onOpenSection('metrics')}>
           看曲线
@@ -228,9 +237,11 @@ function QuickPanel({
         <button className="link" onClick={() => onOpenSection('properties')}>
           {proxy ? '代理配置' : '服务器配置'}
         </button>
-        <button className="link" onClick={() => onOpenSection('files')}>
-          文件
-        </button>
+        {can(CAP.instanceFilesRead) && (
+          <button className="link" onClick={() => onOpenSection('files')}>
+            文件
+          </button>
+        )}
       </div>
     </aside>
   )

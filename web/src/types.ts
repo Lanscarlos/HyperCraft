@@ -1870,6 +1870,25 @@ export interface Account {
   self: boolean
 }
 
+/** What creating an account needs. */
+export interface NewAccount {
+  username: string
+  displayName?: string
+  roleId: string
+  password: string
+  /** null means every server; [] means none. See Account.instances. */
+  instances: string[] | null
+}
+
+/** The editable part of an account. Password is changed separately. */
+export interface AccountEdit {
+  username: string
+  displayName?: string
+  roleId: string
+  instances: string[] | null
+  disabled: boolean
+}
+
 /** One role: a named set of capabilities. */
 export interface Role {
   id: string
