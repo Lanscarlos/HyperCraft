@@ -13,6 +13,11 @@ interface Props {
   /** Called once a core lands in the directory, with the file name it wrote. */
   onApplied: (fileName: string, instance: InstanceStatus, setAsJar: boolean) => void
   onOpenLibrary: () => void
+  /** True when this instance launches through the operator's own script, which
+   *  makes 启动 jar a setting nothing reads. Copying a core into the directory
+   *  is still perfectly sensible — the script may well launch it — so the copy
+   *  stays and only the tick-box changes. */
+  jarIgnored?: boolean
 }
 
 function coreLabel(core: ServerCore): string {
@@ -30,9 +35,15 @@ function coreLabel(core: ServerCore): string {
  * is built from. Downloading new cores happens on the library page, which is
  * also where they are kept; this is only the "give this server one" half.
  */
-export function InstanceCorePicker({ instance, cores, onApplied, onOpenLibrary }: Props) {
+export function InstanceCorePicker({
+  instance,
+  cores,
+  onApplied,
+  onOpenLibrary,
+  jarIgnored = false,
+}: Props) {
   const [coreId, setCoreId] = useState('')
-  const [setAsJar, setSetAsJar] = useState(true)
+  const [setAsJar, setSetAsJar] = useState(!jarIgnored)
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -133,6 +144,12 @@ export function InstanceCorePicker({ instance, cores, onApplied, onOpenLibrary }
               复制后设为启动 jar
               {selected?.kind === 'proxy' && '（代理端不吃 --nogui，会一并清空服务端参数）'}
             </span>
+            {jarIgnored && (
+              <small>
+                这个实例用自己的脚本启动，「启动 jar」没人读 —— 勾了也只是记下来，
+                真正启动什么由脚本决定。
+              </small>
+            )}
           </label>
 
           {error && <div className="alert alert--error">{error}</div>}

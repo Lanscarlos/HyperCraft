@@ -8,11 +8,15 @@ import (
 )
 
 type instanceMetricsResponse struct {
-	IntervalSeconds float64          `json:"intervalSeconds"`
-	CPUCores        int              `json:"cpuCores"`
-	MemoryTotal     uint64           `json:"memoryTotal"`
-	MaxMemoryMB     int              `json:"maxMemoryMB"`
-	Samples         []metrics.Sample `json:"samples"`
+	IntervalSeconds float64 `json:"intervalSeconds"`
+	CPUCores        int     `json:"cpuCores"`
+	MemoryTotal     uint64  `json:"memoryTotal"`
+	// MaxMemoryMB is the heap ceiling that will really apply, which is not the
+	// config's number once a script owns the command line — see
+	// instance.Config.EffectiveMaxMemoryMB. Zero means unknown, and the chart
+	// then draws no -Xmx line rather than one the JVM never heard of.
+	MaxMemoryMB int              `json:"maxMemoryMB"`
+	Samples     []metrics.Sample `json:"samples"`
 }
 
 // handleInstanceMetrics returns the retained CPU/memory history for one server.
@@ -35,7 +39,7 @@ func (s *Server) handleInstanceMetrics(w http.ResponseWriter, r *http.Request) {
 		IntervalSeconds: s.metrics.Interval().Seconds(),
 		CPUCores:        info.CPUCores,
 		MemoryTotal:     info.MemoryTotal,
-		MaxMemoryMB:     inst.Config().MaxMemoryMB,
+		MaxMemoryMB:     inst.Config().EffectiveMaxMemoryMB(),
 		Samples:         s.metrics.Series(inst.Config().ID),
 	})
 }

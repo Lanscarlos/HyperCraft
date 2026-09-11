@@ -232,6 +232,70 @@ func (b *Browser) WriteText(rel, content string) error {
 	return nil
 }
 
+// Mode returns one file's permission bits.
+//
+// It exists for the launch check, which has one question the rest of the file
+// manager never asks: can this be executed? A start script uploaded as part of
+// a zip — or copied out of Windows — arrives without its execute bit, and the
+// only symptom is "permission denied" the first time the server is started.
+func (b *Browser) Mode(rel string) (os.FileMode, error) {
+	name, err := clean(rel)
+	if err != nil {
+		return 0, err
+	}
+	root, err := b.open()
+	if err != nil {
+		return 0, err
+	}
+	defer root.Close()
+
+	info, err := root.Stat(name)
+	if err != nil {
+		return 0, translate(err)
+	}
+	if info.IsDir() {
+		return 0, ErrIsDirectory
+	}
+	return info.Mode().Perm(), nil
+}
+
+// MakeExecutable adds the execute bit wherever the file is already readable.
+//
+// Mirroring the read bits rather than writing a fixed 0755 keeps whatever
+// decision was made about who may see the file: a script readable only by its
+// owner stays that way, it just becomes runnable too.
+//
+// The chmod goes through an open handle rather than Root.Chmod by name, so
+// nothing can swap the path for a symlink between the check and the change.
+func (b *Browser) MakeExecutable(rel string) error {
+	name, err := clean(rel)
+	if err != nil {
+		return err
+	}
+	root, err := b.open()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	file, err := root.OpenFile(name, os.O_RDONLY, 0)
+	if err != nil {
+		return translate(err)
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return translate(err)
+	}
+	if info.IsDir() {
+		return ErrIsDirectory
+	}
+	perm := info.Mode().Perm()
+	perm |= (perm & 0o444) >> 2
+	return file.Chmod(perm)
+}
+
 // Create opens a file for writing an upload into. It refuses to clobber an
 // existing file unless overwrite is set, so replacing a server jar is a
 // deliberate confirmation rather than something a mistyped name can do to a

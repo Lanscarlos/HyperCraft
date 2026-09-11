@@ -571,14 +571,14 @@ func DetectTarget(directory, jarName string, core func(fileName string) (project
 		if project, version, ok := core(filepath.Base(jarName)); ok && (project != "" || version != "") {
 			return Target{
 				MCVersion: version,
-				Loader:    normaliseLoader(project),
+				Loader:    NormaliseLoader(project),
 				Source:    "core-library",
 			}
 		}
 	}
 	if jarName != "" {
 		if match := jarPattern.FindStringSubmatch(filepath.Base(jarName)); match != nil {
-			loader := normaliseLoader(match[1])
+			loader := NormaliseLoader(match[1])
 			if loader != "" {
 				return Target{MCVersion: match[2], Loader: loader, Source: "jar-name"}
 			}
@@ -603,16 +603,21 @@ func readVersionHistory(directory string) (Target, bool) {
 	if match == nil {
 		return Target{}, false
 	}
-	loader := normaliseLoader(match[1])
+	loader := NormaliseLoader(match[1])
 	if loader == "" {
 		return Target{}, false
 	}
 	return Target{MCVersion: match[2], Loader: loader, Source: "version-history"}, true
 }
 
-// normaliseLoader maps whatever a jar or an index calls the server onto the
-// loader names Judge understands. An unknown word is not a loader.
-func normaliseLoader(raw string) string {
+// NormaliseLoader maps whatever a jar, an index or an operator calls the
+// server onto the loader names Judge understands. An unknown word is not a
+// loader, and comes back as "".
+//
+// Exported because it also gates instance.Config.Loader: what an operator
+// picks in the launch settings has to land in the same vocabulary detection
+// produces, or the two would disagree about what "forge" is called.
+func NormaliseLoader(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "paper", "papermc", "paperspigot":
 		return "paper"

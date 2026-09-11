@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/lanscarlos/hypercraft/internal/instance"
+	"github.com/lanscarlos/hypercraft/internal/plugin"
 )
 
 // instanceRequest is the editable subset of instance.Config. ID and CreatedAt
@@ -16,28 +17,38 @@ type instanceRequest struct {
 	// Kind is "server" or "proxy". Blank is not "server" here: on update it
 	// means "leave it alone", so a client that saves the launch settings
 	// without echoing the field back cannot turn a proxy into a server.
-	Kind           string   `json:"kind"`
-	Java           string   `json:"java"`
-	Jar            string   `json:"jar"`
-	MinMemoryMB    int      `json:"minMemoryMB"`
-	MaxMemoryMB    int      `json:"maxMemoryMB"`
-	JVMArgs        []string `json:"jvmArgs"`
-	ServerArgs     []string `json:"serverArgs"`
-	Command        []string `json:"command"`
-	Encoding       string   `json:"encoding"`
-	TTY            *bool    `json:"tty"`
-	ForceColor     *bool    `json:"forceColor"`
-	AutoStart      bool     `json:"autoStart"`
-	AutoRestart    bool     `json:"autoRestart"`
-	StopCommand    string   `json:"stopCommand"`
-	StopTimeoutSec int      `json:"stopTimeoutSec"`
+	Kind string `json:"kind"`
+	// Loader and GameVersion are what the operator says this server is, for
+	// the cases nothing on disk can answer — chiefly a script-launched Forge
+	// server, which has no jar to read a name off.
+	Loader          string   `json:"loader"`
+	GameVersion     string   `json:"gameVersion"`
+	Java            string   `json:"java"`
+	Jar             string   `json:"jar"`
+	MinMemoryMB     int      `json:"minMemoryMB"`
+	MaxMemoryMB     int      `json:"maxMemoryMB"`
+	JVMArgs         []string `json:"jvmArgs"`
+	ServerArgs      []string `json:"serverArgs"`
+	Command         []string `json:"command"`
+	Encoding        string   `json:"encoding"`
+	TTY             *bool    `json:"tty"`
+	ForceColor      *bool    `json:"forceColor"`
+	JavaToolOptions *bool    `json:"javaToolOptions"`
+	AutoStart       bool     `json:"autoStart"`
+	AutoRestart     bool     `json:"autoRestart"`
+	StopCommand     string   `json:"stopCommand"`
+	StopTimeoutSec  int      `json:"stopTimeoutSec"`
 }
 
 func (req instanceRequest) toConfig() instance.Config {
 	return instance.Config{
-		Name:        strings.TrimSpace(req.Name),
-		Directory:   strings.TrimSpace(req.Directory),
-		Kind:        strings.TrimSpace(req.Kind),
+		Name:      strings.TrimSpace(req.Name),
+		Directory: strings.TrimSpace(req.Directory),
+		Kind:      strings.TrimSpace(req.Kind),
+		// Normalised here rather than trusted: the field is read back by
+		// plugin.Judge, which only knows one spelling of each loader.
+		Loader:      plugin.NormaliseLoader(req.Loader),
+		GameVersion: strings.TrimSpace(req.GameVersion),
 		Java:        strings.TrimSpace(req.Java),
 		Jar:         strings.TrimSpace(req.Jar),
 		MinMemoryMB: req.MinMemoryMB,
@@ -48,12 +59,13 @@ func (req instanceRequest) toConfig() instance.Config {
 		Encoding:    strings.TrimSpace(req.Encoding),
 		// Absent means "unset" for both of these: applyDefaults turns them on
 		// rather than silently taking Go's zero value for a bool.
-		TTY:            req.TTY,
-		ForceColor:     req.ForceColor,
-		AutoStart:      req.AutoStart,
-		AutoRestart:    req.AutoRestart,
-		StopCommand:    strings.TrimSpace(req.StopCommand),
-		StopTimeoutSec: req.StopTimeoutSec,
+		TTY:             req.TTY,
+		ForceColor:      req.ForceColor,
+		JavaToolOptions: req.JavaToolOptions,
+		AutoStart:       req.AutoStart,
+		AutoRestart:     req.AutoRestart,
+		StopCommand:     strings.TrimSpace(req.StopCommand),
+		StopTimeoutSec:  req.StopTimeoutSec,
 	}
 }
 

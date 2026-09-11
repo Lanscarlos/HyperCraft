@@ -18,6 +18,16 @@ export interface InstanceConfig {
   directory: string
   createdAt: string
   kind: InstanceKind
+  /** What server software this is — 'forge', 'paper', … — as recorded by the
+   *  operator. Blank means nobody said, which is not the same as none: the
+   *  panel prefers what it can read off the disk and only falls back to this.
+   *
+   *  It exists for the case where there is nothing on disk to read: a server
+   *  launched by the operator's own script has no jar whose name gives it
+   *  away, and an unidentified server sends mods into plugins/. */
+  loader: string
+  /** The Minecraft version the operator says this is, for the same reason. */
+  gameVersion: string
   java: string
   jar: string
   minMemoryMB: number
@@ -37,6 +47,11 @@ export interface InstanceConfig {
   /** Make the server emit ANSI colour even though its stdout is a pipe. Has no
    *  effect in TTY mode, where the server can see a terminal. */
   forceColor: boolean
+  /** Hand the panel's console JVM flags to a script-launched server through
+   *  JAVA_TOOL_OPTIONS. Only meaningful in script mode, where the panel builds
+   *  no command line to put them on. Costs one "Picked up JAVA_TOOL_OPTIONS"
+   *  line on stderr per start, which is why it can be turned off. */
+  javaToolOptions: boolean
   autoStart: boolean
   autoRestart: boolean
   stopCommand: string
@@ -58,6 +73,64 @@ export interface InstanceStatus extends InstanceConfig {
   lastSeq: number
   /** Whether this host can back a console with a pseudo-terminal at all. */
   ttySupported: boolean
+  /**
+   * The heap ceiling that will really apply, which stops being `maxMemoryMB`
+   * the moment a script owns the command line: the panel's -Xmx never reaches
+   * the JVM then, and Forge reads its own user_jvm_args.txt instead.
+   *
+   * 0 means nobody knows. Draw no ceiling at all in that case — a memory chart
+   * with a reference line taken from a field the JVM never saw is worse than
+   * one with no line.
+   */
+  effectiveMaxMemoryMB: number
+}
+
+/** The server software the launch settings offer, with what each one changes
+ *  about the panel. The values are plugin.NormaliseLoader's vocabulary; the
+ *  labels are ours. */
+export const LOADER_OPTIONS: { value: string; label: string; note?: string }[] = [
+  { value: '', label: '自动识别', note: '从目录和 jar 名认' },
+  { value: 'forge', label: 'Forge', note: 'mod 装进 mods/' },
+  { value: 'neoforge', label: 'NeoForge', note: 'mod 装进 mods/' },
+  { value: 'fabric', label: 'Fabric', note: 'mod 装进 mods/' },
+  { value: 'quilt', label: 'Quilt', note: 'mod 装进 mods/' },
+  { value: 'paper', label: 'Paper', note: '插件装进 plugins/' },
+  { value: 'purpur', label: 'Purpur', note: '插件装进 plugins/' },
+  { value: 'folia', label: 'Folia', note: '插件装进 plugins/' },
+  { value: 'spigot', label: 'Spigot', note: '插件装进 plugins/' },
+  { value: 'bukkit', label: 'CraftBukkit', note: '插件装进 plugins/' },
+  { value: 'velocity', label: 'Velocity', note: '代理端' },
+  { value: 'bungeecord', label: 'BungeeCord', note: '代理端' },
+  { value: 'waterfall', label: 'Waterfall', note: '代理端' },
+]
+
+/** One thing the panel found wrong with how this instance would start. */
+export interface LaunchIssue {
+  level: 'fatal' | 'warn' | 'info'
+  code: string
+  message: string
+  /** The offending line of the start script, verbatim. */
+  detail?: string
+  line?: number
+  /** A repair the panel can carry out; only 'chmod' so far. */
+  fix?: string
+}
+
+export interface LaunchCheck {
+  mode: 'jar' | 'script'
+  command?: string[]
+  /** Instance-relative path of the file that was read, if any. */
+  script?: string
+  issues: LaunchIssue[]
+}
+
+/** Forge's user_jvm_args.txt: where a script-launched server's heap lives. */
+export interface JVMArgs {
+  exists: boolean
+  fileName: string
+  minMemoryMB: number
+  maxMemoryMB: number
+  args: string[]
 }
 
 /** The editable subset the API accepts on create/update.
@@ -1681,6 +1754,14 @@ export interface HostInspection {
   /** A Velocity directory rather than a world server's — velocity.toml is
    *  there, or the jar says so. Decides which kind the import creates. */
   proxy: boolean
+  /** What the directory's own layout says this is. Forge from 1.17 on leaves a
+   *  libraries tree and a run.sh and no runnable jar at all, so for those this
+   *  is the only evidence there is. */
+  loader?: string
+  gameVersion?: string
+  /** The installer's start script, relative to the directory. Its presence is
+   *  what makes the import offer 脚本启动 rather than a jar. */
+  launchScript?: string
   /** Name of the instance already pointing at this directory, if any. */
   takenBy?: string
 }

@@ -2,6 +2,7 @@ package instance
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -58,6 +59,70 @@ func launchEnv() []string {
 		env = setEnv(env, key, fallbackLocale)
 	}
 	return env
+}
+
+// withJavaEnv points a child process at the Java the operator picked, for the
+// case where the panel is not the one spelling out the path: a start.sh or
+// Forge's run.sh calls a bare "java" and gets whatever PATH hands it.
+//
+// This is why the Java page means anything to a script-launched server. The
+// panel can download a JDK 21 and pin an instance to it, and without these two
+// variables the script would still start on the host's JDK 8 and fail with a
+// class-file-version error that names no Java version anyone would recognise.
+//
+// Both variables are set, because scripts disagree about which one they read:
+// Forge's run.sh takes "java" off PATH, while a hand-written start.sh often
+// says "$JAVA_HOME/bin/java". Setting one and not the other would work on half
+// the scripts in the wild.
+//
+// "java" means "whatever the host resolves", so there is nothing to point at
+// and the environment is left exactly as it was.
+func withJavaEnv(env []string, javaPath string) []string {
+	javaPath = strings.TrimSpace(javaPath)
+	if javaPath == "" || javaPath == "java" || !filepath.IsAbs(javaPath) {
+		return env
+	}
+	bin := filepath.Dir(javaPath)
+	if filepath.Base(bin) != "bin" {
+		// Not a JDK layout — someone's wrapper script, or a binary moved out
+		// of its tree. Prepending its directory to PATH would shadow the real
+		// java with something that is not one.
+		return env
+	}
+
+	env = setEnv(env, "JAVA_HOME", filepath.Dir(bin))
+	// Prepended, not appended: an appended entry loses to the host's own java,
+	// which is the one this exists to override.
+	if current := envValue(env, "PATH"); current != "" {
+		env = setEnv(env, "PATH", bin+string(os.PathListSeparator)+current)
+	} else {
+		env = setEnv(env, "PATH", bin)
+	}
+	return env
+}
+
+// withJavaToolOptions passes JVM flags to a process the panel does not build a
+// command line for.
+//
+// The JVM applies JAVA_TOOL_OPTIONS before the command line, so every flag
+// here can still be overridden by the script itself — which is the same
+// precedence consoleJVMArgs has in jar mode, where it goes ahead of the
+// operator's own args. An inherited value is kept and placed after ours for
+// the same reason.
+//
+// The JVM prints "Picked up JAVA_TOOL_OPTIONS: ..." to stderr when this is
+// set. That line will appear in the console at every start; it is the price of
+// a server whose Chinese output is not mojibake, and Config.JavaToolOptions
+// turns it off for anyone who would rather have the quiet.
+func withJavaToolOptions(env []string, args []string) []string {
+	if len(args) == 0 {
+		return env
+	}
+	value := strings.Join(args, " ")
+	if inherited := envValue(env, "JAVA_TOOL_OPTIONS"); inherited != "" {
+		value += " " + inherited
+	}
+	return setEnv(env, "JAVA_TOOL_OPTIONS", value)
 }
 
 // terminalType is what a server on a pseudo-terminal is told it is talking to.

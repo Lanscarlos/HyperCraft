@@ -184,3 +184,63 @@ func TestInspectRecognisesAProxy(t *testing.T) {
 		t.Errorf("a paper server was read as a proxy: %+v (%v)", got, err)
 	}
 }
+
+// Forge from 1.17 on installs no runnable jar: the installer leaves a
+// libraries tree, a run.sh and user_jvm_args.txt. Every other way the panel
+// works out what a directory holds reads a jar name, so without this such a
+// directory imports as "not a server" and starts as nothing.
+func TestAForgeDirectoryIsRecognisedWithoutAJar(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(
+		filepath.Join(dir, "libraries", "net", "minecraftforge", "forge", "1.20.1-47.2.20"), 0o755,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(dir, "run.sh"), []byte("#!/bin/sh\nexec java @user_jvm_args.txt -jar x\n"), 0o755,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := Inspect(dir)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if out.Loader != "forge" {
+		t.Errorf("loader = %q, want forge", out.Loader)
+	}
+	if out.GameVersion != "1.20.1" {
+		t.Errorf("gameVersion = %q, want the part before the Forge build number", out.GameVersion)
+	}
+	if out.LaunchScript != "run.sh" {
+		t.Errorf("launchScript = %q", out.LaunchScript)
+	}
+	if !out.Server {
+		t.Error("a Forge install was not recognised as a server — it has no jar to go by")
+	}
+	if out.Jar != "" {
+		t.Errorf("jar = %q, want none", out.Jar)
+	}
+}
+
+// NeoForge versions its own artifacts (21.1.72) and says nothing about the
+// game version, so inventing one would be worse than leaving it blank.
+func TestNeoForgeIsNamedButItsVersionIsNotGuessedAt(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(
+		filepath.Join(dir, "libraries", "net", "neoforged", "neoforge", "21.1.72"), 0o755,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := Inspect(dir)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if out.Loader != "neoforge" {
+		t.Errorf("loader = %q, want neoforge", out.Loader)
+	}
+	if out.GameVersion != "" {
+		t.Errorf("gameVersion = %q, want blank rather than a guess", out.GameVersion)
+	}
+}

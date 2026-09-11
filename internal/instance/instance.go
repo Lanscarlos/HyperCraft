@@ -210,13 +210,20 @@ func (i *Instance) hooksSnapshot() Hooks {
 
 func (i *Instance) Status() Status {
 	i.mu.RLock()
-	defer i.mu.RUnlock()
-	return Status{
+	status := Status{
 		Config:       i.cfg,
 		StateInfo:    i.stateInfoLocked(),
 		LastSeq:      i.ring.lastSeq(),
 		TTYSupported: ptySupported,
 	}
+	i.mu.RUnlock()
+
+	// Deliberately after the unlock: in script mode this reads a file out of
+	// the server directory, and the instance lock is held by everything that
+	// touches the process. It is a few hundred bytes and only for instances
+	// the panel does not build a command line for.
+	status.EffectiveMaxMemoryMB = status.Config.EffectiveMaxMemoryMB()
+	return status
 }
 
 // TTYSupported reports whether this build can back a console with a
@@ -474,6 +481,16 @@ func spawn(cfg Config, size viewport, tty bool) (spawned, error) {
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = cfg.Directory
 	cmd.Env = launchEnv()
+	// The Java choice reaches a script the only way it can: through the
+	// environment. A run.sh calls a bare "java", so without this the runtimes
+	// the panel downloaded are invisible to exactly the servers — Forge and
+	// friends — that are fussiest about which Java they get.
+	cmd.Env = withJavaEnv(cmd.Env, cfg.Java)
+	if cfg.usesCustomCommand() && cfg.javaToolOptionsEnabled() {
+		// Same reasoning for the console flags: commandLine returned the
+		// operator's argv verbatim, so consoleJVMArgs never went anywhere.
+		cmd.Env = withJavaToolOptions(cmd.Env, cfg.consoleJVMArgs(tty))
+	}
 	if tty {
 		cmd.Env = withTerminalEnv(cmd.Env)
 	}

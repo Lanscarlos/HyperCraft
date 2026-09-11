@@ -115,6 +115,22 @@ func (s *Server) protectedRoutes() []route {
 		rt("GET /api/instances/{id}/eula", s.handleGetEULA, authz.CapInstanceView),
 		rt("POST /api/instances/{id}/eula", s.handleAcceptEULA, authz.CapInstanceConfig),
 
+		// What the panel expects to happen when this instance is started. Read
+		// only: it reports, and the one repair it offers is a separate route,
+		// because adding an execute bit to a file in the server directory is a
+		// write to that directory and nothing less.
+		rt("GET /api/instances/{id}/launch-check", s.handleLaunchCheck, authz.CapInstanceView),
+		rt("POST /api/instances/{id}/launch-check/fix", s.handleLaunchFix, authz.CapInstanceFilesWrite),
+
+		// Forge's user_jvm_args.txt, which is where the heap of a
+		// script-launched server lives. Two boundaries, so both are named: it
+		// writes a config file in the server directory, and what it writes is
+		// a launch setting — the same -Xmx that needs CapInstanceLaunch when
+		// it arrives through the instance config instead.
+		rt("GET /api/instances/{id}/jvm-args", s.handleGetJVMArgs, authz.CapInstanceView),
+		rt("PUT /api/instances/{id}/jvm-args", s.handlePutJVMArgs,
+			authz.CapInstanceConfig, authz.CapInstanceLaunch),
+
 		// The settings that live outside server.properties: bukkit.yml,
 		// spigot.yml and whichever layout of Paper's config this server reads.
 		rt("GET /api/instances/{id}/configs", s.handleGetServerConfigs, authz.CapInstanceView),
