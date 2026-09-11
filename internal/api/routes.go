@@ -324,6 +324,10 @@ func (s *Server) protectedRoutes() []route {
 		rt("POST /api/instances/{id}/files/mkdir", s.handleMkdir, authz.CapInstanceFilesWrite),
 		rt("POST /api/instances/{id}/files/rename", s.handleRenameFile, authz.CapInstanceFilesWrite),
 		rt("GET /api/instances/{id}/files/schematic", s.handleSchematic, authz.CapInstanceFilesRead),
+		// The same read for an instance that already exists, confined to its
+		// own directory: it reads a file there and echoes lines of it back.
+		rt("POST /api/instances/{id}/parse-script", s.handleParseInstanceScript,
+			authz.CapInstanceFilesRead),
 
 		// Directories on the host, for the instance directory picker. Read-only,
 		// and not confined to an instance — see handlers_hostfs.go. Which is
@@ -331,6 +335,11 @@ func (s *Server) protectedRoutes() []route {
 		// the file manager's.
 		rt("GET /api/fs", s.handleBrowseHost, authz.CapPanelHostFS),
 		rt("GET /api/fs/inspect", s.handleInspectHost, authz.CapPanelHostFS),
+		// Reading a start script for the launch settings in it. Two
+		// boundaries, so both are named: it reads a file anywhere on the host,
+		// and it exists to create an instance from what it finds.
+		rt("POST /api/fs/parse-script", s.handleParseHostScript,
+			authz.CapPanelHostFS, authz.CapPanelCreate),
 
 		// Resource usage.
 		rt("GET /api/instances/{id}/metrics", s.handleInstanceMetrics, authz.CapInstanceView),

@@ -121,6 +121,48 @@ export interface LaunchCheck {
   issues: LaunchIssue[]
 }
 
+/** A launch drafted out of somebody's start script, in the shape the launch
+ *  settings form takes. Every field is editable before anything is saved: the
+ *  parse is a draft, not a verdict. */
+export interface LaunchDraft {
+  java: string
+  /** The environment variable the script expected to supply the JVM. When set,
+   *  `java` is empty and the operator has to choose one — the panel does not
+   *  read its own environment, because the answer would be right on the
+   *  machine that exports it and wrong everywhere else. */
+  javaVar?: string
+  minMemoryMB: number
+  maxMemoryMB: number
+  jvmArgs: string[]
+  jar: string
+  argFiles: string[]
+  serverArgs: string[]
+  /** The script launched the console-less JVM, which the panel cannot use. */
+  javaw?: boolean
+  /** What was stripped: exec, nohup, screen, a trailing &. Reported rather
+   *  than dropped silently — "your server will no longer be inside screen" is
+   *  news to whoever set it up that way. */
+  wrappers?: string[]
+}
+
+/** Why a script could not be taken apart with certainty, with the line that
+ *  caused it so the operator can find it in their own file. */
+export interface LaunchRefusal {
+  code: string
+  reason: string
+  line?: number
+  text?: string
+}
+
+export interface ParsedScript {
+  /** False when the script could not be read with certainty. `draft` is then
+   *  meaningless and `refusals` says why. */
+  ok: boolean
+  script: string
+  draft: LaunchDraft
+  refusals: LaunchRefusal[]
+}
+
 /** Forge's user_jvm_args.txt: where an argfile-launched server's heap lives. */
 export interface JVMArgs {
   exists: boolean
