@@ -31,6 +31,19 @@
           (pref !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.dataset.theme = dark ? 'dark' : 'light'
         document.documentElement.style.background = dark ? '#1a1110' : '#fff8f6'
+
+        // The pixel face, resolved here for the same reason: it changes the
+        // metrics of every line on the page, so deciding it after the bundle
+        // loads means watching the whole panel re-typeset itself. On is the
+        // default and is stored as no key at all; the key and that rule match
+        // pixelfont.ts.
+        var pixel = true
+        try {
+          pixel = localStorage.getItem('hypercraft.pixelfont') !== 'off'
+        } catch (e) {
+          /* storage disabled; the default stands */
+        }
+        if (pixel) document.documentElement.dataset.pixelFont = 'on'
       })()
     </script>
   </head>

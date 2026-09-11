@@ -772,6 +772,7 @@ const SETTINGS_ICONS: Record<string, IconName> = {
   users: 'users',
   plugins: 'github',
   update: 'update',
+  appearance: 'appearance',
 }
 
 // ----------------------------------------------------------------- pieces

@@ -36,8 +36,19 @@ export type IconName =
   | 'schematics'
   | 'network'
   | 'users'
+  | 'appearance'
 
 const PATHS: Record<IconName, ReactElement> = {
+  // A capital A on a baseline. The section is about type before it is about
+  // anything else, and a paint roller or a palette would promise colour
+  // settings that are not in there.
+  appearance: (
+    <>
+      <path d="M4.5 16 11 4l6.5 12" />
+      <path d="M7 12h8" />
+      <path d="M3.5 20h17" />
+    </>
+  ),
   // One node on the left, two on the right, wires between them: the shape the
   // 代理连线 page draws, at 16px.
   network: (
