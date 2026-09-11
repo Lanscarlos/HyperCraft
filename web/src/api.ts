@@ -76,6 +76,7 @@ import type {
   User,
   VelocityInput,
   VelocityResponse,
+  ParsedScript,
 } from './types'
 
 /**
@@ -197,6 +198,17 @@ export const api = {
    *  can tell what kind of server it is. See internal/api/handlers_launch.go. */
   launchCheck: (id: string) =>
     request<LaunchCheck>('GET', `/api/instances/${id}/launch-check`),
+
+  /** Reads a start script for the launch settings written inside it. The panel
+   *  never runs these scripts — this is how their arguments reach the form
+   *  without anyone retyping them. Absolute path: used while importing, when
+   *  there is no instance to resolve a relative one against. */
+  parseHostScript: (path: string) =>
+    request<ParsedScript>('POST', '/api/fs/parse-script', { path }),
+  /** The same read for an instance that already exists, confined to its own
+   *  directory. Path is relative to the instance. */
+  parseInstanceScript: (id: string, path: string) =>
+    request<ParsedScript>('POST', `/api/instances/${id}/parse-script`, { path }),
 
   /** Forge's user_jvm_args.txt, which is where the heap of an argfile-launched
    *  server actually lives. */
