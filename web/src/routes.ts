@@ -58,9 +58,18 @@ export type HostSection = 'metrics' | 'instances' | 'disk' | 'config' | 'termina
  * Panel-wide settings.
  *
  * `devices` is first and has no capability: every account manages its own
- * pairings, so there is always somewhere for 面板设置 to lead.
+ * pairings, so there is always somewhere for 面板设置 to lead. `appearance` has
+ * none either, for the same reason from the other end — it is a preference in
+ * one browser, it changes nothing anyone else can see, and the account that can
+ * do the least still has to be able to turn the pixel face off.
  */
-export type SettingsSection = 'devices' | 'security' | 'users' | 'update' | 'plugins'
+export type SettingsSection =
+  | 'devices'
+  | 'security'
+  | 'users'
+  | 'update'
+  | 'plugins'
+  | 'appearance'
 
 /** Which states the 所有实例 list is showing. Part of the URL. */
 export type StateFilter = 'all' | 'live' | 'stopped' | 'problem'
@@ -289,6 +298,7 @@ export const SETTINGS_SECTIONS: {
     cap: CAP.panelSettings,
   },
   { id: 'update', label: '面板更新', cap: CAP.panelUpdate },
+  { id: 'appearance', label: '外观', keywords: '字体 像素 minecraft 主题 深色 浅色' },
 ]
 
 /**

@@ -2,6 +2,7 @@ import type { SettingsSection } from '../routes'
 import type { InstanceStatus } from '../types'
 import type { PluginController } from '../usePlugins'
 import type { UpdateController } from '../useUpdate'
+import { AppearanceSettings } from './AppearanceSettings'
 import { DevicesPage } from './DevicesPage'
 import { Page } from './Page'
 import { PluginSourceSettings } from './PluginSourceSettings'
@@ -58,6 +59,8 @@ export function SettingsPage({
       return <UsersPage instances={instances} me={username} />
     case 'plugins':
       return <PluginSourceSettings plugins={plugins} />
+    case 'appearance':
+      return <AppearanceSettings />
     case 'update':
       return (
         <Page
