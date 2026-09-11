@@ -40,6 +40,32 @@ type instanceRequest struct {
 	StopTimeoutSec  int      `json:"stopTimeoutSec"`
 }
 
+// The two halves of instanceRequest.
+//
+// One route carries both "rename this server" and "run this command instead",
+// so CapInstanceLaunch is checked against the fields present in the body rather
+// than against the route — see routes.go. Splitting the route instead would
+// break every client that saves the whole form at once.
+//
+// They are written out rather than derived because the question each field
+// answers is "does setting this decide what code runs", and only a person can
+// answer it. TestInstanceRequestFieldsAreClassified fails when a new field
+// belongs to neither list, which is the moment whoever added it knows.
+var (
+	// launchFields decide what the machine executes: an argv, the program that
+	// runs it, or the directory it runs in. Every one of them is a way to run
+	// arbitrary code as the account the panel runs as.
+	launchFields = []string{"directory", "java", "jar", "jvmArgs", "serverArgs", "command"}
+
+	// settingsFields are the rest: labels, console behaviour, and what to do
+	// when the server stops. None of them changes what runs.
+	settingsFields = []string{
+		"name", "kind", "loader", "gameVersion", "encoding", "tty", "forceColor",
+		"javaToolOptions", "autoStart", "autoRestart", "stopCommand", "stopTimeoutSec",
+		"minMemoryMB", "maxMemoryMB",
+	}
+)
+
 func (req instanceRequest) toConfig() instance.Config {
 	return instance.Config{
 		Name:      strings.TrimSpace(req.Name),
