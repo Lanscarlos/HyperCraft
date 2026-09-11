@@ -49,21 +49,43 @@ func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, status)
 }
 
+// applyRequest is the optional body of an apply. No version means the one the
+// last check offered, which is what the update button sends.
+type applyRequest struct {
+	Version string `json:"version"`
+}
+
 // handleUpdateApply starts an update and returns immediately. The work outlives
 // this request on purpose: it ends by stopping every managed server and
 // replacing the process, which cannot be reported over the connection that
 // asked for it. The UI follows progress on GET /api/update.
+//
+// With a version, the target is whatever the operator picked from the version
+// list instead. Whether that version may be installed at all is settled by the
+// updater, against the channel's own listing — see selfupdate.Updater.Find.
+// That check reaches GitHub and so happens with the rest of the work, which is
+// why a version this panel cannot install is reported through the status rather
+// than in this response.
 func (s *Server) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	if !s.updaterReady(w) {
 		return
 	}
+
+	var req applyRequest
+	if r.ContentLength > 0 {
+		if err := decodeJSON(w, r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "请求格式错误")
+			return
+		}
+	}
+	req.Version = strings.TrimSpace(req.Version)
 
 	status := s.updater.Status()
 	switch {
 	case !status.Eligible:
 		writeError(w, http.StatusBadRequest, status.IneligibleWhy)
 		return
-	case !status.UpdateAvailable:
+	case req.Version == "" && !status.UpdateAvailable:
 		writeError(w, http.StatusBadRequest, "已经是最新版本")
 		return
 	case status.Phase != selfupdate.PhaseIdle:
@@ -71,18 +93,50 @@ func (s *Server) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.log.Info("update requested", "from", status.CurrentVersion, "to", status.LatestVersion)
+	target := req.Version
+	if target == "" {
+		target = status.LatestVersion
+	}
+	s.log.Info("update requested", "from", status.CurrentVersion, "to", target, "chosen", req.Version != "")
 
 	// Not r.Context(): that is cancelled as soon as this response is written.
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), applyTimeout)
 		defer cancel()
-		if err := s.updater.Apply(ctx); err != nil {
+		var err error
+		if req.Version == "" {
+			err = s.updater.Apply(ctx)
+		} else {
+			err = s.updater.ApplyVersion(ctx, req.Version)
+		}
+		if err != nil {
 			s.log.Error("update failed", "err", err)
 		}
 	}()
 
 	writeJSON(w, http.StatusAccepted, s.updater.Status())
+}
+
+// handleUpdateVersions lists what this panel's channel offers, so the operator
+// can install something other than the newest — an older release when a new one
+// misbehaves, or a specific snapshot.
+//
+// Fetched on demand rather than cached: this page is opened rarely, and a
+// stale list is one that offers a release since pruned.
+func (s *Server) handleUpdateVersions(w http.ResponseWriter, r *http.Request) {
+	if !s.updaterReady(w) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	versions, err := s.updater.Versions(ctx)
+	if err != nil {
+		s.log.Warn("could not list versions", "err", err)
+		writeError(w, http.StatusBadGateway, "没能从 GitHub 取到版本列表："+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, versions)
 }
 
 // handleUpdateRollback puts the panel back on the build the last update

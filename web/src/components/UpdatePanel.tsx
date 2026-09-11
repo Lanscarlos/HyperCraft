@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { UPDATE_CHANNELS, UPDATE_MIRRORS } from '../types'
-import type { UpdateChannel, UpdateShutdown, UpdateStatus } from '../types'
+import type { UpdateChannel, UpdateShutdown, UpdateStatus, UpdateVersion } from '../types'
 import type { UpdateController } from '../useUpdate'
 import { Modal } from './Modal'
 
@@ -16,6 +16,7 @@ interface Props {
 export function UpdatePanel({ update, runningNames }: Props) {
   const [confirming, setConfirming] = useState(false)
   const [confirmingRollback, setConfirmingRollback] = useState(false)
+  const [picked, setPicked] = useState<UpdateVersion | null>(null)
   const { status, updating, restarting, error, checking, action } = update
 
   if (!status) return null
@@ -136,6 +137,31 @@ export function UpdatePanel({ update, runningNames }: Props) {
       />
 
       <RollbackSection status={status} onRollback={() => setConfirmingRollback(true)} />
+
+      <VersionList
+        versions={update.versions}
+        loading={update.loadingVersions}
+        error={update.versionsError}
+        onOpen={() => {
+          if (!update.versions && !update.loadingVersions) void update.loadVersions()
+        }}
+        onPick={setPicked}
+      />
+
+      {picked && (
+        <ConfirmUpdateDialog
+          version={picked.version}
+          prerelease={picked.prerelease}
+          downgrade={picked.downgrade}
+          runningNames={runningNames}
+          onCancel={() => setPicked(null)}
+          onConfirm={() => {
+            const version = picked.version
+            setPicked(null)
+            void update.apply(version)
+          }}
+        />
+      )}
 
       {confirmingRollback && status.previousVersion && (
         <ConfirmRollbackDialog
@@ -369,6 +395,65 @@ function RollbackSection({
   )
 }
 
+/** Every version the channel still offers, for installing something other than
+ *  the newest one — an older release when a new one misbehaves, or a particular
+ *  snapshot.
+ *
+ *  Collapsed and loaded on first open: this is the only thing on the page that
+ *  reaches GitHub without being asked to. */
+function VersionList({
+  versions,
+  loading,
+  error,
+  onOpen,
+  onPick,
+}: {
+  versions: UpdateVersion[] | null
+  loading: boolean
+  error: string | null
+  onOpen: () => void
+  onPick: (version: UpdateVersion) => void
+}) {
+  return (
+    <details
+      className="update__versions"
+      onToggle={(event) => {
+        if (event.currentTarget.open) onOpen()
+      }}
+    >
+      <summary>其他版本</summary>
+
+      <div className="update__versions-body">
+        {loading && <p className="update__note">正在从 GitHub 取版本列表…</p>}
+        {error && <div className="alert alert--error">{error}</div>}
+        {versions?.length === 0 && <p className="update__note">这个更新通道里没有可装的版本。</p>}
+
+        {versions?.map((entry) => (
+          <div className="update__version" key={entry.tag}>
+            <div className="update__version-name">
+              <strong>{entry.version}</strong>
+              {entry.current && <span className="badge">当前</span>}
+              {entry.prerelease && <span className="badge">快照</span>}
+              {entry.publishedAt && (
+                <small>{new Date(entry.publishedAt).toLocaleDateString()}</small>
+              )}
+            </div>
+            {entry.current ? (
+              <span className="update__version-note">正在运行</span>
+            ) : entry.installable ? (
+              <button className="btn" type="button" onClick={() => onPick(entry)}>
+                {entry.downgrade ? '装回这一版' : '装这一版'}
+              </button>
+            ) : (
+              <span className="update__version-note">没有适用于这台机器的构建</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </details>
+  )
+}
+
 /** Rolling back is the one action here that can lose data, so the dialog says
  *  what and names the backup that makes it recoverable. */
 function ConfirmRollbackDialog({
@@ -472,8 +557,10 @@ function ConfirmUpdateDialog({
         )}
         {downgrade && (
           <p className="modal__lead">
-            这一步会把面板从快照装回正式版，也就是<strong>版本号往回走</strong>。
-            如果快照写过正式版还不认识的配置，请先备份 <code>data</code> 目录。
+            这一步<strong>版本号往回走</strong>。旧版本读不懂新版本写进配置的字段，它一保存那些字段
+            就没了（登录凭据、GitHub token、角色权限都可能受影响），所以面板会在替换之前，把自己的
+            配置文件原样复制一份到 <code>data</code> 目录下带时间戳的 <code>rollback-…</code>{' '}
+            文件夹里。万一装完登不进面板，用 <code>./hypercraft -reset-password</code> 重置密码。
           </p>
         )}
 

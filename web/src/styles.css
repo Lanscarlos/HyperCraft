@@ -3767,7 +3767,8 @@ a:hover {
 }
 
 .update__notes summary,
-.update__mirror summary {
+.update__mirror summary,
+.update__versions summary {
   cursor: pointer;
   color: var(--text-dim);
   font-size: 12px;
@@ -3775,7 +3776,8 @@ a:hover {
 }
 
 .update__notes summary:hover,
-.update__mirror summary:hover {
+.update__mirror summary:hover,
+.update__versions summary:hover {
   color: var(--text);
 }
 
@@ -3844,10 +3846,51 @@ details[open]::details-content {
   margin: 0;
 }
 
-.update__mirror {
+.update__mirror,
+.update__versions {
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
+}
+
+.update__versions-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* One row per release. It wraps rather than shrinking: a version string and a
+   button are both things you either read whole or not at all. */
+.update__version {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.update__version-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  /* The row is a flex container and this half holds the long text. */
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.update__version-name small {
+  color: var(--text-faint);
+}
+
+.update__version-note {
+  color: var(--text-dim);
+  font-size: 12px;
 }
 
 .update__mirror-body {

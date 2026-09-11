@@ -264,32 +264,21 @@ func (u *Updater) checkLatestStable(ctx context.Context) (*Release, error) {
 	return payload.release(), nil
 }
 
-// checkNewest picks the highest version among the recent releases. One page is
+// checkNewest picks the highest version this channel offers. One page is
 // plenty: snapshots are pruned to a handful and releases are rare, so the
 // newest of either is always near the top.
+//
+// It is the head of the same list the update page shows — one filter, one
+// ordering, so what the page offers and what this installs cannot drift.
 func (u *Updater) checkNewest(ctx context.Context) (*Release, error) {
-	var payload []releasePayload
-	if err := u.getJSON(ctx, fmt.Sprintf("%s/repos/%s/releases?per_page=30", u.apiBase, u.repo), &payload); err != nil {
+	offered, err := u.offered(ctx)
+	if err != nil {
 		return nil, err
 	}
-
-	var best *Release
-	for _, p := range payload {
-		// A draft is not published; a tag this package cannot compare (a
-		// nightly date stamp, say) would sort unpredictably against the
-		// running version, so it is left alone rather than guessed at.
-		if p.Draft || !IsReleaseVersion(NormalizeVersion(p.TagName)) {
-			continue
-		}
-		rel := p.release()
-		if best == nil || CompareVersions(rel.Version, best.Version) > 0 {
-			best = rel
-		}
-	}
-	if best == nil {
+	if len(offered) == 0 {
 		return nil, errors.New("no published release found")
 	}
-	return best, nil
+	return offered[0], nil
 }
 
 func (u *Updater) getJSON(ctx context.Context, url string, into any) error {
