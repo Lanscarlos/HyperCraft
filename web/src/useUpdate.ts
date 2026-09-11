@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api, panelVersion } from './api'
-import type { UpdateChannel, UpdateStatus } from './types'
+import type { UpdateChannel, UpdateStatus, UpdateVersion } from './types'
 
 /** Idle cadence. The panel caches its own GitHub check, so this only pulls a
  *  value that is already in memory; it exists to notice a check that ran on the
@@ -20,7 +20,15 @@ export interface UpdateController {
   error: string | null
   checking: boolean
   check: () => Promise<void>
-  apply: () => Promise<void>
+  /** No version installs what the last check offered; a version installs that
+   *  one, which is how the version list works. */
+  apply: (version?: string) => Promise<void>
+  /** The channel's releases, fetched the first time the list is opened. This
+   *  one call reaches GitHub, so it does not run on page load. */
+  versions: UpdateVersion[] | null
+  loadVersions: () => Promise<void>
+  loadingVersions: boolean
+  versionsError: string | null
   rollback: () => Promise<void>
   /** Which of the two is running, so the busy view can describe the right one.
    *  A rollback downloads nothing, which makes the update copy wrong for it. */
@@ -43,6 +51,9 @@ export function useUpdate(enabled: boolean): UpdateController {
   const [status, setStatus] = useState<UpdateStatus | null>(null)
   const [updating, setUpdating] = useState(false)
   const [action, setAction] = useState<'update' | 'rollback' | null>(null)
+  const [versions, setVersions] = useState<UpdateVersion[] | null>(null)
+  const [loadingVersions, setLoadingVersions] = useState(false)
+  const [versionsError, setVersionsError] = useState<string | null>(null)
   const [restarting, setRestarting] = useState(false)
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -127,15 +138,27 @@ export function useUpdate(enabled: boolean): UpdateController {
     }
   }, [])
 
-  const apply = useCallback(async () => {
+  const apply = useCallback(async (version?: string) => {
     setError(null)
     try {
-      const next = await api.applyUpdate()
+      const next = await api.applyUpdate(version)
       setStatus(next)
       setAction('update')
       setUpdating(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : '更新失败')
+    }
+  }, [])
+
+  const loadVersions = useCallback(async () => {
+    setLoadingVersions(true)
+    setVersionsError(null)
+    try {
+      setVersions(await api.updateVersions())
+    } catch (err) {
+      setVersionsError(err instanceof Error ? err.message : '取版本列表失败')
+    } finally {
+      setLoadingVersions(false)
     }
   }, [])
 
@@ -186,6 +209,10 @@ export function useUpdate(enabled: boolean): UpdateController {
     checking,
     check,
     apply,
+    versions,
+    loadVersions,
+    loadingVersions,
+    versionsError,
     rollback,
     action,
     setMirror,

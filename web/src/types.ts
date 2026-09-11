@@ -2080,6 +2080,21 @@ export interface UpdateShutdown {
   pending?: string[]
 }
 
+/** One release the panel could install, as GET /api/update/versions lists them.
+ *  current and downgrade are decided by the panel: the browser has no way to
+ *  compare two versions. */
+export interface UpdateVersion {
+  version: string
+  tag: string
+  url: string
+  publishedAt?: string
+  prerelease: boolean
+  /** False when the release carries no build for this machine's platform. */
+  installable: boolean
+  current: boolean
+  downgrade: boolean
+}
+
 export interface UpdateStatus {
   currentVersion: string
   latestVersion?: string

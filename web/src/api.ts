@@ -66,6 +66,7 @@ import type {
   TerminalStatus,
   UpdateChannel,
   UpdateStatus,
+  UpdateVersion,
   User,
   VelocityInput,
   VelocityResponse,
@@ -600,7 +601,11 @@ export const api = {
 
   updateStatus: () => request<UpdateStatus>('GET', '/api/update'),
   checkUpdate: () => request<UpdateStatus>('POST', '/api/update/check'),
-  applyUpdate: () => request<UpdateStatus>('POST', '/api/update/apply'),
+  /** No version installs whatever the last check offered; a version installs
+   *  that one instead, provided the channel offers it. */
+  applyUpdate: (version?: string) =>
+    request<UpdateStatus>('POST', '/api/update/apply', version ? { version } : undefined),
+  updateVersions: () => request<UpdateVersion[]>('GET', '/api/update/versions'),
   rollbackUpdate: () => request<UpdateStatus>('POST', '/api/update/rollback'),
   setUpdateMirror: (mirror: string) =>
     request<UpdateStatus>('PUT', '/api/update/mirror', { mirror }),
