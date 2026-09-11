@@ -345,6 +345,7 @@ func (s *Server) protectedRoutes() []route {
 		rt("POST /api/update/check", s.handleUpdateCheck, authz.CapPanelUpdate),
 		rt("POST /api/update/apply", s.handleUpdateApply, authz.CapPanelUpdate),
 		rt("POST /api/update/rollback", s.handleUpdateRollback, authz.CapPanelUpdate),
+		rt("GET /api/update/versions", s.handleUpdateVersions, authz.CapPanelUpdate),
 		rt("PUT /api/update/mirror", s.handleUpdateMirror, authz.CapPanelUpdate),
 		rt("PUT /api/update/channel", s.handleUpdateChannel, authz.CapPanelUpdate),
 

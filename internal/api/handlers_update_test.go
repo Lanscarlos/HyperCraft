@@ -32,6 +32,7 @@ func TestUpdateEndpointsRequireASession(t *testing.T) {
 		{http.MethodPost, "/api/update/check"},
 		{http.MethodPost, "/api/update/apply"},
 		{http.MethodPost, "/api/update/rollback"},
+		{http.MethodGet, "/api/update/versions"},
 	} {
 		resp := env.do(c.method, c.path, nil)
 		resp.Body.Close()
@@ -274,5 +275,44 @@ func TestRollbackRefusesWithNothingToRollBackTo(t *testing.T) {
 	decodeBody(t, resp, &body)
 	if body.Error == "" {
 		t.Error("the refusal carried no reason for the operator to read")
+	}
+}
+
+// The version list and installing a chosen version both reach GitHub, so what
+// is exercised here is the part that does not: the guards that refuse before
+// any of that starts. The behaviour behind them is covered against a fake
+// repository in internal/selfupdate.
+func TestApplyAChosenVersionRefusesADevBuild(t *testing.T) {
+	// A binary built outside the release workflow has no version to move away
+	// from, and picking a target from a list does not change that.
+	env := newTestEnv(t, withUpdater("dev"))
+	env.login()
+
+	resp := env.do(http.MethodPost, "/api/update/apply", map[string]string{"version": "1.2.3"})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("apply of a chosen version on a dev build = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestApplyStillWorksWithNoBody(t *testing.T) {
+	// The body is optional: no version means "the one you offered me", which is
+	// what every existing client sends.
+	env := newTestEnv(t, withUpdater("v1.0.0"))
+	env.login()
+
+	resp := env.do(http.MethodPost, "/api/update/apply", nil)
+	defer resp.Body.Close()
+	// Nothing has been checked yet, so there is nothing on offer — the point is
+	// that it is refused for that reason rather than for a malformed body.
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("apply with no body = %d, want 400 (nothing on offer)", resp.StatusCode)
+	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	decodeBody(t, resp, &body)
+	if body.Error != "已经是最新版本" {
+		t.Errorf("refused with %q, want the up-to-date reason", body.Error)
 	}
 }
