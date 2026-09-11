@@ -3,6 +3,8 @@ package hostfs
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"testing"
 )
 
@@ -242,5 +244,124 @@ func TestNeoForgeIsNamedButItsVersionIsNotGuessedAt(t *testing.T) {
 	}
 	if out.GameVersion != "" {
 		t.Errorf("gameVersion = %q, want blank rather than a guess", out.GameVersion)
+	}
+}
+
+// scriptDir writes a directory holding only the named files, which is all the
+// candidate search looks at.
+func scriptDir(t *testing.T, names ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\njava -jar s.jar\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func TestLaunchScriptsFindNonEnglishNames(t *testing.T) {
+	// The reason this search exists: run.sh is what an installer writes, but a
+	// server someone set up by hand is as likely to have 启动.sh next to it.
+	got, err := Inspect(scriptDir(t, "启动.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(got.LaunchScripts, "启动.sh") {
+		t.Errorf("LaunchScripts = %q, want 启动.sh among them", got.LaunchScripts)
+	}
+	if got.LaunchScript != "启动.sh" {
+		t.Errorf("LaunchScript = %q", got.LaunchScript)
+	}
+}
+
+func TestLaunchScriptsAcceptTheCommonSpellings(t *testing.T) {
+	for _, name := range []string{
+		"run.sh", "start.sh", "startup.sh", "start_server.sh", "launch.sh",
+		"server.sh", "开服.sh", "启动服务器.bat", "start.cmd",
+	} {
+		got, err := Inspect(scriptDir(t, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Contains(got.LaunchScripts, name) {
+			t.Errorf("%s was not offered as a launch script", name)
+		}
+	}
+}
+
+func TestLaunchScriptsSkipTheOnesThatAreNotLaunches(t *testing.T) {
+	// Offering one of these is worse than offering nothing: the operator picks
+	// it, and the panel parses an installer or a backup job as their server.
+	for _, name := range []string{
+		"install.sh", "安装.sh", "setup.sh", "update.sh", "更新.sh",
+		"stop.sh", "停止.sh", "restart.sh", "backup.sh", "uninstall.sh",
+		"server-backup.sh", "启动备份.sh", "eula.txt", "server.properties",
+	} {
+		got, err := Inspect(scriptDir(t, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if slices.Contains(got.LaunchScripts, name) {
+			t.Errorf("%s was offered as a launch script", name)
+		}
+	}
+}
+
+func TestRunScriptSortsFirst(t *testing.T) {
+	// run.sh is an installer's own artefact, so it outranks whatever else in
+	// the directory also looks like a launch.
+	got, err := Inspect(scriptDir(t, "start.sh", "启动.sh", "run.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.LaunchScripts) != 3 {
+		t.Fatalf("LaunchScripts = %q, want all three", got.LaunchScripts)
+	}
+	if got.LaunchScripts[0] != "run.sh" {
+		t.Errorf("LaunchScripts = %q, want run.sh first", got.LaunchScripts)
+	}
+}
+
+func TestThisPlatformsScriptsComeFirst(t *testing.T) {
+	// Both are worth offering — the panel reads them, it no longer runs them —
+	// but the one written for this host is the likelier answer.
+	got, err := Inspect(scriptDir(t, "run.bat", "run.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "run.sh"
+	if runtime.GOOS == "windows" {
+		want = "run.bat"
+	}
+	if got.LaunchScript != want {
+		t.Errorf("LaunchScript = %q, want %q on %s", got.LaunchScript, want, runtime.GOOS)
+	}
+	if len(got.LaunchScripts) != 2 {
+		t.Errorf("LaunchScripts = %q, want both offered", got.LaunchScripts)
+	}
+}
+
+func TestNoLaunchScriptsIsNotAnError(t *testing.T) {
+	got, err := Inspect(scriptDir(t, "server.properties"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.LaunchScripts) != 0 || got.LaunchScript != "" {
+		t.Errorf("LaunchScripts = %q, LaunchScript = %q, want neither", got.LaunchScripts, got.LaunchScript)
+	}
+}
+
+func TestLaunchScriptsIgnoreDirectories(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "run.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Inspect(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.LaunchScripts) != 0 {
+		t.Errorf("LaunchScripts = %q, want none: a directory is not a script", got.LaunchScripts)
 	}
 }
