@@ -102,7 +102,11 @@ func (s *Server) handleLaunchFix(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, reason)
 		return
 	}
-	if err := s.browserFor(inst).MakeExecutable(target); err != nil {
+	// Confined like the rest of the file manager: adding an execute bit to a
+	// file in the server directory is a write to that directory and nothing
+	// less, which is why this route asks for CapInstanceFilesWrite rather than
+	// riding along with the read-only check beside it.
+	if err := s.browserFor(r, inst).MakeExecutable(target); err != nil {
 		s.writeFileError(w, err)
 		return
 	}
@@ -168,7 +172,11 @@ func (s *Server) checkLaunch(inst *instance.Instance) launchCheckResponse {
 	}
 
 	out := launchCheckResponse{Mode: "script", Command: cfg.Command, Issues: []launchIssue{}}
-	browser := s.browserFor(inst)
+	// Unconfined: this reports on the launch script at the instance root, and a
+	// role confined to one plugin's folder would be told its server is broken
+	// rather than that this is not its business. The route is read-only and
+	// behind CapInstanceView; the repair beside it is the confined one.
+	browser := unconfinedBrowser(cfg.Directory)
 
 	target, kind := resolveExecutable(cfg)
 	switch kind {
@@ -388,7 +396,10 @@ func (s *Server) checkJarLaunch(inst *instance.Instance, cfg instance.Config) []
 			Message: "还没有指定服务端 jar。从核心库装一个，或者把 jar 传进目录后在上面填它的文件名。",
 		})
 	default:
-		if _, err := s.browserFor(inst).Stat(jar); err != nil {
+		// Unconfined for the same reason checkLaunch is: the jar sits at the
+		// instance root, and "is it there" is a diagnostic rather than a read
+		// the file manager's rule governs.
+		if _, err := unconfinedBrowser(cfg.Directory).Stat(jar); err != nil {
 			level, message := launchLevelFatal, "目录里没有 "+jar+"。"
 			if errors.Is(err, serverfiles.ErrNotFound) && !directoryExists(cfg.Directory) {
 				message = "实例目录还不存在，开服时会创建；里面也还没有 " + jar + "。"

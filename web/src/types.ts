@@ -1894,6 +1894,12 @@ export interface Role {
   id: string
   name: string
   capabilities: Capability[]
+  /**
+   * Confines this role's file manager to part of each instance directory —
+   * `["plugins/MyPlugin"]`. Empty means the whole directory. It narrows the two
+   * file capabilities and nothing else.
+   */
+  paths: string[]
   /** The administrator role, which holds everything and cannot be edited. */
   builtIn: boolean
   /** How many accounts hold it. */
@@ -2181,6 +2187,11 @@ export interface FileEntry {
   modified: string
   editable: boolean
   symlink: boolean
+  /**
+   * False for an entry a confined role can only see because it leads to the
+   * folder it may edit. Renaming or deleting one is refused by the panel.
+   */
+  writable: boolean
 }
 
 export interface FileListing {
@@ -2189,6 +2200,18 @@ export interface FileListing {
   entries: FileEntry[]
   maxEditableBytes: number
   maxUploadBytes: number
+  /**
+   * Whether this directory accepts writes under the caller's role. False for
+   * the folders a confined account can only walk through on the way to the one
+   * it may edit.
+   */
+  writable: boolean
+  /**
+   * The role's directory rule, empty when there is none. The panel computes it;
+   * carrying the prefixes rather than re-deriving them here keeps one copy of
+   * the rules.
+   */
+  scope: string[]
 }
 
 /** Mirrors schematicResponse in internal/api/handlers_schem.go. */

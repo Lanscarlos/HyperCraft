@@ -93,7 +93,7 @@ func TestSignedInRoutesNeedNoCapability(t *testing.T) {
 	env := newTestEnv(t)
 	env.login()
 
-	empty, err := env.accounts.AddRole("空角色", nil)
+	empty, err := env.accounts.AddRole("空角色", nil, nil)
 	if err != nil {
 		t.Fatalf("AddRole: %v", err)
 	}
@@ -370,6 +370,24 @@ func TestAPIRefusesToRemoveTheLastAdmin(t *testing.T) {
 	// And the panel is still reachable afterwards.
 	if got := env.status(http.MethodGet, "/api/users", nil); got != http.StatusOK {
 		t.Errorf("the administrator lost access anyway: %d", got)
+	}
+}
+
+// Lists in the role payload are arrays, never null. The browser's type says
+// string[], and a null reaching it is a crash in a page somebody is using —
+// which is exactly how this was found.
+func TestRolePayloadUsesEmptyListsNotNull(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	if _, err := env.accounts.AddRole("空的", nil, nil); err != nil {
+		t.Fatalf("AddRole: %v", err)
+	}
+
+	body := readAll(t, env.do(http.MethodGet, "/api/roles", nil))
+	for _, nulled := range []string{`"capabilities":null`, `"paths":null`} {
+		if strings.Contains(body, nulled) {
+			t.Errorf("GET /api/roles sent %s:\n%s", nulled, body)
+		}
 	}
 }
 

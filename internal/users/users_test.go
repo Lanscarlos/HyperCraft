@@ -245,14 +245,14 @@ func TestADisabledAdminDoesNotCount(t *testing.T) {
 func TestRoles(t *testing.T) {
 	r := newTestRegistry(t)
 
-	role, err := r.AddRole("建筑师", []authz.Cap{authz.CapInstanceView, authz.CapInstanceSchematics})
+	role, err := r.AddRole("建筑师", []authz.Cap{authz.CapInstanceView, authz.CapInstanceSchematics}, nil)
 	if err != nil {
 		t.Fatalf("AddRole: %v", err)
 	}
-	if _, err := r.AddRole("坏的", []authz.Cap{"instance:nope"}); err == nil {
+	if _, err := r.AddRole("坏的", []authz.Cap{"instance:nope"}, nil); err == nil {
 		t.Error("a role naming a capability outside the vocabulary was accepted")
 	}
-	if _, err := r.UpdateRole(RoleAdmin, "改名", nil); err == nil {
+	if _, err := r.UpdateRole(RoleAdmin, "改名", nil, nil); err == nil {
 		t.Error("the built-in administrator role was edited")
 	}
 	if _, err := r.DeleteRole(RoleAdmin); err == nil {
@@ -288,7 +288,7 @@ func TestEditingARoleReachesItsAccounts(t *testing.T) {
 		t.Fatal("运维 already holds the Java capability; pick another for this test")
 	}
 
-	if _, err := r.UpdateRole(RoleOps, "运维", []authz.Cap{authz.CapPanelJava}); err != nil {
+	if _, err := r.UpdateRole(RoleOps, "运维", []authz.Cap{authz.CapPanelJava}, nil); err != nil {
 		t.Fatalf("UpdateRole: %v", err)
 	}
 	caps := r.Capabilities(u)

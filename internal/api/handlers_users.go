@@ -42,6 +42,8 @@ type roleResponse struct {
 	ID           string      `json:"id"`
 	Name         string      `json:"name"`
 	Capabilities []authz.Cap `json:"capabilities"`
+	// Paths is the file-manager confinement, empty for none.
+	Paths []string `json:"paths"`
 	// BuiltIn marks the administrator role: it holds the whole vocabulary by
 	// definition and cannot be edited or deleted.
 	BuiltIn bool `json:"builtIn"`
@@ -314,10 +316,25 @@ func (s *Server) describeRoles() []roleResponse {
 	roles := s.accounts.Roles()
 	out := make([]roleResponse, 0, len(roles))
 	for _, role := range roles {
+		// Empty lists, never null. A role with no capabilities or no directory
+		// rule is a normal thing to have, and a client that has to check for
+		// null before every length is a client that will one day forget.
+		//
+		// Account.Instances is the deliberate exception: there, null and []
+		// mean different things — everything, and nothing.
+		caps := role.Caps
+		if caps == nil {
+			caps = []authz.Cap{}
+		}
+		paths := role.Paths
+		if paths == nil {
+			paths = []string{}
+		}
 		out = append(out, roleResponse{
 			ID:           role.ID,
 			Name:         role.Name,
-			Capabilities: role.Caps,
+			Capabilities: caps,
+			Paths:        paths,
 			BuiltIn:      role.ID == users.RoleAdmin,
 			Users:        counts[role.ID],
 		})
@@ -328,6 +345,9 @@ func (s *Server) describeRoles() []roleResponse {
 type roleRequest struct {
 	Name         string      `json:"name"`
 	Capabilities []authz.Cap `json:"capabilities"`
+	// Paths confines this role's file manager. Empty is the whole instance
+	// directory, which is what every role had before this existed.
+	Paths []string `json:"paths"`
 }
 
 func (s *Server) handleCreateRole(w http.ResponseWriter, r *http.Request) {
@@ -337,7 +357,7 @@ func (s *Server) handleCreateRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	role, err := s.accounts.AddRole(req.Name, req.Capabilities)
+	role, err := s.accounts.AddRole(req.Name, req.Capabilities, req.Paths)
 	if err != nil {
 		s.writeUsersError(w, err)
 		return
@@ -360,7 +380,7 @@ func (s *Server) handleUpdateRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	role, err := s.accounts.UpdateRole(r.PathValue("id"), req.Name, req.Capabilities)
+	role, err := s.accounts.UpdateRole(r.PathValue("id"), req.Name, req.Capabilities, req.Paths)
 	if err != nil {
 		s.writeUsersError(w, err)
 		return

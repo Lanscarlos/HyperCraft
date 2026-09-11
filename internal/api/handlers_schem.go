@@ -39,7 +39,7 @@ func (s *Server) handleSchematic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, info, closer, err := s.browserFor(inst).Open(target)
+	file, info, closer, err := unconfinedBrowser(inst.Config().Directory).Open(target)
 	if err != nil {
 		s.writeFileError(w, err)
 		return

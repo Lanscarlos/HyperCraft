@@ -236,7 +236,11 @@ func (s *Server) handleApplyCore(w http.ResponseWriter, r *http.Request) {
 		s.writeDomainError(w, err)
 		return
 	}
-	if err := copyIntoInstance(s.browserFor(inst), source, core.FileName, req.Overwrite); err != nil {
+	// Unconfined on purpose: the jar lands at the instance root, and choosing
+	// which core a server runs is CapInstanceLaunch — a capability that already
+	// reaches the whole machine, so narrowing where it may write would be
+	// theatre. See scope.go.
+	if err := copyIntoInstance(unconfinedBrowser(inst.Config().Directory), source, core.FileName, req.Overwrite); err != nil {
 		s.writeJarError(w, err)
 		return
 	}

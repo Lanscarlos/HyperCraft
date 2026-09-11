@@ -15,10 +15,33 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/serverfiles"
 )
 
-// browserFor returns a file browser scoped to an instance's directory.
-func (s *Server) browserFor(inst *instance.Instance) *serverfiles.Browser {
-	return serverfiles.New(inst.Config().Directory)
+// browserFor returns a file browser for one instance, confined to whatever the
+// caller's role allows.
+//
+// Every file-manager route goes through this rather than building a browser of
+// its own, which is what makes the directory rule apply to all of them at once
+// — see TestFileRoutesUseTheConfinedBrowser.
+func (s *Server) browserFor(r *http.Request, inst *instance.Instance) *serverfiles.Browser {
+	who, _ := principalFrom(r.Context())
+	return serverfiles.New(inst.Config().Directory).Restrict(s.accounts.PathsFor(who.user))
 }
+
+// unconfinedBrowser reaches an instance directory without the caller's
+// directory rule applied.
+//
+// The rule narrows the file manager — 浏览与下载文件 and 编辑、上传与删除文件 —
+// and nothing else, so everything that reads or writes a file under a different
+// capability comes through here: server.properties and velocity.toml under
+// 编辑服务器配置, the .schem files under 导入建筑, the launch script and the
+// core jar under 启动设置与核心, the two ends of a proxy link under 代理连线.
+// Confining those would not be a finer rule, it would be a different and wrong
+// one — somebody granted 编辑服务器配置 is being told they may edit the config,
+// which lives at the instance root whatever their folder rule says.
+//
+// Naming it rather than calling serverfiles.New inline is the point: an
+// unconfined browser should be something a person wrote down and can be asked
+// about. TestFileRoutesUseTheConfinedBrowser makes sure it stays that way.
+func unconfinedBrowser(dir string) *serverfiles.Browser { return serverfiles.New(dir) }
 
 // writeFileError maps serverfiles sentinels onto HTTP statuses.
 func (s *Server) writeFileError(w http.ResponseWriter, err error) {
@@ -44,6 +67,15 @@ type listFilesResponse struct {
 	// MaxEditableBytes lets the UI explain why a large file has no edit button.
 	MaxEditableBytes int64 `json:"maxEditableBytes"`
 	MaxUploadBytes   int64 `json:"maxUploadBytes"`
+	// Writable says whether this directory accepts writes under the caller's
+	// directory rule. False for the folders a confined account can only walk
+	// through on the way to the one it may edit — the UI hides 上传 and 新建
+	// there rather than offering a button whose request is refused.
+	Writable bool `json:"writable"`
+	// Scope is the rule itself, so the page can say what it is confined to
+	// instead of leaving somebody to infer it from a short listing. Empty for
+	// an unconfined account, which is everybody until a role says otherwise.
+	Scope []string `json:"scope"`
 }
 
 func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
@@ -53,16 +85,23 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	dir := r.URL.Query().Get("path")
-	entries, err := s.browserFor(inst).List(dir)
+	browser := s.browserFor(r, inst)
+	entries, err := browser.List(dir)
 	if err != nil {
 		s.writeFileError(w, err)
 		return
 	}
 
+	scope := browser.Scope()
+	if scope == nil {
+		scope = []string{}
+	}
 	writeJSON(w, http.StatusOK, listFilesResponse{
 		Path:             strings.Trim(dir, "/"),
 		Root:             inst.Config().Directory,
 		Entries:          entries,
+		Writable:         browser.Allows(dir),
+		Scope:            scope,
 		MaxEditableBytes: serverfiles.MaxEditableBytes(),
 		MaxUploadBytes:   s.maxUploadBytes(),
 	})
@@ -80,7 +119,7 @@ func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	target := r.URL.Query().Get("path")
-	content, err := s.browserFor(inst).ReadText(target)
+	content, err := s.browserFor(r, inst).ReadText(target)
 	if err != nil {
 		s.writeFileError(w, err)
 		return
@@ -107,7 +146,7 @@ func (s *Server) handleWriteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.browserFor(inst).WriteText(req.Path, req.Content); err != nil {
+	if err := s.browserFor(r, inst).WriteText(req.Path, req.Content); err != nil {
 		s.writeFileError(w, err)
 		return
 	}
@@ -131,7 +170,7 @@ func (s *Server) handleMkdir(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "malformed request body")
 		return
 	}
-	if err := s.browserFor(inst).Mkdir(req.Path); err != nil {
+	if err := s.browserFor(r, inst).Mkdir(req.Path); err != nil {
 		s.writeFileError(w, err)
 		return
 	}
@@ -154,7 +193,7 @@ func (s *Server) handleRenameFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "malformed request body")
 		return
 	}
-	if err := s.browserFor(inst).Rename(req.From, req.To); err != nil {
+	if err := s.browserFor(r, inst).Rename(req.From, req.To); err != nil {
 		s.writeFileError(w, err)
 		return
 	}
@@ -169,7 +208,7 @@ func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	target := r.URL.Query().Get("path")
-	if err := s.browserFor(inst).Remove(target); err != nil {
+	if err := s.browserFor(r, inst).Remove(target); err != nil {
 		s.writeFileError(w, err)
 		return
 	}
@@ -184,7 +223,7 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	target := r.URL.Query().Get("path")
-	file, info, closer, err := s.browserFor(inst).Open(target)
+	file, info, closer, err := s.browserFor(r, inst).Open(target)
 	if err != nil {
 		s.writeFileError(w, err)
 		return
@@ -263,7 +302,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 
 	dir := r.URL.Query().Get("path")
 	overwrite := r.URL.Query().Get("overwrite") == "true"
-	browser := s.browserFor(inst)
+	browser := s.browserFor(r, inst)
 	limit := s.maxUploadBytes()
 
 	reader, err := r.MultipartReader()

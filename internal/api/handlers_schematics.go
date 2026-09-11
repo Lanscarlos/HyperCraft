@@ -66,7 +66,7 @@ func (s *Server) schematicTargets(r *http.Request) []schematicTarget {
 	out := make([]schematicTarget, 0, len(instances))
 	for _, inst := range instances {
 		cfg := inst.Config()
-		browser := serverfiles.New(cfg.Directory)
+		browser := unconfinedBrowser(cfg.Directory)
 		exists := func(rel string) bool {
 			_, err := browser.Stat(rel)
 			return err == nil
@@ -198,7 +198,7 @@ func (s *Server) handleImportInstanceSchematic(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	file, info, closer, err := s.browserFor(inst).Open(req.Path)
+	file, info, closer, err := unconfinedBrowser(inst.Config().Directory).Open(req.Path)
 	if err != nil {
 		s.writeFileError(w, err)
 		return
@@ -387,7 +387,7 @@ func (s *Server) handleInstallSchematic(w http.ResponseWriter, r *http.Request) 
 	}
 	defer file.Close()
 
-	browser := s.browserFor(inst)
+	browser := unconfinedBrowser(inst.Config().Directory)
 	dir := strings.TrimSpace(req.Dir)
 	if dir == "" {
 		dir = schemlib.DefaultTarget(func(rel string) bool {

@@ -169,7 +169,7 @@ func (s *Server) proxyFromPath(w http.ResponseWriter, r *http.Request) (*instanc
 // its first boot, and waiting for that would mean the config page is empty at
 // exactly the moment there is most to fill in.
 func (s *Server) loadVelocity(inst *instance.Instance) (*velocitycfg.File, bool, error) {
-	browser := s.browserFor(inst)
+	browser := unconfinedBrowser(inst.Config().Directory)
 	text, err := browser.ReadText(velocitycfg.FileName)
 	switch {
 	case errors.Is(err, serverfiles.ErrNotFound):
@@ -263,7 +263,7 @@ func (s *Server) readForwardingSecret(inst *instance.Instance, file *velocitycfg
 	name := secretFileName(file)
 	out := velocitySecret{File: name}
 
-	text, err := s.browserFor(inst).ReadText(name)
+	text, err := unconfinedBrowser(inst.Config().Directory).ReadText(name)
 	if err != nil {
 		return out
 	}
@@ -465,7 +465,7 @@ func (s *Server) handlePutVelocity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	browser := s.browserFor(inst)
+	browser := unconfinedBrowser(inst.Config().Directory)
 	if err := browser.WriteText(velocitycfg.FileName, file.Render()); err != nil {
 		s.writeFileError(w, err)
 		return

@@ -235,7 +235,7 @@ func (r *Registry) roleExistsLocked(roleID string) error {
 // ---------------------------------------------------------------- roles
 
 // AddRole creates a role.
-func (r *Registry) AddRole(name string, caps []authz.Cap) (Role, error) {
+func (r *Registry) AddRole(name string, caps []authz.Cap, paths []string) (Role, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return Role{}, ErrRoleNameInvalid
@@ -252,14 +252,14 @@ func (r *Registry) AddRole(name string, caps []authz.Cap) (Role, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	role := Role{ID: id, Name: name, Caps: kept}
+	role := Role{ID: id, Name: name, Caps: kept, Paths: cleanPaths(paths)}
 	r.roles = append(r.roles, role)
 	return role, nil
 }
 
 // UpdateRole replaces a role's name and capabilities. Every account holding it
 // is affected at once, which is the point of roles existing.
-func (r *Registry) UpdateRole(id, name string, caps []authz.Cap) (Role, error) {
+func (r *Registry) UpdateRole(id, name string, caps []authz.Cap, paths []string) (Role, error) {
 	if slices.Contains(reservedRoleIDs, id) {
 		return Role{}, ErrReservedRole
 	}
@@ -281,6 +281,7 @@ func (r *Registry) UpdateRole(id, name string, caps []authz.Cap) (Role, error) {
 		}
 		r.roles[i].Name = name
 		r.roles[i].Caps = kept
+		r.roles[i].Paths = cleanPaths(paths)
 		return r.roles[i], nil
 	}
 	return Role{}, ErrNotFound

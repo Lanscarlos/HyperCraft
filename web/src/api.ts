@@ -173,10 +173,10 @@ export const api = {
   deleteAccount: (id: string) => request<void>('DELETE', `/api/users/${id}`),
 
   listRoles: () => request<Role[]>('GET', '/api/roles'),
-  createRole: (name: string, capabilities: Capability[]) =>
-    request<Role[]>('POST', '/api/roles', { name, capabilities }),
-  updateRole: (id: string, name: string, capabilities: Capability[]) =>
-    request<Role[]>('PUT', `/api/roles/${id}`, { name, capabilities }),
+  createRole: (name: string, capabilities: Capability[], paths: string[]) =>
+    request<Role[]>('POST', '/api/roles', { name, capabilities, paths }),
+  updateRole: (id: string, name: string, capabilities: Capability[], paths: string[]) =>
+    request<Role[]>('PUT', `/api/roles/${id}`, { name, capabilities, paths }),
   deleteRole: (id: string) => request<void>('DELETE', `/api/roles/${id}`),
 
   // The vocabulary the role editor is built from. Served rather than hardcoded
