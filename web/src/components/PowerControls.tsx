@@ -4,6 +4,7 @@ import { api } from '../api'
 import { ask } from '../confirm'
 import type { InstanceStatus } from '../types'
 import { isLive } from '../types'
+import { CAP, useCan } from '../useCan'
 import { useUptime } from '../useUptime'
 import { Menu } from './Menu'
 
@@ -33,6 +34,7 @@ interface Props {
  * pointer that just started the server, is how a world gets lost to a slip.
  */
 export function PowerControls({ instance, onChanged, variant = 'full', onError }: Props) {
+  const can = useCan()
   const [busy, setBusy] = useState(false)
   const [pending, setPending] = useState<PowerAction | null>(null)
   const uptime = useUptime(instance.startedAt, isLive(instance.state))
@@ -56,6 +58,11 @@ export function PowerControls({ instance, onChanged, variant = 'full', onError }
   const running = instance.state === 'running'
   // A crashed server is stopped as far as the buttons are concerned: the only
   // thing to do with it is start it again.
+  // Nothing at all rather than greyed-out buttons: a row of disabled power
+  // controls reads as "the server is busy", which is a different and much more
+  // alarming thing than "this is not yours to start".
+  if (!can(CAP.instancePower)) return null
+
   const down = instance.state === 'stopped' || instance.state === 'crashed'
 
   const more = (

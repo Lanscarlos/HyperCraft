@@ -1,4 +1,5 @@
 import type { SettingsSection } from '../routes'
+import type { InstanceStatus } from '../types'
 import type { PluginController } from '../usePlugins'
 import type { UpdateController } from '../useUpdate'
 import { AppearanceSettings } from './AppearanceSettings'
@@ -7,6 +8,7 @@ import { Page } from './Page'
 import { PluginSourceSettings } from './PluginSourceSettings'
 import { SecurityPage } from './SecurityPage'
 import { UpdatePanel } from './UpdatePanel'
+import { UsersPage } from './UsersPage'
 
 interface Props {
   section: SettingsSection
@@ -14,6 +16,10 @@ interface Props {
   plugins: PluginController
   /** Instances that would be stopped by a panel update. */
   runningNames: string[]
+  /** Every instance this account can see, for 账号与角色's grant picker. */
+  instances: InstanceStatus[]
+  /** Who is signed in, so 账号与角色 can mark their own row. */
+  username: string
 }
 
 /**
@@ -38,10 +44,19 @@ interface Props {
  * you have to arrive at before you can navigate — and these are exactly the
  * kind of thing you want to go straight to.
  */
-export function SettingsPage({ section, update, plugins, runningNames }: Props) {
+export function SettingsPage({
+  section,
+  update,
+  plugins,
+  runningNames,
+  instances,
+  username,
+}: Props) {
   switch (section) {
     case 'security':
       return <SecurityPage />
+    case 'users':
+      return <UsersPage instances={instances} me={username} />
     case 'plugins':
       return <PluginSourceSettings plugins={plugins} />
     case 'appearance':

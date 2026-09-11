@@ -5,6 +5,7 @@ import { DISK_CRITICAL_FREE, diskFreeRatio, diskUsedPercent, hostMemory } from '
 import { formatBytes, formatPercent } from '../format'
 import type { Route } from '../routes'
 import type { InstanceStatus, SystemInfo } from '../types'
+import { CAP, useCan } from '../useCan'
 import { STATE_LABELS, byUrgency, isLive } from '../types'
 import { useLiveMetrics } from '../useLiveMetrics'
 import type { LiveMetric } from '../useLiveMetrics'
@@ -41,6 +42,7 @@ export function Dashboard({
   onNavigate,
   onChanged,
 }: Props) {
+  const can = useCan()
   const running = instances.filter((item) => isLive(item.state))
   const ordered = byUrgency(instances)
   const metrics = useLiveMetrics(
@@ -130,18 +132,29 @@ export function Dashboard({
                 所有实例
               </button>
             )}
-            <button className="btn btn--primary" onClick={onCreate}>
-              + 新建实例
-            </button>
+            {can(CAP.panelCreate) && (
+              <button className="btn btn--primary" onClick={onCreate}>
+                + 新建实例
+              </button>
+            )}
           </div>
         </div>
 
         {instances.length === 0 ? (
           <div className="welcome__empty">
-            <p>还没有任何实例。</p>
-            <button className="btn btn--primary" onClick={onCreate}>
-              新建第一个服务器
-            </button>
+            {can(CAP.panelCreate) ? (
+              <>
+                <p>还没有任何实例。</p>
+                <button className="btn btn--primary" onClick={onCreate}>
+                  新建第一个服务器
+                </button>
+              </>
+            ) : (
+              // Not "create one" for somebody who cannot: the empty state has
+              // to say what is actually true for them, which is that nobody
+              // has given them a server yet.
+              <p>还没有分配给你的实例。找管理员在「面板设置 → 账号与角色」里授权。</p>
+            )}
           </div>
         ) : (
           <div className="cards">

@@ -804,18 +804,26 @@ a:hover {
 }
 
 /* Group headings. They are what lets a whole category be hidden from a
-   sub-user in one check instead of six. */
+   sub-user in one check instead of six.
+
+   Typeset as the Chinese labels they are, which is what they had not been: an
+   11px eyebrow with 0.08em of tracking and `text-transform: uppercase` is the
+   treatment a Latin all-caps heading needs, and every label in here is two or
+   three han characters. Uppercasing did nothing at all, and the tracking —
+   which CSS also adds *after* the last character — pushed the right-aligned
+   count away from the edge the rows line up on. The left padding matches
+   .sidebar__link's, so a heading starts where the labels it covers start
+   rather than two pixels to their left. */
 .sidebar__group {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 14px 8px 4px;
+  padding: 16px 10px 6px;
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 /* Anchors, not buttons: every one of these is a real path, so ⌘-click opens a
@@ -926,12 +934,24 @@ a:hover {
 }
 
 /* One of the handful of servers with a permanent seat. Indented under 所有实例
-   so the group reads as a list and not as five more top-level destinations. */
+   so the group reads as a list and not as five more top-level destinations.
+
+   The indent is the whole row, and it is exactly 12px. It used to be 20px of
+   left padding over a 10px dot column, which put the names 3px to the right of
+   every other label in the column — far enough to see, not far enough to read
+   as deliberate, which is the worst distance an indent can be. The dot now
+   stands in the same 18px glyph column the icons above it use, so the two kinds
+   of row share one rhythm and the step between them is the indent and nothing
+   else. */
 .sidebar__link--instance {
   display: grid;
-  grid-template-columns: 10px 1fr auto;
-  gap: 9px;
-  padding-left: 20px;
+  grid-template-columns: 18px 1fr auto;
+  gap: 8px;
+  padding-left: 22px;
+}
+
+.sidebar__link--instance .status__dot {
+  justify-self: center;
 }
 
 /* The shell. Padlocked, and painted in the panel's warning ink rather than its
@@ -1981,6 +2001,16 @@ a:hover {
   text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
   font-family: inherit;
   transition: color var(--dur) var(--ease);
+}
+
+/* A refused action has to look refused. Without this a disabled 删除 keeps the
+   danger colour and the underline, which reads as "this will work" right up
+   until the click does nothing — and the reason it is disabled (a role still
+   has accounts on it) is in a tooltip nobody hovers for. */
+.link:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+  text-decoration: none;
 }
 
 .link:hover {
@@ -6037,6 +6067,266 @@ small.field__bad {
 .device-row__hint {
   display: block;
   margin-top: 3px;
+}
+
+/* ----------------------------------------------------------------- accounts
+
+   账号与角色. Rows rather than a table: the interesting part of an account is
+   a sentence — "可以管理 生存服、创造服 · 2 台配对设备" — and a sentence in a
+   table cell is a table with one wide column and several narrow ones.
+
+   Shaped like .device-row on purpose. They are the same kind of row (a name, a
+   few badges, some actions, a line of context underneath) on two pages of the
+   same settings scope, and two shapes for one idea is how a panel starts
+   looking assembled rather than designed. */
+
+.acct-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.acct-row {
+  padding: 11px 13px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.acct-row:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+/* Wrapping rather than scrolling: a long display name plus four actions does
+   not fit a phone, and the actions are the half you came for. */
+.acct-row__main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.acct-row__alias {
+  color: var(--text-dim);
+  /* The one thing on the row that can be arbitrarily long. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acct-row__spacer {
+  flex: 1;
+}
+
+/* The actions wrap as a block rather than one at a time. Letting them break
+   individually put "编辑" on one line and "重置密码 强制下线 删除" on the next,
+   differently for every row — four links in a ragged column that changed shape
+   per account. As a group they are either beside the name or under it. */
+.acct-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.acct-row__meta {
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+
+/* A count of dangerous capabilities, in the colour the role editor uses for
+   the same idea. Not red: this is a fact about the role, not a failure. */
+.acct-row__danger {
+  color: var(--caution);
+}
+
+/* ------------------------------------------------------------- grant picker
+
+   全部实例 is a radio rather than a checkbox in the list, because it is not a
+   selection: it covers servers that do not exist yet, and no list of tick
+   boxes can say that. Picking the second radio and ticking nothing is the
+   opposite statement — none at all — and the two have to stay tellable apart
+   the whole way down to users.json. */
+
+.grant {
+  gap: 8px;
+}
+
+.grant__note {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.grant__choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.grant__choice span,
+.cap-option span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.grant__choice small,
+.cap-option small {
+  color: var(--text-faint);
+}
+
+.grant__list {
+  display: grid;
+  /* Intrinsic rather than a breakpoint: instance names are short, and two or
+     three columns of them beat one long scroll on any width that fits them. */
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.grant__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.grant__item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------- capability picker
+
+   Three groups, and the third is the point. The dangerous capabilities are
+   below a rule with a paragraph saying what they actually grant, rather than
+   mixed in with a small icon next to them: an icon makes granting one an
+   accident, a separate block makes it a decision. */
+
+/* No scroll region of its own: .modal__card already scrolls at 90vh, and a
+   second scroller inside it hid the 高危 group entirely — the one group whose
+   whole reason for existing is to be seen before anything in it is ticked.
+   Two scrollbars for one dialog is also how you end up scrolling the wrong
+   one. */
+.cap-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cap-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.cap-group legend {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 6px;
+  font-weight: 600;
+}
+
+.cap-group legend small {
+  font-weight: 400;
+  color: var(--text-faint);
+}
+
+.cap-group--danger {
+  border-color: color-mix(in srgb, var(--caution) 34%, transparent);
+  background: linear-gradient(180deg, var(--caution-soft), transparent 120px);
+}
+
+.cap-group--danger legend {
+  color: var(--caution);
+}
+
+.cap-group__warn {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+/* Two columns where there is room, one where there is not — intrinsic, so no
+   breakpoint. Twenty-odd capabilities in a single column made the dialog three
+   screens long, and a picker you scroll past is a picker you tick blind. */
+.cap-group__rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 8px 14px;
+}
+
+.cap-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+/* A checkbox with an explanation under its label. Not .field--inline, which
+   puts a fixed-width monospace label beside a control and is for the key/value
+   forms elsewhere. */
+.field--check {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.field--check > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.field--check small {
+  color: var(--text-faint);
+}
+
+/* -------------------------------------------------------------- panel heads
+
+   A title with an action on the same line. Wraps rather than squeezing the
+   button, which is the half that has to stay tappable. */
+
+.panel__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.panel__head .panel__title {
+  flex: 1;
+  min-width: 0;
+}
+
+.panel__lead {
+  margin: -6px 0 0;
+  color: var(--text-dim);
 }
 
 /* ------------------------------------------------------------------ assets

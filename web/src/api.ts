@@ -1,4 +1,6 @@
 import type {
+  Account,
+  AccountEdit,
   AuthEvent,
   BulkImpact,
   BulkUpgradeResult,
@@ -8,11 +10,14 @@ import type {
   CoreLibrary,
   CoreProject,
   CoreVersion,
+  Capability,
+  CapabilityInfo,
   DatabaseInstallJob,
   DatabaseOverview,
   DatabaseService,
   DatabaseVersion,
   Device,
+  NewAccount,
   NewDatabase,
   CommitStats,
   CompactResult,
@@ -53,6 +58,7 @@ import type {
   PropertyEntry,
   RestorePlan,
   RestoreResult,
+  Role,
   SchematicEntry,
   SchematicImportResult,
   SchematicInstallResult,
@@ -151,6 +157,32 @@ export const api = {
     request<void>('DELETE', `/api/auth/devices/${id}`),
 
   listAuthEvents: () => request<AuthEvent[]>('GET', '/api/auth/events'),
+
+  // Accounts and roles. All behind the 用户与角色 capability — see
+  // docs/security.md. The password never comes back out of any of these: it
+  // goes in on create and reset, and nothing returns it.
+  listAccounts: () => request<Account[]>('GET', '/api/users'),
+  createAccount: (input: NewAccount) =>
+    request<Account[]>('POST', '/api/users', input),
+  updateAccount: (id: string, input: AccountEdit) =>
+    request<Account[]>('PUT', `/api/users/${id}`, input),
+  setAccountPassword: (id: string, password: string) =>
+    request<void>('POST', `/api/users/${id}/password`, { password }),
+  signOutAccount: (id: string) =>
+    request<void>('POST', `/api/users/${id}/signout`),
+  deleteAccount: (id: string) => request<void>('DELETE', `/api/users/${id}`),
+
+  listRoles: () => request<Role[]>('GET', '/api/roles'),
+  createRole: (name: string, capabilities: Capability[]) =>
+    request<Role[]>('POST', '/api/roles', { name, capabilities }),
+  updateRole: (id: string, name: string, capabilities: Capability[]) =>
+    request<Role[]>('PUT', `/api/roles/${id}`, { name, capabilities }),
+  deleteRole: (id: string) => request<void>('DELETE', `/api/roles/${id}`),
+
+  // The vocabulary the role editor is built from. Served rather than hardcoded
+  // so a capability added in a later release shows up without a front-end
+  // change — see internal/authz.
+  listCapabilities: () => request<CapabilityInfo[]>('GET', '/api/capabilities'),
 
   listInstances: () => request<InstanceStatus[]>('GET', '/api/instances'),
   getInstance: (id: string) =>

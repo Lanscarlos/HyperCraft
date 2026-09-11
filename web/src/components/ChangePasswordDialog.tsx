@@ -36,7 +36,7 @@ export function ChangePasswordDialog({ onChanged, onCancel }: Props) {
     <Modal onClose={onCancel} busy={busy}>
       <form className="modal__card" onSubmit={submit}>
         <h2 className="modal__title">修改密码</h2>
-        <p className="modal__lead">修改后所有登录状态都会失效，需要重新登录。</p>
+        <p className="modal__lead">改完你自己的登录状态和配对设备全部失效，需要重新登录；别人的不受影响。</p>
 
         <label className="field">
           <span>当前密码</span>

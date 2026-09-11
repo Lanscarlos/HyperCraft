@@ -24,6 +24,7 @@ import { SchematicLibraryPage } from './components/SchematicLibraryPage'
 import { SchematicMarket } from './components/SchematicMarket'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
+import { CapabilityProvider } from './useCan'
 import { ToastStack } from './components/Toast'
 import { TopBar } from './components/TopBar'
 import type { Crumb } from './components/TopBar'
@@ -311,6 +312,18 @@ export default function App() {
     if (route.kind === 'instance') remember(route.id)
   }, [route, remember])
 
+  // 代理连线 stopped being a top-level page and became a section of both ends
+  // of a link (see routes.ts). The path stays, because it is in bookmarks and
+  // in the command palette, and lands on the end most links are about — the
+  // proxy, or any instance at all if there is no proxy, since that end can at
+  // least say so and offer to create one. Replaces rather than pushes: a
+  // redirect is not a place, and 返回 must not land back on it.
+  useEffect(() => {
+    if (route.kind !== 'network' || instances.length === 0) return
+    const end = instances.find((item) => item.kind === 'proxy') ?? instances[0]
+    navigate({ kind: 'instance', id: end.id, section: 'network' }, true)
+  }, [route, instances, navigate])
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
@@ -488,312 +501,322 @@ export default function App() {
     : null
 
   return (
-    <div
-      className="app"
-      data-nav={compact && navOpen ? 'open' : undefined}
-      data-rail={!compact && railed ? 'on' : undefined}
-    >
-      {/* First thing in the tab order, visible only once it has focus: the
-          sidebar is a dozen-odd stops on a keyboard, and the content is behind
-          all of them. */}
-      <a className="skip" href="#main">
-        跳到主内容
-      </a>
+    // Everything below can ask what this account may do. Wrapped here rather
+    // than passed down: the answer is wanted in components several layers apart
+    // that have nothing else in common. See useCan.
+    <CapabilityProvider user={user}>
+      <div
+        className="app"
+        data-nav={compact && navOpen ? 'open' : undefined}
+        data-rail={!compact && railed ? 'on' : undefined}
+      >
+        {/* First thing in the tab order, visible only once it has focus: the
+            sidebar is a dozen-odd stops on a keyboard, and the content is behind
+            all of them. */}
+        <a className="skip" href="#main">
+          跳到主内容
+        </a>
 
-      <Sidebar
-        route={route}
-        scope={scope}
-        compact={compact}
-        railed={!compact && railed}
-        onToggleRail={() => setRailed((on) => !on)}
-        navigate={navigate}
-        follow={follow}
-        instances={instances}
-        recents={recents}
-        user={user}
-        system={system.info}
-        updateNotice={updateNotice}
-        alertCount={alerts.length}
-        java={java}
-        databases={databases}
-        cores={cores}
-        plugins={plugins}
-        schematics={schematics}
-        terminal={terminal}
-        onCreate={() => navigate({ kind: 'new-instance' })}
-        onOpenPalette={() => setPaletteOpen(true)}
-        sidebarRef={sidebarRef}
-      />
-
-      {/* Only ever visible under an open drawer; it is what makes "tap the page
-          to dismiss" work, and it stops clicks reaching what it covers. */}
-      <div className="scrim" aria-hidden="true" onClick={() => setNavOpen(false)} />
-
-      <div className="shell">
-        <TopBar
-          crumbs={crumbs}
-          user={user}
+        <Sidebar
+          route={route}
+          scope={scope}
           compact={compact}
-          navOpen={navOpen}
-          onToggleNav={() => setNavOpen((open) => !open)}
-          toggleRef={navToggle}
-          onBack={goBack}
-          backHref={backRoute ? pathOf(backRoute) : null}
-          backLabel={backRoute ? labelOfRoute(backRoute, instances) : null}
+          railed={!compact && railed}
+          onToggleRail={() => setRailed((on) => !on)}
+          navigate={navigate}
+          follow={follow}
+          instances={instances}
+          recents={recents}
+          user={user}
+          system={system.info}
+          updateNotice={updateNotice}
+          alertCount={alerts.length}
+          java={java}
+          databases={databases}
+          cores={cores}
+          plugins={plugins}
+          schematics={schematics}
+          terminal={terminal}
+          onCreate={() => navigate({ kind: 'new-instance' })}
           onOpenPalette={() => setPaletteOpen(true)}
-          onChangePassword={() => setShowPassword(true)}
-          onSignOut={() => void signOut()}
+          sidebarRef={sidebarRef}
         />
 
-        <main className="main" id="main" tabIndex={-1}>
-          {loadError && <div className="alert alert--error">{loadError}</div>}
+        {/* Only ever visible under an open drawer; it is what makes "tap the page
+            to dismiss" work, and it stops clicks reaching what it covers. */}
+        <div className="scrim" aria-hidden="true" onClick={() => setNavOpen(false)} />
 
-          {/* The shell survives a crashed page, and navigating away is what
-              recovers from one — hence the route as the reset key. */}
-          <ErrorBoundary resetKey={pathOf(route)}>
-            {route.kind === 'settings' ? (
-              <SettingsPage
-                section={route.section}
-                update={update}
-                plugins={plugins}
-                runningNames={runningNames}
-              />
-            ) : route.kind === 'host' ? (
-              route.section === 'terminal' ? (
-                <HostTerminal
-                  terminal={terminal}
-                  onOpenSettings={() => navigate({ kind: 'host', section: 'config' })}
-                />
-              ) : (
-                <HostPage
+        <div className="shell">
+          <TopBar
+            crumbs={crumbs}
+            user={user}
+            compact={compact}
+            navOpen={navOpen}
+            onToggleNav={() => setNavOpen((open) => !open)}
+            toggleRef={navToggle}
+            onBack={goBack}
+            backHref={backRoute ? pathOf(backRoute) : null}
+            backLabel={backRoute ? labelOfRoute(backRoute, instances) : null}
+            onOpenPalette={() => setPaletteOpen(true)}
+            onChangePassword={() => setShowPassword(true)}
+            onSignOut={() => void signOut()}
+          />
+
+          <main className="main" id="main" tabIndex={-1}>
+            {loadError && <div className="alert alert--error">{loadError}</div>}
+
+            {/* The shell survives a crashed page, and navigating away is what
+                recovers from one — hence the route as the reset key. */}
+            <ErrorBoundary resetKey={pathOf(route)}>
+              {route.kind === 'settings' ? (
+                <SettingsPage
                   section={route.section}
-                  system={system}
+                  update={update}
+                  plugins={plugins}
+                  runningNames={runningNames}
                   instances={instances}
-                  terminal={terminal}
-                  onNavigate={navigate}
+                  username={user.username}
                 />
-              )
-            ) : route.kind === 'library' ? (
-              route.section === 'java' ? (
-                <JavaPage
-                  java={java}
-                  view={route.view}
-                  onOpenView={(view) => openLibrary('java', view)}
-                  onOpenCores={() => openLibrary('cores', 'stock')}
-                />
-              ) : route.section === 'database' ? (
-                <DatabasePage
-                  databases={databases}
-                  view={route.view}
-                  onOpenView={(view) => openLibrary('database', view)}
-                />
-              ) : route.section === 'schematics' ? (
-                route.view === 'list' ? (
-                  <SchematicLibraryPage
-                    schematics={schematics}
-                    // The build stays in the URL and opens its preview over the
-                    // list, so a link to one opens the thing itself rather than
-                    // the shelf it is on.
-                    openId={route.schemId}
-                    onOpen={(id) =>
-                      navigate({
-                        kind: 'library',
-                        section: 'schematics',
-                        view: 'list',
-                        schemId: id ?? undefined,
-                      })
-                    }
+              ) : route.kind === 'host' ? (
+                route.section === 'terminal' ? (
+                  <HostTerminal
+                    terminal={terminal}
+                    onOpenSettings={() => navigate({ kind: 'host', section: 'config' })}
                   />
                 ) : (
-                  <SchematicMarket
-                    schematics={schematics}
-                    view={route.view === 'source' ? 'source' : 'browse'}
-                    onOpenView={(view) => openLibrary('schematics', view)}
+                  <HostPage
+                    section={route.section}
+                    system={system}
+                    instances={instances}
+                    terminal={terminal}
+                    onNavigate={navigate}
                   />
                 )
-              ) : route.section === 'cores' ? (
-                <CoreLibraryPage
+              ) : route.kind === 'library' ? (
+                route.section === 'java' ? (
+                  <JavaPage
+                    java={java}
+                    view={route.view}
+                    onOpenView={(view) => openLibrary('java', view)}
+                    onOpenCores={() => openLibrary('cores', 'stock')}
+                  />
+                ) : route.section === 'database' ? (
+                  <DatabasePage
+                    databases={databases}
+                    view={route.view}
+                    onOpenView={(view) => openLibrary('database', view)}
+                  />
+                ) : route.section === 'schematics' ? (
+                  route.view === 'list' ? (
+                    <SchematicLibraryPage
+                      schematics={schematics}
+                      // The build stays in the URL and opens its preview over the
+                      // list, so a link to one opens the thing itself rather than
+                      // the shelf it is on.
+                      openId={route.schemId}
+                      onOpen={(id) =>
+                        navigate({
+                          kind: 'library',
+                          section: 'schematics',
+                          view: 'list',
+                          schemId: id ?? undefined,
+                        })
+                      }
+                    />
+                  ) : (
+                    <SchematicMarket
+                      schematics={schematics}
+                      view={route.view === 'source' ? 'source' : 'browse'}
+                      onOpenView={(view) => openLibrary('schematics', view)}
+                    />
+                  )
+                ) : route.section === 'cores' ? (
+                  <CoreLibraryPage
+                    cores={cores}
+                    view={route.view}
+                    onOpenView={(view) => openLibrary('cores', view)}
+                    onOpenJava={() => openLibrary('java', 'installed')}
+                  />
+                ) : route.view === 'queue' ? (
+                  // A page of its own rather than a block on 插件列表: five
+                  // downloads at once is a list, and a list that appears and
+                  // vanishes inside a table shoves that table down the screen
+                  // every time somebody presses 更新入库.
+                  <PluginQueuePage plugins={plugins} />
+                ) : (
+                  <PluginLibraryPage
+                    plugins={plugins}
+                    view={route.view}
+                    against={route.against}
+                    recents={recents}
+                    instances={instances}
+                    // The plugin id stays in the URL and opens a drawer over the
+                    // list rather than replacing it. A detail *page* threw away
+                    // the filter, the scroll and the row you were comparing
+                    // against — which is the context the comparison was made of.
+                    openPluginId={openedPlugin?.id}
+                    onOpenView={(view) => openLibrary('plugins', view)}
+                    onChooseAgainst={(ids) =>
+                      navigate(
+                        { kind: 'library', section: 'plugins', view: 'browse', against: ids },
+                        true,
+                      )
+                    }
+                    onOpenPlugin={(id) =>
+                      navigate({
+                        kind: 'library',
+                        section: 'plugins',
+                        view: 'list',
+                        pluginId: id ?? undefined,
+                      })
+                    }
+                    onOpenSettings={() => navigate({ kind: 'settings', section: 'plugins' })}
+                    onOpenInstance={(id) => openInstance(id, 'plugins')}
+                  />
+                )
+              ) : route.kind === 'new-instance' ? (
+                <NewInstanceWizard
                   cores={cores}
-                  view={route.view}
-                  onOpenView={(view) => openLibrary('cores', view)}
-                  onOpenJava={() => openLibrary('java', 'installed')}
-                />
-              ) : route.view === 'queue' ? (
-                // A page of its own rather than a block on 插件列表: five
-                // downloads at once is a list, and a list that appears and
-                // vanishes inside a table shoves that table down the screen
-                // every time somebody presses 更新入库.
-                <PluginQueuePage plugins={plugins} />
-              ) : (
-                <PluginLibraryPage
-                  plugins={plugins}
-                  view={route.view}
-                  against={route.against}
-                  recents={recents}
-                  instances={instances}
-                  // The plugin id stays in the URL and opens a drawer over the
-                  // list rather than replacing it. A detail *page* threw away
-                  // the filter, the scroll and the row you were comparing
-                  // against — which is the context the comparison was made of.
-                  openPluginId={openedPlugin?.id}
-                  onOpenView={(view) => openLibrary('plugins', view)}
-                  onChooseAgainst={(ids) =>
-                    navigate(
-                      { kind: 'library', section: 'plugins', view: 'browse', against: ids },
-                      true,
+                  java={java}
+                  system={system.info}
+                  // Upsert rather than append: the wizard reports the instance
+                  // twice — once when it is created, once if 立即开服 is pressed —
+                  // and the second report is a state change, not a second server.
+                  onCreated={(instance) =>
+                    setInstances((prev) =>
+                      prev.some((item) => item.id === instance.id)
+                        ? prev.map((item) =>
+                            item.id === instance.id ? mergeState(item, instance) : item,
+                          )
+                        : [...prev, instance],
                     )
                   }
-                  onOpenPlugin={(id) =>
-                    navigate({
-                      kind: 'library',
-                      section: 'plugins',
-                      view: 'list',
-                      pluginId: id ?? undefined,
-                    })
+                  onOpenInstance={(id) => openInstance(id)}
+                  onCancel={
+                    goBack ?? (() => navigate({ kind: 'instances', query: '', state: 'all' }))
                   }
-                  onOpenSettings={() => navigate({ kind: 'settings', section: 'plugins' })}
-                  onOpenInstance={(id) => openInstance(id, 'plugins')}
                 />
-              )
-            ) : route.kind === 'new-instance' ? (
-              <NewInstanceWizard
-                cores={cores}
-                java={java}
-                system={system.info}
-                // Upsert rather than append: the wizard reports the instance
-                // twice — once when it is created, once if 立即开服 is pressed —
-                // and the second report is a state change, not a second server.
-                onCreated={(instance) =>
-                  setInstances((prev) =>
-                    prev.some((item) => item.id === instance.id)
-                      ? prev.map((item) =>
-                          item.id === instance.id ? mergeState(item, instance) : item,
-                        )
-                      : [...prev, instance],
-                  )
-                }
-                onOpenInstance={(id) => openInstance(id)}
-                onCancel={
-                  goBack ?? (() => navigate({ kind: 'instances', query: '', state: 'all' }))
-                }
-              />
-            ) : route.kind === 'network' ? (
-              <NetworkPage
-                instances={instances}
-                onOpenInstance={(id) => openInstance(id)}
-                onCreate={() => navigate({ kind: 'new-instance' })}
-              />
-            ) : route.kind === 'instances' ? (
-              <InstanceList
-                instances={instances}
-                query={route.query}
-                state={route.state}
-                onFilter={(next: { query: string; state: StateFilter }) =>
-                  // Replaces rather than pushes: typing five characters into the
-                  // search box must not put five entries in the back stack.
-                  navigate({ kind: 'instances', ...next }, true)
-                }
-                onNavigate={navigate}
-                onCreate={() => navigate({ kind: 'new-instance' })}
-                onImport={() => setShowImport(true)}
-                onChanged={applyInstance}
-              />
-            ) : route.kind === 'instance' ? (
-              selected ? (
-                <InstanceView
-                  key={selected.id}
-                  instance={selected}
-                  section={route.section}
-                  cores={cores}
-                  plugins={plugins}
+              ) : route.kind === 'network' ? (
+                <NetworkPage
+                  instances={instances}
+                  onOpenInstance={(id) => openInstance(id)}
+                  onCreate={() => navigate({ kind: 'new-instance' })}
+                />
+              ) : route.kind === 'instances' ? (
+                <InstanceList
+                  instances={instances}
+                  query={route.query}
+                  state={route.state}
+                  onFilter={(next: { query: string; state: StateFilter }) =>
+                    // Replaces rather than pushes: typing five characters into the
+                    // search box must not put five entries in the back stack.
+                    navigate({ kind: 'instances', ...next }, true)
+                  }
+                  onNavigate={navigate}
+                  onCreate={() => navigate({ kind: 'new-instance' })}
+                  onImport={() => setShowImport(true)}
                   onChanged={applyInstance}
-                  onDeleted={() => {
-                    navigate({ kind: 'instances', query: '', state: 'all' })
-                    void refresh()
-                  }}
-                  onOpenSection={(section) => openInstance(route.id, section)}
-                  // Acquiring a plugin is a panel-wide act, so it happens in one
-                  // place. The instance travels along as the compatibility
-                  // reference, which is the context that would otherwise be lost
-                  // on the way there.
-                  onOpenBrowse={() =>
-                    navigate({
-                      kind: 'library',
-                      section: 'plugins',
-                      view: 'browse',
-                      against: [route.id],
-                    })
-                  }
-                  onOpenCoreLibrary={() => openLibrary('cores', 'stock')}
                 />
+              ) : route.kind === 'instance' ? (
+                selected ? (
+                  <InstanceView
+                    key={selected.id}
+                    instance={selected}
+                    instances={instances}
+                    section={route.section}
+                    cores={cores}
+                    plugins={plugins}
+                    onChanged={applyInstance}
+                    onDeleted={() => {
+                      navigate({ kind: 'instances', query: '', state: 'all' })
+                      void refresh()
+                    }}
+                    onOpenSection={(section) => openInstance(route.id, section)}
+                    onOpenInstance={(id) => openInstance(id)}
+                    onCreate={() => navigate({ kind: 'new-instance' })}
+                    // Acquiring a plugin is a panel-wide act, so it happens in one
+                    // place. The instance travels along as the compatibility
+                    // reference, which is the context that would otherwise be lost
+                    // on the way there.
+                    onOpenBrowse={() =>
+                      navigate({
+                        kind: 'library',
+                        section: 'plugins',
+                        view: 'browse',
+                        against: [route.id],
+                      })
+                    }
+                    onOpenCoreLibrary={() => openLibrary('cores', 'stock')}
+                  />
+                ) : (
+                  <div className="alert">
+                    找不到这个实例，它可能已经被删除了。
+                    <button
+                      className="link"
+                      onClick={() => navigate({ kind: 'instances', query: '', state: 'all' })}
+                    >
+                      回到实例列表
+                    </button>
+                  </div>
+                )
               ) : (
-                <div className="alert">
-                  找不到这个实例，它可能已经被删除了。
-                  <button
-                    className="link"
-                    onClick={() => navigate({ kind: 'instances', query: '', state: 'all' })}
-                  >
-                    回到实例列表
-                  </button>
-                </div>
-              )
-            ) : (
-              <Dashboard
-                instances={instances}
-                system={system.info}
-                alerts={alerts}
-                onSelect={openInstance}
-                onCreate={() => navigate({ kind: 'new-instance' })}
-                onNavigate={navigate}
-                onChanged={applyInstance}
-              />
-            )}
-          </ErrorBoundary>
-        </main>
+                <Dashboard
+                  instances={instances}
+                  system={system.info}
+                  alerts={alerts}
+                  onSelect={openInstance}
+                  onCreate={() => navigate({ kind: 'new-instance' })}
+                  onNavigate={navigate}
+                  onChanged={applyInstance}
+                />
+              )}
+            </ErrorBoundary>
+          </main>
+        </div>
+
+        {paletteOpen && (
+          <CommandPalette
+            instances={instances}
+            onClose={() => setPaletteOpen(false)}
+            onNavigate={navigate}
+            onCreate={() => {
+              setPaletteOpen(false)
+              navigate({ kind: 'new-instance' })
+            }}
+            onImport={() => {
+              setPaletteOpen(false)
+              setShowImport(true)
+            }}
+          />
+        )}
+
+        {showImport && (
+          <ImportInstanceDialog
+            onCancel={() => setShowImport(false)}
+            onImported={(created) => {
+              setShowImport(false)
+              setInstances((prev) => [...prev, created])
+              openInstance(created.id)
+            }}
+          />
+        )}
+
+        {showPassword && (
+          <ChangePasswordDialog
+            onCancel={() => setShowPassword(false)}
+            onChanged={() => {
+              setShowPassword(false)
+              setUser(null)
+            }}
+          />
+        )}
+
+        {/* One corner for every outcome in the panel. It lives at the root
+            rather than on the pages that report things, because the reports
+            outlive the page: a bulk upgrade started in 插件列表 and finished
+            after navigating away used to have nowhere to land. */}
+        <ToastStack />
       </div>
-
-      {paletteOpen && (
-        <CommandPalette
-          instances={instances}
-          onClose={() => setPaletteOpen(false)}
-          onNavigate={navigate}
-          onCreate={() => {
-            setPaletteOpen(false)
-            navigate({ kind: 'new-instance' })
-          }}
-          onImport={() => {
-            setPaletteOpen(false)
-            setShowImport(true)
-          }}
-        />
-      )}
-
-      {showImport && (
-        <ImportInstanceDialog
-          onCancel={() => setShowImport(false)}
-          onImported={(created) => {
-            setShowImport(false)
-            setInstances((prev) => [...prev, created])
-            openInstance(created.id)
-          }}
-        />
-      )}
-
-      {showPassword && (
-        <ChangePasswordDialog
-          onCancel={() => setShowPassword(false)}
-          onChanged={() => {
-            setShowPassword(false)
-            setUser(null)
-          }}
-        />
-      )}
-
-      {/* One corner for every outcome in the panel. It lives at the root
-          rather than on the pages that report things, because the reports
-          outlive the page: a bulk upgrade started in 插件列表 and finished
-          after navigating away used to have nowhere to land. */}
-      <ToastStack />
-    </div>
+    </CapabilityProvider>
   )
 }

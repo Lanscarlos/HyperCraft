@@ -13,12 +13,17 @@ import { FileManager } from './FileManager'
 import { InstanceCockpit } from './InstanceCockpit'
 import { InstancePlugins } from './InstancePlugins'
 import { LaunchSettings } from './LaunchSettings'
+import { NetworkPage } from './NetworkPage'
 import { ResourcePanel } from './ResourcePanel'
 import { ServerConfigPage } from './ServerConfigPage'
 import { VelocityConfig } from './VelocityConfig'
 
 interface Props {
   instance: InstanceStatus
+  /** Every instance on the machine, for 代理连线: a link's other end is some
+   *  other server, and the page has to notice when one is created or deleted
+   *  somewhere else. */
+  instances: InstanceStatus[]
   section: InstanceSection
   cores: CoreController
   /** The panel-wide plugin library: what this server can be given. */
@@ -31,6 +36,11 @@ interface Props {
   onOpenBrowse: () => void
   /** The panel-wide core library, for "download another one". */
   onOpenCoreLibrary: () => void
+  /** 代理连线 is about two instances, so it is the one section that can send
+   *  the reader to a different one — the other end of a link. */
+  onOpenInstance: (id: string) => void
+  /** The creation wizard, for a server with nothing to connect to yet. */
+  onCreate: () => void
 }
 
 /**
@@ -49,6 +59,7 @@ interface Props {
  */
 export function InstanceView({
   instance,
+  instances,
   section,
   cores,
   plugins,
@@ -57,6 +68,8 @@ export function InstanceView({
   onOpenSection,
   onOpenBrowse,
   onOpenCoreLibrary,
+  onOpenInstance,
+  onCreate,
 }: Props) {
   const [visited, setVisited] = useState<Set<InstanceSection>>(
     () => new Set<InstanceSection>([section]),
@@ -147,6 +160,20 @@ export function InstanceView({
               }
               onOpenSection(target)
             }}
+          />
+        </Pane>
+      )}
+      {visited.has('network') && (
+        <Pane id="network" active={section === 'network'} leaving={leaving === 'network'} scroll>
+          {/* The same page from the other end for a proxy and for a server —
+              which end this is, it works out from the topology rather than
+              from instance.kind, so the two never disagree. */}
+          <NetworkPage
+            instances={instances}
+            focus={instance.id}
+            embed
+            onOpenInstance={onOpenInstance}
+            onCreate={onCreate}
           />
         </Pane>
       )}

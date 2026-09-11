@@ -1,3 +1,6 @@
+import type { Capability } from './types'
+import { CAP } from './useCan'
+
 /**
  * Where the app is, as a value.
  *
@@ -17,6 +20,7 @@ export type InstanceSection =
   | 'metrics'
   | 'files'
   | 'plugins'
+  | 'network'
   | 'properties'
   | 'config-history'
   | 'settings'
@@ -50,8 +54,22 @@ export type LibraryView =
 /** Pages about the machine. `terminal` is the shell and is fenced off. */
 export type HostSection = 'metrics' | 'instances' | 'disk' | 'config' | 'terminal'
 
-/** Panel-wide settings. Sections a sub-user should not see live elsewhere. */
-export type SettingsSection = 'devices' | 'security' | 'update' | 'plugins' | 'appearance'
+/**
+ * Panel-wide settings.
+ *
+ * `devices` is first and has no capability: every account manages its own
+ * pairings, so there is always somewhere for 面板设置 to lead. `appearance` has
+ * none either, for the same reason from the other end — it is a preference in
+ * one browser, it changes nothing anyone else can see, and the account that can
+ * do the least still has to be able to turn the pixel face off.
+ */
+export type SettingsSection =
+  | 'devices'
+  | 'security'
+  | 'users'
+  | 'update'
+  | 'plugins'
+  | 'appearance'
 
 /** Which states the 所有实例 list is showing. Part of the URL. */
 export type StateFilter = 'all' | 'live' | 'stopped' | 'problem'
@@ -60,12 +78,20 @@ export type Route =
   | { kind: 'overview' }
   | { kind: 'instances'; query: string; state: StateFilter }
   /**
-   * Which proxy stands in front of which servers, as a picture you draw on.
+   * Which proxy stands in front of which servers — the whole machine at once.
    *
-   * A page of its own rather than a section of one instance, because a link is
-   * a fact about two instances and neither of them owns it — putting it on the
-   * proxy would hide it from everyone looking at the server, and the other way
-   * round would be worse.
+   * This was the panel-wide page, on the strength of a link being a fact about
+   * two instances that neither of them owns. That was right about the fact and
+   * wrong about the navigation: it put a page about proxies at the top level of
+   * a panel most of whose users run none, and it was the one destination up
+   * there that was not a place but a relationship.
+   *
+   * A link is now a section of *both* ends — see INSTANCE_SECTIONS — which is
+   * what the original objection actually asked for: the proxy sees what is
+   * behind it, the server sees what is in front of it, and neither owns the
+   * link. What is left here is the path itself, kept because it is in
+   * bookmarks and in the command palette; App redirects it to whichever end is
+   * the obvious one to open (see the effect there).
    */
   | { kind: 'network' }
   /**
@@ -123,17 +149,30 @@ export type Route =
  */
 export type Scope = 'global' | 'instance' | 'library' | 'host' | 'settings'
 
-export const INSTANCE_SECTIONS: { id: InstanceSection; label: string }[] = [
-  { id: 'console', label: '控制台' },
-  { id: 'metrics', label: '监控' },
-  { id: 'files', label: '文件' },
-  { id: 'plugins', label: '插件' },
-  { id: 'properties', label: '服务器配置' },
+export const INSTANCE_SECTIONS: { id: InstanceSection; label: string; cap: Capability }[] = [
+  // Each names what it takes to *open* the page, not what every button on it
+  // does. 控制台 is the clearest case: watching is 查看服务器, typing is a
+  // second capability the socket checks per message, so a role with only the
+  // first still belongs here — it just gets a read-only console.
+  { id: 'console', label: '控制台', cap: CAP.instanceView },
+  { id: 'metrics', label: '监控', cap: CAP.instanceView },
+  { id: 'files', label: '文件', cap: CAP.instanceFilesRead },
+  { id: 'plugins', label: '插件', cap: CAP.instanceView },
+  // Before 服务器配置 rather than after it, so the pair below stays a pair:
+  // connecting an instance to a proxy is six edits to the two ends' config
+  // files, so this is the page you visit *instead of* hand-editing them, and
+  // it belongs on the way in rather than between the file and its history.
+  //
+  // Its capability is a panel-wide one even though the page now lives inside an
+  // instance: a link is a fact about two servers and neither owns it, so it is
+  // not narrowed by the instance grant either. See docs/security.md.
+  { id: 'network', label: '代理连线', cap: CAP.panelNetwork },
+  { id: 'properties', label: '服务器配置', cap: CAP.instanceView },
   // Right after 服务器配置, because that is where the question comes from:
   // you edit a file, the server stops booting, and the next thing you want is
   // what the file looked like yesterday.
-  { id: 'config-history', label: '配置历史' },
-  { id: 'settings', label: '实例设置' },
+  { id: 'config-history', label: '配置历史', cap: CAP.instanceHistory },
+  { id: 'settings', label: '实例设置', cap: CAP.instanceSettings },
 ]
 
 /**
@@ -146,7 +185,7 @@ export const INSTANCE_SECTIONS: { id: InstanceSection; label: string }[] = [
  */
 export function instanceSections(
   kind: string | undefined,
-): { id: InstanceSection; label: string }[] {
+): { id: InstanceSection; label: string; cap: Capability }[] {
   if (kind !== 'proxy') return INSTANCE_SECTIONS
   return INSTANCE_SECTIONS.map((section) =>
     section.id === 'properties' ? { ...section, label: '代理配置' } : section,
@@ -157,15 +196,15 @@ export function instanceSections(
  *  database is what a plugin asks for once it is loaded. The navigation group
  *  and the command palette both read this, so someone setting a server up for
  *  the first time meets the four in the order they need them. */
-export const LIBRARY_SECTIONS: { id: LibrarySection; label: string }[] = [
-  { id: 'java', label: 'Java 环境' },
-  { id: 'cores', label: '服务端核心' },
-  { id: 'database', label: '数据库环境' },
-  { id: 'plugins', label: '插件库' },
+export const LIBRARY_SECTIONS: { id: LibrarySection; label: string; cap: Capability }[] = [
+  { id: 'java', label: 'Java 环境', cap: CAP.panelJava },
+  { id: 'cores', label: '服务端核心', cap: CAP.libraryCores },
+  { id: 'database', label: '数据库环境', cap: CAP.panelDatabases },
+  { id: 'plugins', label: '插件库', cap: CAP.libraryPlugins },
   // Last, because it is the only shelf a server does not need to start: Java,
   // the core and the plugins are what a server *is*, and a building is what
   // somebody puts inside one afterwards.
-  { id: 'schematics', label: '建筑库' },
+  { id: 'schematics', label: '建筑库', cap: CAP.librarySchematics },
 ]
 
 /** The pages inside each library section, in order. The first is the default —
@@ -241,12 +280,37 @@ export const SETTINGS_SECTIONS: {
    *  under a word that is not in its name — nobody hunting for where the
    *  access token lives searches for "集成". */
   keywords?: string
+  /** What an account needs to open this page. Absent means everybody. */
+  cap?: Capability
 }[] = [
   { id: 'devices', label: '已配对设备' },
-  { id: 'security', label: '登录记录' },
-  { id: 'plugins', label: 'GitHub 集成', keywords: 'github token 令牌 私有仓库 下载源 镜像' },
-  { id: 'update', label: '面板更新' },
+  { id: 'security', label: '登录记录', cap: CAP.panelSecurity },
+  {
+    id: 'users',
+    label: '账号与角色',
+    keywords: '用户 权限 成员 运维 开发 授权 实例授权',
+    cap: CAP.panelUsers,
+  },
+  {
+    id: 'plugins',
+    label: 'GitHub 集成',
+    keywords: 'github token 令牌 私有仓库 下载源 镜像',
+    cap: CAP.panelSettings,
+  },
+  { id: 'update', label: '面板更新', cap: CAP.panelUpdate },
   { id: 'appearance', label: '外观', keywords: '字体 像素 minecraft 主题 深色 浅色' },
+]
+
+/**
+ * Which capability each 主机 page needs. 主机 is one sidebar row leading to
+ * five pages, so the row points at the first of these the account can open.
+ */
+export const HOST_ENTRY_CAPS: [HostSection, Capability][] = [
+  ['metrics', CAP.panelSystem],
+  ['instances', CAP.panelSystem],
+  ['disk', CAP.panelSystem],
+  ['config', CAP.panelTerminal],
+  ['terminal', CAP.panelTerminal],
 ]
 
 const STATE_FILTERS: StateFilter[] = ['all', 'live', 'stopped', 'problem']
