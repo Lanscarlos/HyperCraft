@@ -311,6 +311,18 @@ export default function App() {
     if (route.kind === 'instance') remember(route.id)
   }, [route, remember])
 
+  // 代理连线 stopped being a top-level page and became a section of both ends
+  // of a link (see routes.ts). The path stays, because it is in bookmarks and
+  // in the command palette, and lands on the end most links are about — the
+  // proxy, or any instance at all if there is no proxy, since that end can at
+  // least say so and offer to create one. Replaces rather than pushes: a
+  // redirect is not a place, and 返回 must not land back on it.
+  useEffect(() => {
+    if (route.kind !== 'network' || instances.length === 0) return
+    const end = instances.find((item) => item.kind === 'proxy') ?? instances[0]
+    navigate({ kind: 'instance', id: end.id, section: 'network' }, true)
+  }, [route, instances, navigate])
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
@@ -703,6 +715,7 @@ export default function App() {
                 <InstanceView
                   key={selected.id}
                   instance={selected}
+                  instances={instances}
                   section={route.section}
                   cores={cores}
                   plugins={plugins}
@@ -712,6 +725,8 @@ export default function App() {
                     void refresh()
                   }}
                   onOpenSection={(section) => openInstance(route.id, section)}
+                  onOpenInstance={(id) => openInstance(id)}
+                  onCreate={() => navigate({ kind: 'new-instance' })}
                   // Acquiring a plugin is a panel-wide act, so it happens in one
                   // place. The instance travels along as the compatibility
                   // reference, which is the context that would otherwise be lost
