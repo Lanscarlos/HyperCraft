@@ -73,6 +73,15 @@ type Hooks struct {
 	// running.
 	RecordPrevious func(version string)
 
+	// BackupState copies the panel's own state files somewhere safe and returns
+	// where they went. Called before a downgrade and only before a downgrade:
+	// an older build drops the fields it does not know the first time it writes
+	// one of those files back, and this copy is the only way back from that.
+	//
+	// Returning an error abandons the rollback with nothing touched — the
+	// backup is the reason a downgrade is safe to offer at all.
+	BackupState func(from, to string) (string, error)
+
 	// TriggerRestart asks the panel to shut down and then exec the newly
 	// installed binary, whose path it is given. By the time it runs the servers
 	// are already down. It must not block, and it must use that path rather
@@ -114,6 +123,9 @@ type Status struct {
 	// not, so the UI can say what is wrong instead of hiding the button.
 	RollbackAvailable bool   `json:"rollbackAvailable"`
 	RollbackWhy       string `json:"rollbackWhy,omitempty"`
+	// BackupDir is where the state files were copied before the rollback that
+	// is running, or the last one this process performed.
+	BackupDir string `json:"backupDir,omitempty"`
 	// Downgrade means installing the offered version moves backwards; see
 	// Updater.Offer for the one case that happens in.
 	Downgrade bool `json:"downgrade"`
@@ -147,6 +159,10 @@ type Service struct {
 	previous     string
 	rollbackPath string
 	rollbackWhy  string
+
+	// backupDir is where the last downgrade put the panel's state files, so the
+	// UI can tell the operator where to find them.
+	backupDir string
 }
 
 func NewService(repo, currentVersion, mirror string, channel Channel, hooks Hooks, log *slog.Logger) *Service {
@@ -280,6 +296,7 @@ func (s *Service) statusLocked() Status {
 		PreviousVersion:   s.previous,
 		RollbackAvailable: s.rollbackPath != "",
 		RollbackWhy:       s.rollbackWhy,
+		BackupDir:         s.backupDir,
 		Eligible:          true,
 	}
 	if !s.checkedAt.IsZero() {

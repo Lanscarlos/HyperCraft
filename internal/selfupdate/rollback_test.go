@@ -1,6 +1,8 @@
 package selfupdate
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,6 +11,9 @@ import (
 	"runtime"
 	"testing"
 )
+
+// errWorldRefusedToSave stands in for a shutdown that will not finish.
+var errWorldRefusedToSave = errors.New("a world refused to save")
 
 // fakeBinary writes an executable that answers -version the way the real one
 // does, so InspectRollback can be tested against something it actually runs
@@ -124,5 +129,180 @@ func TestStatusCarriesTheRollbackTarget(t *testing.T) {
 	st = svc.Status()
 	if st.RollbackAvailable || st.RollbackWhy == "" {
 		t.Errorf("status still offers a rollback with no binary: %+v", st)
+	}
+}
+
+// rollbackService wires a service whose executable and <exe>.old are real
+// files, and reports what the hooks saw.
+type rollbackProbe struct {
+	svc            *Service
+	exe            string
+	stopped        bool
+	resumed        bool
+	restartedWith  string
+	recorded       string
+	backupFrom     string
+	backupTo       string
+	exeWhenBacked  []byte
+	backupCalls    int
+	backupDirGiven string
+}
+
+func newRollbackProbe(t *testing.T, current, previous string, stopErr error) *rollbackProbe {
+	t.Helper()
+	p := &rollbackProbe{exe: filepath.Join(t.TempDir(), "hypercraft")}
+	p.backupDirGiven = filepath.Join(t.TempDir(), "rollback-backup")
+
+	p.svc = NewService("owner/repo", current, "", ChannelStable, Hooks{
+		StopServers: func(context.Context, func(Shutdown)) error {
+			p.stopped = true
+			return stopErr
+		},
+		ServersAborted: func() { p.resumed = true },
+		TriggerRestart: func(binary string) { p.restartedWith = binary },
+		RecordPrevious: func(version string) { p.recorded = version },
+		BackupState: func(from, to string) (string, error) {
+			p.backupCalls++
+			p.backupFrom, p.backupTo = from, to
+			p.exeWhenBacked, _ = os.ReadFile(p.exe)
+			return p.backupDirGiven, nil
+		},
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	p.svc.up.exePath = p.exe
+	fakeBinary(t, p.exe, NormalizeVersion(current))
+	fakeBinary(t, p.exe+".old", NormalizeVersion(previous))
+	p.svc.SetPreviousVersion(previous)
+	return p
+}
+
+func TestRollbackSwapsTheTwoBinaries(t *testing.T) {
+	p := newRollbackProbe(t, "v1.2.0", "1.1.0", nil)
+	before, err := os.ReadFile(p.exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := p.svc.Rollback(context.Background()); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	// The panel is now the old build, and the build it left is where a second
+	// rollback would find it — the swap is symmetric on purpose, so changing
+	// one's mind twice works.
+	got, err := probeVersion(p.exe)
+	if err != nil {
+		t.Fatalf("the binary in place does not run: %v", err)
+	}
+	if got != "1.1.0" {
+		t.Errorf("panel binary reports %s, want the rolled-back 1.1.0", got)
+	}
+	kept, err := os.ReadFile(p.exe + ".old")
+	if err != nil {
+		t.Fatalf("nothing was kept to go forward to: %v", err)
+	}
+	if string(kept) != string(before) {
+		t.Error("<exe>.old does not hold the build the rollback left")
+	}
+	if !p.stopped {
+		t.Error("servers were not stopped before the binary was swapped")
+	}
+	if p.restartedWith != p.exe {
+		t.Errorf("restarted %q, want %q", p.restartedWith, p.exe)
+	}
+	if p.recorded != "v1.2.0" {
+		t.Errorf("recorded %q as the way forward, want v1.2.0", p.recorded)
+	}
+}
+
+func TestRollbackBacksUpBeforeAnythingMoves(t *testing.T) {
+	// The copy has to be of the files as this build left them: it exists so the
+	// fields the older build is about to drop can be recovered.
+	p := newRollbackProbe(t, "v1.2.0", "1.1.0", nil)
+	current, err := os.ReadFile(p.exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := p.svc.Rollback(context.Background()); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	if p.backupCalls != 1 {
+		t.Fatalf("BackupState ran %d times, want once", p.backupCalls)
+	}
+	if p.backupFrom != "v1.2.0" || p.backupTo != "1.1.0" {
+		t.Errorf("backup labelled %s -> %s, want v1.2.0 -> 1.1.0", p.backupFrom, p.backupTo)
+	}
+	if string(p.exeWhenBacked) != string(current) {
+		t.Error("the backup was taken after the swap, when the old build was already in place")
+	}
+	if dir := p.svc.Status().BackupDir; dir != p.backupDirGiven {
+		t.Errorf("Status().BackupDir = %q, want %q — the UI has to be able to name it", dir, p.backupDirGiven)
+	}
+}
+
+func TestRollbackRefusesWhenTheOldBinaryIsUnusable(t *testing.T) {
+	// Nothing may move: not the binaries, not the servers. A refused rollback
+	// has to leave a panel that is still running and still serving.
+	p := newRollbackProbe(t, "v1.2.0", "1.1.0", nil)
+	if err := os.WriteFile(p.exe+".old", []byte("not a program"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p.svc.SetPreviousVersion("1.1.0")
+	before, err := os.ReadFile(p.exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := p.svc.Rollback(context.Background()); err == nil {
+		t.Fatal("Rollback went ahead with a binary that cannot run")
+	}
+	after, err := os.ReadFile(p.exe)
+	if err != nil || string(after) != string(before) {
+		t.Errorf("the running binary was touched: %v", err)
+	}
+	if p.stopped {
+		t.Error("servers were stopped for a rollback that could not happen")
+	}
+	if p.backupCalls != 0 {
+		t.Error("a backup was taken for a rollback that could not happen")
+	}
+	if phase := p.svc.Status().Phase; phase != PhaseIdle {
+		t.Errorf("Phase = %q, want idle after a refusal", phase)
+	}
+}
+
+func TestRollbackResumesTheServersWhenTheShutdownFails(t *testing.T) {
+	// Same rule the update path follows: a panel on the old version with its
+	// servers down is an outage, not a failed rollback.
+	p := newRollbackProbe(t, "v1.2.0", "1.1.0", errWorldRefusedToSave)
+	before, err := os.ReadFile(p.exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := p.svc.Rollback(context.Background()); err == nil {
+		t.Fatal("Rollback succeeded although the servers would not stop")
+	}
+	after, err := os.ReadFile(p.exe)
+	if err != nil || string(after) != string(before) {
+		t.Errorf("the binary was swapped after the shutdown failed: %v", err)
+	}
+	if !p.resumed {
+		t.Error("servers stopped for the rollback were left down")
+	}
+}
+
+func TestRollbackForwardTakesNoBackup(t *testing.T) {
+	// Going back up to the build you just left adds fields rather than dropping
+	// them, so there is nothing to protect and no directory to leave behind.
+	p := newRollbackProbe(t, "v1.1.0", "1.2.0", nil)
+
+	if err := p.svc.Rollback(context.Background()); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+	if p.backupCalls != 0 {
+		t.Errorf("BackupState ran %d times going forward, want none", p.backupCalls)
 	}
 }
