@@ -1,3 +1,50 @@
+/* --------------------------------------------------------------- faces
+
+   The two faces behind the 像素字体 switch. Minecraft's own is Mojang's and
+   cannot ship in an open repository, so this is a pair of OFL stand-ins:
+   Monocraft carries the game's letterforms for Latin and digits, and Fusion
+   Pixel sits behind it for the CJK that Monocraft has none of — which is most
+   of this panel. Provenance, licences and the reason for this particular pair
+   are in web/src/assets/fonts/README.md.
+
+   Both are served from the binary, so `swap` costs one frame of the system
+   face on a cold load and never leaves text invisible; `block` would trade
+   that frame for up to three seconds of nothing if a file ever fails to
+   arrive.
+
+   Monocraft is fenced to the Latin it exists for, and the fence is load-
+   bearing rather than tidiness: 131 of its glyphs are drawn wider than the
+   monospace cell they advance by, so any of them landing next to another
+   character overlaps it. ⌘K in the sidebar was the one that showed — the
+   command mark bled a pixel into the K and the pair read as a smudge. Inside
+   U+0000–024F only ® ¼ ½ ¾ overflow and all four only ever appear alone.
+
+   The two additions past that fence are deliberate. U+2212 is the minus the
+   panel sets deltas with and Fusion Pixel has no glyph for it, so without this
+   it would be the one system-font character in a line of pixel digits. U+26CF
+   is the pickaxe in the logo, which only Monocraft has and which is the most
+   Minecraft-looking thing on the page; it stands alone, so its overhang costs
+   nothing. Everything else — CJK, punctuation, arrows, symbols — is Fusion
+   Pixel's, and what neither font has falls to the system exactly as it does
+   with the switch off. */
+
+@font-face {
+  font-family: 'Monocraft';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/Monocraft.woff2') format('woff2');
+  unicode-range: U+0000-024F, U+2212, U+26CF;
+}
+
+@font-face {
+  font-family: 'Fusion Pixel 12px Proportional SC';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/FusionPixel12pxProportionalSC.woff2') format('woff2');
+}
+
 /* ------------------------------------------------------------------ tokens
 
    Colour is one Material 3 scheme — a warm terracotta grown from #8F4C38 —
@@ -200,6 +247,12 @@
      and it has to stay legible while it moves. */
   --dur-data: 400ms;
 
+  /* The panel's text face, as a token rather than a literal on `body`, because
+     the 像素字体 switch has to be able to replace it from one root block
+     instead of out-specifying every component that sets a family. */
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', Roboto, sans-serif;
+
   --font-mono: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas,
     'Liberation Mono', monospace;
 
@@ -308,6 +361,37 @@
   color-scheme: dark;
 }
 
+/* --------------------------------------------------------- pixel font
+
+   `data-pixel-font` on <html> is resolved before the first paint by the inline
+   script in index.html, the same way the mode is and for the same reason: a
+   face that arrives after React has mounted is a visible reflow of the whole
+   panel on every reload. pixelfont.ts owns the preference; the two must agree
+   on the key and on the fact that *absent means on*.
+
+   Only --font-ui moves. --font-mono is what this sheet uses for machine text —
+   paths, SHAs, diff hunks, the console's own input line — and that is the same
+   category as the two terminal canvases, which stay out of this on purpose:
+   they are read for exactness, not for atmosphere.
+
+   The font sizes are untouched, all three hundred of them. Fusion Pixel's cap
+   height is 900/1200 em against the old stack's ~0.72, so text set at 13px
+   still measures 13px; picking a face that already matched is what kept this
+   from being a re-typesetting of the whole panel. */
+:root[data-pixel-font='on'] {
+  --font-ui: 'Monocraft', 'Fusion Pixel 12px Proportional SC', -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', Roboto, sans-serif;
+}
+
+/* Optical tracking is for a face drawn on a curve. A pixel face is already on
+   a grid, and -0.012em pulls its stems off it. */
+:root[data-pixel-font='on'] h1,
+:root[data-pixel-font='on'] h2,
+:root[data-pixel-font='on'] h3 {
+  letter-spacing: 0;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -343,9 +427,7 @@ body {
     var(--bg);
   background-attachment: fixed;
   color: var(--text);
-  font-family:
-    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
-    'Hiragino Sans GB', 'Microsoft YaHei', Roboto, sans-serif;
+  font-family: var(--font-ui);
   font-size: 14px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;

@@ -51,7 +51,7 @@ export type LibraryView =
 export type HostSection = 'metrics' | 'instances' | 'disk' | 'config' | 'terminal'
 
 /** Panel-wide settings. Sections a sub-user should not see live elsewhere. */
-export type SettingsSection = 'devices' | 'security' | 'update' | 'plugins'
+export type SettingsSection = 'devices' | 'security' | 'update' | 'plugins' | 'appearance'
 
 /** Which states the 所有实例 list is showing. Part of the URL. */
 export type StateFilter = 'all' | 'live' | 'stopped' | 'problem'
@@ -246,6 +246,7 @@ export const SETTINGS_SECTIONS: {
   { id: 'security', label: '登录记录' },
   { id: 'plugins', label: 'GitHub 集成', keywords: 'github token 令牌 私有仓库 下载源 镜像' },
   { id: 'update', label: '面板更新' },
+  { id: 'appearance', label: '外观', keywords: '字体 像素 minecraft 主题 深色 浅色' },
 ]
 
 const STATE_FILTERS: StateFilter[] = ['all', 'live', 'stopped', 'problem']

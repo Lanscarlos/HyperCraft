@@ -723,6 +723,7 @@ const SETTINGS_ICONS: Record<string, IconName> = {
   security: 'lock',
   plugins: 'github',
   update: 'update',
+  appearance: 'appearance',
 }
 
 // ----------------------------------------------------------------- pieces

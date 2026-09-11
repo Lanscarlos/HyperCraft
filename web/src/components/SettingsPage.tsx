@@ -1,6 +1,7 @@
 import type { SettingsSection } from '../routes'
 import type { PluginController } from '../usePlugins'
 import type { UpdateController } from '../useUpdate'
+import { AppearanceSettings } from './AppearanceSettings'
 import { DevicesPage } from './DevicesPage'
 import { Page } from './Page'
 import { PluginSourceSettings } from './PluginSourceSettings'
@@ -43,6 +44,8 @@ export function SettingsPage({ section, update, plugins, runningNames }: Props) 
       return <SecurityPage />
     case 'plugins':
       return <PluginSourceSettings plugins={plugins} />
+    case 'appearance':
+      return <AppearanceSettings />
     case 'update':
       return (
         <Page
