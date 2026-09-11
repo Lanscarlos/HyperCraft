@@ -11,19 +11,62 @@ func NormalizeVersion(v string) string {
 	return strings.TrimPrefix(strings.TrimSpace(v), "v")
 }
 
+// snapshotPrefix starts the whole version of a snapshot build: "snapshot-1234",
+// where the number is the commit count of main at that build.
+const snapshotPrefix = "snapshot-"
+
+// snapshotBuild returns a snapshot version's commit count, and whether v is a
+// snapshot at all.
+//
+// A snapshot under this naming carries no semantic version. It is not heading
+// for a particular release — it is whatever main was at that commit — so
+// naming it after the next release means inventing a version nobody has
+// decided to cut. The commit count is the only number a snapshot actually has.
+//
+// The workflow does not publish this form yet; it still tags snapshots
+// vX.Y-snapshot.N. Reading it lands first on purpose. The binary that compares
+// versions is the one already installed on the machine, so it has to
+// understand the new form BEFORE any release carries it — a panel built
+// without this code skips such a tag as uncomparable, finds nothing newer it
+// can read, and reports "already up to date" forever. Publishing the new
+// naming before the parser shipped is exactly how the snapshot channel went
+// dead once already.
+func snapshotBuild(v string) (int, bool) {
+	rest, ok := strings.CutPrefix(NormalizeVersion(v), snapshotPrefix)
+	if !ok || rest == "" {
+		return 0, false
+	}
+	// Digits only: strconv.Atoi would also take "+12" and "-3", and a version
+	// that compares as a number has to look like one.
+	for _, r := range rest {
+		if r < '0' || r > '9' {
+			return 0, false
+		}
+	}
+	n, err := strconv.Atoi(rest)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
 // IsReleaseVersion reports whether v looks like a version this package can
 // reason about. A binary built outside the release workflow reports "dev", and
 // offering to "update" that would overwrite someone's local build.
 //
-// Releases carry all three fields (0.3.0). Snapshots are named after the minor
-// release they lead to and carry only two (0.4-snapshot.86): while the project
-// is on 0.x the minor is the release unit, so a third field there would name a
-// patch release that is never going to be cut. Two fields compare as three with
-// a trailing zero — see compareNumeric.
+// Releases carry all three fields (0.3.0). Snapshots come in two forms, and
+// both are accepted: the vX.Y-snapshot.N the workflow publishes today, whose
+// two-field core compares as three with a trailing zero (see compareNumeric),
+// and the snapshot-1234 it is expected to move to. A panel running either must
+// be accepted here, or it would classify itself as a local build and turn
+// panel updates off entirely.
 func IsReleaseVersion(v string) bool {
 	v = NormalizeVersion(v)
 	if v == "" || v == "dev" {
 		return false
+	}
+	if _, ok := snapshotBuild(v); ok {
+		return true
 	}
 	core, _, _ := strings.Cut(v, "-")
 	parts := strings.Split(core, ".")
@@ -42,15 +85,46 @@ func IsReleaseVersion(v string) bool {
 }
 
 // IsStableVersion reports whether v is a final release rather than something
-// leading up to one — 0.3.0 rather than 0.3.0-rc.1 or 0.4-snapshot.86.
+// leading up to one — 0.3.0 rather than 0.3.0-rc.1 or snapshot-1234. The "-"
+// every non-release form carries is what decides it.
 func IsStableVersion(v string) bool {
 	return IsReleaseVersion(v) && !strings.Contains(NormalizeVersion(v), "-")
 }
 
-// CompareVersions orders two semantic versions, returning -1 if a sorts before
-// b, 0 if they are equal, and 1 if a sorts after b. A pre-release sorts before
-// the release it leads to, so 0.3.0-rc.1 < 0.3.0.
+// CompareVersions orders two versions, returning -1 if a sorts before b, 0 if
+// they are equal, and 1 if a sorts after b. A pre-release sorts before the
+// release it leads to, so 0.3.0-rc.1 < 0.3.0.
+//
+// Snapshots sit outside that order: "snapshot-1234" has no semantic version to
+// compare, so two of them compare on their commit count and a snapshot outranks
+// everything else. That is the rule the snapshot channel runs on — a snapshot is
+// built from main, which already contains every release, so being pulled "up"
+// onto a release would move the panel backwards in content. Leaving the
+// snapshot track is therefore a deliberate act (switch the channel back to
+// stable and take the downgrade Offer reports), not something a release does to
+// a panel on its own.
+//
+// The rule also covers the naming in use today: a 0.4-snapshot.86 compares as
+// an ordinary pre-release and so loses to any snapshot-N. That is what will
+// carry panels across when the workflow switches over.
 func CompareVersions(a, b string) int {
+	aBuild, aSnap := snapshotBuild(a)
+	bBuild, bSnap := snapshotBuild(b)
+	switch {
+	case aSnap && bSnap:
+		switch {
+		case aBuild < bBuild:
+			return -1
+		case aBuild > bBuild:
+			return 1
+		}
+		return 0
+	case aSnap:
+		return 1
+	case bSnap:
+		return -1
+	}
+
 	aCore, aPre, _ := strings.Cut(NormalizeVersion(a), "-")
 	bCore, bPre, _ := strings.Cut(NormalizeVersion(b), "-")
 

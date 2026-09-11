@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -30,12 +31,22 @@ func newFakeRepo(t *testing.T, releases ...publishedRelease) *fakeRepo {
 	t.Helper()
 	repo := &fakeRepo{}
 
+	// Releases and the snapshots named after them are tagged v0.3.0 /
+	// v0.4-snapshot.86. A commit-count snapshot is tagged snapshot-191, with
+	// no v in front of it, because what follows is not a semantic version.
+	tag := func(version string) string {
+		if strings.HasPrefix(version, "snapshot-") {
+			return version
+		}
+		return "v" + version
+	}
+
 	body := func(r publishedRelease) map[string]any {
 		return map[string]any{
-			"tag_name":     "v" + r.version,
-			"name":         "v" + r.version,
+			"tag_name":     tag(r.version),
+			"name":         tag(r.version),
 			"body":         "notes for " + r.version,
-			"html_url":     "https://example.invalid/releases/v" + r.version,
+			"html_url":     "https://example.invalid/releases/" + tag(r.version),
 			"published_at": "2026-08-08T00:00:00Z",
 			"draft":        r.draft,
 			"prerelease":   r.prerelease,
@@ -229,6 +240,7 @@ func TestStatusMarksASnapshotBuildAsOne(t *testing.T) {
 	}{
 		{"v0.2.0", false},
 		{"v0.3-snapshot.86", true},
+		{"snapshot-191", true},
 		{"v0.3.0-rc.1", true},
 		// A dev build is not a snapshot; it has no version at all, and the UI
 		// already reports that through Eligible.
@@ -250,5 +262,58 @@ func TestParseChannelFallsBackToStable(t *testing.T) {
 	}
 	if got := ParseChannel(" snapshot "); got != ChannelSnapshot {
 		t.Errorf("ParseChannel(\" snapshot \") = %q, want snapshot", got)
+	}
+}
+
+// The tests below cover the commit-count naming, which the snapshot workflow
+// does not publish yet. The parser ships first on purpose: the panel doing the
+// comparison is the one already installed on the machine, so it has to
+// understand the new form *before* the workflow starts producing it. Publishing
+// it first is what stranded every snapshot panel the last time around.
+
+func TestSnapshotChannelOffersACommitCountSnapshot(t *testing.T) {
+	repo := newFakeRepo(t,
+		publishedRelease{version: "snapshot-191", prerelease: true},
+		publishedRelease{version: "0.3-snapshot.86", prerelease: true},
+		publishedRelease{version: "0.2.0"},
+	)
+
+	version, available, downgrade := offered(t, repo.updater("v0.3-snapshot.86", ChannelSnapshot))
+	if version != "snapshot-191" {
+		t.Fatalf("offered %q, want snapshot-191", version)
+	}
+	if !available || downgrade {
+		t.Errorf("offer of snapshot-191: available=%v downgrade=%v, want true/false", available, downgrade)
+	}
+}
+
+func TestCommitCountSnapshotStaysOnMainWhenAReleaseShips(t *testing.T) {
+	// 0.3.0 is a release of code this snapshot already contains — main is where
+	// it was cut from — so offering it would move the panel backwards.
+	repo := newFakeRepo(t,
+		publishedRelease{version: "0.3.0"},
+		publishedRelease{version: "snapshot-191", prerelease: true},
+	)
+
+	_, available, _ := offered(t, repo.updater("snapshot-191", ChannelSnapshot))
+	if available {
+		t.Error("a panel on the newest snapshot was pulled back onto a release")
+	}
+}
+
+func TestStableChannelOffersTheWayBackFromACommitCountSnapshot(t *testing.T) {
+	// Switching the channel back is the only way off the snapshot track, and it
+	// has to keep working for a snapshot with no comparable version number.
+	repo := newFakeRepo(t,
+		publishedRelease{version: "snapshot-191", prerelease: true},
+		publishedRelease{version: "0.2.0"},
+	)
+
+	version, available, downgrade := offered(t, repo.updater("snapshot-191", ChannelStable))
+	if version != "0.2.0" {
+		t.Fatalf("offered %q, want the release 0.2.0", version)
+	}
+	if !available || !downgrade {
+		t.Errorf("offer of 0.2.0: available=%v downgrade=%v, want true/true", available, downgrade)
 	}
 }
