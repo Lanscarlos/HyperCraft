@@ -147,7 +147,11 @@ function memoryText(
   instance: InstanceStatus,
   metric: { memoryBytes: number; xmxBytes: number; cpuPercent: number } | undefined,
 ): string {
-  const xmx = instance.maxMemoryMB > 0 ? instance.maxMemoryMB * 1024 * 1024 : 0
+  // The ceiling that will really apply. In script mode the configured number
+  // never reaches the JVM, and 已分配 2048 next to a 6 GB Forge server is a
+  // worse answer than saying nothing.
+  const xmx =
+    instance.effectiveMaxMemoryMB > 0 ? instance.effectiveMaxMemoryMB * 1024 * 1024 : 0
   if (!isLive(instance.state) || !metric) {
     return xmx > 0 ? `已分配 ${formatBytes(xmx)}` : '未限制'
   }

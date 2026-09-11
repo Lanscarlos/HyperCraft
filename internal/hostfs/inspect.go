@@ -3,6 +3,7 @@ package hostfs
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -65,7 +66,37 @@ type Inspection struct {
 	// importing a proxy as a server is a mistake that only shows up as a
 	// failure to start.
 	Proxy bool `json:"proxy"`
+	// Loader and GameVersion are what the directory's own layout says this
+	// server is. Forge from 1.17 on has no runnable jar at all — the installer
+	// leaves a libraries tree and a run.sh — so for these the usual "read the
+	// jar's name" has nothing to read, and the layout is the only evidence
+	// there is.
+	Loader      string `json:"loader,omitempty"`
+	GameVersion string `json:"gameVersion,omitempty"`
+	// LaunchScript is the start script the installer wrote, relative to the
+	// directory. Empty when there is none — which for a modern Forge install
+	// means someone deleted it.
+	LaunchScript string `json:"launchScript,omitempty"`
 }
+
+// modLoaders are the layouts that identify a server with no jar to read a name
+// off, in the order they are looked for. The path is where each installer puts
+// its own artifacts, and the directory under it is named for the version.
+var modLoaders = []struct {
+	loader string
+	path   string
+	// gameVersioned marks a loader whose version directory begins with the
+	// Minecraft version — Forge's "1.20.1-47.2.0". NeoForge's "21.1.72" is its
+	// own version scheme and says nothing about the game version, so guessing
+	// one from it would be worse than leaving it blank.
+	gameVersioned bool
+}{
+	{"forge", "libraries/net/minecraftforge/forge", true},
+	{"neoforge", "libraries/net/neoforged/neoforge", false},
+}
+
+// launchScripts are what those installers write, this platform's first.
+var launchScripts = []string{"run.sh", "run.bat"}
 
 // serverJarHints are the file names a server jar is likely to have, best first.
 // A directory can easily hold a dozen jars (a modpack's libraries, an old
@@ -124,11 +155,15 @@ func Inspect(dir string) (Inspection, error) {
 	}
 	sort.Strings(out.Worlds)
 
+	out.Loader, out.GameVersion = detectLoader(listing.Path)
+	out.LaunchScript = findLaunchScript(listing.Path)
+
 	// Any one of these on its own is enough: a directory that has only ever
 	// been unpacked has a jar and nothing else, and one whose jar was deleted
-	// still has the world you want back.
+	// still has the world you want back. A Forge install is the case with no
+	// jar at any point, which is why its layout counts on its own.
 	out.Server = out.Jar != "" || out.Properties != nil || len(out.Worlds) > 0 ||
-		out.EULA != EULAMissing
+		out.EULA != EULAMissing || out.Loader != ""
 	// Its own config file first: a jar renamed to server.jar says nothing, and
 	// a directory Velocity has run in always has a velocity.toml.
 	if _, err := os.Stat(filepath.Join(listing.Path, "velocity.toml")); err == nil {
@@ -137,6 +172,48 @@ func Inspect(dir string) (Inspection, error) {
 		out.Proxy = strings.HasPrefix(strings.ToLower(out.Jar), "velocity")
 	}
 	return out, nil
+}
+
+// detectLoader reads the libraries tree an installer leaves behind.
+//
+// This is the one detection that works for a server the panel does not build a
+// command line for: there is no jar name, and version_history.json is written
+// only by the Paper family.
+func detectLoader(dir string) (string, string) {
+	for _, candidate := range modLoaders {
+		entries, err := os.ReadDir(filepath.Join(dir, filepath.FromSlash(candidate.path)))
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			version := ""
+			if candidate.gameVersioned {
+				version, _, _ = strings.Cut(entry.Name(), "-")
+			}
+			return candidate.loader, version
+		}
+	}
+	return "", ""
+}
+
+// findLaunchScript returns the installer's start script, this platform's
+// first: a Windows host cannot run run.sh and a Linux host will not run
+// run.bat, and offering the wrong one produces a start that fails for a reason
+// that has nothing to do with the server.
+func findLaunchScript(dir string) string {
+	ordered := launchScripts
+	if runtime.GOOS == "windows" {
+		ordered = []string{"run.bat", "run.sh"}
+	}
+	for _, name := range ordered {
+		if info, err := os.Stat(filepath.Join(dir, name)); err == nil && !info.IsDir() {
+			return name
+		}
+	}
+	return ""
 }
 
 // pickServerJar chooses the jar most likely to start this server: the best

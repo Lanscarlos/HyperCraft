@@ -104,7 +104,7 @@ func (l *Library) ImportJar(id, fileName string, src io.Reader, limit int64) (Im
 	// What the descriptor declared, in the same two fields a download fills
 	// from its registry — so Judge treats an imported jar exactly like any
 	// other, and the install dialog can say "this one is for Velocity".
-	if loader := normaliseLoader(info.Platform); loader != "" {
+	if loader := NormaliseLoader(info.Platform); loader != "" {
 		artifact.Loaders = []string{loader}
 	}
 	if info.APIVersion != "" {
@@ -241,7 +241,7 @@ func (l *Library) entryFor(id string, info JarInfo, fileName string) (Plugin, er
 	}
 
 	dir := DefaultTargetDir
-	if loader := normaliseLoader(info.Platform); loader != "" {
+	if loader := NormaliseLoader(info.Platform); loader != "" {
 		dir = TargetDirFor(loader)
 	}
 	return l.Add(name, Source{Kind: SourceLocal, Repo: repo}, dir, "")

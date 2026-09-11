@@ -213,7 +213,7 @@ function InstanceCard({
   const [error, setError] = useState<string | null>(null)
   const live = isLive(instance.state)
   const uptime = useUptime(instance.startedAt, live)
-  const xmx = metric?.xmxBytes || instance.maxMemoryMB * 1024 * 1024
+  const xmx = metric?.xmxBytes || instance.effectiveMaxMemoryMB * 1024 * 1024
   const share = metric && xmx > 0 ? Math.min(100, (metric.memoryBytes / xmx) * 100) : null
 
   return (

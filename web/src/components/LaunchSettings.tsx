@@ -6,9 +6,12 @@ import type {
   InstanceInput,
   InstanceStatus,
   JavaRuntime,
+  JVMArgs,
+  LaunchCheck,
+  LaunchIssue,
   SystemJava,
 } from '../types'
-import { ENCODING_OPTIONS, isLive } from '../types'
+import { ENCODING_OPTIONS, isLive, LOADER_OPTIONS } from '../types'
 import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
 import { InstanceCorePicker } from './InstanceCorePicker'
@@ -27,6 +30,8 @@ function toInput(instance: InstanceStatus): InstanceInput {
   return {
     name: instance.name,
     directory: instance.directory,
+    loader: instance.loader ?? '',
+    gameVersion: instance.gameVersion ?? '',
     java: instance.java,
     jar: instance.jar,
     minMemoryMB: instance.minMemoryMB,
@@ -37,6 +42,7 @@ function toInput(instance: InstanceStatus): InstanceInput {
     encoding: instance.encoding || 'auto',
     tty: instance.tty ?? true,
     forceColor: instance.forceColor ?? true,
+    javaToolOptions: instance.javaToolOptions ?? true,
     autoStart: instance.autoStart,
     autoRestart: instance.autoRestart,
     stopCommand: instance.stopCommand,
@@ -79,6 +85,20 @@ export function LaunchSettings({
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Which of the two launch modes the form is showing. Seeded from whether a
+  // command is stored — that is the only record of it — but held here so that
+  // switching to 脚本 on an instance with no command yet does not snap back.
+  const [scriptMode, setScriptMode] = useState(
+    () => (instance.command?.length ?? 0) > 0,
+  )
+  const [check, setCheck] = useState<LaunchCheck | null>(null)
+  const [checkRev, setCheckRev] = useState(0)
+  const [fixing, setFixing] = useState(false)
+  const [jvm, setJvm] = useState<JVMArgs | null>(null)
+  const [jvmMin, setJvmMin] = useState(0)
+  const [jvmMax, setJvmMax] = useState(0)
+  const [jvmBusy, setJvmBusy] = useState(false)
+  const [jvmStatus, setJvmStatus] = useState<string | null>(null)
 
   // A proxy launches differently enough to be worth saying so in two
   // placeholders: it answers "end" rather than "stop", and it exits on the
@@ -100,6 +120,47 @@ export function LaunchSettings({
     setServerText(toLines(instance.serverArgs ?? []))
     setCommandText(toLines(instance.command ?? []))
   }, [instance.id])
+
+  useEffect(() => {
+    setScriptMode((instance.command?.length ?? 0) > 0)
+  }, [instance.id])
+
+  // The check reads the script off disk, so it is re-run after every save and
+  // after the one repair the panel offers, not just on arrival.
+  useEffect(() => {
+    let cancelled = false
+    api
+      .launchCheck(instance.id)
+      .then((result) => {
+        if (!cancelled) setCheck(result)
+      })
+      .catch(() => {
+        if (!cancelled) setCheck(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [instance.id, checkRev])
+
+  // Forge's user_jvm_args.txt. Absent for anything that is not Forge-shaped,
+  // which is the normal case and not an error.
+  useEffect(() => {
+    let cancelled = false
+    api
+      .jvmArgs(instance.id)
+      .then((result) => {
+        if (cancelled) return
+        setJvm(result)
+        setJvmMin(result.minMemoryMB)
+        setJvmMax(result.maxMemoryMB)
+      })
+      .catch(() => {
+        if (!cancelled) setJvm(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [instance.id, checkRev])
 
   useEffect(() => {
     api
@@ -134,6 +195,11 @@ export function LaunchSettings({
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault()
+    const command = scriptMode ? fromLines(commandText) : []
+    if (scriptMode && command.length === 0) {
+      setError('选了脚本启动，就得填启动命令 —— 第一行是可执行文件。')
+      return
+    }
     setBusy(true)
     setError(null)
     setStatus(null)
@@ -142,7 +208,9 @@ export function LaunchSettings({
         ...form,
         jvmArgs: fromLines(jvmText),
         serverArgs: fromLines(serverText),
-        command: fromLines(commandText),
+        // An empty command is how the daemon is told to build the command line
+        // itself, so switching back to jar mode has to send one.
+        command,
       }
       onSaved(await api.updateInstance(instance.id, payload))
       setStatus(
@@ -150,10 +218,51 @@ export function LaunchSettings({
           ? '已保存，将在下次启动时生效'
           : '已保存',
       )
+      setCheckRev((rev) => rev + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')
     } finally {
       setBusy(false)
+    }
+  }
+
+  const applyFix = async (action: string) => {
+    setFixing(true)
+    setError(null)
+    try {
+      setCheck(await api.fixLaunch(instance.id, action))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '修复失败')
+    } finally {
+      setFixing(false)
+    }
+  }
+
+  // The heap of a script-launched server lives in a file, not in the instance
+  // config, so it saves to its own endpoint rather than riding along with the
+  // form — a half-applied save across two writes would be worse than two
+  // buttons.
+  const saveJVMArgs = async () => {
+    setJvmBusy(true)
+    setError(null)
+    setJvmStatus(null)
+    try {
+      const saved = await api.saveJVMArgs(instance.id, {
+        minMemoryMB: jvmMin,
+        maxMemoryMB: jvmMax,
+      })
+      setJvm(saved)
+      setJvmMin(saved.minMemoryMB)
+      setJvmMax(saved.maxMemoryMB)
+      setJvmStatus(
+        isLive(instance.state) ? '已写入，下次启动生效' : '已写入 ' + saved.fileName,
+      )
+      // The instance's reported heap ceiling comes from this file.
+      onSaved(await api.getInstance(instance.id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存失败')
+    } finally {
+      setJvmBusy(false)
     }
   }
 
@@ -197,7 +306,6 @@ export function LaunchSettings({
     }
   }
 
-  const usingCustomCommand = fromLines(commandText).length > 0
   // Anything that is not the system java or a managed runtime is a path the
   // operator typed, so the text box stays visible for it.
   const knownJava = form.java === 'java' || runtimes.some((r) => r.javaPath === form.java)
@@ -231,6 +339,38 @@ export function LaunchSettings({
             </>
           }
         />
+
+        <div className="field-row">
+          <label className="field">
+            <span>服务端类型</span>
+            <Select
+              ariaLabel="服务端类型"
+              value={form.loader}
+              options={LOADER_OPTIONS.map((entry) => ({
+                value: entry.value,
+                label: entry.label,
+                note: entry.note,
+              }))}
+              onChange={(next) => update('loader', next)}
+            />
+          </label>
+          <label className="field">
+            <span>游戏版本</span>
+            <input
+              value={form.gameVersion}
+              onChange={(e) => update('gameVersion', e.target.value)}
+              placeholder="1.20.1"
+              spellCheck={false}
+            />
+          </label>
+        </div>
+
+        <p className="muted">
+          面板先从目录和 jar 名认，认不出来才用这里填的。
+          <strong>脚本启动的服基本都认不出来</strong> —— 没有 jar 名可读，
+          <code>version_history.json</code> 也只有 Paper 系才写。认不出来的后果很具体：
+          mod 会被装进 <code>plugins/</code> 而不是 <code>mods/</code>，插件市场里每一条也都标成「未知」。
+        </p>
       </section>
 
       <InstanceCorePicker
@@ -238,17 +378,56 @@ export function LaunchSettings({
         cores={cores}
         onApplied={onCoreApplied}
         onOpenLibrary={onOpenLibrary}
+        jarIgnored={scriptMode}
+      />
+
+      <LaunchCheckPanel
+        check={check}
+        busy={fixing}
+        onFix={applyFix}
+        onRecheck={() => setCheckRev((rev) => rev + 1)}
       />
 
       <section className="panel panel--form">
         <h3 className="panel__title">启动方式</h3>
 
+        <div className="segmented" role="group" aria-label="启动方式">
+          {[
+            {
+              value: false,
+              label: '面板拼命令',
+              note: 'java -Xmx… -jar server.jar',
+            },
+            {
+              value: true,
+              label: '用我的脚本',
+              note: 'Forge 的 run.sh、基岩版、start.sh',
+            },
+          ].map((entry) => (
+            <button
+              key={String(entry.value)}
+              type="button"
+              className={`segmented__option${
+                scriptMode === entry.value ? ' segmented__option--active' : ''
+              }`}
+              aria-pressed={scriptMode === entry.value}
+              onClick={() => setScriptMode(entry.value)}
+            >
+              <strong>{entry.label}</strong>
+              <small>{entry.note}</small>
+            </button>
+          ))}
+        </div>
+
+        {/* The Java choice applies in both modes, but reaches the server by
+            two different routes, and saying which one matters: in script mode
+            the panel cannot put a path on a command line it did not build, so
+            it sets JAVA_HOME and puts the JDK first on PATH instead. */}
         <label className="field">
           <span>Java 环境</span>
           <Select
             ariaLabel="Java 环境"
             value={showCustomJava ? CUSTOM_JAVA : form.java}
-            disabled={usingCustomCommand}
             options={[
               {
                 value: 'java',
@@ -276,103 +455,144 @@ export function LaunchSettings({
               value={form.java}
               onChange={(e) => update('java', e.target.value)}
               placeholder="/usr/lib/jvm/java-21-openjdk/bin/java"
-              disabled={usingCustomCommand}
               spellCheck={false}
             />
           )}
           <small>
-            {runtimes.length > 0
-              ? '面板装的 Java 在这里直接选；「资源库 → Java 环境」可以再装别的版本。'
-              : '「资源库 → Java 环境」可以一键装一个，装完这里就能选。'}
+            {scriptMode ? (
+              <>
+                脚本里那句 <code>java</code> 走的是 PATH，所以面板会把选中的 JDK 放到
+                <code> PATH</code> 最前面并设好 <code>JAVA_HOME</code>，脚本一个字都不用改。
+                选「系统 java」就完全交给这台机器自己决定。
+              </>
+            ) : runtimes.length > 0 ? (
+              '面板装的 Java 在这里直接选；「资源库 → Java 环境」可以再装别的版本。'
+            ) : (
+              '「资源库 → Java 环境」可以一键装一个，装完这里就能选。'
+            )}
           </small>
         </label>
 
-        <label className="field">
-          <span>服务端 jar</span>
-          <input
-            value={form.jar}
-            onChange={(e) => update('jar', e.target.value)}
-            placeholder="server.jar"
-            list={`jars-${instance.id}`}
-            disabled={usingCustomCommand}
-          />
-          <datalist id={`jars-${instance.id}`}>
-            {jars.map((jar) => (
-              <option key={jar.name} value={jar.name} />
-            ))}
-          </datalist>
-          <small>
-            {jars.length > 0
-              ? `上面这个目录下找到 ${jars.length} 个 jar 文件，点输入框可以直接选`
-              : '目录下暂时没有 jar 文件，从上面装一个核心，或自己传一个'}
-          </small>
-        </label>
+        {scriptMode ? (
+          <>
+            <label className="field field--full">
+              <span>启动命令</span>
+              <textarea
+                rows={4}
+                value={commandText}
+                onChange={(e) => setCommandText(e.target.value)}
+                placeholder={'./run.sh'}
+                spellCheck={false}
+              />
+              <small>
+                一行一个参数，第一行是可执行文件，相对路径从实例目录算起 ——
+                <code>./run.sh</code> 才是这个目录里的文件，<code>run.sh</code> 会被当成
+                PATH 里的命令去找。
+                <strong>脚本必须自己把 JVM 跑在前台</strong>：<code>nohup</code>、行尾的
+                <code> &amp;</code>、screen、tmux 都会让面板在一秒内认为服务器已经退出，
+                而它其实还开着。写成 <code>exec java …</code> 最省事。
+              </small>
+            </label>
 
-        <div className="field-row">
-          <label className="field">
-            <span>最小内存 (MB)</span>
-            <input
-              type="number"
-              min={0}
-              step={256}
-              value={form.minMemoryMB}
-              onChange={(e) => update('minMemoryMB', Number(e.target.value))}
-              disabled={usingCustomCommand}
+            <label className="checkbox field--full">
+              <input
+                type="checkbox"
+                checked={form.javaToolOptions}
+                onChange={(e) => update('javaToolOptions', e.target.checked)}
+              />
+              <span>把编码参数传给脚本（推荐）</span>
+              <small>
+                面板没法往你的命令行里加参数，所以这些参数通过
+                <code> JAVA_TOOL_OPTIONS</code> 传进去 —— 主要是
+                <code> -Dfile.encoding=UTF-8</code> 那一组，中文输出乱码基本都是少了它们。
+                代价是每次启动控制台第一行会多出一句
+                <code> Picked up JAVA_TOOL_OPTIONS</code>。脚本里自己写的参数优先级更高，
+                随时能盖掉这里的。
+              </small>
+            </label>
+
+            <ScriptMemory
+              jvm={jvm}
+              min={jvmMin}
+              max={jvmMax}
+              busy={jvmBusy}
+              status={jvmStatus}
+              onMin={setJvmMin}
+              onMax={setJvmMax}
+              onSave={saveJVMArgs}
             />
-          </label>
-          <label className="field">
-            <span>最大内存 (MB)</span>
-            <input
-              type="number"
-              min={0}
-              step={256}
-              value={form.maxMemoryMB}
-              onChange={(e) => update('maxMemoryMB', Number(e.target.value))}
-              disabled={usingCustomCommand}
-            />
-          </label>
-        </div>
+          </>
+        ) : (
+          <>
+            <label className="field">
+              <span>服务端 jar</span>
+              <input
+                value={form.jar}
+                onChange={(e) => update('jar', e.target.value)}
+                placeholder="server.jar"
+                list={`jars-${instance.id}`}
+              />
+              <datalist id={`jars-${instance.id}`}>
+                {jars.map((jar) => (
+                  <option key={jar.name} value={jar.name} />
+                ))}
+              </datalist>
+              <small>
+                {jars.length > 0
+                  ? `上面这个目录下找到 ${jars.length} 个 jar 文件，点输入框可以直接选`
+                  : '目录下暂时没有 jar 文件，从上面装一个核心，或自己传一个'}
+              </small>
+            </label>
 
-        <label className="field field--full">
-          <span>JVM 参数</span>
-          <textarea
-            rows={4}
-            value={jvmText}
-            onChange={(e) => setJvmText(e.target.value)}
-            placeholder={'-XX:+UseG1GC\n-XX:MaxGCPauseMillis=200'}
-            disabled={usingCustomCommand}
-          />
-          <small>一行一个参数，会放在 -jar 之前。</small>
-        </label>
+            <div className="field-row">
+              <label className="field">
+                <span>最小内存 (MB)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={256}
+                  value={form.minMemoryMB}
+                  onChange={(e) => update('minMemoryMB', Number(e.target.value))}
+                />
+              </label>
+              <label className="field">
+                <span>最大内存 (MB)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={256}
+                  value={form.maxMemoryMB}
+                  onChange={(e) => update('maxMemoryMB', Number(e.target.value))}
+                />
+              </label>
+            </div>
 
-        <label className="field field--full">
-          <span>服务端参数</span>
-          <textarea
-            rows={2}
-            value={serverText}
-            onChange={(e) => setServerText(e.target.value)}
-            placeholder={proxy ? '' : '--nogui'}
-            disabled={usingCustomCommand}
-          />
-          <small>
-            一行一个参数，会放在 jar 之后。
-            {proxy && ' Velocity 遇到不认识的参数会直接退出，一般这里留空。'}
-          </small>
-        </label>
+            <label className="field field--full">
+              <span>JVM 参数</span>
+              <textarea
+                rows={4}
+                value={jvmText}
+                onChange={(e) => setJvmText(e.target.value)}
+                placeholder={'-XX:+UseG1GC\n-XX:MaxGCPauseMillis=200'}
+              />
+              <small>一行一个参数，会放在 -jar 之前。</small>
+            </label>
 
-        <label className="field field--full">
-          <span>自定义启动命令（可选）</span>
-          <textarea
-            rows={3}
-            value={commandText}
-            onChange={(e) => setCommandText(e.target.value)}
-            placeholder={'./bedrock_server'}
-          />
-          <small>
-            填了这里就完全接管启动方式，上面的 Java / jar / 内存设置全部忽略。
-            一行一个参数，第一行是可执行文件。适合基岩版服务端或 start.sh 之类的启动脚本。
-          </small>
-        </label>
+            <label className="field field--full">
+              <span>服务端参数</span>
+              <textarea
+                rows={2}
+                value={serverText}
+                onChange={(e) => setServerText(e.target.value)}
+                placeholder={proxy ? '' : '--nogui'}
+              />
+              <small>
+                一行一个参数，会放在 jar 之后。
+                {proxy && ' Velocity 遇到不认识的参数会直接退出，一般这里留空。'}
+              </small>
+            </label>
+          </>
+        )}
       </section>
 
       <section className="panel panel--form">
@@ -391,8 +611,9 @@ export function LaunchSettings({
           />
           <small>
             控制台按这个编码解读服务器输出、并按同样的编码发送命令。「自动」会让 JVM 用
-            UTF-8 输出，同时对不是 UTF-8 的行按系统编码兜底 —— 中文 Windows 上出现乱码时，
-            如果用的是自定义启动脚本，改成 GBK 通常就好了。
+            UTF-8 输出，同时对不是 UTF-8 的行按系统编码兜底。用自己的脚本启动时，
+            「让 JVM 用 UTF-8」这半件事要靠上面那个 <code>JAVA_TOOL_OPTIONS</code> 开关；
+            那个关着、中文 Windows 上又乱码的话，这里改成 GBK 通常就好了。
           </small>
         </label>
 
@@ -431,7 +652,8 @@ export function LaunchSettings({
             <code> -Dterminal.jline=false -Dterminal.ansi=true</code>，让网页控制台和
             cmd 里一样有颜色。终端模式下服务端本来就看得到终端，这两个参数不会被加上
             —— <code>terminal.jline=false</code> 恰好会关掉终端模式想要的那个补全。
-            自定义启动命令不受影响，需要自己加。
+            用自己的脚本启动时，这两个参数走
+            <code> JAVA_TOOL_OPTIONS</code> 送进去，要在上面把那个开关留着。
           </small>
         </label>
       </section>
@@ -506,5 +728,175 @@ export function LaunchSettings({
         </div>
       </div>
     </form>
+  )
+}
+
+/** How each level of finding is introduced. Named for what it means to the
+ *  person about to press 启动, not for a severity scale. */
+const LEVEL_LABELS: Record<LaunchIssue['level'], string> = {
+  fatal: '起不来',
+  warn: '能起来，但面板管不住',
+  info: '提示',
+}
+
+/**
+ * What the panel expects to happen when this instance is started.
+ *
+ * It exists for one failure in particular, and that failure is invisible from
+ * everywhere else: a start script that backgrounds the JVM starts the server
+ * perfectly well and hands the panel a process that exits a second later. The
+ * panel then shows 已停止 for a server everyone can see running, the console
+ * goes nowhere, 停止 does nothing, and 崩溃自动重启 starts a second copy on the
+ * same world. Nothing in that chain points at the script, so the panel says it
+ * here, before the first start, instead of leaving it to be discovered.
+ */
+function LaunchCheckPanel({
+  check,
+  busy,
+  onFix,
+  onRecheck,
+}: {
+  check: LaunchCheck | null
+  busy: boolean
+  onFix: (action: string) => void
+  onRecheck: () => void
+}) {
+  if (check === null) return null
+
+  return (
+    <section className="panel panel--form">
+      <h3 className="panel__title">开服前检查</h3>
+
+      {check.issues.length === 0 ? (
+        <p className="muted">
+          没发现问题。
+          {check.mode === 'script' && check.script
+            ? `启动命令指得到，${check.script} 也没有把服务端丢到后台的写法。`
+            : '核心和目录都对得上。'}
+        </p>
+      ) : (
+        <ul className="launchcheck">
+          {check.issues.map((issue) => (
+            <li
+              key={issue.code}
+              className={`launchcheck__item launchcheck__item--${issue.level}`}
+            >
+              <strong className="launchcheck__level">{LEVEL_LABELS[issue.level]}</strong>
+              <p className="launchcheck__text">{issue.message}</p>
+              {issue.detail && (
+                <code className="launchcheck__line">
+                  {issue.line ? `${check.script ?? ''}:${issue.line}  ` : ''}
+                  {issue.detail}
+                </code>
+              )}
+              {issue.fix === 'chmod' && (
+                <button
+                  className="btn btn--row"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onFix('chmod')}
+                >
+                  加上执行位
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="actions">
+        <button className="btn btn--row" type="button" disabled={busy} onClick={onRecheck}>
+          重新检查
+        </button>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * The heap of a script-launched server, which is not in the instance config.
+ *
+ * The memory fields above build a -Xmx onto a command line; a script owns its
+ * own, so that number never reaches the JVM. Forge and NeoForge read
+ * user_jvm_args.txt for exactly this, so the control moves there rather than
+ * disappearing — and where there is no such file the panel says so instead of
+ * showing a slider that changes nothing.
+ */
+function ScriptMemory({
+  jvm,
+  min,
+  max,
+  busy,
+  status,
+  onMin,
+  onMax,
+  onSave,
+}: {
+  jvm: JVMArgs | null
+  min: number
+  max: number
+  busy: boolean
+  status: string | null
+  onMin: (value: number) => void
+  onMax: (value: number) => void
+  onSave: () => void
+}) {
+  if (!jvm?.exists) {
+    return (
+      <p className="muted field--full">
+        内存由你的脚本自己决定，面板不去猜 —— 上面那组内存设置只对「面板拼命令」有效。
+        Forge / NeoForge 的服务端可以把 <code>-Xmx</code> 写进
+        <code> user_jvm_args.txt</code>，那个文件在时这里会直接变成可编辑的。
+      </p>
+    )
+  }
+
+  const others = jvm.args.filter((arg) => !/^-X(mx|ms)/.test(arg))
+
+  return (
+    <>
+      <div className="field-row">
+        <label className="field">
+          <span>最小内存 (MB)</span>
+          <input
+            type="number"
+            min={0}
+            step={256}
+            value={min}
+            onChange={(e) => onMin(Number(e.target.value))}
+          />
+        </label>
+        <label className="field">
+          <span>最大内存 (MB)</span>
+          <input
+            type="number"
+            min={0}
+            step={256}
+            value={max}
+            onChange={(e) => onMax(Number(e.target.value))}
+          />
+        </label>
+      </div>
+
+      <p className="muted field--full">
+        这两个数写进 <code>{jvm.fileName}</code>，也就是 Forge 的
+        <code> run.sh</code> 真正会读的那个文件 —— 文件里的注释和其他参数都会原样保留，
+        填 0 是删掉这一行。
+        {others.length > 0 && (
+          <>
+            {' '}
+            文件里还有面板没在这儿提供开关的参数：<code>{others.join(' ')}</code>，
+            要改去「文件」页。
+          </>
+        )}
+      </p>
+
+      <div className="actions">
+        <button className="btn btn--row" type="button" disabled={busy} onClick={onSave}>
+          写入 {jvm.fileName}
+        </button>
+        {status && <span className="muted">{status}</span>}
+      </div>
+    </>
   )
 }

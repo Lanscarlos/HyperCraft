@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/lanscarlos/hypercraft/internal/jvmargs"
 )
 
 // State is the lifecycle position of a managed server process.
@@ -50,6 +52,24 @@ type Config struct {
 	// instance written before this field existed is.
 	Kind string `json:"kind"`
 
+	// Loader and GameVersion are what this instance says it is: "forge",
+	// "1.20.1". Both are hints of last resort — the panel still prefers what
+	// it can read off the disk — and both may be blank, which means nobody
+	// said rather than none.
+	//
+	// They exist because a server launched by the operator's own script leaves
+	// nothing to detect. version_history.json is a Paper-family file, the core
+	// library is keyed by jar name and a script instance has no jar, so a
+	// Forge server started by run.sh comes back as "unknown" from all three of
+	// plugin.DetectTarget's sources. Unknown is not a cosmetic problem: it is
+	// what sends mods into plugins/ instead of mods/, and what makes every
+	// entry in the mod market show 未知 next to it.
+	//
+	// Loader is stored already normalised; see plugin.NormaliseLoader for the
+	// vocabulary.
+	Loader      string `json:"loader"`
+	GameVersion string `json:"gameVersion"`
+
 	// Launch settings. The usual case is a Java jar; Command overrides the
 	// whole argv for servers that are not jars at all (Bedrock's
 	// bedrock_server binary, a start.sh wrapper, BungeeCord launchers).
@@ -73,6 +93,17 @@ type Config struct {
 	// ForceColor keeps ANSI colours on through a pipe. It has no effect in TTY
 	// mode, where the server can see a terminal and colours itself. Default true.
 	ForceColor *bool `json:"forceColor"`
+	// JavaToolOptions hands the panel's console JVM flags to a server whose
+	// command line the panel does not build, through the environment variable
+	// of the same name. It does nothing outside Command mode, where those
+	// flags already go on the command line.
+	//
+	// Without it a script-launched server picks its own charset and Chinese
+	// output comes back as mojibake, which is the single most common thing
+	// wrong with a custom launcher on this panel. The cost is one
+	// "Picked up JAVA_TOOL_OPTIONS:" line on stderr at every start — visible,
+	// harmless, and the reason this is a switch rather than a rule. Default true.
+	JavaToolOptions *bool `json:"javaToolOptions"`
 
 	// Supervision settings.
 	AutoStart      bool   `json:"autoStart"`      // start when the panel boots
@@ -124,6 +155,14 @@ func (c *Config) applyDefaults() {
 		// should behave like a console, not like a log file.
 		on := true
 		c.ForceColor = &on
+	}
+	if c.JavaToolOptions == nil {
+		// On by default, including for instances saved before the option
+		// existed: those are exactly the ones whose console has been showing
+		// mojibake, and the flags are overridable from the script itself,
+		// since the command line is applied after JAVA_TOOL_OPTIONS.
+		on := true
+		c.JavaToolOptions = &on
 	}
 	if c.TTY == nil {
 		// On by default, including for instances saved before the option
@@ -201,6 +240,45 @@ func DefaultServerArgs(kind string) []string {
 // colorForced reports whether the panel should make the server emit ANSI
 // colour even though its stdout is a pipe.
 func (c *Config) colorForced() bool { return c.ForceColor == nil || *c.ForceColor }
+
+// javaToolOptionsEnabled reports whether the console JVM flags may travel
+// through the environment to a server the panel does not build a command line
+// for.
+func (c *Config) javaToolOptionsEnabled() bool {
+	return c.JavaToolOptions == nil || *c.JavaToolOptions
+}
+
+// UsesScript reports whether this instance launches through the operator's own
+// command line rather than the panel's java/jar one.
+//
+// It is the same question as usesCustomCommand, exported because it is the
+// axis the API and the UI branch on: in script mode the Java picker, the
+// memory fields and the argument lists do not build anything, and saying so is
+// most of what the launch settings page has to do.
+func (c Config) UsesScript() bool { return c.usesCustomCommand() }
+
+// EffectiveMaxMemoryMB is the heap ceiling this instance will actually run
+// with, which stops being MaxMemoryMB the moment a script owns the command
+// line: the panel's -Xmx never reaches the JVM then.
+//
+// Forge's run.sh passes @user_jvm_args.txt, so that file is the answer where
+// it exists. Zero means nobody knows — and a caller drawing a ceiling should
+// then draw none, rather than the number sitting unused in the config. A
+// memory chart with a -Xmx reference line invented out of a field the JVM
+// never saw is worse than a chart with no line at all.
+func (c Config) EffectiveMaxMemoryMB() int {
+	if !c.usesCustomCommand() {
+		return c.MaxMemoryMB
+	}
+	if c.Directory == "" {
+		return 0
+	}
+	file, err := jvmargs.Load(filepath.Join(c.Directory, jvmargs.FileName))
+	if err != nil {
+		return 0
+	}
+	return file.MaxMemoryMB()
+}
 
 // ttyEnabled reports the operator's choice of console transport, which is only
 // a request: whether it is honoured also depends on the platform.
@@ -310,4 +388,8 @@ type Status struct {
 	// all, so the UI can grey the switch out instead of letting it be set to
 	// something that will silently fall back.
 	TTYSupported bool `json:"ttySupported"`
+	// EffectiveMaxMemoryMB is the heap ceiling that will really apply, which
+	// is not MaxMemoryMB in script mode. Zero means unknown; see
+	// Config.EffectiveMaxMemoryMB.
+	EffectiveMaxMemoryMB int `json:"effectiveMaxMemoryMB"`
 }

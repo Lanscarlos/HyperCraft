@@ -372,7 +372,7 @@ function HostInstances({
     <Page
       wide
       title="实例分布"
-      lead="这台机器上的服务器各自占了多少额度。「已分配」是 -Xmx，也就是它有权拿走的上限。"
+      lead="这台机器上的服务器各自占了多少额度。「已分配」是 -Xmx，也就是它有权拿走的上限；用自己的脚本启动、又没写在 user_jvm_args.txt 里的，面板看不到这个数，记作「未知」。"
     >
       <div className="rows" role="table" aria-label="实例内存分布">
         <div className="rows__head" role="row">
@@ -383,7 +383,10 @@ function HostInstances({
           <span role="columnheader"></span>
         </div>
         {ordered.map((item) => {
-          const xmx = Math.max(0, item.maxMemoryMB) * 1024 * 1024
+          // The effective ceiling, not the configured one: a server launched
+          // by its own script never sees the panel's -Xmx, so summing that
+          // column would be adding up memory nobody reserved.
+          const xmx = Math.max(0, item.effectiveMaxMemoryMB) * 1024 * 1024
           const share = memory.total > 0 ? (xmx / memory.total) * 100 : 0
           return (
             <div className="rows__row" role="row" key={item.id}>
@@ -400,7 +403,7 @@ function HostInstances({
                 {STATE_LABELS[item.state]}
               </span>
               <span className="rows__cell rows__cell--num" role="cell">
-                {xmx > 0 ? formatBytes(xmx) : '未限制'}
+                {xmx > 0 ? formatBytes(xmx) : item.command?.length ? '未知' : '未限制'}
               </span>
               <span className="rows__cell" role="cell">
                 <span className="share" aria-hidden="true">

@@ -553,10 +553,25 @@ func (s *Server) detectTarget(cfg instance.Config) plugin.Target {
 		}
 	}
 	target := plugin.DetectTarget(cfg.Directory, cfg.Jar, lookup)
+
 	// What the instance says it is, when nothing on disk could say. A proxy
 	// whose jar was renamed to server.jar detects as nothing at all, and a
 	// nothing means every proxy plugin in the market is badged 未知 — while the
 	// one fact needed to judge them is recorded on the instance itself.
+	//
+	// Detection still comes first, including its weakest source. A jar named
+	// paper-1.20.4-496.jar is evidence; a field somebody filled in once and
+	// never revisited after swapping the core is a memory.
+	if target.Loader == "" && cfg.Loader != "" {
+		target.Loader = cfg.Loader
+		target.Source = "instance-kind"
+	}
+	if target.MCVersion == "" && cfg.GameVersion != "" {
+		target.MCVersion = cfg.GameVersion
+		if target.Source == "" {
+			target.Source = "instance-kind"
+		}
+	}
 	if target.Loader == "" && cfg.IsProxy() {
 		target.Loader = "velocity"
 		target.Source = "instance-kind"

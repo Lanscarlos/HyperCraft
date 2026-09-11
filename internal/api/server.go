@@ -281,6 +281,11 @@ func (s *Server) routes() http.Handler {
 
 	// The settings that live outside server.properties: bukkit.yml, spigot.yml
 	// and whichever layout of Paper's config this server reads.
+	protected.HandleFunc("GET /api/instances/{id}/launch-check", s.handleLaunchCheck)
+	protected.HandleFunc("POST /api/instances/{id}/launch-check/fix", s.handleLaunchFix)
+	protected.HandleFunc("GET /api/instances/{id}/jvm-args", s.handleGetJVMArgs)
+	protected.HandleFunc("PUT /api/instances/{id}/jvm-args", s.handlePutJVMArgs)
+
 	protected.HandleFunc("GET /api/instances/{id}/configs", s.handleGetServerConfigs)
 	protected.HandleFunc("PUT /api/instances/{id}/configs/{file}", s.handlePutServerConfig)
 

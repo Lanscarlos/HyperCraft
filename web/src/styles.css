@@ -2197,6 +2197,73 @@ a:hover {
   font-size: 13px;
 }
 
+/* The launch check's findings.
+   A list rather than a stack of .alert because each finding carries a line
+   copied verbatim out of the operator's own script, and that line has to be
+   monospaced, horizontally scrollable and visibly not our words — otherwise
+   "nohup java -jar server.jar &" reads as something the panel is saying. */
+.launchcheck {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.launchcheck__item {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  /* The verbatim line can be any length at all. */
+  min-width: 0;
+  padding: 10px 13px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.launchcheck__item--fatal {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 34%, transparent);
+  border-left-color: var(--danger);
+  color: var(--danger-ink);
+}
+
+.launchcheck__item--warn {
+  background: var(--caution-soft);
+  border-color: color-mix(in srgb, var(--caution) 36%, transparent);
+  border-left-color: var(--caution);
+  color: var(--caution-ink);
+}
+
+.launchcheck__level {
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  opacity: 0.85;
+}
+
+.launchcheck__text {
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* Someone else's code. Scrolls rather than wraps: a wrapped shell line reads
+   as two commands. */
+.launchcheck__line {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre;
+}
+
 .status {
   display: flex;
   align-items: center;
@@ -2999,6 +3066,8 @@ a:hover {
 .panel--form > .chart-note,
 .panel--form > .actions,
 .panel--form > .field--full,
+.panel--form > .segmented,
+.panel--form > .launchcheck,
 .panel--form > p,
 .panel--form > .props-grid {
   grid-column: 1 / -1;
