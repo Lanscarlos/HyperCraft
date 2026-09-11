@@ -171,17 +171,8 @@ func (s *Service) rollback(ctx context.Context, current, previous string) error 
 	// fields and drops them the first time it saves. Going back up — undoing a
 	// rollback — adds fields rather than losing them, so there is nothing to
 	// protect and no directory worth leaving behind.
-	if CompareVersions(previous, current) < 0 && s.hooks.BackupState != nil {
-		dir, err := s.hooks.BackupState(current, previous)
-		if err != nil {
-			// Refuse rather than continue: the backup is the entire reason a
-			// downgrade is safe to offer.
-			return fmt.Errorf("back up the panel state: %w", err)
-		}
-		s.mu.Lock()
-		s.backupDir = dir
-		s.mu.Unlock()
-		s.log.Info("panel state backed up before the downgrade", "dir", dir)
+	if err := s.backupBeforeDowngrade(previous); err != nil {
+		return err
 	}
 
 	if err := s.stopServers(ctx); err != nil {
@@ -214,5 +205,33 @@ func (s *Service) rollback(ctx context.Context, current, previous string) error 
 	if s.hooks.TriggerRestart != nil {
 		s.hooks.TriggerRestart(exe)
 	}
+	return nil
+}
+
+// backupBeforeDowngrade copies the panel's own state files when target is older
+// than what is running, and does nothing otherwise.
+//
+// Only downwards costs anything: an older build does not know this one's fields
+// and drops them the first time it saves. Going up adds fields rather than
+// losing them, so there is nothing to protect and no directory worth leaving
+// behind.
+//
+// A failed copy abandons the whole thing. The backup is the entire reason a
+// downgrade is safe to offer, so continuing without one would be offering
+// something else than what was agreed to.
+func (s *Service) backupBeforeDowngrade(target string) error {
+	current := s.up.CurrentVersion()
+	if s.hooks.BackupState == nil || CompareVersions(target, current) >= 0 {
+		return nil
+	}
+
+	dir, err := s.hooks.BackupState(current, target)
+	if err != nil {
+		return fmt.Errorf("back up the panel state: %w", err)
+	}
+	s.mu.Lock()
+	s.backupDir = dir
+	s.mu.Unlock()
+	s.log.Info("panel state backed up before the downgrade", "from", current, "to", target, "dir", dir)
 	return nil
 }

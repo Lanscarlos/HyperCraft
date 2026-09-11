@@ -400,6 +400,15 @@ func (s *Service) Apply(ctx context.Context) error {
 func (s *Service) apply(ctx context.Context, rel *Release) error {
 	s.log.Info("update starting", "from", s.up.CurrentVersion(), "to", rel.Version)
 
+	// Installing something older — leaving the snapshot track is the way this
+	// happens here — loses whatever the older build does not know about, the
+	// same as a rollback does. Copied before anything else, while the fields
+	// are still in the files. See Service.rollback, which does this for the
+	// binary next door.
+	if err := s.backupBeforeDowngrade(rel.Version); err != nil {
+		return err
+	}
+
 	type download struct {
 		staged *Staged
 		err    error

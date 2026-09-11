@@ -306,3 +306,71 @@ func TestRollbackForwardTakesNoBackup(t *testing.T) {
 		t.Errorf("BackupState ran %d times going forward, want none", p.backupCalls)
 	}
 }
+
+func TestApplyBacksUpBeforeADowngrade(t *testing.T) {
+	// Switching the channel back to stable installs a version older than the
+	// snapshot running now. That is a downgrade like any other — the older
+	// build drops the fields it does not know — so it gets the same copy taken
+	// for it as a rollback does.
+	f := newFakeRelease(t, "1.1.0", []byte("the older binary"))
+
+	var backups int
+	svc := NewService("owner/repo", "v1.2.0", "", ChannelStable, Hooks{
+		StopServers:    func(context.Context, func(Shutdown)) error { return nil },
+		TriggerRestart: func(string) {},
+		BackupState: func(from, to string) (string, error) {
+			backups++
+			if from != "v1.2.0" || to != "1.1.0" {
+				t.Errorf("backup labelled %s -> %s, want v1.2.0 -> 1.1.0", from, to)
+			}
+			return filepath.Join(t.TempDir(), "backup"), nil
+		},
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	exe := filepath.Join(t.TempDir(), "hypercraft")
+	fakeBinary(t, exe, "1.2.0")
+	svc.up.apiBase = f.server.URL
+	svc.up.exePath = exe
+
+	rel, err := svc.up.Check(context.Background())
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	// Offer() only allows this on the stable channel from a non-stable build,
+	// which is exactly the channel-switch case; apply is what actually runs.
+	if err := svc.apply(context.Background(), rel); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if backups != 1 {
+		t.Errorf("BackupState ran %d times for a downgrade, want once", backups)
+	}
+}
+
+func TestApplyTakesNoBackupGoingForward(t *testing.T) {
+	f := newFakeRelease(t, "1.3.0", []byte("the newer binary"))
+
+	backups := 0
+	svc := NewService("owner/repo", "v1.2.0", "", ChannelStable, Hooks{
+		StopServers:    func(context.Context, func(Shutdown)) error { return nil },
+		TriggerRestart: func(string) {},
+		BackupState: func(string, string) (string, error) {
+			backups++
+			return "", nil
+		},
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	exe := filepath.Join(t.TempDir(), "hypercraft")
+	fakeBinary(t, exe, "1.2.0")
+	svc.up.apiBase = f.server.URL
+	svc.up.exePath = exe
+
+	if _, err := svc.Check(context.Background()); err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if err := svc.Apply(context.Background()); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if backups != 0 {
+		t.Errorf("BackupState ran %d times for an upgrade, want none", backups)
+	}
+}
