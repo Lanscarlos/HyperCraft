@@ -114,11 +114,9 @@ deploy/               systemd unit
 重跑 Release 工作流，填上同一个 tag，产物和发布说明都会覆盖掉，不用另开一个版本号。
 
 **快照**：`.github/workflows/snapshot.yml` 挂在 CI 后面，main 上每个通过 CI 的提交都发一版
-prerelease，tag 就是 `snapshot-<提交数>`（`snapshot-86`），**不带 `v` 前缀，也不是语义化版本**——
-快照不是冲着某个版本去的，它就是 main 在那个提交的样子，提交数是它唯一有的数字。排序规则写在
-`internal/selfupdate/version.go`：两个快照按提交数比，快照整体排在所有正式版之上（正式版是从 main 上
-切出去的，快照里已经包含了）。所以正式版发布不会把快照面板拉回正式版轨道，切通道才会。发布提交也照发
-一版快照，这样快照通道拿得到跟正式版一模一样的代码。只保留最近 3 个，旧的连同 tag 一起删。
+prerelease，版本号是下一个次版本号（只写两位）加 `-snapshot.<提交数>` —— `0.4.0` 之后就是
+`0.5-snapshot.86`。缺的那一位按 0 算，所以它排在 `0.4.x` 之后、`0.5.0` 之前。这个提交本身就是某个
+正式版时会跳过，免得同一份代码有两个版本号。只保留最近 3 个，旧的连同 tag 一起删。
 
 每个压缩包里是单文件二进制加 README、CHANGELOG、LICENSE，Linux 的还带一份 `hypercraft.service`。
 `SHA256SUMS.txt` 单独传，用 `sha256sum -c` 校验。
