@@ -23,7 +23,7 @@ export interface InstanceConfig {
    *  panel prefers what it can read off the disk and only falls back to this.
    *
    *  It exists for the case where there is nothing on disk to read: a server
-   *  launched by the operator's own script has no jar whose name gives it
+   *  launched from @argfiles has no jar whose name gives it
    *  away, and an unidentified server sends mods into plugins/. */
   loader: string
   /** The Minecraft version the operator says this is, for the same reason. */
@@ -34,7 +34,16 @@ export interface InstanceConfig {
   maxMemoryMB: number
   jvmArgs: string[]
   serverArgs: string[]
-  command: string[] | null
+  /** The other launch target, mutually exclusive with `jar`: the @-argument
+   *  files Forge and NeoForge are started from, which have no runnable jar. */
+  argFiles: string[] | null
+  /** The argv of an instance that used to launch through its own start script,
+   *  kept only so the launch settings page can show it while somebody fills
+   *  the form in. The panel never runs it. */
+  legacyCommand?: string[] | null
+  /** Set on such an instance until it has somewhere to launch from. It refuses
+   *  to start while this is true. */
+  needsLaunchSetup?: boolean
   /** Console charset: 'auto', 'utf-8', 'gbk', … See ENCODING_OPTIONS. */
   encoding: string
   /**
@@ -47,11 +56,6 @@ export interface InstanceConfig {
   /** Make the server emit ANSI colour even though its stdout is a pipe. Has no
    *  effect in TTY mode, where the server can see a terminal. */
   forceColor: boolean
-  /** Hand the panel's console JVM flags to a script-launched server through
-   *  JAVA_TOOL_OPTIONS. Only meaningful in script mode, where the panel builds
-   *  no command line to put them on. Costs one "Picked up JAVA_TOOL_OPTIONS"
-   *  line on stderr per start, which is why it can be turned off. */
-  javaToolOptions: boolean
   autoStart: boolean
   autoRestart: boolean
   stopCommand: string
@@ -75,7 +79,7 @@ export interface InstanceStatus extends InstanceConfig {
   ttySupported: boolean
   /**
    * The heap ceiling that will really apply, which stops being `maxMemoryMB`
-   * the moment a script owns the command line: the panel's -Xmx never reaches
+   * the moment the launch is a list of @argfiles: the panel's -Xmx never reaches
    * the JVM then, and Forge reads its own user_jvm_args.txt instead.
    *
    * 0 means nobody knows. Draw no ceiling at all in that case — a memory chart
@@ -109,22 +113,15 @@ export interface LaunchIssue {
   level: 'fatal' | 'warn' | 'info'
   code: string
   message: string
-  /** The offending line of the start script, verbatim. */
-  detail?: string
-  line?: number
-  /** A repair the panel can carry out; only 'chmod' so far. */
-  fix?: string
 }
 
 export interface LaunchCheck {
-  mode: 'jar' | 'script'
-  command?: string[]
-  /** Instance-relative path of the file that was read, if any. */
-  script?: string
+  /** The two shapes of command line the panel builds. */
+  mode: 'jar' | 'argfile'
   issues: LaunchIssue[]
 }
 
-/** Forge's user_jvm_args.txt: where a script-launched server's heap lives. */
+/** Forge's user_jvm_args.txt: where an argfile-launched server's heap lives. */
 export interface JVMArgs {
   exists: boolean
   fileName: string
@@ -140,8 +137,8 @@ export interface JVMArgs {
  *  by a form that happens to save the launch settings. */
 export type InstanceInput = Omit<
   InstanceConfig,
-  'id' | 'createdAt' | 'command' | 'kind'
-> & { command: string[]; kind?: InstanceKind }
+  'id' | 'createdAt' | 'argFiles' | 'legacyCommand' | 'needsLaunchSetup' | 'kind'
+> & { argFiles: string[]; kind?: InstanceKind }
 
 /** Console encodings the daemon accepts, in the order the dropdown shows them. */
 export const ENCODING_OPTIONS: { value: string; label: string }[] = [
@@ -1780,8 +1777,11 @@ export interface HostInspection {
    *  is the only evidence there is. */
   loader?: string
   gameVersion?: string
-  /** The installer's start script, relative to the directory. Its presence is
-   *  what makes the import offer 脚本启动 rather than a jar. */
+  /** Every file here that looks like a start script, best first. They are read
+   *  for the launch settings inside them, never run. */
+  launchScripts?: string[]
+  /** The best candidate, the first of `launchScripts`. Its presence is what
+   *  makes the import offer to read the launch settings out of a script. */
   launchScript?: string
   /** Name of the instance already pointing at this directory, if any. */
   takenBy?: string

@@ -74,10 +74,19 @@ func NewManager(store Persister, serversRoot string, logger *slog.Logger) *Manag
 func (m *Manager) Load(configs []Config) {
 	hooks, _ := m.currentHooks()
 
+	migrated := false
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	for _, cfg := range configs {
+		if next, changed := migrateRetiredCommand(cfg); changed {
+			cfg, migrated = next, true
+			if cfg.NeedsLaunchSetup {
+				m.log.Warn("this instance launched through its own script and the panel could not work out what that script ran; it will not start until its launch settings are filled in",
+					"id", cfg.ID, "name", cfg.Name, "command", next.LegacyCommand)
+			} else {
+				m.log.Info("migrated an instance off script mode; the panel now builds its command line",
+					"id", cfg.ID, "name", cfg.Name, "jar", cfg.Jar, "argFiles", cfg.ArgFiles)
+			}
+		}
 		inst, err := New(cfg, m.log)
 		if err != nil {
 			m.log.Warn("skipping unusable instance config", "id", cfg.ID, "err", err)
@@ -85,6 +94,17 @@ func (m *Manager) Load(configs []Config) {
 		}
 		inst.SetHooks(hooks)
 		m.byID[cfg.ID] = inst
+	}
+	m.mu.Unlock()
+
+	// Written back now rather than at the next edit: a migration that lives
+	// only in memory re-reads scripts the panel has stopped using at every
+	// boot, and loses the flag on the instances that could not be converted.
+	// Persisting takes the read lock, so it has to happen outside the write.
+	if migrated {
+		if err := m.persist(); err != nil {
+			m.log.Error("could not save the migrated instance list", "err", err)
+		}
 	}
 }
 

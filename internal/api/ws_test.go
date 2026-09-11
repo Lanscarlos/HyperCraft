@@ -163,20 +163,26 @@ func TestTerminalConsoleStreamsBinaryFrames(t *testing.T) {
 	env.login()
 
 	dir := t.TempDir()
-	script := filepath.Join(dir, "server.sh")
+	// Stands in for the JVM rather than for the whole command line, so the
+	// test runs against the argv the panel really builds.
+	script := filepath.Join(dir, "fake-java.sh")
 	// Colour and a CJK line: between them they exercise the two things a JSON
 	// text frame would ruin.
 	body := "#!/bin/sh\n" +
 		`printf '\033[32m[12:00:01] [Server thread/INFO]: Done (0.1s)! 你好\033[m\n'` + "\n" +
 		"while IFS= read -r line; do :; done\n"
 	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
-		t.Fatalf("write fake server: %v", err)
+		t.Fatalf("write fake java: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "server.jar"), []byte("not really a jar"), 0o644); err != nil {
+		t.Fatalf("write jar: %v", err)
 	}
 
 	resp := env.do(http.MethodPost, "/api/instances", instanceRequest{
 		Name:      "terminal",
 		Directory: dir,
-		Command:   []string{"/bin/sh", script},
+		Java:      script,
+		Jar:       "server.jar",
 	})
 	var created instance.Status
 	decodeBody(t, resp, &created)

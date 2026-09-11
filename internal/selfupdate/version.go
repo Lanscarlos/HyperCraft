@@ -23,14 +23,12 @@ const snapshotPrefix = "snapshot-"
 // naming it after the next release means inventing a version nobody has
 // decided to cut. The commit count is the only number a snapshot actually has.
 //
-// The workflow does not publish this form yet; it still tags snapshots
-// vX.Y-snapshot.N. Reading it lands first on purpose. The binary that compares
-// versions is the one already installed on the machine, so it has to
-// understand the new form BEFORE any release carries it — a panel built
-// without this code skips such a tag as uncomparable, finds nothing newer it
-// can read, and reports "already up to date" forever. Publishing the new
-// naming before the parser shipped is exactly how the snapshot channel went
-// dead once already.
+// Reading this form shipped before the workflow started producing it, and that
+// order was not optional. The binary that compares versions is the one already
+// installed on the machine: a panel built without this code skips such a tag as
+// uncomparable, finds nothing newer it can read, and reports "already up to
+// date" forever. Publishing the naming first is exactly how the snapshot
+// channel went dead once already.
 func snapshotBuild(v string) (int, bool) {
 	rest, ok := strings.CutPrefix(NormalizeVersion(v), snapshotPrefix)
 	if !ok || rest == "" {
@@ -55,11 +53,11 @@ func snapshotBuild(v string) (int, bool) {
 // offering to "update" that would overwrite someone's local build.
 //
 // Releases carry all three fields (0.3.0). Snapshots come in two forms, and
-// both are accepted: the vX.Y-snapshot.N the workflow publishes today, whose
-// two-field core compares as three with a trailing zero (see compareNumeric),
-// and the snapshot-1234 it is expected to move to. A panel running either must
-// be accepted here, or it would classify itself as a local build and turn
-// panel updates off entirely.
+// both are accepted: the snapshot-1234 the workflow publishes now, and the
+// vX.Y-snapshot.N it used to, whose two-field core compares as three with a
+// trailing zero (see compareNumeric) and which panels installed before the
+// rename are still running. A panel on either must be accepted here, or it
+// would classify itself as a local build and turn panel updates off entirely.
 func IsReleaseVersion(v string) bool {
 	v = NormalizeVersion(v)
 	if v == "" || v == "dev" {
@@ -104,9 +102,9 @@ func IsStableVersion(v string) bool {
 // stable and take the downgrade Offer reports), not something a release does to
 // a panel on its own.
 //
-// The rule also covers the naming in use today: a 0.4-snapshot.86 compares as
-// an ordinary pre-release and so loses to any snapshot-N. That is what will
-// carry panels across when the workflow switches over.
+// The rule also covers the naming this replaced: a 0.4-snapshot.86 compares as
+// an ordinary pre-release and so loses to any snapshot-N, which is what carried
+// panels across the rename.
 func CompareVersions(a, b string) int {
 	aBuild, aSnap := snapshotBuild(a)
 	bBuild, bSnap := snapshotBuild(b)

@@ -119,15 +119,3 @@ func TestABinaryOutsideAJDKLayoutIsNotPutOnPATH(t *testing.T) {
 		t.Errorf("a non-JDK path was treated as one: %v", env)
 	}
 }
-
-func TestTheScriptCanStillOverrideWhatThePanelInjects(t *testing.T) {
-	// JAVA_TOOL_OPTIONS is applied before the command line, so the script's
-	// own flags win — the same precedence consoleJVMArgs has in jar mode.
-	env := withJavaToolOptions([]string{"JAVA_TOOL_OPTIONS=-Dpre=1"}, []string{"-Dfile.encoding=UTF-8"})
-	if got := envValue(env, "JAVA_TOOL_OPTIONS"); got != "-Dfile.encoding=UTF-8 -Dpre=1" {
-		t.Errorf("JAVA_TOOL_OPTIONS = %q, want ours first and the inherited value kept", got)
-	}
-	if got := withJavaToolOptions([]string{}, nil); len(got) != 0 {
-		t.Errorf("no flags should set no variable, got %v", got)
-	}
-}

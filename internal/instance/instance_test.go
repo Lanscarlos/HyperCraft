@@ -14,17 +14,25 @@ import (
 	"time"
 )
 
-// fakeServer writes a shell script that behaves like a Minecraft server:
-// it announces readiness the way vanilla does, echoes console commands, and
-// shuts down on "stop". Using it keeps these tests free of a JVM.
-func fakeServer(t *testing.T, dir, body string) []string {
+// fakeJava writes a shell script that stands in for the JVM: it ignores the
+// command line the panel hands it and behaves like a Minecraft server —
+// announcing readiness the way vanilla does, echoing console commands, and
+// shutting down on "stop". Using it keeps these tests free of a JVM.
+//
+// It stands in for java rather than for the whole command line so that the
+// tests run against the argv the panel really builds, jar and all.
+func fakeJava(t *testing.T, dir, body string) string {
 	t.Helper()
 
-	script := filepath.Join(dir, "fake-server.sh")
+	script := filepath.Join(dir, "fake-java.sh")
 	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
-		t.Fatalf("write fake server: %v", err)
+		t.Fatalf("write fake java: %v", err)
 	}
-	return []string{"/bin/sh", script}
+	// Start checks the jar is there before it launches anything.
+	if err := os.WriteFile(filepath.Join(dir, "server.jar"), []byte("not really a jar"), 0o644); err != nil {
+		t.Fatalf("write jar: %v", err)
+	}
+	return script
 }
 
 const wellBehavedServer = `#!/bin/sh
@@ -61,7 +69,8 @@ func newInstanceWith(t *testing.T, body string, tty *bool) *Instance {
 		Name:      "test",
 		Directory: dir,
 		TTY:       tty,
-		Command:   fakeServer(t, dir, body),
+		Java:      fakeJava(t, dir, body),
+		Jar:       "server.jar",
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -320,12 +329,13 @@ func TestLegacyEncodedConsoleRoundTrips(t *testing.T) {
 		Encoding:  "gbk",
 		// \304\343\272\303 is "你好" in GBK, written as the octal escapes
 		// POSIX printf understands so no shell reinterprets the bytes.
-		Command: fakeServer(t, dir, `#!/bin/sh
+		Java: fakeJava(t, dir, `#!/bin/sh
 printf '[12:00:01] [Server thread/INFO]: Done (0.1s)! \304\343\272\303\n'
 while IFS= read -r line; do
   printf 'ran %s\n' "$line"
 done
 `),
+		Jar: "server.jar",
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -374,10 +384,11 @@ func TestStopEscalatesWhenTheStopCommandIsIgnored(t *testing.T) {
 		Name:           "stubborn",
 		Directory:      dir,
 		StopTimeoutSec: 1,
-		Command: fakeServer(t, dir, `#!/bin/sh
+		Java: fakeJava(t, dir, `#!/bin/sh
 echo "[12:00:01] [Server thread/INFO]: Done (0.1s)! For help, type \"help\""
 while true; do sleep 1; done
 `),
+		Jar: "server.jar",
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("New: %v", err)

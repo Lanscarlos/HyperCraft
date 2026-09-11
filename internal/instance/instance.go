@@ -392,7 +392,26 @@ func (i *Instance) Start() error {
 		i.mu.Unlock()
 		return fmt.Errorf("create instance directory: %w", err)
 	}
-	if !cfg.usesCustomCommand() {
+	if cfg.NeedsLaunchSetup {
+		// Left over from the upgrade that retired script mode. Starting with
+		// whatever the empty launch fields happen to mean would be a server
+		// answering the start button with a stack trace about a missing jar,
+		// when the real answer is that nobody has said what to run yet.
+		i.mu.Unlock()
+		return fmt.Errorf("%w: 这个实例原来用启动脚本启动，请先在启动设置里指定核心和参数", ErrInvalidConfig)
+	}
+	switch {
+	case len(cfg.ArgFiles) > 0:
+		// The jar form checks its jar; this form has to check its own target.
+		// Note that the jar check below cannot stand in for it: Jar is empty
+		// here, and Join(dir, "") is the directory itself, which always exists.
+		for _, file := range cfg.ArgFiles {
+			if _, err := os.Stat(filepath.Join(cfg.Directory, filepath.FromSlash(file))); err != nil {
+				i.mu.Unlock()
+				return fmt.Errorf("%w: argument file %q not found in %s", ErrInvalidConfig, file, cfg.Directory)
+			}
+		}
+	default:
 		if _, err := os.Stat(filepath.Join(cfg.Directory, cfg.Jar)); err != nil {
 			i.mu.Unlock()
 			return fmt.Errorf("%w: server jar %q not found in %s", ErrInvalidConfig, cfg.Jar, cfg.Directory)
@@ -481,16 +500,11 @@ func spawn(cfg Config, size viewport, tty bool) (spawned, error) {
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = cfg.Directory
 	cmd.Env = launchEnv()
-	// The Java choice reaches a script the only way it can: through the
-	// environment. A run.sh calls a bare "java", so without this the runtimes
-	// the panel downloaded are invisible to exactly the servers — Forge and
-	// friends — that are fussiest about which Java they get.
+	// The Java choice also reaches the process through the environment, not
+	// only through argv[0]: a server that shells out to a bare "java" of its
+	// own — an installer step, a restart helper — would otherwise miss the
+	// runtime the panel downloaded for it.
 	cmd.Env = withJavaEnv(cmd.Env, cfg.Java)
-	if cfg.usesCustomCommand() && cfg.javaToolOptionsEnabled() {
-		// Same reasoning for the console flags: commandLine returned the
-		// operator's argv verbatim, so consoleJVMArgs never went anywhere.
-		cmd.Env = withJavaToolOptions(cmd.Env, cfg.consoleJVMArgs(tty))
-	}
 	if tty {
 		cmd.Env = withTerminalEnv(cmd.Env)
 	}
@@ -930,6 +944,18 @@ func (i *Instance) UpdateConfig(next Config) error {
 
 	next.ID = i.cfg.ID
 	next.CreatedAt = i.cfg.CreatedAt
+
+	// Both are the panel's own bookkeeping from the upgrade that retired
+	// script mode, never the client's to send: carried across every edit, and
+	// cleared only by the one edit that answers them — saying what this
+	// instance launches. Clearing them on any save would mean a rename gives
+	// back the failure they exist to prevent, and taking them from the request
+	// would let a client hand itself a server that starts with empty launch
+	// settings.
+	next.LegacyCommand, next.NeedsLaunchSetup = i.cfg.LegacyCommand, i.cfg.NeedsLaunchSetup
+	if next.NeedsLaunchSetup && (strings.TrimSpace(next.Jar) != "" || len(next.ArgFiles) > 0) {
+		next.LegacyCommand, next.NeedsLaunchSetup = nil, false
+	}
 	if i.state.Running() && next.Directory != i.cfg.Directory {
 		return fmt.Errorf("%w: cannot change directory while the server is running", ErrInvalidConfig)
 	}

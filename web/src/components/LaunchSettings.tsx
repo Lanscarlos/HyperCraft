@@ -39,11 +39,10 @@ function toInput(instance: InstanceStatus): InstanceInput {
     maxMemoryMB: instance.maxMemoryMB,
     jvmArgs: instance.jvmArgs ?? [],
     serverArgs: instance.serverArgs ?? [],
-    command: instance.command ?? [],
+    argFiles: instance.argFiles ?? [],
     encoding: instance.encoding || 'auto',
     tty: instance.tty ?? true,
     forceColor: instance.forceColor ?? true,
-    javaToolOptions: instance.javaToolOptions ?? true,
     autoStart: instance.autoStart,
     autoRestart: instance.autoRestart,
     stopCommand: instance.stopCommand,
@@ -74,8 +73,8 @@ export function LaunchSettings({
   const [serverText, setServerText] = useState(() =>
     toLines(instance.serverArgs ?? []),
   )
-  const [commandText, setCommandText] = useState(() =>
-    toLines(instance.command ?? []),
+  const [argFileText, setArgFileText] = useState(() =>
+    toLines(instance.argFiles ?? []),
   )
   const [runtimes, setRuntimes] = useState<JavaRuntime[]>([])
   const [systemJava, setSystemJava] = useState<SystemJava | null>(null)
@@ -86,15 +85,15 @@ export function LaunchSettings({
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  // Which of the two launch modes the form is showing. Seeded from whether a
-  // command is stored — that is the only record of it — but held here so that
-  // switching to 脚本 on an instance with no command yet does not snap back.
-  const [scriptMode, setScriptMode] = useState(
-    () => (instance.command?.length ?? 0) > 0,
+  // Which of the two launch targets the form is showing. Seeded from whether
+  // argfiles are stored — that is the only record of it — but held here so
+  // that switching to 参数文件 on an instance that has none yet does not snap
+  // back.
+  const [argFileMode, setArgFileMode] = useState(
+    () => (instance.argFiles?.length ?? 0) > 0,
   )
   const [check, setCheck] = useState<LaunchCheck | null>(null)
   const [checkRev, setCheckRev] = useState(0)
-  const [fixing, setFixing] = useState(false)
   const [jvm, setJvm] = useState<JVMArgs | null>(null)
   const [jvmMin, setJvmMin] = useState(0)
   const [jvmMax, setJvmMax] = useState(0)
@@ -119,15 +118,15 @@ export function LaunchSettings({
     setForm(toInput(instance))
     setJvmText(toLines(instance.jvmArgs ?? []))
     setServerText(toLines(instance.serverArgs ?? []))
-    setCommandText(toLines(instance.command ?? []))
+    setArgFileText(toLines(instance.argFiles ?? []))
   }, [instance.id])
 
   useEffect(() => {
-    setScriptMode((instance.command?.length ?? 0) > 0)
+    setArgFileMode((instance.argFiles?.length ?? 0) > 0)
   }, [instance.id])
 
-  // The check reads the script off disk, so it is re-run after every save and
-  // after the one repair the panel offers, not just on arrival.
+  // The check stats the launch target on disk, so it is re-run after every
+  // save rather than only on arrival.
   useEffect(() => {
     let cancelled = false
     api
@@ -196,9 +195,9 @@ export function LaunchSettings({
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault()
-    const command = scriptMode ? fromLines(commandText) : []
-    if (scriptMode && command.length === 0) {
-      setError('选了脚本启动，就得填启动命令 —— 第一行是可执行文件。')
+    const argFiles = argFileMode ? fromLines(argFileText) : []
+    if (argFileMode && argFiles.length === 0) {
+      setError('选了参数文件启动，就得至少填一个文件 —— 一行一个，路径从实例目录算起。')
       return
     }
     setBusy(true)
@@ -209,9 +208,9 @@ export function LaunchSettings({
         ...form,
         jvmArgs: fromLines(jvmText),
         serverArgs: fromLines(serverText),
-        // An empty command is how the daemon is told to build the command line
-        // itself, so switching back to jar mode has to send one.
-        command,
+        // An empty list is how the daemon is told this is a jar launch, so
+        // switching back to 核心 jar has to send one.
+        argFiles,
       }
       onSaved(await api.updateInstance(instance.id, payload))
       setStatus(
@@ -227,20 +226,10 @@ export function LaunchSettings({
     }
   }
 
-  const applyFix = async (action: string) => {
-    setFixing(true)
-    setError(null)
-    try {
-      setCheck(await api.fixLaunch(instance.id, action))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '修复失败')
-    } finally {
-      setFixing(false)
-    }
-  }
 
-  // The heap of a script-launched server lives in a file, not in the instance
-  // config, so it saves to its own endpoint rather than riding along with the
+
+  // The heap of an argfile-launched server lives in a file, not in the
+  // instance config, so it saves to its own endpoint rather than riding along with the
   // form — a half-applied save across two writes would be worse than two
   // buttons.
   const saveJVMArgs = async () => {
@@ -370,7 +359,7 @@ export function LaunchSettings({
 
         <p className="muted">
           面板先从目录和 jar 名认，认不出来才用这里填的。
-          <strong>脚本启动的服基本都认不出来</strong> —— 没有 jar 名可读，
+          <strong>Forge 这类认不出来</strong> —— 没有 jar 名可读，
           <code>version_history.json</code> 也只有 Paper 系才写。认不出来的后果很具体：
           mod 会被装进 <code>plugins/</code> 而不是 <code>mods/</code>，插件市场里每一条也都标成「未知」。
         </p>
@@ -381,13 +370,12 @@ export function LaunchSettings({
         cores={cores}
         onApplied={onCoreApplied}
         onOpenLibrary={onOpenLibrary}
-        jarIgnored={scriptMode}
+        jarIgnored={argFileMode}
       />
 
       <LaunchCheckPanel
         check={check}
-        busy={fixing}
-        onFix={applyFix}
+        legacyCommand={instance.legacyCommand ?? []}
         onRecheck={() => setCheckRev((rev) => rev + 1)}
       />
 
@@ -398,23 +386,23 @@ export function LaunchSettings({
           {[
             {
               value: false,
-              label: '面板拼命令',
+              label: '核心 jar',
               note: 'java -Xmx… -jar server.jar',
             },
             {
               value: true,
-              label: '用我的脚本',
-              note: 'Forge 的 run.sh、基岩版、start.sh',
+              label: '参数文件',
+              note: 'Forge / NeoForge 的 @user_jvm_args.txt',
             },
           ].map((entry) => (
             <button
               key={String(entry.value)}
               type="button"
               className={`segmented__option${
-                scriptMode === entry.value ? ' segmented__option--active' : ''
+                argFileMode === entry.value ? ' segmented__option--active' : ''
               }`}
-              aria-pressed={scriptMode === entry.value}
-              onClick={() => setScriptMode(entry.value)}
+              aria-pressed={argFileMode === entry.value}
+              onClick={() => setArgFileMode(entry.value)}
             >
               <strong>{entry.label}</strong>
               <small>{entry.note}</small>
@@ -422,10 +410,9 @@ export function LaunchSettings({
           ))}
         </div>
 
-        {/* The Java choice applies in both modes, but reaches the server by
-            two different routes, and saying which one matters: in script mode
-            the panel cannot put a path on a command line it did not build, so
-            it sets JAVA_HOME and puts the JDK first on PATH instead. */}
+        {/* The Java choice is argv[0] in both modes. It is also exported into
+            the environment, which is what a server that shells out to a java
+            of its own picks up. */}
         <label className="field">
           <span>Java 环境</span>
           <Select
@@ -462,13 +449,7 @@ export function LaunchSettings({
             />
           )}
           <small>
-            {scriptMode ? (
-              <>
-                脚本里那句 <code>java</code> 走的是 PATH，所以面板会把选中的 JDK 放到
-                <code> PATH</code> 最前面并设好 <code>JAVA_HOME</code>，脚本一个字都不用改。
-                选「系统 java」就完全交给这台机器自己决定。
-              </>
-            ) : runtimes.length > 0 ? (
+            {runtimes.length > 0 ? (
               '面板装的 Java 在这里直接选；「资源库 → Java 环境」可以再装别的版本。'
             ) : (
               '「资源库 → Java 环境」可以一键装一个，装完这里就能选。'
@@ -476,45 +457,25 @@ export function LaunchSettings({
           </small>
         </label>
 
-        {scriptMode ? (
+        {argFileMode ? (
           <>
             <label className="field field--full">
-              <span>启动命令</span>
+              <span>参数文件</span>
               <textarea
-                rows={4}
-                value={commandText}
-                onChange={(e) => setCommandText(e.target.value)}
-                placeholder={'./run.sh'}
+                rows={3}
+                value={argFileText}
+                onChange={(e) => setArgFileText(e.target.value)}
+                placeholder={'user_jvm_args.txt\nlibraries/net/minecraftforge/forge/1.20.1-47.2.0/unix_args.txt'}
                 spellCheck={false}
               />
               <small>
-                一行一个参数，第一行是可执行文件，相对路径从实例目录算起 ——
-                <code>./run.sh</code> 才是这个目录里的文件，<code>run.sh</code> 会被当成
-                PATH 里的命令去找。
-                <strong>脚本必须自己把 JVM 跑在前台</strong>：<code>nohup</code>、行尾的
-                <code> &amp;</code>、screen、tmux 都会让面板在一秒内认为服务器已经退出，
-                而它其实还开着。写成 <code>exec java …</code> 最省事。
+                一行一个，路径从实例目录算起，面板会按顺序拼成
+                <code> java @第一个 @第二个 …</code>。Forge 和 NeoForge 从 1.17 起就没有可以
+                直接跑的 jar 了，安装器留下的就是这两个文件 —— 照 <code>run.sh</code> 里那行抄过来即可。
               </small>
             </label>
 
-            <label className="checkbox field--full">
-              <input
-                type="checkbox"
-                checked={form.javaToolOptions}
-                onChange={(e) => update('javaToolOptions', e.target.checked)}
-              />
-              <span>把编码参数传给脚本（推荐）</span>
-              <small>
-                面板没法往你的命令行里加参数，所以这些参数通过
-                <code> JAVA_TOOL_OPTIONS</code> 传进去 —— 主要是
-                <code> -Dfile.encoding=UTF-8</code> 那一组，中文输出乱码基本都是少了它们。
-                代价是每次启动控制台第一行会多出一句
-                <code> Picked up JAVA_TOOL_OPTIONS</code>。脚本里自己写的参数优先级更高，
-                随时能盖掉这里的。
-              </small>
-            </label>
-
-            <ScriptMemory
+            <ArgFileMemory
               jvm={jvm}
               min={jvmMin}
               max={jvmMax}
@@ -745,23 +706,21 @@ const LEVEL_LABELS: Record<LaunchIssue['level'], string> = {
 /**
  * What the panel expects to happen when this instance is started.
  *
- * It exists for one failure in particular, and that failure is invisible from
- * everywhere else: a start script that backgrounds the JVM starts the server
- * perfectly well and hands the panel a process that exits a second later. The
- * panel then shows 已停止 for a server everyone can see running, the console
- * goes nowhere, 停止 does nothing, and 崩溃自动重启 starts a second copy on the
- * same world. Nothing in that chain points at the script, so the panel says it
- * here, before the first start, instead of leaving it to be discovered.
+ * It reports and repairs nothing. The failure it used to exist for — a start
+ * script that backgrounds the JVM, leaving the panel holding a process that
+ * exits a second later while the server everyone can see keeps running — is
+ * gone with the script mode that allowed it: the panel builds the command line
+ * itself now. What is left is worth saying before the first start all the
+ * same, because a launch target that is not there produces an error at 开服 and
+ * nowhere else.
  */
 function LaunchCheckPanel({
   check,
-  busy,
-  onFix,
+  legacyCommand,
   onRecheck,
 }: {
   check: LaunchCheck | null
-  busy: boolean
-  onFix: (action: string) => void
+  legacyCommand: string[]
   onRecheck: () => void
 }) {
   if (check === null) return null
@@ -773,8 +732,8 @@ function LaunchCheckPanel({
       {check.issues.length === 0 ? (
         <p className="muted">
           没发现问题。
-          {check.mode === 'script' && check.script
-            ? `启动命令指得到，${check.script} 也没有把服务端丢到后台的写法。`
+          {check.mode === 'argfile'
+            ? '参数文件都在目录里。'
             : '核心和目录都对得上。'}
         </p>
       ) : (
@@ -786,29 +745,22 @@ function LaunchCheckPanel({
             >
               <strong className="launchcheck__level">{LEVEL_LABELS[issue.level]}</strong>
               <p className="launchcheck__text">{issue.message}</p>
-              {issue.detail && (
-                <code className="launchcheck__line">
-                  {issue.line ? `${check.script ?? ''}:${issue.line}  ` : ''}
-                  {issue.detail}
-                </code>
-              )}
-              {issue.fix === 'chmod' && (
-                <button
-                  className="btn btn--row"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onFix('chmod')}
-                >
-                  加上执行位
-                </button>
-              )}
+              {/* The retired argv, shown only where it is the answer to the
+                  issue above: somebody has to retype it into the form, and
+                  this is the only place it still exists. */}
+              {issue.code === 'needs-setup' &&
+                legacyCommand.map((arg, at) => (
+                  <code className="launchcheck__line" key={`${at}-${arg}`}>
+                    {arg}
+                  </code>
+                ))}
             </li>
           ))}
         </ul>
       )}
 
       <div className="actions">
-        <button className="btn btn--row" type="button" disabled={busy} onClick={onRecheck}>
+        <button className="btn btn--row" type="button" onClick={onRecheck}>
           重新检查
         </button>
       </div>
@@ -817,15 +769,15 @@ function LaunchCheckPanel({
 }
 
 /**
- * The heap of a script-launched server, which is not in the instance config.
+ * The heap of an argfile-launched server, which is not in the instance config.
  *
- * The memory fields above build a -Xmx onto a command line; a script owns its
- * own, so that number never reaches the JVM. Forge and NeoForge read
- * user_jvm_args.txt for exactly this, so the control moves there rather than
- * disappearing — and where there is no such file the panel says so instead of
- * showing a slider that changes nothing.
+ * The memory fields above build a -Xmx onto the command line; an @file is
+ * expanded in place and the JVM lets the last -Xmx win, so the one inside
+ * user_jvm_args.txt would override it. Rather than emit a flag that loses, the
+ * panel emits none and the control moves into that file — and where there is
+ * no such file it says so instead of showing a slider that changes nothing.
  */
-function ScriptMemory({
+function ArgFileMemory({
   jvm,
   min,
   max,
@@ -847,8 +799,8 @@ function ScriptMemory({
   if (!jvm?.exists) {
     return (
       <p className="muted field--full">
-        内存由你的脚本自己决定，面板不去猜 —— 上面那组内存设置只对「面板拼命令」有效。
-        Forge / NeoForge 的服务端可以把 <code>-Xmx</code> 写进
+        这个服务端的内存写在参数文件里，面板不去猜 —— 上面那组内存设置只对「核心 jar」有效。
+        Forge / NeoForge 把 <code>-Xmx</code> 放在
         <code> user_jvm_args.txt</code>，那个文件在时这里会直接变成可编辑的。
       </p>
     )

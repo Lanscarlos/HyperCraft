@@ -192,15 +192,13 @@ export const api = {
     request<InstanceStatus>('POST', '/api/instances', input),
   updateInstance: (id: string, input: InstanceInput) =>
     request<InstanceStatus>('PUT', `/api/instances/${id}`, input),
-  /** What the panel thinks will happen when this instance is started — chiefly
-   *  whether the operator's script would hand the JVM to something that is not
-   *  the panel. See internal/api/handlers_launch.go. */
+  /** What the panel thinks will happen when this instance is started: whether
+   *  its launch target is where the config says it is, and whether the panel
+   *  can tell what kind of server it is. See internal/api/handlers_launch.go. */
   launchCheck: (id: string) =>
     request<LaunchCheck>('GET', `/api/instances/${id}/launch-check`),
-  fixLaunch: (id: string, action: string) =>
-    request<LaunchCheck>('POST', `/api/instances/${id}/launch-check/fix`, { action }),
 
-  /** Forge's user_jvm_args.txt, which is where the heap of a script-launched
+  /** Forge's user_jvm_args.txt, which is where the heap of an argfile-launched
    *  server actually lives. */
   jvmArgs: (id: string) => request<JVMArgs>('GET', `/api/instances/${id}/jvm-args`),
   saveJVMArgs: (id: string, memory: { minMemoryMB: number; maxMemoryMB: number }) =>
