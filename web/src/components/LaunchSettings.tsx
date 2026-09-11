@@ -9,9 +9,11 @@ import type {
   JVMArgs,
   LaunchCheck,
   LaunchIssue,
+  ParsedScript,
   SystemJava,
 } from '../types'
 import { ENCODING_OPTIONS, isLive, LOADER_OPTIONS } from '../types'
+import { ScriptDraft } from './ScriptDraft'
 import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
 import { InstanceCorePicker } from './InstanceCorePicker'
@@ -92,6 +94,13 @@ export function LaunchSettings({
   const [argFileMode, setArgFileMode] = useState(
     () => (instance.argFiles?.length ?? 0) > 0,
   )
+  // Reading an existing start script for the settings in it. The form is the
+  // preview: nothing is applied until 填进表单 is pressed, and nothing is
+  // stored until 保存 is. So every drafted value goes through the same fields,
+  // and the same eyes, as one typed by hand.
+  const [scriptPath, setScriptPath] = useState('run.sh')
+  const [parsed, setParsed] = useState<ParsedScript | null>(null)
+  const [parsing, setParsing] = useState(false)
   const [check, setCheck] = useState<LaunchCheck | null>(null)
   const [checkRev, setCheckRev] = useState(0)
   const [jvm, setJvm] = useState<JVMArgs | null>(null)
@@ -187,6 +196,45 @@ export function LaunchSettings({
     },
     [onSaved],
   )
+
+  const readScript = async () => {
+    const path = scriptPath.trim()
+    if (path === '') return
+    setParsing(true)
+    setParsed(null)
+    setError(null)
+    try {
+      setParsed(await api.parseInstanceScript(instance.id, path))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '读不了这个脚本')
+    } finally {
+      setParsing(false)
+    }
+  }
+
+  const applyDraft = () => {
+    if (!parsed?.ok) return
+    const draft = parsed.draft
+    // Java only when the script actually named one: where it came from an
+    // environment variable the panel cannot read, the instance keeps the JVM
+    // it already has rather than silently getting a different one.
+    if (draft.java) {
+      setForm((prev) => ({ ...prev, java: draft.java }))
+      setCustomJava(false)
+    }
+    setForm((prev) => ({
+      ...prev,
+      minMemoryMB: draft.minMemoryMB,
+      maxMemoryMB: draft.maxMemoryMB,
+      jar: draft.argFiles.length > 0 ? '' : draft.jar,
+    }))
+    setJvmText(toLines(draft.jvmArgs))
+    setServerText(toLines(draft.serverArgs))
+    setArgFileText(toLines(draft.argFiles))
+    setArgFileMode(draft.argFiles.length > 0)
+    setParsed(null)
+    setStatus('已填进表单，确认无误再点保存')
+  }
 
   const update = <K extends keyof InstanceInput>(
     key: K,
@@ -456,6 +504,48 @@ export function LaunchSettings({
             )}
           </small>
         </label>
+
+        {/* Reading an existing start script. Offered in both modes because
+            which mode this instance belongs in is one of the things the script
+            answers: a Forge run.sh puts it in 参数文件, a Paper start.sh in
+            核心 jar. */}
+        <div className="netadd field--full">
+          <label className="field">
+            <span>从脚本读启动参数</span>
+            <input
+              value={scriptPath}
+              onChange={(e) => setScriptPath(e.target.value)}
+              placeholder="run.sh"
+              spellCheck={false}
+            />
+            <small>
+              目录里原来那个 <code>run.sh</code> / <code>启动.sh</code> 里写好的
+              <code> -Xmx</code>、JVM 参数和核心，面板可以读出来填进下面的表单。
+              <strong>面板不会执行这个脚本</strong>，读完它照样躺在目录里不动。
+            </small>
+          </label>
+          <button
+            className="btn"
+            type="button"
+            disabled={parsing || scriptPath.trim() === ''}
+            onClick={readScript}
+          >
+            {parsing ? '读取中…' : '读一下'}
+          </button>
+        </div>
+
+        <ScriptDraft parsed={parsed} parsing={parsing} />
+
+        {parsed?.ok && (
+          <div className="actions">
+            <button className="btn btn--primary" type="button" onClick={applyDraft}>
+              填进表单
+            </button>
+            <button className="btn" type="button" onClick={() => setParsed(null)}>
+              不用
+            </button>
+          </div>
+        )}
 
         {argFileMode ? (
           <>
