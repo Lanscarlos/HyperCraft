@@ -144,7 +144,7 @@ func (s *Server) readBackend(inst *instance.Instance) backendState {
 		}
 	}
 
-	browser := s.browserFor(inst)
+	browser := unconfinedBrowser(inst.Config().Directory)
 	if spigot, _, err := s.loadServerConfig(inst, pathSpigot); err == nil {
 		state.bungeeForwarding = spigot.Bool("settings.bungeecord", false)
 	}

@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -96,6 +97,15 @@ type Role struct {
 	ID   string      `json:"id"`
 	Name string      `json:"name"`
 	Caps []authz.Cap `json:"capabilities"`
+	// Paths confines this role's file manager to part of each instance
+	// directory — "plugins/MyPlugin" and nothing else. Empty means the whole
+	// directory, which is what every role had before this existed.
+	//
+	// It narrows the two file capabilities and nothing else. A role that can
+	// install a plugin or change the launch command reaches the whole machine
+	// and this list with it; the role editor says so out loud rather than
+	// leaving an operator to work it out. See docs/security.md.
+	Paths []string `json:"paths,omitempty"`
 }
 
 // File is the on-disk shape of users.json.
@@ -161,6 +171,7 @@ func New(file File) (*Registry, []string, error) {
 			}
 		}
 		role.Caps = kept
+		role.Paths = cleanPaths(role.Paths)
 		seenRole[role.ID] = true
 		r.roles = append(r.roles, role)
 	}
@@ -306,6 +317,50 @@ func (r *Registry) Capabilities(u User) map[authz.Cap]bool {
 
 // IsAdmin reports whether an account holds the built-in role.
 func (r *Registry) IsAdmin(u User) bool { return u.RoleID == RoleAdmin }
+
+// PathsFor returns the file-manager confinement an account's role carries, or
+// nothing at all for an unrestricted one. Administrators are never confined.
+func (r *Registry) PathsFor(u User) []string {
+	if u.RoleID == RoleAdmin {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, role := range r.roles {
+		if role.ID == u.RoleID {
+			return slices.Clone(role.Paths)
+		}
+	}
+	// A role that vanished under an account. New refuses to load one, so this
+	// is only reachable mid-request — and confining to nothing is the safe
+	// direction, since the capabilities resolve to empty in the same case.
+	return []string{}
+}
+
+// cleanPaths normalises a confinement list: trimmed, slash-separated, no
+// leading or trailing slash, no duplicates, and nothing that means the whole
+// instance.
+//
+// Dropping a prefix that means everything rather than honouring it is the
+// important part. "/" cleans to the instance root, and a rule that silently
+// grants the whole directory is worse than no rule — the operator who typed it
+// believes they restricted something.
+func cleanPaths(paths []string) []string {
+	kept := make([]string, 0, len(paths))
+	for _, raw := range paths {
+		p := strings.Trim(strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/")), "/")
+		if p == "" || p == "." || strings.Contains(p, "\x00") {
+			continue
+		}
+		if p != path.Clean(p) || p == ".." || strings.HasPrefix(p, "../") {
+			continue
+		}
+		if !slices.Contains(kept, p) {
+			kept = append(kept, p)
+		}
+	}
+	return kept
+}
 
 // CanUseInstance reports whether an account's grant covers one server.
 //

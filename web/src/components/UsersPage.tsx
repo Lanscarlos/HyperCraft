@@ -249,6 +249,12 @@ export function UsersPage({ instances, me }: Props) {
                   {role.builtIn ? '全部能力' : `${role.capabilities.length} 项能力`}
                   {' · '}
                   {role.users > 0 ? `${role.users} 个账号在用` : '没有账号在用'}
+                  {role.paths.length > 0 && (
+                    <>
+                      {' · '}
+                      文件限于 {role.paths.join('、')}
+                    </>
+                  )}
                   {dangerCount(role, caps) > 0 && (
                     <>
                       {' · '}

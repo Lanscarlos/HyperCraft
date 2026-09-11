@@ -293,7 +293,7 @@ func fileMissing(browser *serverfiles.Browser, rel string) bool {
 // writes a file holding exactly the keys that were changed — which is a file
 // Paper and Spigot both merge their defaults into on the next boot.
 func (s *Server) loadServerConfig(inst *instance.Instance, rel string) (*mcyaml.File, bool, error) {
-	text, err := s.browserFor(inst).ReadText(rel)
+	text, err := unconfinedBrowser(inst.Config().Directory).ReadText(rel)
 	switch {
 	case errors.Is(err, serverfiles.ErrNotFound):
 		return &mcyaml.File{}, false, nil
@@ -337,7 +337,7 @@ func (s *Server) handleGetServerConfigs(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	browser := s.browserFor(inst)
+	browser := unconfinedBrowser(inst.Config().Directory)
 	out := serverConfigResponse{Files: []serverConfigFileResponse{}, Missing: []string{}}
 	for _, spec := range serverConfigFiles(browser) {
 		response, err := s.serverConfigFileResponse(inst, spec)
@@ -363,7 +363,7 @@ func (s *Server) handlePutServerConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	spec, known := serverConfigFor(s.browserFor(inst), r.PathValue("file"))
+	spec, known := serverConfigFor(unconfinedBrowser(inst.Config().Directory), r.PathValue("file"))
 	if !known {
 		writeError(w, http.StatusNotFound, "不认识的配置文件")
 		return
@@ -417,7 +417,7 @@ func (s *Server) writeInstanceFile(inst *instance.Instance, rel, content string)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	browser := s.browserFor(inst)
+	browser := unconfinedBrowser(inst.Config().Directory)
 	if parent := path.Dir(rel); parent != "." && parent != "/" {
 		if err := browser.Mkdir(parent); err != nil {
 			return err

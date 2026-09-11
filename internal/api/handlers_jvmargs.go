@@ -39,7 +39,13 @@ func (s *Server) handleGetJVMArgs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out := jvmArgsResponse{FileName: jvmargs.FileName, Args: []string{}}
-	text, err := s.browserFor(inst).ReadText(jvmargs.FileName)
+	// Not the file manager: user_jvm_args.txt is a launch setting that happens
+	// to live in a file, and it answers to CapInstanceLaunch rather than to the
+	// two file capabilities a directory rule narrows. A role confined to one
+	// plugin's folder either holds that capability — in which case it decides
+	// what the server runs and the folder rule is beside the point — or never
+	// reaches this route at all.
+	text, err := unconfinedBrowser(inst.Config().Directory).ReadText(jvmargs.FileName)
 	if err != nil {
 		writeJSON(w, http.StatusOK, out)
 		return
@@ -81,7 +87,7 @@ func (s *Server) handlePutJVMArgs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	browser := s.browserFor(inst)
+	browser := unconfinedBrowser(inst.Config().Directory)
 	text, err := browser.ReadText(jvmargs.FileName)
 	if err != nil {
 		// Creating it would not help: only a launcher that passes

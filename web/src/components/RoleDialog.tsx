@@ -31,6 +31,9 @@ export function RoleDialog({ role, capabilities, onCancel, onSaved }: Props) {
   const readOnly = role?.builtIn ?? false
   const [name, setName] = useState(role?.name ?? '')
   const [held, setHeld] = useState<Set<Capability>>(new Set(role?.capabilities ?? []))
+  // One path per line, which is how people write lists of paths. Parsed on
+  // save; the panel cleans them further (see users.cleanPaths).
+  const [paths, setPaths] = useState((role?.paths ?? []).join('\n'))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -44,6 +47,18 @@ export function RoleDialog({ role, capabilities, onCancel, onSaved }: Props) {
       { key: 'danger', label: '高危', note: '', rows: dangerous },
     ]
   }, [capabilities])
+
+  // Which of the held capabilities make a folder rule pointless. Derived from
+  // the panel's own dangerous flag rather than a list in here, so a capability
+  // added later is covered without a front-end change. 编辑、上传与删除文件 is
+  // excluded: it is the capability being confined, not one that escapes.
+  const defeating = useMemo(
+    () =>
+      capabilities
+        .filter((cap) => cap.dangerous && cap.id !== 'instance:files:write' && held.has(cap.id))
+        .map((cap) => cap.title),
+    [capabilities, held],
+  )
 
   const toggle = (id: Capability, on: boolean) => {
     setHeld((prev) => {
@@ -63,12 +78,16 @@ export function RoleDialog({ role, capabilities, onCancel, onSaved }: Props) {
     setBusy(true)
     setError(null)
     const picked = capabilities.filter((cap) => held.has(cap.id)).map((cap) => cap.id)
+    const folders = paths
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line !== '')
     try {
       if (role) {
-        await api.updateRole(role.id, name, picked)
+        await api.updateRole(role.id, name, picked, folders)
         toast(`已保存角色「${name}」`)
       } else {
-        await api.createRole(name, picked)
+        await api.createRole(name, picked, folders)
         toast(`已创建角色「${name}」`)
       }
       onSaved()
@@ -139,6 +158,33 @@ export function RoleDialog({ role, capabilities, onCancel, onSaved }: Props) {
             </fieldset>
           ))}
         </div>
+
+        {!readOnly && (
+          <label className="field">
+            <span>目录限制</span>
+            <textarea
+              value={paths}
+              onChange={(e) => setPaths(e.target.value)}
+              rows={3}
+              spellCheck={false}
+              placeholder={'plugins/MyPlugin\nplugins/另一个插件'}
+            />
+            <small>
+              一行一个，相对实例目录。留空表示整个实例目录。
+              <strong>只管文件管理器</strong> —— 编辑服务器配置、导入建筑、换核心各有各的能力，不受这里限制。
+            </small>
+          </label>
+        )}
+
+        {/* The one thing an operator cannot be expected to work out: a folder
+            rule is worth nothing next to a capability that runs code. Said
+            where the rule is typed, naming the capabilities that defeat it. */}
+        {!readOnly && defeating.length > 0 && paths.trim() !== '' && (
+          <div className="alert alert--warn">
+            目录限制对这个角色没有实际意义：它同时持有 <strong>{defeating.join('、')}</strong> ——
+            能决定服务端跑什么代码，就能绕开任何目录规则。要让限制真正生效，先取消这些能力。
+          </div>
+        )}
 
         <div className="modal__actions">
           <button type="button" className="btn" onClick={onCancel} disabled={busy}>

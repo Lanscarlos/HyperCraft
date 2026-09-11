@@ -41,6 +41,10 @@ const maxEditableBytes = 1 << 20 // 1 MiB
 // Browser serves one instance directory.
 type Browser struct {
 	dir string
+	// scope confines this browser to part of the instance directory. Empty
+	// means the whole of it, which is the default and what an administrator
+	// gets. See scope.go.
+	scope []string
 }
 
 func New(dir string) *Browser { return &Browser{dir: dir} }
@@ -57,6 +61,11 @@ type Entry struct {
 	// Symlink marks entries the panel will not follow. os.Root refuses links
 	// that escape the tree, so these are shown but not opened.
 	Symlink bool `json:"symlink"`
+	// Writable is false for an entry a confined browser can only see because
+	// it is on the way to the scope — the plugins/ folder for a role confined
+	// to plugins/MyPlugin. Renaming or deleting one is refused, so the UI has
+	// to stop offering it. Always true when there is no rule.
+	Writable bool `json:"writable"`
 }
 
 // open returns a root handle for the instance directory. A fresh handle per
@@ -100,7 +109,7 @@ func clean(rel string) (string, error) {
 // List returns the contents of a directory, folders first then files, each
 // group sorted by name.
 func (b *Browser) List(rel string) ([]Entry, error) {
-	dir, err := clean(rel)
+	dir, err := b.resolveDir(rel)
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +126,12 @@ func (b *Browser) List(rel string) ([]Entry, error) {
 
 	entries := make([]Entry, 0, len(members))
 	for _, member := range members {
+		// A confined browser shows the way down to its scope and nothing else.
+		// Left out rather than greyed out: a listing is not a place to
+		// advertise what exists.
+		if !b.keep(dir, member.Name()) {
+			continue
+		}
 		info, err := member.Info()
 		if err != nil {
 			// Vanished between listing and stat; skip rather than fail the page.
@@ -129,6 +144,7 @@ func (b *Browser) List(rel string) ([]Entry, error) {
 		entries = append(entries, Entry{
 			Name:     member.Name(),
 			Path:     entryPath,
+			Writable: b.within(entryPath),
 			IsDir:    member.IsDir(),
 			Size:     info.Size(),
 			Modified: info.ModTime(),
@@ -148,7 +164,7 @@ func (b *Browser) List(rel string) ([]Entry, error) {
 
 // Stat describes a single path.
 func (b *Browser) Stat(rel string) (Entry, error) {
-	name, err := clean(rel)
+	name, err := b.resolveDir(rel)
 	if err != nil {
 		return Entry{}, err
 	}
@@ -174,7 +190,7 @@ func (b *Browser) Stat(rel string) (Entry, error) {
 
 // ReadText returns a text file's contents for the in-browser editor.
 func (b *Browser) ReadText(rel string) (string, error) {
-	name, err := clean(rel)
+	name, err := b.resolve(rel)
 	if err != nil {
 		return "", err
 	}
@@ -208,7 +224,7 @@ func (b *Browser) ReadText(rel string) (string, error) {
 // failure part way through cannot leave a half-written config behind — the
 // same guarantee the properties editor gives.
 func (b *Browser) WriteText(rel, content string) error {
-	name, err := clean(rel)
+	name, err := b.resolve(rel)
 	if err != nil {
 		return err
 	}
@@ -239,7 +255,7 @@ func (b *Browser) WriteText(rel, content string) error {
 // a zip — or copied out of Windows — arrives without its execute bit, and the
 // only symptom is "permission denied" the first time the server is started.
 func (b *Browser) Mode(rel string) (os.FileMode, error) {
-	name, err := clean(rel)
+	name, err := b.resolve(rel)
 	if err != nil {
 		return 0, err
 	}
@@ -268,7 +284,7 @@ func (b *Browser) Mode(rel string) (os.FileMode, error) {
 // The chmod goes through an open handle rather than Root.Chmod by name, so
 // nothing can swap the path for a symlink between the check and the change.
 func (b *Browser) MakeExecutable(rel string) error {
-	name, err := clean(rel)
+	name, err := b.resolve(rel)
 	if err != nil {
 		return err
 	}
@@ -301,7 +317,7 @@ func (b *Browser) MakeExecutable(rel string) error {
 // deliberate confirmation rather than something a mistyped name can do to a
 // world file.
 func (b *Browser) Create(rel string, overwrite bool) (*os.File, func(), error) {
-	name, err := clean(rel)
+	name, err := b.resolve(rel)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -332,7 +348,7 @@ func (b *Browser) Create(rel string, overwrite bool) (*os.File, func(), error) {
 
 // Open returns a file for download along with its metadata.
 func (b *Browser) Open(rel string) (*os.File, os.FileInfo, func(), error) {
-	name, err := clean(rel)
+	name, err := b.resolve(rel)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -362,7 +378,7 @@ func (b *Browser) Open(rel string) (*os.File, os.FileInfo, func(), error) {
 
 // Mkdir creates a directory, including any missing parents.
 func (b *Browser) Mkdir(rel string) error {
-	name, err := clean(rel)
+	name, err := b.resolve(rel)
 	if err != nil {
 		return err
 	}
@@ -383,7 +399,7 @@ func (b *Browser) Mkdir(rel string) error {
 
 // Remove deletes a file, or a directory and everything under it.
 func (b *Browser) Remove(rel string) error {
-	name, err := clean(rel)
+	name, err := b.resolve(rel)
 	if err != nil {
 		return err
 	}
@@ -412,11 +428,11 @@ func (b *Browser) Remove(rel string) error {
 
 // Rename moves a file or directory within the instance.
 func (b *Browser) Rename(from, to string) error {
-	src, err := clean(from)
+	src, err := b.resolve(from)
 	if err != nil {
 		return err
 	}
-	dst, err := clean(to)
+	dst, err := b.resolve(to)
 	if err != nil {
 		return err
 	}

@@ -72,6 +72,9 @@ export function FileManager({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
+  // Said on the buttons rather than as a banner: the answer people want is
+  // "why is this greyed out", asked with the pointer already on it.
+  const readOnlyHere = '这个目录不在你的角色允许的范围内'
   const [dragging, setDragging] = useState(false)
 
   // What the list is showing, as opposed to what the directory holds: the
@@ -567,10 +570,14 @@ export function FileManager({
         </div>
 
         <div className="file-toolbar">
+          {/* A confined role can walk through the folders on the way to the one
+              it may edit, but not write in them. Offering the buttons there
+              would be offering a request the panel refuses. */}
           <button
             className="btn btn--primary"
             onClick={() => fileInput.current?.click()}
-            disabled={busy}
+            disabled={busy || !listing.writable}
+            title={listing.writable ? undefined : readOnlyHere}
           >
             <Glyph name="upload" />
             上传文件
@@ -585,11 +592,21 @@ export function FileManager({
               event.target.value = ''
             }}
           />
-          <button className="btn" disabled={busy} onClick={() => void createFolder()}>
+          <button
+            className="btn"
+            disabled={busy || !listing.writable}
+            title={listing.writable ? undefined : readOnlyHere}
+            onClick={() => void createFolder()}
+          >
             <Glyph name="new-folder" />
             新建文件夹
           </button>
-          <button className="btn" disabled={busy} onClick={() => void createFile()}>
+          <button
+            className="btn"
+            disabled={busy || !listing.writable}
+            title={listing.writable ? undefined : readOnlyHere}
+            onClick={() => void createFile()}
+          >
             <Glyph name="new-file" />
             新建文件
           </button>
@@ -744,7 +761,15 @@ export function FileManager({
               only a truncated path was left. */}
           <span className="files__root" title={listing.root}>
             <code>{listing.root}</code>
-            <span className="files__root-note">· 所有操作都被限制在这个目录内</span>
+            {/* Two different promises. Without a role rule the honest sentence
+                is the instance directory; with one it is narrower, and saying
+                the wider thing would be telling somebody they can reach files
+                the panel will refuse them. */}
+            <span className="files__root-note">
+              {listing.scope.length > 0
+                ? `· 你的角色只能操作 ${listing.scope.join('、')}`
+                : '· 所有操作都被限制在这个目录内'}
+            </span>
           </span>
         </div>
 
@@ -844,20 +869,23 @@ function FileRow({
               <Glyph name="download" />
             </a>
           )}
+          {/* A folder a confined role can only see because it leads to the one
+              it may edit is not renamable or deletable — the panel refuses
+              both, so the buttons say so before the click. */}
           <button
             className="iconbtn"
-            disabled={busy}
+            disabled={busy || !entry.writable}
             onClick={onRename}
-            title="重命名"
+            title={entry.writable ? '重命名' : '这一项不在你的角色允许的范围内'}
             aria-label={`重命名 ${entry.name}`}
           >
             <Glyph name="rename" />
           </button>
           <button
             className="iconbtn iconbtn--danger"
-            disabled={busy}
+            disabled={busy || !entry.writable}
             onClick={onDelete}
-            title="删除"
+            title={entry.writable ? '删除' : '这一项不在你的角色允许的范围内'}
             aria-label={`删除 ${entry.name}`}
           >
             <Glyph name="trash" />

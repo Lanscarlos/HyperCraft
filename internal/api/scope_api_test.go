@@ -151,7 +151,7 @@ func TestCreatingAnInstanceGrantsItToItsCreator(t *testing.T) {
 	env.login()
 	existing := env.createInstance("existing")
 
-	role, err := env.accounts.AddRole("建服的", []authz.Cap{authz.CapInstanceView, authz.CapPanelCreate})
+	role, err := env.accounts.AddRole("建服的", []authz.Cap{authz.CapInstanceView, authz.CapPanelCreate}, nil)
 	if err != nil {
 		t.Fatalf("AddRole: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestLaunchFieldsNeedTheLaunchCapability(t *testing.T) {
 	ops := env.grantOnly("ops", users.RoleOps, created.ID)
 	if _, err := env.accounts.UpdateRole(users.RoleOps, "运维", []authz.Cap{
 		authz.CapInstanceView, authz.CapInstanceSettings,
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("UpdateRole: %v", err)
 	}
 
@@ -352,7 +352,7 @@ func TestConsoleSocketIsReadOnlyWithoutTheConsoleCapability(t *testing.T) {
 	env.login()
 	created := env.createInstance("server")
 
-	watcher, err := env.accounts.AddRole("只能看", []authz.Cap{authz.CapInstanceView})
+	watcher, err := env.accounts.AddRole("只能看", []authz.Cap{authz.CapInstanceView}, nil)
 	if err != nil {
 		t.Fatalf("AddRole: %v", err)
 	}
@@ -390,7 +390,7 @@ func TestSchematicInstallChecksTheGrant(t *testing.T) {
 
 	role, err := env.accounts.AddRole("建筑", []authz.Cap{
 		authz.CapInstanceView, authz.CapInstanceSchematics, authz.CapLibrarySchems,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("AddRole: %v", err)
 	}
@@ -409,5 +409,105 @@ func TestSchematicInstallChecksTheGrant(t *testing.T) {
 	body := readAll(t, resp)
 	if strings.Contains(body, "实例不存在") {
 		t.Errorf("installing into a granted server was refused by the grant check: %s", body)
+	}
+}
+
+// The directory rule, through the routes an operator actually uses.
+//
+// The unit tests in internal/serverfiles prove the confinement; this proves it
+// is wired to the file manager and to the role the caller holds.
+func TestRolePathsConfineTheFileManager(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	created := env.createInstance("server")
+
+	// Two files, made as the administrator: one inside the rule, one outside.
+	// WriteText does not create parents, so the folder comes first.
+	if got := env.status(http.MethodPost, "/api/instances/"+created.ID+"/files/mkdir",
+		map[string]string{"path": "plugins/MyPlugin"}); got != http.StatusNoContent && got != http.StatusOK {
+		t.Fatalf("creating the plugin folder: %d", got)
+	}
+	for _, spec := range []struct{ path, content string }{
+		{"plugins/MyPlugin/config.yml", "mine: true\n"},
+		{"server.properties", "motd=hello\n"},
+	} {
+		if got := env.status(http.MethodPut, "/api/instances/"+created.ID+"/files/content",
+			map[string]string{"path": spec.path, "content": spec.content}); got != http.StatusNoContent &&
+			got != http.StatusOK {
+			t.Fatalf("seeding %s: %d", spec.path, got)
+		}
+	}
+
+	role, err := env.accounts.AddRole("插件作者", []authz.Cap{
+		authz.CapInstanceView, authz.CapInstanceFilesRead, authz.CapInstanceFilesWrite,
+	}, []string{"plugins/MyPlugin"})
+	if err != nil {
+		t.Fatalf("AddRole: %v", err)
+	}
+	member := env.grantOnly("author", role.ID, created.ID)
+	base := "/api/instances/" + created.ID + "/files"
+
+	// Inside the rule everything works.
+	if got := member.status(http.MethodGet, base+"/content?path=plugins/MyPlugin/config.yml", nil); got != http.StatusOK {
+		t.Errorf("reading inside the rule: %d, want 200", got)
+	}
+	if got := member.status(http.MethodPut, base+"/content",
+		map[string]string{"path": "plugins/MyPlugin/config.yml", "content": "mine: 2\n"}); got != http.StatusNoContent {
+		t.Errorf("writing inside the rule: %d, want 204", got)
+	}
+
+	// Outside it, nothing does — and it reports as missing rather than
+	// refused, so the refusal does not confirm what is there.
+	if got := member.status(http.MethodGet, base+"/content?path=server.properties", nil); got != http.StatusNotFound {
+		t.Errorf("reading outside the rule: %d, want 404", got)
+	}
+	if got := member.status(http.MethodPut, base+"/content",
+		map[string]string{"path": "server.properties", "content": "motd=pwned\n"}); got != http.StatusNotFound {
+		t.Errorf("writing outside the rule: %d, want 404", got)
+	}
+	if got := member.status(http.MethodDelete, base+"?path=server.properties", nil); got != http.StatusNotFound {
+		t.Errorf("deleting outside the rule: %d, want 404", got)
+	}
+
+	// The root listing shows the way down and nothing else, or the file
+	// manager would have no way to reach the one folder it may open.
+	var listing struct {
+		Entries []struct {
+			Name string `json:"name"`
+		} `json:"entries"`
+	}
+	decodeBody(t, member.do(http.MethodGet, base+"?path=/", nil), &listing)
+	if len(listing.Entries) != 1 || listing.Entries[0].Name != "plugins" {
+		t.Errorf("root listing is %+v, want only the way down to the rule", listing.Entries)
+	}
+
+	// The administrator is unaffected: the rule is the role's, not the file's.
+	if got := env.status(http.MethodGet, base+"/content?path=server.properties", nil); got != http.StatusOK {
+		t.Errorf("the administrator was confined too: %d", got)
+	}
+}
+
+// A role with no rule reaches the whole instance directory, which is what every
+// role did before this existed.
+func TestRoleWithoutPathsIsNotConfined(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	created := env.createInstance("server")
+	if got := env.status(http.MethodPut, "/api/instances/"+created.ID+"/files/content",
+		map[string]string{"path": "server.properties", "content": "motd=hello\n"}); got != http.StatusNoContent {
+		t.Fatalf("seeding: %d", got)
+	}
+
+	role, err := env.accounts.AddRole("全目录", []authz.Cap{
+		authz.CapInstanceView, authz.CapInstanceFilesRead,
+	}, nil)
+	if err != nil {
+		t.Fatalf("AddRole: %v", err)
+	}
+	member := env.grantOnly("everywhere", role.ID, created.ID)
+
+	if got := member.status(http.MethodGet,
+		"/api/instances/"+created.ID+"/files/content?path=server.properties", nil); got != http.StatusOK {
+		t.Errorf("a role with no directory rule was confined anyway: %d", got)
 	}
 }
