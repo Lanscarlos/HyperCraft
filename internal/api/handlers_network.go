@@ -222,7 +222,11 @@ func (s *Server) networkResponse() (networkResponse, error) {
 	}
 
 	var proxies, servers []*instance.Instance
-	for _, inst := range s.mgr.List() {
+	// The whole machine, deliberately. A link is a fact about two servers and
+	// neither owns it, which is why 代理连线 is a panel-wide capability rather
+	// than an instance one — and why a half-drawn picture would be worse than
+	// none: a proxy whose sub-servers were filtered out reads as broken.
+	for _, inst := range s.allInstances() {
 		if inst.Config().IsProxy() {
 			proxies = append(proxies, inst)
 			continue
@@ -744,7 +748,9 @@ func (s *Server) wireLink(proxy, server *instance.Instance, name, actor string) 
 // addressClash names another server instance listening where this one says it
 // does, if there is one.
 func (s *Server) addressClash(server *instance.Instance, address string) (string, bool) {
-	for _, other := range s.mgr.List() {
+	// Every instance: two servers cannot listen on one address whoever owns
+	// them, and a clash that went unreported would be found at start-up.
+	for _, other := range s.allInstances() {
 		cfg := other.Config()
 		if cfg.ID == server.Config().ID || cfg.IsProxy() {
 			continue

@@ -113,7 +113,7 @@ var catalogue = []Info{
 	{CapLibraryPlugins, ScopePanel, "插件库", "面板级共享库，改动对所有实例可见", false},
 	{CapLibrarySchems, ScopePanel, "建筑库", "", false},
 	{CapPanelJava, ScopePanel, "Java 环境", "安装和删除 JDK", false},
-	{CapPanelNetwork, ScopePanel, "代理连线", "会同时改代理端和子服的配置文件", false},
+	{CapPanelNetwork, ScopePanel, "代理连线", "会改动链路两端实例的配置文件，且不受实例授权限制", false},
 	{CapPanelCreate, ScopePanel, "新建实例", "实例目录可以指向宿主机任意路径", true},
 	{CapPanelDatabases, ScopePanel, "数据库", "面板保存的是明文密码", true},
 	{CapPanelTerminal, ScopePanel, "本机终端", "宿主机 shell", true},

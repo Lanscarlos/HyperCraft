@@ -1,10 +1,13 @@
 package api
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/lanscarlos/hypercraft/internal/authz"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/plugin"
 )
@@ -110,8 +113,8 @@ func cleanArgs(in []string) []string {
 	return out
 }
 
-func (s *Server) handleListInstances(w http.ResponseWriter, _ *http.Request) {
-	instances := s.mgr.List()
+func (s *Server) handleListInstances(w http.ResponseWriter, r *http.Request) {
+	instances := s.visibleInstances(r)
 	out := make([]instance.Status, 0, len(instances))
 	for _, inst := range instances {
 		out = append(out, inst.Status())
@@ -127,6 +130,28 @@ func (s *Server) handleGetInstance(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, inst.Status())
 }
 
+// maxInstanceBodyBytes caps the instance form. It is read whole rather than
+// streamed because the launch-field check has to see which keys were sent, not
+// just what they decoded to — an omitted field and a field set to its zero
+// value are the same value and very different requests.
+const maxInstanceBodyBytes = 1 << 20
+
+// namedLaunchFields reports which of the dangerous fields a request body
+// actually carries, for the refusal to be able to say so.
+func namedLaunchFields(body []byte) ([]string, bool) {
+	var present map[string]json.RawMessage
+	if err := json.Unmarshal(body, &present); err != nil {
+		return nil, false
+	}
+	var named []string
+	for _, field := range launchFields {
+		if _, ok := present[field]; ok {
+			named = append(named, field)
+		}
+	}
+	return named, len(named) > 0
+}
+
 func (s *Server) handleCreateInstance(w http.ResponseWriter, r *http.Request) {
 	var req instanceRequest
 	if err := decodeJSON(w, r, &req); err != nil {
@@ -139,14 +164,53 @@ func (s *Server) handleCreateInstance(w http.ResponseWriter, r *http.Request) {
 		s.writeDomainError(w, err)
 		return
 	}
+
+	// Somebody whose grant is a list, not "everything", would otherwise create
+	// a server and immediately lose sight of it. Failing to record that is not
+	// worth undoing the creation over — the server is real and an administrator
+	// can hand it back — so it is logged and the request still succeeds.
+	who, _ := principalFrom(r.Context())
+	if granted, err := s.accounts.GrantInstance(who.user.ID, inst.Config().ID); err != nil {
+		s.log.Warn("could not grant the new instance to its creator",
+			"instance", inst.Config().ID, "user", who.username(), "err", err)
+	} else if granted {
+		if err := s.persistUsers(); err != nil {
+			s.log.Warn("could not record the new instance's grant",
+				"instance", inst.Config().ID, "user", who.username(), "err", err)
+		}
+	}
+
 	writeJSON(w, http.StatusCreated, inst.Status())
 }
 
 func (s *Server) handleUpdateInstance(w http.ResponseWriter, r *http.Request) {
-	var req instanceRequest
-	if err := decodeJSON(w, r, &req); err != nil {
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxInstanceBodyBytes))
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "malformed request body")
 		return
+	}
+
+	var req instanceRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "malformed request body")
+		return
+	}
+
+	// The route declared CapInstanceSettings, which is the harmless half. The
+	// other half arrives in the same body — a different directory, a different
+	// argv — so it is checked against the fields actually present rather than
+	// against the route. See launchFields.
+	//
+	// Present, not different: a client echoing the whole form back unchanged
+	// still has to hold the capability, because "unchanged" is a claim the
+	// server would have to take the client's word for.
+	if named, ok := namedLaunchFields(raw); ok {
+		who, _ := principalFrom(r.Context())
+		if !who.can(authz.CapInstanceLaunch) {
+			writeError(w, http.StatusForbidden,
+				"当前角色没有这项权限：启动设置与核心（请求里带了 "+strings.Join(named, "、")+"）")
+			return
+		}
 	}
 
 	cfg := req.toConfig()
@@ -195,6 +259,16 @@ func (s *Server) handleDeleteInstance(w http.ResponseWriter, r *http.Request) {
 	if s.configHistory != nil {
 		if err := s.configHistory.Forget(id); err != nil {
 			s.log.Warn("could not remove the instance's config history", "instance", id, "err", err)
+		}
+	}
+	// And the grants that named it. Ids are random, so this is tidiness rather
+	// than a hole being closed — but a grant list full of servers that no
+	// longer exist is a grant list nobody can read, and unreadable is how
+	// permissions end up wrong.
+	if n := s.accounts.ForgetInstance(id); n > 0 {
+		if err := s.persistUsers(); err != nil {
+			s.log.Warn("could not drop the deleted instance from the accounts that were granted it",
+				"instance", id, "accounts", n, "err", err)
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)

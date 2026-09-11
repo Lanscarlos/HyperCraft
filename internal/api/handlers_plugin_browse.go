@@ -77,7 +77,7 @@ func (s *Server) handleBrowsePlugins(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := r.URL.Query()
-	targets := s.installTargets()
+	targets := s.installTargets(r)
 	chosen := chosenTargets(targets, query.Get("instances"))
 
 	onlyCompatible := query.Get("onlyCompatible") != "false"
@@ -247,13 +247,13 @@ func (s *Server) handleBrowsePluginDetail(w http.ResponseWriter, r *http.Request
 	// badges and not a second opinion. Target stays singular — it is what the
 	// drawer prints as "这台服是 Paper 1.20.4", which only means something when
 	// there is one of them.
-	chosen := chosenTargets(s.installTargets(), r.URL.Query().Get("instances"))
+	chosen := chosenTargets(s.installTargets(r), r.URL.Query().Get("instances"))
 	var target plugin.Target
 	if len(chosen) == 1 {
 		target = chosen[0].Target
 	}
 
-	tracked := s.trackedBy(source, id)
+	tracked := s.trackedBy(r, source, id)
 	// Backfills the artwork for a plugin tracked before the panel started
 	// keeping it — opening its page is the one moment the icon is in hand.
 	if tracked != nil {
@@ -342,7 +342,7 @@ func (s *Server) handleTrackPlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if existing := s.trackedBy(source, id); existing != nil {
+	if existing := s.trackedBy(r, source, id); existing != nil {
 		item, err := s.plugins.Library().Get(existing.ID)
 		if err != nil {
 			s.writePluginError(w, err)
@@ -369,14 +369,14 @@ func (s *Server) handleTrackPlugin(w http.ResponseWriter, r *http.Request) {
 }
 
 // trackedBy finds the library entry for a registry listing, if there is one.
-func (s *Server) trackedBy(source, id string) *pluginViewLight {
+func (s *Server) trackedBy(r *http.Request, source, id string) *pluginViewLight {
 	for _, item := range s.plugins.Library().List() {
 		if item.Source.Kind != source || !strings.EqualFold(item.Source.Repo, id) {
 			continue
 		}
 		users := s.instancePlugins.UsedBy()[item.ID]
 		names := make([]string, 0, len(users))
-		for _, inst := range s.mgr.List() {
+		for _, inst := range s.visibleInstances(r) {
 			cfg := inst.Config()
 			for _, user := range users {
 				if user == cfg.ID {
@@ -390,8 +390,8 @@ func (s *Server) trackedBy(source, id string) *pluginViewLight {
 }
 
 // installTargets describes every instance a plugin could go into.
-func (s *Server) installTargets() []installTarget {
-	instances := s.mgr.List()
+func (s *Server) installTargets(r *http.Request) []installTarget {
+	instances := s.visibleInstances(r)
 	out := make([]installTarget, 0, len(instances))
 	for _, inst := range instances {
 		cfg := inst.Config()
@@ -454,7 +454,7 @@ func (s *Server) handlePluginInstallTargets(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	targets := s.installTargets()
+	targets := s.installTargets(r)
 	resp := installMatrixResponse{
 		Targets:  targets,
 		Verdicts: make(map[string]map[string]*plugin.Compat, len(item.Versions)),
@@ -772,7 +772,7 @@ func (s *Server) handlePluginOverview(w http.ResponseWriter, r *http.Request) {
 		target plugin.Target
 	}
 	instances := make([]held, 0)
-	for _, inst := range s.mgr.List() {
+	for _, inst := range s.visibleInstances(r) {
 		cfg := inst.Config()
 		byID := map[string]plugin.Installed{}
 		for _, record := range s.instancePlugins.Records(cfg.ID) {
@@ -1069,10 +1069,10 @@ func (s *Server) handleBulkUpgradePreview(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "malformed request body")
 		return
 	}
-	writeJSON(w, http.StatusOK, s.bulkImpact(req.PluginIDs))
+	writeJSON(w, http.StatusOK, s.bulkImpact(r, req.PluginIDs))
 }
 
-func (s *Server) bulkImpact(pluginIDs []string) bulkImpact {
+func (s *Server) bulkImpact(r *http.Request, pluginIDs []string) bulkImpact {
 	impact := bulkImpact{Plugins: []bulkPlugin{}, Instances: []bulkInstance{}}
 	byInstance := map[string]*bulkInstance{}
 
@@ -1083,7 +1083,7 @@ func (s *Server) bulkImpact(pluginIDs []string) bulkImpact {
 		}
 		entry := bulkPlugin{ID: item.ID, Name: item.Name}
 
-		for _, inst := range s.mgr.List() {
+		for _, inst := range s.visibleInstances(r) {
 			cfg := inst.Config()
 			for _, record := range s.instancePlugins.Records(cfg.ID) {
 				if record.PluginID != item.ID {
@@ -1161,7 +1161,7 @@ func (s *Server) handleBulkUpgrade(w http.ResponseWriter, r *http.Request) {
 
 	// Computed before anything is written: afterwards the records match and
 	// there is nothing left to describe.
-	impact := s.bulkImpact(req.PluginIDs)
+	impact := s.bulkImpact(r, req.PluginIDs)
 	result := bulkUpgradeResult{Impact: impact, Failures: []bulkFailure{}}
 
 	for _, id := range req.PluginIDs {
@@ -1169,7 +1169,7 @@ func (s *Server) handleBulkUpgrade(w http.ResponseWriter, r *http.Request) {
 		if err != nil || len(item.Versions) == 0 {
 			continue
 		}
-		for _, inst := range s.mgr.List() {
+		for _, inst := range s.visibleInstances(r) {
 			cfg := inst.Config()
 			// What this server can move up to, which is not always what the
 			// library's newest release is — see plugin.UpdateFor. Nothing to

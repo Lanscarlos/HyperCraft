@@ -73,6 +73,17 @@ type User struct {
 	DisplayName string          `json:"displayName,omitempty"`
 	RoleID      string          `json:"roleId"`
 	Credential  auth.Credential `json:"credential"`
+	// Instances are the servers this account may touch, by id.
+	//
+	// nil means every server, including ones created later — which is what an
+	// administrator wants and what every account had before scoping existed. An
+	// empty list means none at all, and the two have to stay distinguishable:
+	// no omitempty here, so the field is written as null or [] rather than
+	// disappearing and reading back as "everything".
+	//
+	// It narrows capabilities rather than granting anything. An account with no
+	// instance capabilities reaches nothing whatever this says.
+	Instances []string `json:"instances"`
 	// Disabled keeps the account and its history while refusing every login.
 	// Deleting is the other option, and it is not the same one: an account that
 	// has been switched off can be switched back on.
@@ -295,6 +306,62 @@ func (r *Registry) Capabilities(u User) map[authz.Cap]bool {
 
 // IsAdmin reports whether an account holds the built-in role.
 func (r *Registry) IsAdmin(u User) bool { return u.RoleID == RoleAdmin }
+
+// CanUseInstance reports whether an account's grant covers one server.
+//
+// It answers "which servers", never "what may be done to them" — a caller has
+// to ask both. Administrators are always covered: their grant is forced to nil
+// when the account is written, because an administrator can edit their own
+// grant anyway and a restricted one would be theatre with a lockout attached.
+func (r *Registry) CanUseInstance(u User, instanceID string) bool {
+	if u.RoleID == RoleAdmin || u.Instances == nil {
+		return true
+	}
+	return slices.Contains(u.Instances, instanceID)
+}
+
+// GrantInstance adds one server to an account's grant, and reports whether it
+// had to. A no-op for an account that already reaches everything.
+//
+// It exists for one case: somebody who may create servers but only sees some of
+// them would otherwise create one and immediately lose sight of it.
+func (r *Registry) GrantInstance(id, instanceID string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	idx, ok := r.byID[id]
+	if !ok {
+		return false, ErrNotFound
+	}
+	u := r.users[idx]
+	if u.Instances == nil || slices.Contains(u.Instances, instanceID) {
+		return false, nil
+	}
+	r.users[idx].Instances = append(slices.Clone(u.Instances), instanceID)
+	return true, nil
+}
+
+// ForgetInstance drops a deleted server from every grant, so an id cannot be
+// inherited by whatever is created next. Reports how many accounts changed.
+func (r *Registry) ForgetInstance(instanceID string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	n := 0
+	for i, u := range r.users {
+		if u.Instances == nil {
+			continue
+		}
+		kept := slices.DeleteFunc(slices.Clone(u.Instances), func(id string) bool {
+			return id == instanceID
+		})
+		if len(kept) != len(u.Instances) {
+			r.users[i].Instances = kept
+			n++
+		}
+	}
+	return n
+}
 
 func newID() (string, error) {
 	buf := make([]byte, 8)

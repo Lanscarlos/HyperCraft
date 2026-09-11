@@ -77,7 +77,11 @@ func (s *Server) handleInspectHost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := hostInspectResponse{Inspection: inspection}
-	for _, inst := range s.mgr.List() {
+	// Every instance, not just the caller's: this marks a directory that
+	// already belongs to a server, and handing one server's directory to a
+	// second server would corrupt both. A refusal has to see what it is
+	// refusing over. See allInstances.
+	for _, inst := range s.allInstances() {
 		if sameDirectory(inst.Config().Directory, inspection.Path) {
 			response.TakenBy = inst.Config().Name
 			break

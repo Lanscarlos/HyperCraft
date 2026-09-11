@@ -25,6 +25,9 @@ type accountResponse struct {
 	RoleID      string `json:"roleId"`
 	RoleName    string `json:"roleName"`
 	Disabled    bool   `json:"disabled"`
+	// Instances is the server grant, null for "every server". Sent back as it
+	// is stored so the editor can tell "all" from "none".
+	Instances []string `json:"instances"`
 	// Devices counts this account's pairings, so the page can say what
 	// disabling or deleting it will cut off.
 	Devices   int       `json:"devices"`
@@ -76,6 +79,7 @@ func (s *Server) describeAccounts(who principal) []accountResponse {
 			RoleID:      u.RoleID,
 			RoleName:    names[u.RoleID],
 			Disabled:    u.Disabled,
+			Instances:   u.Instances,
 			Devices:     len(s.devices.ListUser(u.ID)),
 			CreatedAt:   u.CreatedAt,
 			Self:        u.ID == who.user.ID,
@@ -89,6 +93,11 @@ type createUserRequest struct {
 	DisplayName string `json:"displayName"`
 	RoleID      string `json:"roleId"`
 	Password    string `json:"password"`
+	// Instances is the server grant. Null — which is what an omitted field
+	// decodes to — means every server; [] means none. The two are different and
+	// the API keeps them different, because "I did not set this" and "I set
+	// this to nothing" are opposite intentions.
+	Instances []string `json:"instances"`
 }
 
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
@@ -106,7 +115,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeBusy(w)
 		return
 	}
-	user, err := s.accounts.AddUser(req.Username, req.DisplayName, req.RoleID, req.Password)
+	user, err := s.accounts.AddUser(req.Username, req.DisplayName, req.RoleID, req.Password, req.Instances)
 	s.kdf.leave()
 	if err != nil {
 		s.writeUsersError(w, err)
@@ -131,7 +140,9 @@ type updateUserRequest struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"displayName"`
 	RoleID      string `json:"roleId"`
-	Disabled    bool   `json:"disabled"`
+	// Instances is the server grant; see createUserRequest.
+	Instances []string `json:"instances"`
+	Disabled  bool     `json:"disabled"`
 }
 
 func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +163,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		Username:    req.Username,
 		DisplayName: req.DisplayName,
 		RoleID:      req.RoleID,
+		Instances:   req.Instances,
 		Disabled:    req.Disabled,
 	})
 	if err != nil {

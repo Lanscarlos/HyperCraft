@@ -109,7 +109,7 @@ func (s *Server) handleCoreLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	users := make(map[string][]string)
-	for _, inst := range s.mgr.List() {
+	for _, inst := range s.visibleInstances(r) {
 		cfg := inst.Config()
 		if cfg.Jar != "" {
 			users[cfg.Jar] = append(users[cfg.Jar], cfg.Name)

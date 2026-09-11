@@ -1,6 +1,7 @@
 package users
 
 import (
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
@@ -73,7 +74,7 @@ func TestAdminHoldsTheWholeVocabulary(t *testing.T) {
 func TestPresetRolesHoldWhatTheyClaim(t *testing.T) {
 	r := newTestRegistry(t)
 
-	ops, err := r.AddUser("ops", "", RoleOps, testPassword)
+	ops, err := r.AddUser("ops", "", RoleOps, testPassword, nil)
 	if err != nil {
 		t.Fatalf("AddUser: %v", err)
 	}
@@ -94,7 +95,7 @@ func TestPresetRolesHoldWhatTheyClaim(t *testing.T) {
 		}
 	}
 
-	dev, err := r.AddUser("dev", "", RoleDev, testPassword)
+	dev, err := r.AddUser("dev", "", RoleDev, testPassword, nil)
 	if err != nil {
 		t.Fatalf("AddUser: %v", err)
 	}
@@ -136,7 +137,7 @@ func TestAuthenticate(t *testing.T) {
 
 func TestAuthenticateRefusesADisabledAccount(t *testing.T) {
 	r := newTestRegistry(t)
-	u, err := r.AddUser("ops", "", RoleOps, testPassword)
+	u, err := r.AddUser("ops", "", RoleOps, testPassword, nil)
 	if err != nil {
 		t.Fatalf("AddUser: %v", err)
 	}
@@ -171,10 +172,10 @@ func TestAuthenticateSpendsADerivationOnAnUnknownAccount(t *testing.T) {
 
 func TestUsernamesAreUnique(t *testing.T) {
 	r := newTestRegistry(t)
-	if _, err := r.AddUser("ops", "", RoleOps, testPassword); err != nil {
+	if _, err := r.AddUser("ops", "", RoleOps, testPassword, nil); err != nil {
 		t.Fatalf("AddUser: %v", err)
 	}
-	if _, err := r.AddUser("OPS", "", RoleOps, testPassword); err == nil {
+	if _, err := r.AddUser("OPS", "", RoleOps, testPassword, nil); err == nil {
 		t.Error("a username differing only in case was accepted")
 	}
 }
@@ -187,7 +188,7 @@ func TestAddUserRejectsBadInput(t *testing.T) {
 		{"unknown role", "someone", "nope", testPassword},
 		{"short password", "someone", RoleOps, "short"},
 	} {
-		if _, err := r.AddUser(tc.user, "", tc.role, tc.pass); err == nil {
+		if _, err := r.AddUser(tc.user, "", tc.role, tc.pass, nil); err == nil {
 			t.Errorf("%s was accepted", tc.name)
 		}
 	}
@@ -210,7 +211,7 @@ func TestTheLastAdminCannotBeRemoved(t *testing.T) {
 	}
 
 	// With a second one in place, all three become ordinary edits.
-	second, err := r.AddUser("second", "", RoleAdmin, testPassword)
+	second, err := r.AddUser("second", "", RoleAdmin, testPassword, nil)
 	if err != nil {
 		t.Fatalf("AddUser: %v", err)
 	}
@@ -229,7 +230,7 @@ func TestADisabledAdminDoesNotCount(t *testing.T) {
 	r := newTestRegistry(t)
 	admin, _ := r.FirstAdmin()
 
-	spare, err := r.AddUser("spare", "", RoleAdmin, testPassword)
+	spare, err := r.AddUser("spare", "", RoleAdmin, testPassword, nil)
 	if err != nil {
 		t.Fatalf("AddUser: %v", err)
 	}
@@ -260,7 +261,7 @@ func TestRoles(t *testing.T) {
 
 	// A role in use cannot be deleted: the account holding it would be left
 	// with nothing, which reads as a permission bug rather than a deletion.
-	u, err := r.AddUser("builder", "", role.ID, testPassword)
+	u, err := r.AddUser("builder", "", role.ID, testPassword, nil)
 	if err != nil {
 		t.Fatalf("AddUser: %v", err)
 	}
@@ -279,7 +280,7 @@ func TestRoles(t *testing.T) {
 // reason roles exist rather than per-account capability lists.
 func TestEditingARoleReachesItsAccounts(t *testing.T) {
 	r := newTestRegistry(t)
-	u, err := r.AddUser("ops", "", RoleOps, testPassword)
+	u, err := r.AddUser("ops", "", RoleOps, testPassword, nil)
 	if err != nil {
 		t.Fatalf("AddUser: %v", err)
 	}
@@ -396,5 +397,141 @@ func TestRenameKeepsThePasswordWorking(t *testing.T) {
 	}
 	if _, err := r.Authenticate("carlos", testPassword); err == nil {
 		t.Error("the old username still signs in")
+	}
+}
+
+func TestInstanceGrant(t *testing.T) {
+	r := newTestRegistry(t)
+
+	// nil is "every server", which is what every account had before grants
+	// existed and what an omitted field decodes to.
+	open, err := r.AddUser("open", "", RoleOps, testPassword, nil)
+	if err != nil {
+		t.Fatalf("AddUser: %v", err)
+	}
+	if !r.CanUseInstance(open, "anything") {
+		t.Error("an account with no grant set was refused a server")
+	}
+
+	// An empty list is the opposite, and the two must stay distinguishable.
+	none, err := r.AddUser("none", "", RoleOps, testPassword, []string{})
+	if err != nil {
+		t.Fatalf("AddUser: %v", err)
+	}
+	if r.CanUseInstance(none, "anything") {
+		t.Error("an empty grant reached a server")
+	}
+
+	some, err := r.AddUser("some", "", RoleOps, testPassword, []string{"a", "b"})
+	if err != nil {
+		t.Fatalf("AddUser: %v", err)
+	}
+	if !r.CanUseInstance(some, "a") || r.CanUseInstance(some, "c") {
+		t.Errorf("grant %v resolved wrongly", some.Instances)
+	}
+}
+
+// An administrator's grant is forced to nil wherever it is written.
+func TestAdminGrantIsAlwaysEverything(t *testing.T) {
+	r := newTestRegistry(t)
+
+	u, err := r.AddUser("second", "", RoleAdmin, testPassword, []string{"a"})
+	if err != nil {
+		t.Fatalf("AddUser: %v", err)
+	}
+	if u.Instances != nil {
+		t.Errorf("a new administrator was created with grant %v", u.Instances)
+	}
+	updated, err := r.UpdateUser(u.ID, Edit{Username: "second", RoleID: RoleAdmin, Instances: []string{"a"}})
+	if err != nil {
+		t.Fatalf("UpdateUser: %v", err)
+	}
+	if updated.Instances != nil {
+		t.Errorf("an administrator was updated to grant %v", updated.Instances)
+	}
+
+	// Demoting them keeps whatever grant the edit carried, because now it means
+	// something.
+	demoted, err := r.UpdateUser(u.ID, Edit{Username: "second", RoleID: RoleOps, Instances: []string{"a"}})
+	if err != nil {
+		t.Fatalf("UpdateUser: %v", err)
+	}
+	if len(demoted.Instances) != 1 || demoted.Instances[0] != "a" {
+		t.Errorf("a demoted administrator got grant %v, want [a]", demoted.Instances)
+	}
+}
+
+func TestGrantInstanceAndForgetInstance(t *testing.T) {
+	r := newTestRegistry(t)
+	limited, err := r.AddUser("limited", "", RoleOps, testPassword, []string{"a"})
+	if err != nil {
+		t.Fatalf("AddUser: %v", err)
+	}
+	open, err := r.AddUser("open", "", RoleOps, testPassword, nil)
+	if err != nil {
+		t.Fatalf("AddUser: %v", err)
+	}
+
+	granted, err := r.GrantInstance(limited.ID, "b")
+	if err != nil || !granted {
+		t.Fatalf("GrantInstance: %v (granted=%v)", err, granted)
+	}
+	// Twice is a no-op rather than a duplicate.
+	if again, _ := r.GrantInstance(limited.ID, "b"); again {
+		t.Error("granting the same server twice reported a change")
+	}
+	// And an account that already reaches everything needs nothing added.
+	if granted, _ := r.GrantInstance(open.ID, "b"); granted {
+		t.Error("an account with no grant set was given an explicit one")
+	}
+
+	if n := r.ForgetInstance("b"); n != 1 {
+		t.Errorf("ForgetInstance touched %d accounts, want 1", n)
+	}
+	reloaded, _ := r.ByID(limited.ID)
+	if len(reloaded.Instances) != 1 || reloaded.Instances[0] != "a" {
+		t.Errorf("grant is %v after forgetting b, want [a]", reloaded.Instances)
+	}
+	// The account that reaches everything is untouched: nil is not a list with
+	// an entry to remove.
+	if reloadedOpen, _ := r.ByID(open.ID); reloadedOpen.Instances != nil {
+		t.Errorf("an unrestricted grant became %v", reloadedOpen.Instances)
+	}
+}
+
+// The grant survives a write and a read, including the nil/empty distinction
+// that everything else rests on.
+func TestGrantRoundTripsThroughTheFile(t *testing.T) {
+	r := newTestRegistry(t)
+	if _, err := r.AddUser("none", "", RoleOps, testPassword, []string{}); err != nil {
+		t.Fatalf("AddUser: %v", err)
+	}
+	if _, err := r.AddUser("all", "", RoleOps, testPassword, nil); err != nil {
+		t.Fatalf("AddUser: %v", err)
+	}
+
+	encoded, err := json.Marshal(r.Snapshot())
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var file File
+	if err := json.Unmarshal(encoded, &file); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	reloaded, complaints, err := New(file)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if len(complaints) > 0 {
+		t.Fatalf("reloading complained: %v", complaints)
+	}
+
+	none, _ := reloaded.ByUsername("none")
+	if reloaded.CanUseInstance(none, "a") {
+		t.Error("an empty grant came back as unrestricted after a round trip")
+	}
+	all, _ := reloaded.ByUsername("all")
+	if !reloaded.CanUseInstance(all, "a") {
+		t.Error("an unrestricted grant came back as empty after a round trip")
 	}
 }

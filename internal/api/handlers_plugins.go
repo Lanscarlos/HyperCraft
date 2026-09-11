@@ -98,17 +98,17 @@ type pluginLibraryResponse struct {
 }
 
 // handlePluginLibrary answers everything the library page needs in one request.
-func (s *Server) handlePluginLibrary(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handlePluginLibrary(w http.ResponseWriter, r *http.Request) {
 	if s.plugins == nil || s.instancePlugins == nil {
 		writeJSON(w, http.StatusOK, pluginLibraryResponse{Plugins: []pluginView{}})
 		return
 	}
-	writeJSON(w, http.StatusOK, s.pluginLibrary())
+	writeJSON(w, http.StatusOK, s.pluginLibrary(r))
 }
 
-func (s *Server) pluginLibrary() pluginLibraryResponse {
+func (s *Server) pluginLibrary(r *http.Request) pluginLibraryResponse {
 	names := make(map[string]string)
-	for _, inst := range s.mgr.List() {
+	for _, inst := range s.visibleInstances(r) {
 		cfg := inst.Config()
 		names[cfg.ID] = cfg.Name
 	}
@@ -307,7 +307,7 @@ func (s *Server) handlePluginTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("GitHub token added", "token", entry.ID, "name", entry.Name)
-	writeJSON(w, http.StatusCreated, s.pluginLibrary())
+	writeJSON(w, http.StatusCreated, s.pluginLibrary(r))
 }
 
 // handleUpdatePluginToken renames a credential, replaces its secret, or makes
@@ -360,7 +360,7 @@ func (s *Server) handleUpdatePluginToken(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	s.log.Info("GitHub token updated", "token", id, "rotated", secret != "", "default", req.Default)
-	writeJSON(w, http.StatusOK, s.pluginLibrary())
+	writeJSON(w, http.StatusOK, s.pluginLibrary(r))
 }
 
 // handleDeletePluginToken forgets a credential.
@@ -386,7 +386,7 @@ func (s *Server) handleDeletePluginToken(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	s.log.Info("GitHub token removed", "token", id)
-	writeJSON(w, http.StatusOK, s.pluginLibrary())
+	writeJSON(w, http.StatusOK, s.pluginLibrary(r))
 }
 
 // handlePluginToken is the single-token route the panel had before it could
@@ -428,7 +428,7 @@ func (s *Server) handlePluginToken(w http.ResponseWriter, r *http.Request) {
 	} else {
 		s.log.Info("GitHub token configured")
 	}
-	writeJSON(w, http.StatusOK, s.pluginLibrary())
+	writeJSON(w, http.StatusOK, s.pluginLibrary(r))
 }
 
 // knownTokenID reports whether a source may name this credential. The empty id
@@ -526,7 +526,7 @@ func (s *Server) handlePluginMirror(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("plugin download mirror changed", "mirror", mirror)
-	writeJSON(w, http.StatusOK, s.pluginLibrary())
+	writeJSON(w, http.StatusOK, s.pluginLibrary(r))
 }
 
 // validateGitHubToken checks the shape of what was pasted, not whether GitHub
@@ -684,7 +684,7 @@ func (s *Server) handleCheckPlugins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.plugins.CheckAll(r.Context())
-	writeJSON(w, http.StatusOK, s.pluginLibrary())
+	writeJSON(w, http.StatusOK, s.pluginLibrary(r))
 }
 
 type pluginDownloadRequest struct {
@@ -743,12 +743,12 @@ func (s *Server) handleCancelPluginDownload(w http.ResponseWriter, r *http.Reque
 
 // handleClearPluginDownloads forgets finished jobs. What is still queued or
 // running stays: this clears a record, it does not stop work.
-func (s *Server) handleClearPluginDownloads(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleClearPluginDownloads(w http.ResponseWriter, r *http.Request) {
 	if !s.pluginsAvailable(w) {
 		return
 	}
 	s.plugins.ClearFinished()
-	writeJSON(w, http.StatusOK, s.pluginLibrary())
+	writeJSON(w, http.StatusOK, s.pluginLibrary(r))
 }
 
 // handleDeletePluginVersion removes one downloaded release, or one jar of it.
@@ -1022,7 +1022,7 @@ func (s *Server) handleListInstancePlugins(w http.ResponseWriter, r *http.Reques
 
 	resp := instancePluginsResponse{
 		Entries:      entries,
-		Library:      s.pluginLibrary().Plugins,
+		Library:      s.pluginLibrary(r).Plugins,
 		Root:         cfg.Directory,
 		Target:       s.detectTarget(cfg),
 		Pending:      []pendingChange{},
