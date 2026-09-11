@@ -118,6 +118,16 @@ prerelease，版本号是下一个次版本号（只写两位）加 `-snapshot.<
 `0.5-snapshot.86`。缺的那一位按 0 算，所以它排在 `0.4.x` 之后、`0.5.0` 之前。这个提交本身就是某个
 正式版时会跳过，免得同一份代码有两个版本号。只保留最近 3 个，旧的连同 tag 一起删。
 
+这个命名以后大概率要换成 `snapshot-<提交数>`——快照不是冲着某个版本去的，`0.5-snapshot.86`
+读起来却像「0.5 的预览版」，而 0.5 里有什么在打这个快照时根本还没定。**换名字之前，认识新格式的
+二进制必须先发出去。** 做版本比较的是已经装在机器上的那个面板：它的 `IsReleaseVersion` 只要解析不了
+`snapshot-191`，`checkNewest` 就会把这个 tag 整个跳过，于是永远「已是最新」。这个顺序搞反过一次，
+快照通道对所有在用的面板直接断掉，只能手动换二进制。
+
+现在 `internal/selfupdate/version.go` 两种格式都认：`snapshot-N` 之间按提交数比，整体排在所有正式版
+和 `0.5-snapshot.*` 之上（正式版是从 main 上切出去的，快照里已经有那些代码）。所以改名要等到在用的
+面板都更新过了再动工作流，而且改的时候只改 `.github/workflows/snapshot.yml`，Go 这边不用再碰。
+
 每个压缩包里是单文件二进制加 README、CHANGELOG、LICENSE，Linux 的还带一份 `hypercraft.service`。
 `SHA256SUMS.txt` 单独传，用 `sha256sum -c` 校验。
 
