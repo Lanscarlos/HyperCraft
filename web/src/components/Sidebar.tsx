@@ -26,6 +26,7 @@ import { CAP, useCan } from '../useCan'
 import type { TerminalController } from '../useTerminal'
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
+import { Logo } from './Logo'
 
 interface Props {
   route: Route
@@ -234,7 +235,9 @@ function GlobalScope(props: Props) {
         href={pathOf({ kind: 'overview' })}
         onClick={follow(() => navigate({ kind: 'overview' }))}
       >
-        <span className="sidebar__logo">⛏</span>
+        <span className="sidebar__logo">
+          <Logo className="brand-mark" />
+        </span>
         <div className="sidebar__title">
           <strong>HyperCraft</strong>
           <small>
