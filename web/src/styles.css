@@ -19,14 +19,15 @@
    command mark bled a pixel into the K and the pair read as a smudge. Inside
    U+0000–024F only ® ¼ ½ ¾ overflow and all four only ever appear alone.
 
-   The two additions past that fence are deliberate. U+2212 is the minus the
+   The one addition past that fence is deliberate. U+2212 is the minus the
    panel sets deltas with and Fusion Pixel has no glyph for it, so without this
    it would be the one system-font character in a line of pixel digits. U+26CF
-   is the pickaxe in the logo, which only Monocraft has and which is the most
-   Minecraft-looking thing on the page; it stands alone, so its overhang costs
-   nothing. Everything else — CJK, punctuation, arrows, symbols — is Fusion
-   Pixel's, and what neither font has falls to the system exactly as it does
-   with the switch off. */
+   used to be the second one, back when the logo was the ⛏ glyph; the mark is
+   the SVG cube in components/Logo.tsx now, so nothing on the page asks for that
+   codepoint and claiming it would only re-open the overhang for the first
+   person who types one into a field. Everything else — CJK, punctuation,
+   arrows, symbols — is Fusion Pixel's, and what neither font has falls to the
+   system exactly as it does with the switch off. */
 
 @font-face {
   font-family: 'Monocraft';
@@ -34,7 +35,7 @@
   font-weight: 400;
   font-display: swap;
   src: url('./assets/fonts/Monocraft.woff2') format('woff2');
-  unicode-range: U+0000-024F, U+2212, U+26CF;
+  unicode-range: U+0000-024F, U+2212;
 }
 
 @font-face {
@@ -735,6 +736,16 @@ a:hover {
   text-decoration: none;
 }
 
+/* The cube in components/Logo.tsx, shared by the sidebar tile and the login
+   card. It is 28x32 inside the 64 mark of docs/images/logo.svg, so sizing it as
+   a share of whatever tile holds it keeps that proportion at both sizes rather
+   than making each caller guess a pixel value. The tile owns the colour; the
+   cube only takes currentColor. */
+.brand-mark {
+  width: 44%;
+  height: auto;
+}
+
 /* The one saturated mark in the whole shell, so the eye has somewhere to
    land when the panel is otherwise all greys. */
 .sidebar__logo {
@@ -749,7 +760,6 @@ a:hover {
     inset 0 1px 0 rgba(255, 255, 255, 0.25),
     0 4px 12px -4px var(--accent-glow);
   color: var(--on-primary);
-  font-size: 17px;
   transition: transform var(--dur) var(--ease);
 }
 
@@ -1797,7 +1807,6 @@ a:hover {
     inset 0 1px 0 rgba(255, 255, 255, 0.25),
     0 8px 22px -8px var(--accent-glow);
   color: var(--on-primary);
-  font-size: 23px;
 }
 
 .login__title {
