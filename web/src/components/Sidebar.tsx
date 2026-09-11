@@ -301,17 +301,6 @@ function GlobalScope(props: Props) {
                   {can(CAP.panelCreate) ? '还没有实例，先新建一个吧。' : '还没有分配给你的实例。'}
                 </p>
               )}
-              {/* Under the instances rather than in 系统: it is about which of them
-                  stand in front of which, and it is meaningless without them. */}
-              {can(CAP.panelNetwork) && (
-                <NavLink
-                  {...props}
-                  icon="network"
-                  label="代理连线"
-                  target={{ kind: 'network' }}
-                  active={route.kind === 'network'}
-                />
-              )}
             </nav>
           </>
         )}
@@ -461,6 +450,7 @@ const INSTANCE_ICONS: Record<string, IconName> = {
   metrics: 'chart',
   files: 'files',
   plugins: 'plugins',
+  network: 'network',
   properties: 'properties',
   'config-history': 'history',
   settings: 'settings',

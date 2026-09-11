@@ -19,6 +19,7 @@ HyperCraft 是自托管的 Minecraft 服务器面板：Go 守护进程持有服�
 | `web/src/components` | 全部组件 |
 | `web/src/styles.css` | **全部样式，唯一一个样式文件** |
 | `deploy/` | systemd unit |
+| `.claude/skills` | 随仓库走的 skill（本地和云端都自动加载），见该目录的 README |
 
 ## 常用命令
 
@@ -32,6 +33,30 @@ npm --prefix web run dev     # Vite 开发服务器 :5173，后端另起 go run 
 ```
 
 CI（`.github/workflows/ci.yml`）跑的是 `make lint` → `make test` → `make build`。前端没有单测和 lint，**`tsc -b` 是唯一的自动检查**，所以样式改动必须靠人工在多个宽度和明暗两种模式下确认。
+
+## Skill：动手之前先挑一个
+
+`.claude/skills/` 里的 skill 跟着仓库走，本地和云端（claude.ai/code）都会自动加载——插件装在本地是没用的，云端每次从仓库重新克隆。
+
+**任何任务开始前，先看有没有对得上的 skill；有就先调用它，再动手。** 包括「先问个澄清问题」「先翻一下代码」之前——skill 会告诉你该怎么翻。用之前宣告一句「用 X skill 来做 Y」，然后照着它走；发现不合适再放弃。
+
+| Skill | 什么时候用 |
+| --- | --- |
+| `frontend-design` | 面板界面的布局、栅格、间距、响应式、主题令牌、动效 |
+| `brainstorming` | 要做新功能／改行为，需求和设计还没定死 |
+| `writing-plans` | 需求清楚了，多步骤改动，写代码之前先出方案 |
+| `subagent-driven-development` / `executing-plans` | 按方案逐条实现（前者用子 agent，后者单线程） |
+| `test-driven-development` | 实现功能或修 bug，写实现代码之前 |
+| `systematic-debugging` | 遇到 bug、测试挂了、行为不符合预期 |
+| `verification-before-completion` | 要说「做完了／修好了／过了」之前，先跑命令拿证据 |
+| `requesting-code-review` / `receiving-code-review` | 提交或合并前自查；以及收到评审意见之后 |
+| `finishing-a-development-branch` | 实现完成、测试通过，决定怎么合回去 |
+| `dispatching-parallel-agents` | 有两件以上互不依赖的事可以并行 |
+| `using-git-worktrees` | 需要跟当前工作区隔离的分支作业 |
+| `writing-skills` | 新增或修改 skill 本身 |
+| `using-superpowers` | 上面这套规矩的总纲 |
+
+除 `frontend-design` 外都来自 [obra/superpowers](https://github.com/obra/superpowers)（MIT）。来源、引入版本和同步方法见 `.claude/skills/README.md`。
 
 ## 前端界面布局优化
 

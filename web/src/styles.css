@@ -722,18 +722,26 @@ a:hover {
 }
 
 /* Group headings. They are what lets a whole category be hidden from a
-   sub-user in one check instead of six. */
+   sub-user in one check instead of six.
+
+   Typeset as the Chinese labels they are, which is what they had not been: an
+   11px eyebrow with 0.08em of tracking and `text-transform: uppercase` is the
+   treatment a Latin all-caps heading needs, and every label in here is two or
+   three han characters. Uppercasing did nothing at all, and the tracking —
+   which CSS also adds *after* the last character — pushed the right-aligned
+   count away from the edge the rows line up on. The left padding matches
+   .sidebar__link's, so a heading starts where the labels it covers start
+   rather than two pixels to their left. */
 .sidebar__group {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 14px 8px 4px;
+  padding: 16px 10px 6px;
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 /* Anchors, not buttons: every one of these is a real path, so ⌘-click opens a
@@ -844,12 +852,24 @@ a:hover {
 }
 
 /* One of the handful of servers with a permanent seat. Indented under 所有实例
-   so the group reads as a list and not as five more top-level destinations. */
+   so the group reads as a list and not as five more top-level destinations.
+
+   The indent is the whole row, and it is exactly 12px. It used to be 20px of
+   left padding over a 10px dot column, which put the names 3px to the right of
+   every other label in the column — far enough to see, not far enough to read
+   as deliberate, which is the worst distance an indent can be. The dot now
+   stands in the same 18px glyph column the icons above it use, so the two kinds
+   of row share one rhythm and the step between them is the indent and nothing
+   else. */
 .sidebar__link--instance {
   display: grid;
-  grid-template-columns: 10px 1fr auto;
-  gap: 9px;
-  padding-left: 20px;
+  grid-template-columns: 18px 1fr auto;
+  gap: 8px;
+  padding-left: 22px;
+}
+
+.sidebar__link--instance .status__dot {
+  justify-self: center;
 }
 
 /* The shell. Padlocked, and painted in the panel's warning ink rather than its
