@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 
 import { api } from '../api'
 import { formatBytes } from '../format'
-import type { HostInspection, InstanceStatus } from '../types'
+import type { HostInspection, InstanceStatus, ParsedScript } from '../types'
 import { Modal } from './Modal'
 import { DirectoryField } from './PathPicker'
+import { ScriptDraft } from './ScriptDraft'
+import { Select } from './Select'
 
 interface Props {
   onImported: (instance: InstanceStatus) => void
@@ -38,6 +40,12 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
   const [maxMemoryMB, setMaxMemoryMB] = useState(4096)
   const [found, setFound] = useState<HostInspection | null>(null)
   const [scanning, setScanning] = useState(false)
+  // Which start script to read the launch settings out of, and what came back.
+  // Empty means "don't read one" — the jar field below is then filled in by
+  // hand, the way it was before any of this existed.
+  const [script, setScript] = useState('')
+  const [parsed, setParsed] = useState<ParsedScript | null>(null)
+  const [parsing, setParsing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -64,6 +72,7 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
           setError(null)
           if (!touchedName.current) setName(inspection.name)
           if (!touchedJar.current) setJar(inspection.jar ?? '')
+          setScript(inspection.launchScript ?? '')
         })
         .catch((err) => {
           if (!live) return
@@ -79,6 +88,42 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
     }
   }, [directory])
 
+  // Reading the chosen script. Runs on every change of choice rather than on
+  // submit, because the whole point is that the operator sees what was found
+  // before anything is created.
+  const directoryPath = found?.path ?? ''
+  useEffect(() => {
+    if (script === '' || directoryPath === '') {
+      setParsed(null)
+      return
+    }
+    let live = true
+    setParsing(true)
+    api
+      .parseHostScript(joinPath(directoryPath, script))
+      .then((result) => {
+        if (!live) return
+        setParsed(result)
+        // The draft fills the two fields this dialog already has; everything
+        // else rides along to the create call and is editable in 启动设置
+        // straight afterwards.
+        if (result.ok) {
+          if (result.draft.jar) setJar(result.draft.jar)
+          if (result.draft.maxMemoryMB > 0) setMaxMemoryMB(result.draft.maxMemoryMB)
+        }
+      })
+      .catch((err) => {
+        if (!live) return
+        setParsed(null)
+        setError(err instanceof Error ? err.message : '读不了这个脚本')
+      })
+      .finally(() => live && setParsing(false))
+    return () => {
+      live = false
+    }
+  }, [directoryPath, script])
+
+  const draft = parsed?.ok ? parsed.draft : null
   const taken = found?.takenBy
   const missing = found !== null && !found.exists
   const blocked = directory.trim() === '' || Boolean(taken) || missing
@@ -97,12 +142,17 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
         kind: proxy ? 'proxy' : 'server',
         name: name.trim(),
         directory: directory.trim(),
-        jar: jar.trim(),
+        // An argfile launch has no jar at all, which is how Forge and
+        // NeoForge from 1.17 start; sending both would be refused.
+        jar: draft && draft.argFiles.length > 0 ? '' : jar.trim(),
+        argFiles: draft?.argFiles ?? [],
+        java: draft?.java || 'java',
+        jvmArgs: draft?.jvmArgs ?? [],
         loader: found?.loader ?? '',
         gameVersion: found?.gameVersion ?? '',
         maxMemoryMB,
-        minMemoryMB: Math.min(1024, maxMemoryMB),
-        serverArgs: proxy ? [] : ['--nogui'],
+        minMemoryMB: draft?.minMemoryMB || Math.min(1024, maxMemoryMB),
+        serverArgs: draft?.serverArgs ?? (proxy ? [] : ['--nogui']),
       })
       onImported(created)
     } catch (err) {
@@ -149,7 +199,32 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
             </label>
 
 
-            {(
+            {(found.launchScripts?.length ?? 0) > 0 && (
+              <label className="field">
+                <span>启动参数来源</span>
+                <Select
+                  ariaLabel="启动参数来源"
+                  value={script}
+                  options={[
+                    ...(found.launchScripts ?? []).map((name) => ({
+                      value: name,
+                      label: `读 ${name} 里的启动参数`,
+                    })),
+                    { value: '', label: '不读脚本，我自己填' },
+                  ]}
+                  onChange={setScript}
+                />
+                <small>
+                  面板会把脚本里的 <code>-Xmx</code>、JVM 参数和核心读出来填进下面，
+                  <strong>但不会执行这个脚本</strong> —— 导入之后启动由面板自己拼命令行，
+                  脚本原样留在目录里不动。
+                </small>
+              </label>
+            )}
+
+            <ScriptDraft parsed={parsed} parsing={parsing} />
+
+            {(parsed?.ok !== true || parsed.draft.argFiles.length === 0) && (
               <label className="field">
                 <span>服务端 jar 文件名</span>
                 <input
@@ -184,7 +259,11 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
                 value={maxMemoryMB}
                 onChange={(e) => setMaxMemoryMB(Number(e.target.value))}
               />
-              <small>原来用多少就填多少，导入后在「实例设置」里随时能改。</small>
+              <small>
+                {parsed?.ok && parsed.draft.maxMemoryMB > 0
+                  ? `${parsed.script} 里写的就是这个数，改了以此为准。`
+                  : '原来用多少就填多少，导入后在「实例设置」里随时能改。'}
+              </small>
             </label>
           </>
         )}
@@ -212,6 +291,12 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
  * has never been started, is a perfectly ordinary thing to adopt — the point
  * is that the operator can see which it is before pressing the button.
  */
+/** Joins a directory and a name the way the host would. */
+function joinPath(dir: string, name: string): string {
+  const sep = dir.includes('\\') && !dir.includes('/') ? '\\' : '/'
+  return dir.endsWith(sep) ? dir + name : dir + sep + name
+}
+
 function Inspection({ found, scanning }: { found: HostInspection | null; scanning: boolean }) {
   if (!found) {
     return <p className="muted">{scanning ? '正在查看这个目录…' : '还没有读到这个目录。'}</p>
