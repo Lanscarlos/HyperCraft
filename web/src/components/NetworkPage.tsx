@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 
 import { api } from '../api'
 import { ask } from '../confirm'
@@ -38,9 +39,27 @@ interface Props {
   instances: InstanceStatus[]
   onOpenInstance: (id: string) => void
   onCreate: () => void
+  /**
+   * The instance this page is being read from, when it is a section of one
+   * rather than a page of its own.
+   *
+   * A link is a fact about two instances and neither owns it, so both ends
+   * carry this section and each sees the half it can act on: a proxy keeps its
+   * own card and every server it could reach, a server keeps its own card and
+   * every proxy that could stand in front of it. Which half is which is read
+   * off the data rather than passed in — the daemon has already decided what a
+   * core is, and a second answer here could disagree with it.
+   */
+  focus?: string
+  /**
+   * Rendered inside an instance pane, which owns the scroll and the heading
+   * rhythm. Page would put a second scroll container and a second h1 inside
+   * one that already has both.
+   */
+  embed?: boolean
 }
 
-export function NetworkPage({ instances, onOpenInstance, onCreate }: Props) {
+export function NetworkPage({ instances, onOpenInstance, onCreate, focus, embed }: Props) {
   const [data, setData] = useState<NetworkResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -104,9 +123,18 @@ export function NetworkPage({ instances, onOpenInstance, onCreate }: Props) {
     await run(() => api.unlinkNetwork(proxy.id, server.id), '已断开')
   }
 
+  const side = sideOf(data, focus)
+  const reload = (
+    <div className="actions">
+      <button className="btn" type="button" onClick={() => void load()} disabled={busy}>
+        重新读取
+      </button>
+    </div>
+  )
+
   if (!data) {
     return (
-      <Page title="代理连线" lead="把服务端挂到代理端后面，两边的配置由面板来改。">
+      <Frame embed={embed} title={headingOf(side)} lead={leadOf(side, canvas)} aside={reload}>
         {error ? (
           <div className="alert alert--error">{error}</div>
         ) : (
@@ -118,29 +146,18 @@ export function NetworkPage({ instances, onOpenInstance, onCreate }: Props) {
             </SkeletonPanel>
           </SkeletonScreen>
         )}
-      </Page>
+      </Frame>
     )
   }
 
-  const empty = data.proxies.length === 0
+  const view = focused(data, focus, side)
+  // Read off the half that is on screen, not off the whole machine: from a
+  // server's side "还没有代理端" is the true and useful thing to say when the
+  // panel runs none, and it is the only case where this column can be empty.
+  const empty = view.proxies.length === 0
 
   return (
-    <Page
-      title="代理连线"
-      lead={
-        canvas
-          ? '左边是代理端，右边是服务端。拖一条线过去，面板会把两边的配置一起改好。'
-          : '每个代理端后面挂着哪些服务端。连一个过来，面板会把两边的配置一起改好。'
-      }
-      wide
-      aside={
-        <div className="actions">
-          <button className="btn" type="button" onClick={() => void load()} disabled={busy}>
-            重新读取
-          </button>
-        </div>
-      }
-    >
+    <Frame embed={embed} title={headingOf(side)} lead={leadOf(side, canvas)} aside={reload}>
       {error && <div className="alert alert--error">{error}</div>}
 
       {notes.length > 0 && (
@@ -170,7 +187,7 @@ export function NetworkPage({ instances, onOpenInstance, onCreate }: Props) {
         </section>
       ) : canvas ? (
         <NetworkCanvas
-          data={data}
+          data={view}
           busy={busy}
           onLink={link}
           onRepair={repair}
@@ -179,7 +196,7 @@ export function NetworkPage({ instances, onOpenInstance, onCreate }: Props) {
         />
       ) : (
         <NetworkList
-          data={data}
+          data={view}
           busy={busy}
           onLink={link}
           onRepair={repair}
@@ -187,7 +204,112 @@ export function NetworkPage({ instances, onOpenInstance, onCreate }: Props) {
           onOpenInstance={onOpenInstance}
         />
       )}
-    </Page>
+    </Frame>
+  )
+}
+
+/** Which end of a link the reader is standing on, or null for the whole
+ *  machine. Answered from the daemon's own lists so that an instance it does
+ *  not count as either — a proxy whose config has not been written yet — falls
+ *  back to the full picture instead of to an empty one. */
+function sideOf(data: NetworkResponse | null, focus: string | undefined): Side {
+  if (!data || !focus) return null
+  if (data.proxies.some((proxy) => proxy.id === focus)) return 'proxy'
+  if (data.servers.some((server) => server.id === focus)) return 'server'
+  return null
+}
+
+type Side = 'proxy' | 'server' | null
+
+/**
+ * The machine as seen from one end of a link.
+ *
+ * One card of your own on your side, every card you could legally connect to on
+ * the other, and only the links you are part of. Filtering rather than a second
+ * layout because the canvas is already symmetric: a proxy on the left and a
+ * column of servers on the right is the same picture as a column of proxies on
+ * the left and one server on the right, read from the other end.
+ */
+function focused(data: NetworkResponse, focus: string | undefined, side: Side): NetworkResponse {
+  if (side === 'proxy') {
+    return {
+      proxies: data.proxies.filter((proxy) => proxy.id === focus),
+      servers: data.servers,
+      links: data.links.filter((link) => link.proxyId === focus),
+    }
+  }
+  if (side === 'server') {
+    return {
+      proxies: data.proxies,
+      servers: data.servers.filter((server) => server.id === focus),
+      links: data.links.filter((link) => link.serverId === focus),
+    }
+  }
+  return data
+}
+
+/** Named for what the reader is looking at, not for the feature: the sidebar
+ *  row and the breadcrumb above this already say 代理连线, and repeating it
+ *  here would spend the heading on a word that is already on screen twice. */
+function headingOf(side: Side): string {
+  if (side === 'proxy') return '后面的服务端'
+  if (side === 'server') return '前面的代理端'
+  return '代理连线'
+}
+
+function leadOf(side: Side, canvas: boolean): string {
+  if (side === 'proxy') {
+    return canvas
+      ? '左边是这个代理端，右边是这台机器上的服务端。拖一条线过去，面板会把两边的配置一起改好。'
+      : '这个代理端后面挂着哪些服务端。连一个过来，面板会把两边的配置一起改好。'
+  }
+  if (side === 'server') {
+    return canvas
+      ? '左边是这台机器上的代理端，右边是这个服务端。拖一条线过来，面板会把两边的配置一起改好。'
+      : '这个服务端挂在哪个代理端后面。连过去，面板会把两边的配置一起改好。'
+  }
+  return canvas
+    ? '左边是代理端，右边是服务端。拖一条线过去，面板会把两边的配置一起改好。'
+    : '每个代理端后面挂着哪些服务端。连一个过来，面板会把两边的配置一起改好。'
+}
+
+/**
+ * The page's own frame, or none at all.
+ *
+ * Standing on its own it is a wide Page like any other. Inside an instance it
+ * is a section among six, and the pane around it already owns the scroll, the
+ * width cap and the h1 — so it borrows the heading rhythm the other sections
+ * use rather than nesting a second page inside the first.
+ */
+function Frame({
+  embed,
+  title,
+  lead,
+  aside,
+  children,
+}: {
+  embed: boolean | undefined
+  title: string
+  lead: string
+  aside: ReactNode
+  children: ReactNode
+}) {
+  if (!embed) {
+    return (
+      <Page title={title} lead={lead} wide aside={aside}>
+        {children}
+      </Page>
+    )
+  }
+  return (
+    <div className="stack">
+      <header className="chart-head">
+        <h2 className="panel__title">{title}</h2>
+        {aside}
+      </header>
+      <p className="page__lead">{lead}</p>
+      {children}
+    </div>
   )
 }
 

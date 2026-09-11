@@ -17,6 +17,7 @@ export type InstanceSection =
   | 'metrics'
   | 'files'
   | 'plugins'
+  | 'network'
   | 'properties'
   | 'config-history'
   | 'settings'
@@ -60,12 +61,20 @@ export type Route =
   | { kind: 'overview' }
   | { kind: 'instances'; query: string; state: StateFilter }
   /**
-   * Which proxy stands in front of which servers, as a picture you draw on.
+   * Which proxy stands in front of which servers — the whole machine at once.
    *
-   * A page of its own rather than a section of one instance, because a link is
-   * a fact about two instances and neither of them owns it — putting it on the
-   * proxy would hide it from everyone looking at the server, and the other way
-   * round would be worse.
+   * This was the panel-wide page, on the strength of a link being a fact about
+   * two instances that neither of them owns. That was right about the fact and
+   * wrong about the navigation: it put a page about proxies at the top level of
+   * a panel most of whose users run none, and it was the one destination up
+   * there that was not a place but a relationship.
+   *
+   * A link is now a section of *both* ends — see INSTANCE_SECTIONS — which is
+   * what the original objection actually asked for: the proxy sees what is
+   * behind it, the server sees what is in front of it, and neither owns the
+   * link. What is left here is the path itself, kept because it is in
+   * bookmarks and in the command palette; App redirects it to whichever end is
+   * the obvious one to open (see the effect there).
    */
   | { kind: 'network' }
   /**
@@ -128,6 +137,11 @@ export const INSTANCE_SECTIONS: { id: InstanceSection; label: string }[] = [
   { id: 'metrics', label: '监控' },
   { id: 'files', label: '文件' },
   { id: 'plugins', label: '插件' },
+  // Before 服务器配置 rather than after it, so the pair below stays a pair:
+  // connecting an instance to a proxy is six edits to the two ends' config
+  // files, so this is the page you visit *instead of* hand-editing them, and
+  // it belongs on the way in rather than between the file and its history.
+  { id: 'network', label: '代理连线' },
   { id: 'properties', label: '服务器配置' },
   // Right after 服务器配置, because that is where the question comes from:
   // you edit a file, the server stops booting, and the next thing you want is
