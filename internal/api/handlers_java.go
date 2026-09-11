@@ -36,6 +36,12 @@ type javaOverview struct {
 	// Source is the one the last install used, which is what the page
 	// preselects.
 	Source string `json:"source"`
+	// Distributions are the OpenJDK builds an install can pick from, default
+	// first. A fixed list like Sources, for the same reason.
+	Distributions []javaruntime.Distribution `json:"distributions"`
+	// Distribution is the one the last install used, which is what the page
+	// preselects.
+	Distribution string `json:"distribution"`
 }
 
 // javaSource is the remembered download source, or the automatic one when
@@ -47,11 +53,52 @@ func (s *Server) javaSource() string {
 	stored := s.panel.JavaSource
 	s.panelMu.RUnlock()
 
-	source, err := javaruntime.ResolveSource(stored)
+	// A source remembered for one distribution means nothing to another: the
+	// Adoptium mirrors carry no Zulu. Falling back to the automatic order is
+	// the only honest reading of "清华" once the distribution has changed —
+	// unlike a source this request explicitly asked for, which is still
+	// refused outright by Installer.Start.
+	source, err := javaruntime.ResolveSource(s.javaDistribution(), stored)
 	if err != nil {
 		return javaruntime.SourceAuto
 	}
 	return source
+}
+
+// javaDistribution is the remembered distribution, or the default when nothing
+// has been chosen yet — or when panel.json names one this build does not have,
+// which is how a distribution that gets retired stops being a permanently
+// failing install.
+func (s *Server) javaDistribution() string {
+	s.panelMu.RLock()
+	stored := s.panel.JavaDistribution
+	s.panelMu.RUnlock()
+
+	dist, err := javaruntime.ResolveDistribution(stored)
+	if err != nil {
+		return javaruntime.DefaultDistribution
+	}
+	return dist
+}
+
+// rememberJavaDistribution persists the distribution an install was started
+// with, so the next one defaults to it. A failure to save is logged and
+// otherwise ignored, for the same reason rememberJavaSource ignores one.
+func (s *Server) rememberJavaDistribution(dist string) {
+	s.panelMu.Lock()
+	if s.panel.JavaDistribution == dist {
+		s.panelMu.Unlock()
+		return
+	}
+	s.panel.JavaDistribution = dist
+	panel := s.panel
+	s.panelMu.Unlock()
+
+	if err := s.store.SavePanel(panel); err != nil {
+		s.log.Error("could not persist the java distribution", "err", err)
+		return
+	}
+	s.log.Info("java distribution changed", "distribution", dist)
 }
 
 // rememberJavaSource persists the source an install was started with, so the
@@ -80,7 +127,8 @@ func (s *Server) writeJavaError(w http.ResponseWriter, err error) {
 	case errors.Is(err, javaruntime.ErrNotFound), errors.Is(err, javaruntime.ErrInvalidID):
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, javaruntime.ErrUnknownRelease), errors.Is(err, javaruntime.ErrUnsupported),
-		errors.Is(err, javaruntime.ErrUnknownSource):
+		errors.Is(err, javaruntime.ErrUnknownSource),
+		errors.Is(err, javaruntime.ErrUnknownDistribution):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, javaruntime.ErrBusy), errors.Is(err, javaruntime.ErrExists):
 		writeError(w, http.StatusConflict, err.Error())
@@ -105,9 +153,11 @@ func (s *Server) javaAvailable(w http.ResponseWriter) bool {
 func (s *Server) handleJavaOverview(w http.ResponseWriter, r *http.Request) {
 	if s.java == nil {
 		writeJSON(w, http.StatusOK, javaOverview{
-			Runtimes: []runtimeView{},
-			Sources:  javaruntime.Sources(),
-			Source:   s.javaSource(),
+			Runtimes:      []runtimeView{},
+			Sources:       javaruntime.Sources(s.javaDistribution()),
+			Source:        s.javaSource(),
+			Distributions: javaruntime.Distributions(),
+			Distribution:  s.javaDistribution(),
 		})
 		return
 	}
@@ -119,17 +169,19 @@ func (s *Server) handleJavaOverview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	overview := javaOverview{
-		Root:     s.java.Store().Root(),
-		Runtimes: make([]runtimeView, 0, len(runtimes)),
-		Sources:  javaruntime.Sources(),
-		Source:   s.javaSource(),
+		Root:          s.java.Store().Root(),
+		Runtimes:      make([]runtimeView, 0, len(runtimes)),
+		Sources:       javaruntime.Sources(s.javaDistribution()),
+		Source:        s.javaSource(),
+		Distributions: javaruntime.Distributions(),
+		Distribution:  s.javaDistribution(),
 	}
 	// A platform we cannot install for is still worth reporting: the page says
 	// so instead of offering a download that would fail.
 	if platform, err := javaruntime.CurrentPlatform(); err == nil {
 		// Whether this platform is a problem depends on the distribution, so
 		// the warning is asked for here rather than carried on the platform.
-		platform.Warning = javaruntime.PlatformWarning(javaruntime.DefaultDistribution, platform)
+		platform.Warning = javaruntime.PlatformWarning(s.javaDistribution(), platform)
 		overview.Platform = platform
 	} else {
 		overview.Platform = javaruntime.Platform{Warning: err.Error()}
@@ -211,7 +263,13 @@ func (s *Server) handleListJavaMajors(w http.ResponseWriter, r *http.Request) {
 	if !s.javaAvailable(w) {
 		return
 	}
-	majors, err := s.java.Client().Majors(r.Context())
+	// The two distributions do not ship the same feature releases — Zulu has
+	// 13, 14 and 15 — so the list has to follow whichever one is selected.
+	dist := r.URL.Query().Get("distribution")
+	if dist == "" {
+		dist = s.javaDistribution()
+	}
+	majors, err := s.java.Client().Majors(r.Context(), dist)
 	if err != nil {
 		s.writeJavaError(w, err)
 		return
@@ -238,8 +296,10 @@ func (s *Server) handleListJavaMajors(w http.ResponseWriter, r *http.Request) {
 }
 
 type installJavaRequest struct {
-	Major     int    `json:"major"`
-	ImageType string `json:"imageType"`
+	// Distribution names the OpenJDK build; empty is the remembered one.
+	Distribution string `json:"distribution"`
+	Major        int    `json:"major"`
+	ImageType    string `json:"imageType"`
 	// Source names where to download from; empty is the automatic choice.
 	Source string `json:"source"`
 }
@@ -257,19 +317,28 @@ func (s *Server) handleInstallJava(w http.ResponseWriter, r *http.Request) {
 	if req.ImageType == "" {
 		req.ImageType = javaruntime.ImageJRE
 	}
-	// A request that names no source gets the one the last install used, not
-	// the built-in default: an operator who moved off it did so for a reason.
+	// A request that names neither gets what the last install used, not the
+	// built-in default: an operator who moved off them did so for a reason.
+	dist := req.Distribution
+	if dist == "" {
+		dist = s.javaDistribution()
+	}
+	// The remembered source only carries over within the same distribution:
+	// the two lists share nothing but auto and official, so a mirror chosen
+	// for the other one would just 404.
 	source := req.Source
-	if source == "" {
+	if source == "" && dist == s.javaDistribution() {
 		source = s.javaSource()
 	}
 
-	job, err := s.java.Start(req.Major, req.ImageType, source)
+	job, err := s.java.Start(dist, req.Major, req.ImageType, source)
 	if err != nil {
 		s.writeJavaError(w, err)
 		return
 	}
-	s.rememberJavaSource(source)
+	// What the job holds has been through Resolve*, unlike what came in.
+	s.rememberJavaDistribution(job.Distribution)
+	s.rememberJavaSource(job.Source)
 	writeJSON(w, http.StatusAccepted, job)
 }
 

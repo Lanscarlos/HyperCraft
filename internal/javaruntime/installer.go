@@ -25,7 +25,8 @@ var (
 	ErrExists = errors.New("this java version is already installed")
 	// ErrCancelled is recorded on an install the operator stopped.
 	ErrCancelled = errors.New("install cancelled")
-	// ErrChecksum is recorded when the archive is not what Adoptium published.
+	// ErrChecksum is recorded when the archive is not what the distribution
+	// published.
 	ErrChecksum = errors.New("checksum mismatch")
 )
 
@@ -42,8 +43,10 @@ const (
 
 // Job is a snapshot of the most recent install.
 type Job struct {
-	Major     int    `json:"major"`
-	ImageType string `json:"imageType"`
+	// Distribution is who built the runtime being installed.
+	Distribution string `json:"distribution"`
+	Major        int    `json:"major"`
+	ImageType    string `json:"imageType"`
 	// Source is the download source in use. It starts out as the one that was
 	// asked for and becomes the one that actually answered, so a job that fell
 	// back off an out-of-date mirror says so on the page.
@@ -87,15 +90,20 @@ func (i *Installer) Store() *Store { return i.store }
 
 // Start resolves a build and begins installing it in the background.
 //
-// source names where the archive comes from; empty means SourceAuto. It has no
-// bearing on which build gets installed — that comes from the Adoptium API
+// dist names the OpenJDK distribution and source names where the archive comes
+// from; empty means the default and SourceAuto. The source has no bearing on
+// which build gets installed — that comes from the distribution's metadata API
 // either way — only on where the bytes are pulled from.
-func (i *Installer) Start(major int, imageType, source string) (Job, error) {
+func (i *Installer) Start(dist string, major int, imageType, source string) (Job, error) {
 	platform, err := CurrentPlatform()
 	if err != nil {
 		return Job{}, err
 	}
-	source, err = ResolveSource(source)
+	dist, err = ResolveDistribution(dist)
+	if err != nil {
+		return Job{}, err
+	}
+	source, err = ResolveSource(dist, source)
 	if err != nil {
 		return Job{}, err
 	}
@@ -109,18 +117,19 @@ func (i *Installer) Start(major int, imageType, source string) (Job, error) {
 		return Job{}, ErrBusy
 	}
 	i.job = &Job{
-		Major:     major,
-		ImageType: imageType,
-		Source:    source,
-		State:     JobDownloading,
-		StartedAt: time.Now(),
+		Distribution: dist,
+		Major:        major,
+		ImageType:    imageType,
+		Source:       source,
+		State:        JobDownloading,
+		StartedAt:    time.Now(),
 	}
 	i.cancel = cancel
 	i.done = make(chan struct{})
 	job, done := i.job, i.done
 	i.mu.Unlock()
 
-	release, err := i.resolve(ctx, major, imageType, platform)
+	release, err := i.resolve(ctx, dist, major, imageType, platform)
 	if err == nil {
 		err = i.checkNotInstalled(release)
 	}
@@ -140,7 +149,7 @@ func (i *Installer) Start(major int, imageType, source string) (Job, error) {
 	i.mu.Unlock()
 
 	i.log.Info("java install started",
-		"major", major, "image", imageType, "version", release.Version,
+		"dist", dist, "major", major, "image", imageType, "version", release.Version,
 		"file", release.FileName, "size", release.Size, "source", source)
 
 	go func() {
@@ -151,10 +160,10 @@ func (i *Installer) Start(major int, imageType, source string) (Job, error) {
 	return snapshot, nil
 }
 
-func (i *Installer) resolve(ctx context.Context, major int, imageType string, platform Platform) (Release, error) {
+func (i *Installer) resolve(ctx context.Context, dist string, major int, imageType string, platform Platform) (Release, error) {
 	lookupCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	return i.client.LatestRelease(lookupCtx, major, imageType, platform)
+	return i.client.LatestRelease(lookupCtx, dist, major, imageType, platform)
 }
 
 func (i *Installer) checkNotInstalled(release Release) error {
@@ -212,11 +221,11 @@ func (i *Installer) fetchAndUnpack(ctx context.Context, job *Job, staging string
 }
 
 // download streams the archive to a temp file and verifies it. Nothing is
-// unpacked until the bytes match what Adoptium published: an archive is a lot
-// of files to have to clean up after deciding not to trust it.
+// unpacked until the bytes match what the distribution published: an archive
+// is a lot of files to have to clean up after deciding not to trust it.
 //
 // That check is also what makes the mirrors safe to offer — the checksum comes
-// from the Adoptium API, never from the source serving the file.
+// from the distribution's metadata API, never from the source serving the file.
 func (i *Installer) download(ctx context.Context, job *Job, release Release, source string) (*os.File, error) {
 	if err := os.MkdirAll(i.store.Root(), 0o755); err != nil {
 		return nil, err
@@ -268,7 +277,7 @@ func (i *Installer) download(ctx context.Context, job *Job, release Release, sou
 	// than one to choose from, "which mirror handed me this" is the first
 	// thing an operator needs to know — a stale or half-synced copy shows up
 	// exactly here, and the fix is to install from somewhere else.
-	from := SourceName(served)
+	from := SourceName(release.Distribution, served)
 	switch {
 	case written > limit:
 		cleanup()

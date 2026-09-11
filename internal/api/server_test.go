@@ -90,6 +90,7 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 	mgr := instance.NewManager(st, paths.ServersRoot(), logger)
 	fill := newFakeFill(t)
 	adoptium := newFakeAdoptium(t)
+	azul := newFakeAzul(t)
 	gh := newFakeGitHub(t)
 	pluginLibrary := plugin.NewLibrary(paths.PluginsRoot())
 	databases, err := dbruntime.NewManager(
@@ -110,7 +111,10 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 			logger,
 		),
 		Java: javaruntime.NewInstaller(
-			javaruntime.NewClient(adoptium.URL(), "test"),
+			javaruntime.NewClient("test", map[string]string{
+				javaruntime.DistTemurin: adoptium.URL(),
+				javaruntime.DistZulu:    azul.URL(),
+			}),
 			javaruntime.NewStore(paths.JavaRoot()),
 			logger,
 		),

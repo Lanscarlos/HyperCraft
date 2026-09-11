@@ -74,3 +74,10 @@ func jdkEntries() []tarEntry {
 		{name: "jdk-21.0.1+12-jre/legal/jdk.zipfs/LICENSE", typeflag: tar.TypeSymlink, link: "../java.base/LICENSE"},
 	}
 }
+
+// newTestClient points one distribution at a fake metadata API. The plain-HTTP
+// base is also what lets the fake CDN links those APIs hand out be downloaded
+// from; see checkDownloadURL.
+func newTestClient(dist, base string) *Client {
+	return NewClient("test", map[string]string{dist: base})
+}

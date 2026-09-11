@@ -36,8 +36,8 @@ func TestMajorsFlagsLTSAndCaches(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	client := NewClient(upstream.URL, "test")
-	majors, err := client.Majors(context.Background())
+	client := newTestClient(DistTemurin, upstream.URL)
+	majors, err := client.Majors(context.Background(), DistTemurin)
 	if err != nil {
 		t.Fatalf("Majors: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestMajorsFlagsLTSAndCaches(t *testing.T) {
 		t.Errorf("25 should be flagged LTS")
 	}
 
-	if _, err := client.Majors(context.Background()); err != nil {
+	if _, err := client.Majors(context.Background(), DistTemurin); err != nil {
 		t.Fatalf("second Majors: %v", err)
 	}
 	if got := hits.Load(); got != 1 {
@@ -68,8 +68,8 @@ func TestLatestReleaseParsesBinary(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	release, err := NewClient(upstream.URL, "test").
-		LatestRelease(context.Background(), 21, ImageJRE, testPlatform())
+	release, err := newTestClient(DistTemurin, upstream.URL).
+		LatestRelease(context.Background(), DistTemurin, 21, ImageJRE, testPlatform())
 	if err != nil {
 		t.Fatalf("LatestRelease: %v", err)
 	}
@@ -98,11 +98,11 @@ func TestLatestReleaseRejectsBadInput(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	client := NewClient(upstream.URL, "test")
-	if _, err := client.LatestRelease(context.Background(), 0, ImageJRE, testPlatform()); !errors.Is(err, ErrUnknownRelease) {
+	client := newTestClient(DistTemurin, upstream.URL)
+	if _, err := client.LatestRelease(context.Background(), DistTemurin, 0, ImageJRE, testPlatform()); !errors.Is(err, ErrUnknownRelease) {
 		t.Errorf("major 0: got %v", err)
 	}
-	if _, err := client.LatestRelease(context.Background(), 21, "everything", testPlatform()); !errors.Is(err, ErrUnknownRelease) {
+	if _, err := client.LatestRelease(context.Background(), DistTemurin, 21, "everything", testPlatform()); !errors.Is(err, ErrUnknownRelease) {
 		t.Errorf("bad image type: got %v", err)
 	}
 }
@@ -113,8 +113,8 @@ func TestLatestReleaseRejectsNonHTTPSDownload(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	_, err := NewClient(upstream.URL, "test").
-		LatestRelease(context.Background(), 21, ImageJRE, testPlatform())
+	_, err := newTestClient(DistTemurin, upstream.URL).
+		LatestRelease(context.Background(), DistTemurin, 21, ImageJRE, testPlatform())
 	if !errors.Is(err, ErrUpstream) {
 		t.Fatalf("got %v, want ErrUpstream", err)
 	}
@@ -127,8 +127,8 @@ func TestLatestReleaseRejectsUnknownArchiveFormat(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	_, err := NewClient(upstream.URL, "test").
-		LatestRelease(context.Background(), 21, ImageJRE, testPlatform())
+	_, err := newTestClient(DistTemurin, upstream.URL).
+		LatestRelease(context.Background(), DistTemurin, 21, ImageJRE, testPlatform())
 	if !errors.Is(err, ErrUpstream) {
 		t.Fatalf("got %v, want ErrUpstream", err)
 	}
@@ -140,8 +140,8 @@ func TestLatestReleaseWithNoBuilds(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	_, err := NewClient(upstream.URL, "test").
-		LatestRelease(context.Background(), 26, ImageJRE, Platform{OS: "linux", Arch: "s390x"})
+	_, err := newTestClient(DistTemurin, upstream.URL).
+		LatestRelease(context.Background(), DistTemurin, 26, ImageJRE, Platform{OS: "linux", Arch: "s390x"})
 	if !errors.Is(err, ErrUnknownRelease) {
 		t.Fatalf("got %v, want ErrUnknownRelease", err)
 	}
