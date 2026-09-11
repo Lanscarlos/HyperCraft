@@ -470,7 +470,11 @@ func installID(release Release) string {
 	if version == "" {
 		version = fmt.Sprintf("%d", release.Major)
 	}
-	return "temurin-" + version + "-" + release.ImageType
+	// The distribution leads the name so two vendors' builds of the same
+	// version can sit side by side. Runtimes installed before this existed are
+	// all "temurin-…" and keep working: the store reads their release file,
+	// not their directory name.
+	return release.Distribution + "-" + version + "-" + release.ImageType
 }
 
 // progressWriter reports the running total as bytes go past.

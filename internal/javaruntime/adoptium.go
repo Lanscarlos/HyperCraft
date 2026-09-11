@@ -112,15 +112,16 @@ func (p *adoptiumProvider) LatestRelease(ctx context.Context, major int, imageTy
 		version = entry.ReleaseName
 	}
 	return Release{
-		Major:     major,
-		Version:   version,
-		Name:      entry.ReleaseName,
-		ImageType: imageType,
-		OS:        entry.Binary.OS,
-		Arch:      entry.Binary.Arch,
-		FileName:  name,
-		URL:       entry.Binary.Package.Link,
-		SHA256:    strings.ToLower(entry.Binary.Package.Checksum),
-		Size:      entry.Binary.Package.Size,
+		Distribution: DistTemurin,
+		Major:        major,
+		Version:      version,
+		Name:         entry.ReleaseName,
+		ImageType:    imageType,
+		OS:           entry.Binary.OS,
+		Arch:         entry.Binary.Arch,
+		FileName:     name,
+		URL:          entry.Binary.Package.Link,
+		SHA256:       strings.ToLower(entry.Binary.Package.Checksum),
+		Size:         entry.Binary.Package.Size,
 	}, nil
 }

@@ -32,14 +32,18 @@ type Major struct {
 
 // Release is a specific build of a major version, for one platform.
 type Release struct {
-	Major     int    `json:"major"`
-	Version   string `json:"version"`   // e.g. 21.0.12+8
-	Name      string `json:"name"`      // upstream release name, e.g. jdk-21.0.12+8
-	ImageType string `json:"imageType"` // jre or jdk
-	OS        string `json:"os"`
-	Arch      string `json:"arch"`
-	FileName  string `json:"fileName"`
-	URL       string `json:"url"`
-	SHA256    string `json:"sha256"`
-	Size      int64  `json:"size"`
+	// Distribution is who built it. It rides along on the release so that
+	// everything downstream — the source list, the install id, the error
+	// messages — can ask the release instead of taking another parameter.
+	Distribution string `json:"distribution"`
+	Major        int    `json:"major"`
+	Version      string `json:"version"`   // e.g. 21.0.12+8
+	Name         string `json:"name"`      // upstream release name, e.g. jdk-21.0.12+8
+	ImageType    string `json:"imageType"` // jre or jdk
+	OS           string `json:"os"`
+	Arch         string `json:"arch"`
+	FileName     string `json:"fileName"`
+	URL          string `json:"url"`
+	SHA256       string `json:"sha256"`
+	Size         int64  `json:"size"`
 }

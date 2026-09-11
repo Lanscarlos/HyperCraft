@@ -155,7 +155,7 @@ func TestExtractIntoClosesStagingHandle(t *testing.T) {
 	if err := os.MkdirAll(staging, 0o755); err != nil {
 		t.Fatalf("create staging: %v", err)
 	}
-	release := Release{Version: "21.0.1+12", ImageType: ImageJRE, FileName: "jre.tar.gz"}
+	release := Release{Distribution: DistTemurin, Version: "21.0.1+12", ImageType: ImageJRE, FileName: "jre.tar.gz"}
 
 	err := extractInto(context.Background(), staging, release, openArchive(t, buildTarGz(t, jdkEntriesForThisOS())))
 	if err != nil {
@@ -171,7 +171,7 @@ func TestExtractIntoClosesStagingHandle(t *testing.T) {
 func TestUnpackMovesRuntimeIntoPlace(t *testing.T) {
 	root := t.TempDir()
 	staging := filepath.Join(root, ".installing-temurin-21.0.1-12-jre")
-	release := Release{Version: "21.0.1+12", ImageType: ImageJRE, FileName: "jre.tar.gz"}
+	release := Release{Distribution: DistTemurin, Version: "21.0.1+12", ImageType: ImageJRE, FileName: "jre.tar.gz"}
 
 	installer := NewInstaller(nil, NewStore(root), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	err := installer.unpack(context.Background(), staging, release, openArchive(t, buildTarGz(t, jdkEntriesForThisOS())))
@@ -353,5 +353,15 @@ func TestInstallUnknownMajor(t *testing.T) {
 	job, ok := installer.Status()
 	if !ok || job.State != JobFailed {
 		t.Errorf("the failed attempt should be visible as a job: %+v", job)
+	}
+}
+
+// Two distributions' builds of the same version have to be able to sit side by
+// side, which is what the prefix is for. The Temurin side of this is covered
+// by TestInstallIDDropsTheLTSSuffix.
+func TestInstallIDCarriesTheDistribution(t *testing.T) {
+	zulu := installID(Release{Distribution: DistZulu, Version: "21.0.12.1", ImageType: ImageJRE})
+	if zulu != "zulu-21.0.12.1-jre" {
+		t.Errorf("zulu install id = %q, want zulu-21.0.12.1-jre", zulu)
 	}
 }

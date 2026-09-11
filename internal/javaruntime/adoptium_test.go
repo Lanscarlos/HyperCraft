@@ -86,7 +86,7 @@ func TestLatestReleaseParsesBinary(t *testing.T) {
 
 func TestInstallIDDropsTheLTSSuffix(t *testing.T) {
 	// What Adoptium actually returns for an LTS line.
-	release := Release{Major: 21, Version: "21.0.12+8-LTS", ImageType: ImageJRE}
+	release := Release{Distribution: DistTemurin, Major: 21, Version: "21.0.12+8-LTS", ImageType: ImageJRE}
 	if id := installID(release); id != "temurin-21.0.12-8-jre" {
 		t.Errorf("install id = %q, want temurin-21.0.12-8-jre", id)
 	}
