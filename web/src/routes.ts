@@ -217,7 +217,7 @@ export const LIBRARY_VIEWS: Record<LibrarySection, { id: LibraryView; label: str
   java: [
     { id: 'installed', label: '已安装' },
     { id: 'install', label: '安装新版本' },
-    { id: 'source', label: '下载源' },
+    { id: 'source', label: '下载设置' },
   ],
   // Three pages, and the order is the order of the questions: what databases
   // do I have, what engines are they built on, and how do I get another engine.

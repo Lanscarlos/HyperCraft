@@ -22,26 +22,46 @@ type runtimeView struct {
 	Live bool `json:"live"`
 }
 
+// distributionView is a distribution plus where it can be downloaded from.
+//
+// The sources ride along on the distribution rather than sitting beside it
+// because that is what they belong to — the Adoptium mirrors carry no Zulu and
+// cdn.azul.com serves no Temurin. Sending every list at once also means the
+// page can follow a change of distribution without another round trip, which
+// matters: these lists are static, so refetching them would be a request whose
+// answer never changes.
+type distributionView struct {
+	javaruntime.Distribution
+	Sources []javaruntime.Source `json:"sources"`
+}
+
+func distributionViews() []distributionView {
+	all := javaruntime.Distributions()
+	out := make([]distributionView, 0, len(all))
+	for _, dist := range all {
+		out = append(out, distributionView{
+			Distribution: dist,
+			Sources:      javaruntime.Sources(dist.ID),
+		})
+	}
+	return out
+}
+
 type javaOverview struct {
 	Root     string                  `json:"root"`
 	Platform javaruntime.Platform    `json:"platform"`
 	Runtimes []runtimeView           `json:"runtimes"`
 	System   *javaruntime.SystemJava `json:"system"`
 	Job      *javaruntime.Job        `json:"job"`
-	// Sources are the download sources an install can pick from. They are a
-	// fixed list rather than an endpoint of their own: nothing has to be
-	// fetched to produce them, and the page needs them to name the source a
-	// running job is downloading from.
-	Sources []javaruntime.Source `json:"sources"`
-	// Source is the one the last install used, which is what the page
-	// preselects.
-	Source string `json:"source"`
 	// Distributions are the OpenJDK builds an install can pick from, default
-	// first. A fixed list like Sources, for the same reason.
-	Distributions []javaruntime.Distribution `json:"distributions"`
-	// Distribution is the one the last install used, which is what the page
-	// preselects.
+	// first, each carrying its own download sources. A fixed list rather than
+	// an endpoint of its own: nothing has to be fetched to produce it, and the
+	// page needs it to name the source a running job is downloading from.
+	Distributions []distributionView `json:"distributions"`
+	// Distribution and Source are what the last install used, which is what
+	// the page preselects.
 	Distribution string `json:"distribution"`
+	Source       string `json:"source"`
 }
 
 // javaSource is the remembered download source, or the automatic one when
@@ -154,10 +174,9 @@ func (s *Server) handleJavaOverview(w http.ResponseWriter, r *http.Request) {
 	if s.java == nil {
 		writeJSON(w, http.StatusOK, javaOverview{
 			Runtimes:      []runtimeView{},
-			Sources:       javaruntime.Sources(s.javaDistribution()),
-			Source:        s.javaSource(),
-			Distributions: javaruntime.Distributions(),
+			Distributions: distributionViews(),
 			Distribution:  s.javaDistribution(),
+			Source:        s.javaSource(),
 		})
 		return
 	}
@@ -171,10 +190,9 @@ func (s *Server) handleJavaOverview(w http.ResponseWriter, r *http.Request) {
 	overview := javaOverview{
 		Root:          s.java.Store().Root(),
 		Runtimes:      make([]runtimeView, 0, len(runtimes)),
-		Sources:       javaruntime.Sources(s.javaDistribution()),
-		Source:        s.javaSource(),
-		Distributions: javaruntime.Distributions(),
+		Distributions: distributionViews(),
 		Distribution:  s.javaDistribution(),
+		Source:        s.javaSource(),
 	}
 	// A platform we cannot install for is still worth reporting: the page says
 	// so instead of offering a download that would fail.

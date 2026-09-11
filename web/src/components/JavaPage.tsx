@@ -3,7 +3,13 @@ import { useEffect, useState } from 'react'
 import { ask } from '../confirm'
 import { formatBytes, formatDate } from '../format'
 import type { LibraryView } from '../routes'
-import type { JavaInstallJob, JavaRuntime, JavaSource, SystemJava } from '../types'
+import type {
+  JavaDistribution,
+  JavaInstallJob,
+  JavaRuntime,
+  JavaSource,
+  SystemJava,
+} from '../types'
 import type { JavaController } from '../useJava'
 import { Page } from './Page'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
@@ -17,14 +23,20 @@ const JAVA_LEAD =
 const TITLES: Partial<Record<LibraryView, string>> = {
   installed: 'Java 环境',
   install: '安装新版本',
-  source: '下载源',
+  source: '下载设置',
 }
 
-const LEADS: Partial<Record<LibraryView, string>> = {
-  installed: JAVA_LEAD,
-  install: '从 Eclipse Temurin 装一个新的大版本。下载走服务器自己的网络，关掉网页也会继续。',
-  source:
-    '装的都是同一个 Eclipse Temurin 构建 —— 版本信息和校验和始终来自 Adoptium 官方，镜像只负责传那几十兆的压缩包，对不上的一律不装。',
+/** The install and source pages name the chosen distribution, so their leads
+ *  are built rather than constant. The installed page's is JAVA_LEAD. */
+function installLead(name: string): string {
+  return `从 ${name} 装一个新的大版本。下载走服务器自己的网络，关掉网页也会继续。`
+}
+
+function sourceLead(name: string): string {
+  return (
+    `选哪个发行版、从哪里下。装的都是 ${name} 的官方构建 —— 版本信息和校验和` +
+    '始终来自它自己的接口，下载源只负责传那几十兆的压缩包，对不上的一律不装。'
+  )
 }
 
 /** Which Java a Minecraft version needs, shown on the version being picked. */
@@ -47,7 +59,7 @@ const IMAGE_TYPES: { value: 'jre' | 'jdk'; label: string; note: string }[] = [
 
 /**
  * Panel-wide Java management: what is installed, what the system has, and a
- * one-click install of a Temurin build.
+ * one-click install of a build from whichever distribution is selected.
  *
  * It is its own page rather than part of an instance because a runtime is
  * shared — one download serves every server that needs that version, and
@@ -70,11 +82,12 @@ export function JavaPage({
   onOpenView: (view: LibraryView) => void
   onOpenCores: () => void
 }) {
-  const { overview, majors, sources, job, installing, busy } = java
+  const { overview, majors, distributions, job, installing, busy } = java
   const [major, setMajor] = useState<number | null>(null)
   const [imageType, setImageType] = useState<'jre' | 'jdk'>('jre')
   const [showAllMajors, setShowAllMajors] = useState(false)
   const [source, setSource] = useState<string | null>(null)
+  const [distribution, setDistribution] = useState<string | null>(null)
 
   // Default to the newest LTS: it is what current Minecraft wants and what
   // upstream supports longest. Only until the operator picks something.
@@ -91,6 +104,12 @@ export function JavaPage({
     if (!remembered) return
     setSource((current) => current ?? remembered)
   }, [remembered])
+
+  const rememberedDistribution = overview?.distribution
+  useEffect(() => {
+    if (!rememberedDistribution) return
+    setDistribution((current) => current ?? rememberedDistribution)
+  }, [rememberedDistribution])
 
   const remove = async (runtime: JavaRuntime) => {
     const ok = await ask({
@@ -143,21 +162,33 @@ export function JavaPage({
   const selected = majors.find((entry) => entry.major === major)
   const runtimes = overview.runtimes
   const totalSize = runtimes.reduce((sum, runtime) => sum + runtime.size, 0)
-  // Adoptium ships every major, but only the LTS ones (and whatever is already
-  // on disk, or picked) are worth putting in front of someone running a
-  // Minecraft server. The rest are one click away.
+  // Both distributions ship every major, but only the LTS ones (and whatever
+  // is already on disk, or picked) are worth putting in front of someone
+  // running a Minecraft server. The rest are one click away.
   const visibleMajors = majors.filter(
     (entry) => showAllMajors || entry.lts || entry.installed || entry.major === major,
   )
   const hiddenMajors = majors.length - visibleMajors.length
 
-  const sourceName = sources.find((entry) => entry.id === source)?.name ?? '自动选择'
+  // The source list follows the distribution picked on this page, not the one
+  // the panel remembers: picking Temurin has to show the Adoptium mirrors
+  // straight away, before anything is installed.
+  const chosen = distributions.find((entry) => entry.id === distribution)
+  const sources = chosen?.sources ?? []
+  const sourceName =
+    sources.find((entry) => entry.id === source)?.name ?? (source || '自动选择')
+  const distributionName = chosen?.name ?? 'Java'
+  const leads: Partial<Record<LibraryView, string>> = {
+    installed: JAVA_LEAD,
+    install: installLead(distributionName),
+    source: sourceLead(distributionName),
+  }
 
   return (
     <Page
       wide
       title={TITLES[view] ?? 'Java 环境'}
-      lead={LEADS[view] ?? JAVA_LEAD}
+      lead={leads[view] ?? JAVA_LEAD}
       aside={
         <p className="meta-chips">
           {overview.platform.os && (
@@ -167,7 +198,7 @@ export function JavaPage({
           )}
           <span>面板已装 {runtimes.length} 个</span>
           {runtimes.length > 0 && <span>共 {formatBytes(totalSize)}</span>}
-          <span>由 Eclipse Temurin 提供</span>
+          <span>由 {distributionName} 提供</span>
         </p>
       }
     >
@@ -179,7 +210,7 @@ export function JavaPage({
       {/* An install keeps running after you navigate away, so it is reported
           on whichever of these pages you happen to be looking at. */}
       {view !== 'install' && job && (job.state === 'downloading' || job.state === 'extracting') && (
-        <InstallStatus job={job} sources={sources} />
+        <InstallStatus job={job} distributions={distributions} />
       )}
 
       {view === 'installed' && (
@@ -221,12 +252,12 @@ export function JavaPage({
 
       {view === 'install' && (
       <section className="panel">
-        {job && <InstallStatus job={job} sources={sources} />}
+        {job && <InstallStatus job={job} distributions={distributions} />}
         {java.error && <div className="alert alert--error">{java.error}</div>}
 
         {majors.length === 0 ? (
           <p className="muted">
-            没能从 Adoptium 取到可安装的版本列表 —— 通常是这台机器连不上外网。
+            没能从 {distributionName} 取到可安装的版本列表 —— 通常是这台机器连不上外网。
             已装的 Java 不受影响，仍然可以正常启动服务器。
           </p>
         ) : (
@@ -290,11 +321,11 @@ export function JavaPage({
 
             {sources.length > 0 && (
               <p className="chart-note">
-                下载源：{sourceName} ——{' '}
+                发行版：{distributionName}，下载源：{sourceName} ——{' '}
                 <button className="link" type="button" onClick={() => onOpenView('source')}>
                   换一个
                 </button>
-                。国内机器直连 Adoptium 慢的话，换个教育网镜像通常快得多。
+                。国内机器下得慢的话，那一页可以换发行版或换个镜像。
               </p>
             )}
 
@@ -310,7 +341,10 @@ export function JavaPage({
               ) : (
                 <button
                   className="btn btn--primary"
-                  onClick={() => major != null && void java.install(major, imageType, source ?? '')}
+                  onClick={() =>
+                    major != null &&
+                    void java.install(distribution ?? '', major, imageType, source ?? '')
+                  }
                   disabled={busy || major == null}
                 >
                   {selected?.installed ? '重新安装' : '安装'} Java {major ?? ''}{' '}
@@ -328,9 +362,17 @@ export function JavaPage({
 
       {view === 'source' && (
         <SourcePicker
+          distributions={distributions}
+          distribution={distribution}
           sources={sources}
           current={source}
           busy={installing}
+          onPickDistribution={(id) => {
+            setDistribution(id)
+            // The two source lists share nothing but auto and official, so a
+            // mirror picked for the other distribution cannot carry over.
+            setSource(null)
+          }}
           onPick={setSource}
           onDone={() => onOpenView('install')}
         />
@@ -350,27 +392,39 @@ export function JavaPage({
 }
 
 /**
- * Where the archive is fetched from.
+ * Which Java to fetch, and from where.
  *
- * Its own page rather than a field in the install form: it is chosen once, on
- * the day the panel is set up or the day a mirror stops working, and the
- * install form is where you go weekly. The choice is remembered by the panel
- * itself — it describes the server's route out, not this browser's — so it is
- * the same on a phone as on the laptop that set it.
+ * Its own page rather than fields in the install form: both are chosen once,
+ * on the day the panel is set up or the day a mirror stops working, and the
+ * install form is where you go weekly. They share a page because the source
+ * list belongs to the distribution — splitting them would let this page's
+ * contents change from a setting you cannot see. Both choices are remembered
+ * by the panel itself — they describe the server's route out, not this
+ * browser's — so they are the same on a phone as on the laptop that set them.
  */
 function SourcePicker({
+  distributions,
+  distribution,
   sources,
   current,
   busy,
+  onPickDistribution,
   onPick,
   onDone,
 }: {
+  distributions: JavaDistribution[]
+  distribution: string | null
   sources: JavaSource[]
   current: string | null
   busy: boolean
+  onPickDistribution: (id: string) => void
   onPick: (id: string) => void
   onDone: () => void
 }) {
+  // A prefix is only offered for a distribution whose sources are open-ended;
+  // Temurin's mirrors copy a nested tree, so a bare prefix there would 404.
+  const custom = current != null && /^https?:\/\//.test(current) ? current : ''
+
   if (sources.length === 0) {
     return (
       <div className="alert">
@@ -381,31 +435,73 @@ function SourcePicker({
 
   return (
     <section className="panel">
-      <p className="chart-note">只影响下载速度：装的是同一个构建，校验和始终来自 Adoptium 官方。</p>
-
-      <div className="choice-grid choice-grid--wide">
-        {sources.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            className={`choice${entry.id === current ? ' choice--active' : ''}`}
-            aria-pressed={entry.id === current}
-            disabled={busy}
-            onClick={() => onPick(entry.id)}
-          >
-            <span className="choice__label">
-              {entry.name}
-              {entry.default && <span className="badge">推荐</span>}
-            </span>
-            <span className="choice__note">{entry.note}</span>
-          </button>
-        ))}
+      <div className="field">
+        <span>发行版</span>
+        <div className="choice-grid choice-grid--wide">
+          {distributions.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              className={`choice${entry.id === distribution ? ' choice--active' : ''}`}
+              aria-pressed={entry.id === distribution}
+              disabled={busy}
+              onClick={() => onPickDistribution(entry.id)}
+            >
+              <span className="choice__label">
+                {entry.name}
+                {entry.default && <span className="badge">推荐</span>}
+              </span>
+              <span className="choice__note">{entry.note}</span>
+            </button>
+          ))}
+        </div>
+        <small>
+          都是 TCK 认证的 OpenJDK 构建，跑服没有区别。已经装好的 Java 不受影响，换发行版只影响之后装的。
+        </small>
       </div>
 
-      <p className="chart-note">
-        选的源没有某个版本（镜像同步有延迟）会自动换下一个，下次安装默认还用这次选的。
-        安装任务条上会写明这一次实际是从哪里下的。
-      </p>
+      <div className="field">
+        <span>下载源</span>
+        <div className="choice-grid choice-grid--wide">
+          {sources.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              className={`choice${entry.id === current ? ' choice--active' : ''}`}
+              aria-pressed={entry.id === current}
+              disabled={busy}
+              onClick={() => onPick(entry.id)}
+            >
+              <span className="choice__label">
+                {entry.name}
+                {entry.default && <span className="badge">推荐</span>}
+              </span>
+              <span className="choice__note">{entry.note}</span>
+            </button>
+          ))}
+        </div>
+        <small>
+          只影响下载速度：装的是同一个构建，校验和始终来自发行版官方的接口。选的源没有某个版本
+          （镜像同步有延迟）会自动换下一个，安装任务条上会写明这一次实际是从哪里下的。
+        </small>
+      </div>
+
+      {distribution === 'zulu' && (
+        <div className="field">
+          <span>或者自己填一个镜像地址（可选）</span>
+          <input
+            value={custom}
+            onChange={(event) => onPick(event.target.value.trim())}
+            placeholder="https://mirror.example/zulu/bin/"
+            spellCheck={false}
+            disabled={busy}
+          />
+          <small>
+            Zulu 的包在 cdn.azul.com，国内没有已知的镜像，所以这里不预设。知道能用的加速地址就填在这儿
+            —— 面板会把文件名接在后面下载，校验和照样卡 Azul 官方的，下不到会自动退回官方 CDN。
+          </small>
+        </div>
+      )}
 
       <div className="actions">
         <button className="btn btn--primary" type="button" onClick={onDone}>
@@ -521,12 +617,24 @@ function RuntimeRow({
   )
 }
 
-function InstallStatus({ job, sources }: { job: JavaInstallJob; sources: JavaSource[] }) {
+function InstallStatus({
+  job,
+  distributions,
+}: {
+  job: JavaInstallJob
+  distributions: JavaDistribution[]
+}) {
   // The job carries the source that is actually serving it, which is not
   // always the one that was picked — a mirror that has not synced this build
   // yet hands over to the next one. Saying so is the difference between "why
   // is this slow" and "ah, it fell back to GitHub".
-  const from = sources.find((entry) => entry.id === job.source)?.name ?? job.source
+  //
+  // Looked up under the job's own distribution rather than the page's: a
+  // running install keeps its source name even if the picker has moved on.
+  const from =
+    distributions
+      .find((entry) => entry.id === job.distribution)
+      ?.sources.find((entry) => entry.id === job.source)?.name ?? job.source
 
   if (job.state === 'downloading') {
     const fraction = job.total > 0 ? job.downloaded / job.total : 0

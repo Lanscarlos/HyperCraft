@@ -310,8 +310,11 @@ func TestInstallRemembersTheDownloadSource(t *testing.T) {
 		t.Errorf("a panel that has never installed should default to %q, got %q",
 			javaruntime.SourceAuto, fresh.Source)
 	}
-	if len(fresh.Sources) < 2 || fresh.Sources[0].ID != javaruntime.SourceAuto {
-		t.Errorf("the page needs the source list, got %+v", fresh.Sources)
+	for _, dist := range fresh.Distributions {
+		if len(dist.Sources) < 2 || dist.Sources[0].ID != javaruntime.SourceAuto {
+			t.Errorf("%s needs a source list led by %q, got %+v",
+				dist.ID, javaruntime.SourceAuto, dist.Sources)
+		}
 	}
 
 	resp := env.do(http.MethodPost, "/api/java/install", installJavaRequest{
@@ -412,11 +415,20 @@ func TestJavaOverviewDefaultsToZulu(t *testing.T) {
 	if len(overview.Distributions) != 2 || overview.Distributions[0].ID != javaruntime.DistZulu {
 		t.Errorf("unexpected distribution list: %+v", overview.Distributions)
 	}
-	// The source list belongs to the selected distribution: the Adoptium
-	// mirrors carry no Zulu, so offering them here is a guaranteed 404.
-	for _, source := range overview.Sources {
-		if source.ID == "tuna" {
-			t.Error("the Adoptium mirrors must not be offered for Zulu")
+	// Every distribution carries its own sources, so the page can follow a
+	// change of distribution without another request — and Zulu must not be
+	// offered the Adoptium mirrors, which carry no byte of it.
+	for _, dist := range overview.Distributions {
+		if len(dist.Sources) == 0 {
+			t.Errorf("%s carries no sources", dist.ID)
+		}
+		for _, source := range dist.Sources {
+			if dist.ID == javaruntime.DistZulu && source.ID == "tuna" {
+				t.Error("the Adoptium mirrors must not be offered for Zulu")
+			}
+		}
+		if dist.ID == javaruntime.DistTemurin && len(dist.Sources) < 4 {
+			t.Errorf("Temurin should keep its mirrors, got %+v", dist.Sources)
 		}
 	}
 }
@@ -468,11 +480,6 @@ func TestInstallRemembersTheDistribution(t *testing.T) {
 	if overview.Distribution != javaruntime.DistTemurin {
 		t.Errorf("overview distribution = %q", overview.Distribution)
 	}
-	// The source list follows it, so the Adoptium mirrors are back on offer.
-	if len(overview.Sources) < 3 {
-		t.Errorf("expected the Temurin mirrors, got %+v", overview.Sources)
-	}
-
 	panel, err := env.store.LoadPanel()
 	if err != nil {
 		t.Fatalf("LoadPanel: %v", err)

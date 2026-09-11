@@ -646,7 +646,10 @@ export function NewInstanceWizard({
               onInstallMajor={setInstallMajor}
               onInstall={(major) => {
                 setAwaitingJava(true)
-                void java.install(major, 'jre', '')
+                // Empty distribution and source both mean "whatever the panel
+                // remembers", which is what the wizard wants: this step is
+                // about getting a working Java, not about choosing a vendor.
+                void java.install('', major, 'jre', '')
               }}
             />
           )}
@@ -1016,7 +1019,7 @@ function JavaStep({
     runtimes.some((runtime) => runtime.major >= required) ||
     (systemJava?.major ?? 0) >= required
 
-  // LTS only, plus whatever is installed or picked. The rest of Adoptium's
+  // LTS only, plus whatever is installed or picked. The rest of the
   // list is not something a Minecraft server has any use for.
   const visibleMajors = majors.filter(
     (entry) => entry.lts || entry.installed || entry.major === installMajor,
@@ -1120,7 +1123,7 @@ function JavaStep({
         <h3 className="panel__title">面板里再装一个</h3>
         {majors.length === 0 ? (
           <p className="muted">
-            没能从 Adoptium 取到可安装的版本列表 —— 通常是这台机器连不上外网。
+            没能取到可安装的版本列表 —— 通常是这台机器连不上外网。
             已装的 Java 不受影响，上面照常可选。
           </p>
         ) : (
