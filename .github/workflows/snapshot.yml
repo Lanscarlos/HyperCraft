@@ -5,7 +5,7 @@ name: Snapshot
 #
 # It hangs off CI rather than off the push, so only a commit that already went
 # green is ever published. A snapshot is never a release: it is tagged
-# vX.Y-snapshot.N, marked prerelease on GitHub, and only offered to panels
+# snapshot-<提交数>, marked prerelease on GitHub, and only offered to panels
 # that have switched their update channel to 快照.
 on:
   workflow_run:
@@ -24,98 +24,56 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Cheap gate: decides whether this commit gets a snapshot and what to call it.
-  # An ordinary CI run that does not qualify costs one short job.
-  resolve:
-    name: 确定快照版本
+  snapshot:
+    name: 构建并发布快照
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_branch == 'main')
-    outputs:
-      publish: ${{ steps.v.outputs.publish }}
-      sha: ${{ steps.v.outputs.sha }}
-      tag: ${{ steps.v.outputs.tag }}
-      version: ${{ steps.v.outputs.version }}
     steps:
       # workflow_run starts from the default branch, not from the commit CI
       # ran on, so the sha is checked out explicitly. The full history is
-      # needed for the build counter below.
+      # needed for the commit count below.
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
 
+      # A snapshot is not heading for a particular release, so it is not named
+      # after one: it is whatever main was at this commit, and the commit count
+      # is the only number it has. That count is also why the version is not a
+      # semantic one — see selfupdate.CompareVersions, which sorts snapshots
+      # among themselves by this number and above every release.
+      #
+      # The count rather than the run number: it stays meaningful if this
+      # workflow is renamed, and re-running the same commit reproduces the same
+      # version instead of inventing a newer one.
+      #
+      # This naming was tried once before and had to be reverted: the panel
+      # doing the comparison is the one already installed on the machine, and a
+      # build without a parser for it skips such a tag as uncomparable, finds
+      # nothing newer it can read, and reports "already up to date" forever. So
+      # the parser shipped first, under the old naming, and only once panels
+      # were running it did the workflow start producing this. Any future change
+      # to what a version looks like has to go in that order.
+      #
+      # Unlike the naming this replaces, there is nothing to skip here. The
+      # release commit gets a snapshot of its own, so a panel on the snapshot
+      # channel ends up with the released code rather than sitting one commit
+      # behind it until main moves again.
       - id: v
         env:
-          GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -euo pipefail
-
-          released=$(sed -n 's/^## \[\([0-9][^]]*\)\].*/\1/p' CHANGELOG.md | head -1)
-          if [ -z "$released" ]; then
-            echo "::warning::CHANGELOG.md 里没找到 ## [x.y.z] 形式的版本标题，跳过快照"
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # The version at the top of the changelog is what main claims to be.
-          # If its tag is missing, the release workflow is still cutting it —
-          # and if HEAD *is* that tag, this commit is the release itself. Either
-          # way there is nothing for a snapshot to sit between, so step aside
-          # and let the real release be the newest thing on offer.
-          if ! git rev-parse -q --verify "refs/tags/v$released" >/dev/null; then
-            echo "v$released 还没发布，本次跳过快照"
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ "$(git rev-list -n1 "v$released")" = "$SHA" ]; then
-            echo "这个提交就是 v$released 本身，跳过快照"
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # A snapshot is work heading towards the next minor release, so it
-          # takes that version with a -snapshot suffix: 0.3.0 released means
-          # snapshots of 0.4. The minor is the release unit while the project is
-          # on 0.x, so the third field is left off rather than named after a
-          # patch nobody intends to cut; a missing field is a zero, which puts
-          # 0.4-snapshot.N above every 0.3.x and below 0.4.0. A panel on the
-          # stable channel therefore never sees it, and a panel on the snapshot
-          # channel leaves it as soon as 0.4.0 ships.
-          IFS=. read -r major minor _ <<EOF
-          ${released%%-*}
-          EOF
-          next="${major}.$((minor + 1))"
-
-          # The build number is the commit count, not the run number: it stays
-          # meaningful and keeps increasing even if this workflow is renamed or
-          # re-run, and re-running the same commit reproduces the same version
-          # rather than inventing a newer one.
-          build=$(git rev-list --count HEAD)
-
-          version="${next}-snapshot.${build}"
-          echo "准备发布快照 v$version ($(git rev-parse --short "$SHA"))"
+          tag="snapshot-$(git rev-list --count HEAD)"
+          echo "准备发布快照 $tag ($(git rev-parse --short "$SHA"))"
           {
-            echo "publish=true"
             echo "sha=$SHA"
-            echo "tag=v$version"
-            echo "version=$version"
+            echo "tag=$tag"
           } >> "$GITHUB_OUTPUT"
-
-  snapshot:
-    name: 构建并发布快照
-    needs: resolve
-    if: needs.resolve.outputs.publish == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve.outputs.sha }}
-          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
@@ -134,12 +92,11 @@ jobs:
       # No lint or test here: this workflow only runs for a commit whose CI run
       # already passed, which is the same checks on the same code.
       - name: 交叉编译并打包
-        run: make package VERSION=${{ needs.resolve.outputs.tag }}
+        run: make package VERSION=${{ steps.v.outputs.tag }}
 
       - name: 生成说明
         env:
-          SHA: ${{ needs.resolve.outputs.sha }}
-          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA: ${{ steps.v.outputs.sha }}
         run: |
           set -euo pipefail
           {
@@ -150,9 +107,12 @@ jobs:
             printf -- '- 提交：[`%s`](https://github.com/%s/commit/%s)\n' \
               "$(git rev-parse --short "$SHA")" "$GITHUB_REPOSITORY" "$SHA"
             printf -- '- 说明：%s\n\n' "$(git log -1 --pretty=%s "$SHA")"
+            printf '## 版本号\n\n'
+            printf '快照没有语义化版本号，`snapshot-` 后面是 main 的提交数，数字越大越新。\n'
+            printf '快照始终排在所有正式版之前——它就是 main 的最新构建，而正式版是从 main 上切出去的。\n\n'
             printf '## 安装\n\n'
             printf '面板里「设置 → 面板更新 → 更新通道」选择「快照」后即可直接更新到这一版；\n'
-            printf '之后切回「正式版」就会在下一个正式版发布时回到正式版轨道。\n\n'
+            printf '之后切回「正式版」，面板会提示装回最新正式版。\n\n'
             printf '手动安装则下载对应平台的压缩包，解压后运行 `./hypercraft -data ./data`。\n\n'
             printf '## 校验\n\n'
             printf '```bash\nsha256sum -c SHA256SUMS.txt --ignore-missing\n```\n'
@@ -161,8 +121,8 @@ jobs:
       - name: 创建快照 Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.resolve.outputs.tag }}
-          SHA: ${{ needs.resolve.outputs.sha }}
+          TAG: ${{ steps.v.outputs.tag }}
+          SHA: ${{ steps.v.outputs.sha }}
         run: |
           set -euo pipefail
           # Re-running for a commit that already has a snapshot replaces its
@@ -178,18 +138,13 @@ jobs:
 
       # Every push leaves a prerelease behind, so without this the releases page
       # would be nothing but snapshots within a week. Only the tags this
-      # workflow creates are touched; real releases never match the pattern.
+      # workflow creates are touched — both the current snapshot-N form and the
+      # vX.Y-snapshot.N one it replaced, so the old ones still get cleaned up.
+      # Real releases never match either pattern.
       #
-      # Three rather than five: the update page only ever offers the newest
-      # snapshot, so the older ones are there for a manual download, not for
-      # the updater.
-      #
-      # The snapshot-N alternative matches the handful published while this
-      # workflow briefly named snapshots after the commit count alone. That
-      # naming is gone — a panel built before it could not parse those tags at
-      # all, so the snapshot channel went dead for every panel already in the
-      # field — but the releases it produced are still on the page, and this is
-      # what sweeps them out.
+      # Three is what the update page can actually reach: a panel is only ever
+      # offered the newest snapshot, so the older ones are there for a manual
+      # download, not for the updater.
       - name: 清理旧快照
         env:
           GH_TOKEN: ${{ github.token }}
@@ -197,7 +152,7 @@ jobs:
         run: |
           set -euo pipefail
           gh release list --limit 100 --json tagName,createdAt \
-            --jq 'map(select(.tagName | test("-snapshot\\.[0-9]+$|^snapshot-[0-9]+$")))
+            --jq 'map(select(.tagName | test("^snapshot-[0-9]+$|-snapshot\\.[0-9]+$")))
                   | sort_by(.createdAt) | reverse | .['"$KEEP"':] | .[].tagName' \
             > stale.txt
           while read -r tag; do
