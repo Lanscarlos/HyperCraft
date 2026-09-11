@@ -1,7 +1,10 @@
 # 提案：多用户与角色权限
 
-> **状态：提案，未实现。** 这一页是动手之前把设计摊开来吵一遍用的，结论可能会改。
-> 面板当前仍是单操作者模型。
+> **状态：第 1 步已实现，其余待做。**
+>
+> 能力词表（`internal/authz`）、路由声明（`internal/api/routes.go`）和那套强制测试
+> （`internal/api/routes_test.go`）已经合入，**行为零变化** —— 面板当前仍是单操作者模型，
+> 唯一的操作者仍然持有一切。第 2 步起的结论仍可能改。
 
 - [要解决的问题](#要解决的问题)
 - [先说清楚：哪些边界是真的](#先说清楚哪些边界是真的)
@@ -138,6 +141,37 @@
 每个登录用户天然可做，不出现在角色编辑器里：`GET /api/auth/me`、`POST /api/auth/logout`、
 改**自己**的密码、管理**自己**的设备（`GET`/`DELETE /api/auth/devices`，按属主过滤）。
 
+这些路由在表里写作 `authz.CapSignedIn`。它**故意不在词表里** —— `Valid()` 不认它，角色编辑器
+列不出它，所以它永远不可能被授予。写它是一次明确的声明（「这条是所有人的」），而不是把能力字段
+留空；留空会被测试判红。
+
+### 一条路由，多条能力
+
+实现时发现「一条路由一条能力」这个说法不够用：有些路由同时跨了两条边界，只声明一条就等于漏掉另一条。
+规则改成**跨了几条边界就声明几条，全部必须持有**：
+
+| 路由 | 为什么是两条 |
+| --- | --- |
+| `POST /api/instances/{id}/core` | 写实例的启动配置 + 读核心库 |
+| `POST /api/instances/{id}/plugins/library` | 读实例插件 + **写共享库** |
+| `POST /api/plugins/bulk/upgrade` | 读共享库 + 写多个实例的插件 |
+| `POST /api/schematics/{id}/install` | 读建筑库 + 写实例 |
+| `POST /api/instances/{id}/schematics` | 读实例 + 写建筑库 |
+| `POST .../config-history/restore` | 配置历史 + **等价于编辑配置**（还原就是写配置文件） |
+
+### 第 3 步要处理的：实例不在路径里
+
+有几条路由会碰实例，但实例 id 不在 `{id}` 里，按路径拦截的 `requireInstance` 挡不住，
+必须在 handler 内部按授权过滤：
+
+- `POST /api/schematics/{id}/install` —— 实例 id 在请求体里（`installSchematicRequest`）。
+- `POST /api/plugins/bulk/preview`、`/bulk/upgrade` —— 请求体只给插件 id，**扇出到所有装了该插件的实例**。
+- `GET /api/plugins/overview` —— 跨全部实例的聚合视图。
+- `POST /api/network/link` / `repair` / `unlink` —— 请求体里是两个实例 id。
+- `GET /api/instances/{id}/console` —— 路径里有 id，但一条连接承载两个方向，见上。
+
+这几条在 `routes.go` 里都带了注释，不会在第 3 步被忘掉。
+
 ### 两条铁律
 
 1. 内置 `admin` 角色不可编辑、不可删除，其能力集合恒等于全集 —— 新增能力时它自动包含。
@@ -149,7 +183,13 @@
 | --- | --- | --- |
 | 服主 | `admin`（内置全集） | 全部 |
 | 运维 | `instance:view` `instance:power` `instance:console` `instance:confighist` `panel:system` | 授权的实例 |
-| 开发 | 运维全部 + `instance:config` `instance:files:read` `instance:schematics` `instance:settings` ⚠️`instance:files:write` ⚠️`instance:plugins` ⚠️`instance:launch` | 授权的实例 |
+| 开发 | 运维全部 + `library:cores` `library:plugins` `library:schematics` `instance:config` `instance:files:read` `instance:schematics` `instance:settings` ⚠️`instance:files:write` ⚠️`instance:plugins` ⚠️`instance:launch` | 授权的实例 |
+
+「开发」带 ⚠️`instance:launch` 是定下来的：开发确实要调 JVM 参数，挡住它只会逼人每次去找服主，
+而这个角色本来就不是安全边界（见[上文](#结论)）。靠角色编辑器里的警告兜。
+
+三条 `library:*` 是映射路由时才发现要加的：装插件得先让插件进库，换核心得先能列出核心库，
+所以「开发」离不开共享库的读写。代价是共享库的改动对所有人可见 —— 见[未决问题](#未决问题) 3。
 
 预设只是初始值，建好之后就是普通角色，管理员可以改。
 
@@ -210,12 +250,24 @@
   加权限只需往这个结构上挂字段，handler 签名不动。
 - CSRF、限速、登录记录都在 principal 之外，不受影响。
 
-### 一条路由一条能力
+### 每条路由都要声明能力
 
-`s.routes()` 里的注册改成带能力声明，`requireCap` 在 `requireAuth` 之后、`requireCSRF` 之前生效。
+**已实现。** 路由从一串 `mux.HandleFunc` 调用改成了 `internal/api/routes.go` 里的两张表
+（公开的和受保护的），`s.routes()` 只剩一个把表注册上去的循环。第 3 步在这里插入 `requireCap`，
+位置是 `requireAuth` 之后、`requireCSRF` 之前。
 
-配套一个**强制性的测试**：遍历路由表，断言每条路由都声明了能力，漏一条就红。这是整套设计的地基 ——
-新增一条路由却忘了声明，就是一个静默的越权口子，而这种遗漏靠 review 是看不住的。
+配套四道守卫（`routes_test.go`），针对的都是「看起来没问题的代码里的静默越权口子」：
+
+| 守卫 | 拦住的事 |
+| --- | --- |
+| `TestProtectedRoutesDeclareCapabilities` | 新路由忘了声明能力 |
+| `TestPublicRoutesArePinned` | 往门外偷加路由（公开集合被钉死成三条） |
+| `TestEveryCapabilityIsReachable` | 词表里有条能力没有任何路由要求 —— 授予它等于什么都没授予 |
+| `TestRoutesRegistersOnlyFromTheTables` | 绕过表，直接往 mux 上挂路由 |
+
+最后一道读的是 `server.go` 的 AST，因为 `net/http` 没有枚举 `ServeMux` 内容的办法：任何注册都得
+带一个模式字面量，所以断言 `routes()` 里除了两个挂载点之外没有别的字符串常量。四种情况都实际
+制造过一遍，确认会红 —— 不会失败的测试等于没有测试。
 
 ### 唯一的例外：控制台 WebSocket
 
@@ -279,8 +331,10 @@
 
 ## 落地顺序
 
-1. **能力词表 + 路由声明 + 那个强制测试。** 先做这个，它是后面一切的地基，且可以独立合入 ——
-   此时还是单用户，所有能力都授予唯一的 admin，行为零变化。
+1. ~~**能力词表 + 路由声明 + 那个强制测试。**~~ **已完成。** `internal/authz` 是 26 条能力的词表，
+   `internal/api/routes.go` 把 136 条路由声明成一张表，`routes_test.go` 有四道守卫：漏声明能力、
+   偷加公开路由、某条能力没有任何路由要求、绕过表直接往 mux 上挂路由 —— 四种都验证过会红。
+   行为零变化：改动前后注册的 136 条路由逐字一致。
 2. **`users.json` + 迁移 + 用户 / 角色的增删改查 API。**
 3. **`principal` 带能力集，`requireCap` + `requireInstance` 接进链路**，控制台 WebSocket 的双向检查。
 4. **前端**：`useCan()`、导航过滤、用户与角色管理页。
@@ -290,8 +344,7 @@
 
 ## 未决问题
 
-1. **「开发」预设要不要默认带 `instance:launch`？** 它是三条代码执行路里最不显眼的一条（藏在「启动设置」
-   页面里），但开发确实要调 JVM 参数。倾向于默认给，靠 UI 警告兜。
+1. ~~**「开发」预设要不要默认带 `instance:launch`？**~~ **已定：给。** 见[出厂预设](#出厂预设)。
 2. **代理连线（`panel:network`）算实例级还是面板级？** 它同时改代理端和子服的配置。按面板级更简单，
    但「只管代理端」的人就得要面板级能力。暂按面板级。
 3. **面板级插件库是共享的。** 开发 A 升级了库里的插件，会影响开发 B 的实例吗（要等 B 主动安装）？
