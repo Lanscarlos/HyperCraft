@@ -16,6 +16,7 @@ import { InstancePluginDrawer } from './InstancePluginDrawer'
 import { Menu } from './Menu'
 import type { MenuItem } from './Menu'
 import { Modal } from './Modal'
+import { PageHead } from './Page'
 import { loaderLabel } from './PluginBrowse'
 import { CompatBadge } from './PluginCompat'
 import { PluginInstallDialog, loaderNote } from './PluginInstallDialog'
@@ -133,17 +134,76 @@ export function InstancePlugins({
     (item) => item.versions.length > 0 && !installedIDs.has(item.id),
   )
 
+  // The head is the one part of this section that never waits for the
+  // listing: the count is the only thing on it that does, and it is blank
+  // rather than a placeholder bar so the title does not jump when it lands.
+  const head = (
+    <PageHead
+      title={
+        <>
+          插件 {!loading && <span className="muted">{entries.length}</span>}
+        </>
+      }
+      lead="这台服务器目录里的插件：哪些能更新、哪些出了问题。下载新的去「资源库 → 插件库」。"
+      aside={
+        !loading && (
+          <div className="page__actions">
+            {/* Every version number on this page comes out of the panel's own
+                records. This is the button that checks the records still
+                describe the directory — see plugin/reconcile.go. */}
+            <button
+              className="btn"
+              disabled={busy}
+              title="把插件目录逐个文件算 SHA-256，跟面板的账本比一遍"
+              onClick={() =>
+                void act(async () => {
+                  const report = await api.reconcileInstancePlugins(instance.id)
+                  const bad = report.drift + report.missing + report.foreign
+                  return bad === 0
+                    ? `对完了 ${report.checked} 条记录，账本和目录一致`
+                    : `对完了 ${report.checked} 条记录，${bad} 处对不上`
+                })
+              }
+            >
+              对账
+            </button>
+            <button className="btn" onClick={() => onOpenSection('files', listing?.entries[0]?.dir)}>
+              上传 jar
+            </button>
+            {/* Two different acts, and the panel keeps them apart. This one
+                copies something the library already holds; the link beside it
+                goes off to acquire one. */}
+            <button
+              className="btn btn--primary"
+              disabled={available.length === 0}
+              title={available.length === 0 ? '插件库里没有这台服还没装的插件' : undefined}
+              onClick={() => setPicking(true)}
+            >
+              从插件库安装
+            </button>
+            <button className="link" onClick={onOpenBrowse}>
+              去插件市场
+            </button>
+          </div>
+        )
+      }
+    />
+  )
+
   if (loading) {
     return (
-      <SkeletonScreen label="正在读取插件…">
-        <SkeletonPanel title={false}>
-          <div className="chart-head">
-            <Skeleton w="72px" h={15} />
-            <Skeleton w="52%" h={12} />
-          </div>
-          <SkeletonRows rows={5} />
-        </SkeletonPanel>
-      </SkeletonScreen>
+      <div className="stack">
+        {head}
+        <SkeletonScreen inPage label="正在读取插件…">
+          <SkeletonPanel title={false}>
+            <div className="chart-head">
+              <Skeleton w="72px" h={15} />
+              <Skeleton w="52%" h={12} />
+            </div>
+            <SkeletonRows rows={5} />
+          </SkeletonPanel>
+        </SkeletonScreen>
+      </div>
     )
   }
 
@@ -157,49 +217,7 @@ export function InstancePlugins({
 
   return (
     <div className="stack">
-      <header className="chart-head">
-        <h2 className="panel__title">
-          已装插件 <span className="muted">{entries.length}</span>
-        </h2>
-        <div className="chart-head__actions">
-          {/* Every version number on this page comes out of the panel's own
-              records. This is the button that checks the records still
-              describe the directory — see plugin/reconcile.go. */}
-          <button
-            className="btn"
-            disabled={busy}
-            title="把插件目录逐个文件算 SHA-256，跟面板的账本比一遍"
-            onClick={() =>
-              void act(async () => {
-                const report = await api.reconcileInstancePlugins(instance.id)
-                const bad = report.drift + report.missing + report.foreign
-                return bad === 0
-                  ? `对完了 ${report.checked} 条记录，账本和目录一致`
-                  : `对完了 ${report.checked} 条记录，${bad} 处对不上`
-              })
-            }
-          >
-            对账
-          </button>
-          <button className="btn" onClick={() => onOpenSection('files', listing?.entries[0]?.dir)}>
-            上传 jar
-          </button>
-          {/* Two different acts, and the panel keeps them apart. This one
-              copies something the library already holds; the link beside it
-              goes off to acquire one. */}
-          <button
-            className="btn btn--primary"
-            disabled={available.length === 0}
-            title={available.length === 0 ? '插件库里没有这台服还没装的插件' : undefined}
-            onClick={() => setPicking(true)}
-          >
-            从插件库安装
-          </button>
-          <button className="link" onClick={onOpenBrowse}>
-            去插件市场
-          </button>
-        </div>
-      </header>
+      {head}
 
       {error && <div className="alert alert--error">{error}</div>}
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}

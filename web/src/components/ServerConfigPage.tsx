@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api'
 import type { InstanceStatus, ServerConfigFile, ServerConfigSetting } from '../types'
+import { PageHead } from './Page'
 import { PropertiesEditor } from './PropertiesEditor'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
@@ -59,6 +60,11 @@ export function ServerConfigPage({ instance }: { instance: InstanceStatus }) {
 
   return (
     <div className="stack">
+      <PageHead
+        title="服务器配置"
+        lead="server.properties，以及核心自己的几份配置文件。只列常改的项，整个文件在「文件」页里。"
+      />
+
       {/* Rendered even while the list is loading, so the page does not shift
           under the pointer the moment it arrives. */}
       <div className="configtabs" role="tablist" aria-label="配置文件">

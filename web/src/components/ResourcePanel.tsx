@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { formatBytes, formatPercent, formatTime } from '../format'
 import type { InstanceMetrics, InstanceStatus } from '../types'
+import { PageHead } from './Page'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 import { CHART_HEIGHT, TimeSeriesChart, type Point } from './TimeSeriesChart'
 
@@ -93,14 +94,30 @@ export function ResourcePanel({ instance, active }: Props) {
     }
   }, [windowed])
 
+  // The same head over the charts, the placeholder and the error, so the
+  // section opens in the same place whichever of the three it is showing.
+  const head = (
+    <PageHead
+      title="监控"
+      lead="这台服务器自己的 CPU 和内存曲线。整机的负载在「主机 → 监控」。"
+    />
+  )
+
   if (error) {
-    return <div className="alert alert--error">{error}</div>
+    return (
+      <div className="stack">
+        {head}
+        <div className="alert alert--error">{error}</div>
+      </div>
+    )
   }
   if (!data) {
     // Two cards with a chart-sized hole in each: the same shape the answer
     // arrives in, so the charts do not shove the page down when they land.
     return (
-      <SkeletonScreen label="正在读取监控数据…">
+      <div className="stack">
+        {head}
+        <SkeletonScreen inPage label="正在读取监控数据…">
         <div className="chart-filters">
           <Skeleton w="56px" h={24} pill />
           <Skeleton w="56px" h={24} pill />
@@ -116,7 +133,8 @@ export function ResourcePanel({ instance, active }: Props) {
             <Skeleton w="70%" h={12} />
           </SkeletonPanel>
         ))}
-      </SkeletonScreen>
+        </SkeletonScreen>
+      </div>
     )
   }
 
@@ -124,6 +142,7 @@ export function ResourcePanel({ instance, active }: Props) {
 
   return (
     <div className="stack">
+      {head}
       {/* Filters sit in one row above everything they scope. */}
       <div className="chart-filters">
         <span className="chart-filters__label">时间范围</span>

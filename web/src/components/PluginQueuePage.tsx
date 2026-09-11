@@ -73,7 +73,7 @@ export function PluginQueuePage({ plugins }: { plugins: PluginController }) {
     >
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
 
-      <section className="dlqueue">
+      <section className="panel dlqueue">
         <h2 className="dlqueue__title">
           进行中
           {live.length > 0 && <span className="dlqueue__count">{live.length}</span>}
@@ -97,7 +97,7 @@ export function PluginQueuePage({ plugins }: { plugins: PluginController }) {
       </section>
 
       {history.length > 0 && (
-        <section className="dlqueue">
+        <section className="panel dlqueue">
           <h2 className="dlqueue__title">
             历史
             {failed > 0 && <span className="dlqueue__count dlqueue__count--bad">{failed} 个失败</span>}

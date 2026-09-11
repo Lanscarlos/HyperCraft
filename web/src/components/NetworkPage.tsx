@@ -12,7 +12,7 @@ import type {
   NetworkServer,
 } from '../types'
 import { useMediaQuery } from '../useMediaQuery'
-import { Page } from './Page'
+import { Page, PageHead } from './Page'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
@@ -134,11 +134,11 @@ export function NetworkPage({ instances, onOpenInstance, onCreate, focus, embed 
 
   if (!data) {
     return (
-      <Frame embed={embed} title={headingOf(side)} lead={leadOf(side, canvas)} aside={reload}>
+      <Frame embed={embed} title={headingOf()} lead={leadOf(side, canvas)} aside={reload}>
         {error ? (
           <div className="alert alert--error">{error}</div>
         ) : (
-          <SkeletonScreen label="正在读取网络拓扑…">
+          <SkeletonScreen inPage label="正在读取网络拓扑…">
             <SkeletonPanel title={false}>
               <Skeleton w="34%" h={15} />
               <Skeleton w="100%" h={72} />
@@ -157,7 +157,7 @@ export function NetworkPage({ instances, onOpenInstance, onCreate, focus, embed 
   const empty = view.proxies.length === 0
 
   return (
-    <Frame embed={embed} title={headingOf(side)} lead={leadOf(side, canvas)} aside={reload}>
+    <Frame embed={embed} title={headingOf()} lead={leadOf(side, canvas)} aside={reload}>
       {error && <div className="alert alert--error">{error}</div>}
 
       {notes.length > 0 && (
@@ -256,12 +256,13 @@ function focused(data: NetworkResponse, focus: string | undefined, side: Side): 
   return data
 }
 
-/** Named for what the reader is looking at, not for the feature: the sidebar
- *  row and the breadcrumb above this already say 代理连线, and repeating it
- *  here would spend the heading on a word that is already on screen twice. */
-function headingOf(side: Side): string {
-  if (side === 'proxy') return '后面的服务端'
-  if (side === 'server') return '前面的代理端'
+/** The heading is the section's own name, the same word as the sidebar row
+ *  and the breadcrumb. It used to be named for what the reader is looking at
+ *  instead — 后面的服务端, 前面的代理端 — on the argument that 代理连线 was
+ *  already on screen twice. True, and every other page in the panel repeats
+ *  its row's name the same way; the one section that did not read as a
+ *  different kind of page. What the reader is looking at is the lead's job. */
+function headingOf(): string {
   return '代理连线'
 }
 
@@ -311,11 +312,7 @@ function Frame({
   }
   return (
     <div className="stack">
-      <header className="chart-head">
-        <h2 className="panel__title">{title}</h2>
-        {aside}
-      </header>
-      <p className="page__lead">{lead}</p>
+      <PageHead title={title} lead={lead} aside={aside} />
       {children}
     </div>
   )

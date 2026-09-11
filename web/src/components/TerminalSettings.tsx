@@ -25,8 +25,26 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
   const [confirming, setConfirming] = useState(false)
   const { status, saving, error } = terminal
 
+  // One card, like 本机 above it. It used to be a loose heading and paragraph
+  // on the page with a card of facts under them and nothing to say the three
+  // belonged together; on this page every other fact is inside a card with
+  // its own title, and the terminal is not a different kind of fact.
+  const title = <h2 className="panel__title">SSH 终端</h2>
+  const lead = (
+    <p className="muted">
+      在面板里直接开一个本机 shell。它跑在面板所在的这台机器上，权限和面板进程完全一样 ——
+      和游戏控制台不是一个量级的东西：后者最多影响一个 Minecraft 进程，前者是整机。
+    </p>
+  )
+
   if (!status) {
-    return <section className="panel">正在读取终端设置…</section>
+    return (
+      <section className="panel">
+        {title}
+        {lead}
+        <p className="muted">正在读取终端设置…</p>
+      </section>
+    )
   }
 
   const enable = async () => {
@@ -35,22 +53,20 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
   }
 
   return (
-    <>
-      <div className="stack">
-        <h2 className="panel__title">SSH 终端</h2>
-        <p className="page__lead">
-          在面板里直接开一个本机 shell。它跑在面板所在的这台机器上，权限和面板进程完全一样 ——
-          和游戏控制台不是一个量级的东西：后者最多影响一个 Minecraft 进程，前者是整机。
-        </p>
-      </div>
+    <section className="panel">
+      {title}
+      {lead}
 
       {error && <div className="alert alert--error">{error}</div>}
 
       {!status.supported ? (
         <div className="alert">{status.reason}</div>
       ) : (
-        <section className="panel">
-          <dl className="update__meta">
+        <>
+          {/* The same grid the 本机 card uses for its facts, so the two cards
+              on this page line up. The path can be long; the cell wraps it
+              rather than pushing the card wide. */}
+          <dl className="figures">
             <div>
               <dt>运行身份</dt>
               <dd>{status.user || '未知'}</dd>
@@ -59,9 +75,9 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
               <dt>使用的 shell</dt>
               <dd>{status.shell}</dd>
             </div>
-            <div>
+            <div className="figures__wide">
               <dt>起始目录</dt>
-              <dd>{status.cwd}</dd>
+              <dd className="figures__path">{status.cwd}</dd>
             </div>
             <div>
               <dt>当前会话</dt>
@@ -123,8 +139,8 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
               </div>
             </>
           )}
-        </section>
+        </>
       )}
-    </>
+    </section>
   )
 }

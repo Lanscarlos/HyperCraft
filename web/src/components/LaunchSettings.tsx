@@ -15,6 +15,7 @@ import { ENCODING_OPTIONS, isLive, LOADER_OPTIONS } from '../types'
 import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
 import { InstanceCorePicker } from './InstanceCorePicker'
+import { PageHead } from './Page'
 import { DirectoryField } from './PathPicker'
 import { Select } from './Select'
 
@@ -313,6 +314,8 @@ export function LaunchSettings({
 
   return (
     <form className="stack" onSubmit={save}>
+      <PageHead title="实例设置" lead="名称、目录、核心、Java 和内存，以及它怎么启动。" />
+
       <section className="panel panel--form">
         <h3 className="panel__title">基本信息</h3>
 

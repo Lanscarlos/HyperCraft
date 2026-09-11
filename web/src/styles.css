@@ -2575,6 +2575,11 @@ a:hover {
 .instance__pane .stack,
 .instance__pane .skeleton-screen--stack {
   max-width: var(--content-max-wide);
+  /* No top padding inside a pane: .main already keeps the page off the top
+     bar, and the 16px the stack brings for itself put every section's head a
+     line lower than the console's — and than every other page's. Same box,
+     same first line. */
+  padding-top: 0;
 }
 
 
@@ -2616,7 +2621,11 @@ a:hover {
 
 .cockpit__title h1 {
   margin: 0;
-  font-size: 21px;
+  /* The same size as every other page title (.page h1). The console is the
+     one section whose title is the server's name rather than the section's,
+     and it used to be two pixels smaller for it — enough to read as a
+     different kind of heading beside the seven sections next to it. */
+  font-size: 23px;
   letter-spacing: -0.01em;
 }
 
@@ -3967,7 +3976,12 @@ details[open]::details-content {
   margin: 0 0 8px;
 }
 
-.page h1 {
+/* The second selector is the same head inside an instance pane, which is not
+   a .page: the sections there open with the head every page opens with, so the
+   title has to be the same size in both places or the panel has two ideas of
+   what a title is. */
+.page h1,
+.page__head h1 {
   font-size: 23px;
   margin: 0;
 }
@@ -7175,16 +7189,6 @@ input.input-slim:disabled {
 /* A switch whose explanation is a sentence rather than a phrase. The base
    .checkbox lays label and note out side by side, which is right for a short
    note and turns a long one into a two-word-per-line column. */
-.checkbox--stacked {
-  flex-wrap: wrap;
-}
-
-.checkbox--stacked > small {
-  /* Lines up under the label: the box is 15px and the row gap is 9. */
-  flex-basis: 100%;
-  margin-left: 24px;
-}
-
 /* ------------------------------------------------------- overview summary
 
    Four numbers, and only numbers that would change what the reader does next.
@@ -7711,6 +7715,21 @@ button.rows__name:hover strong {
   color: var(--text-faint);
   font-size: 11px;
   font-weight: 400;
+}
+
+/* A fact that is a path rather than a number — the shell's starting
+   directory. It takes a whole row so it does not sit in a 200px cell beside
+   a two-character one, and it wraps: a path six levels deep would otherwise
+   be the one cell on the page that widens its card. */
+.figures__wide {
+  grid-column: 1 / -1;
+}
+
+.figures__path {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 /* ------------------------------------------------------- command palette
@@ -8351,8 +8370,12 @@ button.rows__name:hover strong {
     scroll-padding: 0 14px;
   }
 
+  /* Allowed to grow, not only to scroll: on a tablet three tiles at a fixed
+     190px filled half the strip and left the other half empty, which read as
+     a layout that had not finished. They share the width while it lasts and
+     go back to scrolling once it runs out. */
   .tiles > .tile {
-    flex: 0 0 190px;
+    flex: 1 0 190px;
     scroll-snap-align: start;
   }
 
@@ -9061,6 +9084,11 @@ button.rows__name:hover strong {
 }
 
 .checkbox--stacked > small {
+  /* Lines up under the label: the box is 15px and the row gap is 9. Padding
+     rather than a margin — the box is border-box, so the indent stays inside
+     the 100% and the description ends where the card does. A second copy of
+     this rule used to add the same 24px as a margin on top, which is how the
+     外观 page's paragraph ran off the right edge of its card. */
   flex: 1 0 100%;
   padding-left: 24px;
 }

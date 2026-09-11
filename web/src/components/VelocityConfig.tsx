@@ -9,6 +9,7 @@ import type {
   VelocityServer,
   VelocitySetting,
 } from '../types'
+import { PageHead } from './Page'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
@@ -180,21 +181,31 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
     }
   }
 
+  const head = (
+    <PageHead title="代理配置" lead="velocity.toml：子服务器、转发方式和玩家验证。" />
+  )
+
   if (!data) {
-    if (error) return <div className="alert alert--error">{error}</div>
     return (
-      <SkeletonScreen label="正在读取 velocity.toml…">
-        <SkeletonPanel title={false}>
-          <Skeleton w="30%" h={15} />
-          <Skeleton w="46%" h={12} />
-          {Array.from({ length: 6 }, (_, index) => (
-            <div className="field" key={index}>
-              <Skeleton w={`${22 + ((index * 29) % 18)}%`} h={12} />
-              <Skeleton w="100%" h={32} />
-            </div>
-          ))}
-        </SkeletonPanel>
-      </SkeletonScreen>
+      <div className="stack">
+        {head}
+        {error ? (
+          <div className="alert alert--error">{error}</div>
+        ) : (
+          <SkeletonScreen inPage label="正在读取 velocity.toml…">
+            <SkeletonPanel title={false}>
+              <Skeleton w="30%" h={15} />
+              <Skeleton w="46%" h={12} />
+              {Array.from({ length: 6 }, (_, index) => (
+                <div className="field" key={index}>
+                  <Skeleton w={`${22 + ((index * 29) % 18)}%`} h={12} />
+                  <Skeleton w="100%" h={32} />
+                </div>
+              ))}
+            </SkeletonPanel>
+          </SkeletonScreen>
+        )}
+      </div>
     )
   }
 
@@ -204,6 +215,8 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
 
   return (
     <form className="stack" onSubmit={save}>
+      {head}
+
       {!data.exists && (
         <div className="alert">
           <code>velocity.toml</code> 还不存在。代理端首次启动会生成它；

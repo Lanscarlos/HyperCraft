@@ -7,6 +7,7 @@ import { formatBytes, formatDate, formatSince } from '../format'
 import { toast } from '../toast'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
 import { Modal } from './Modal'
+import { PageHead } from './Page'
 import { SchematicPreview } from './SchematicPreview'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
@@ -555,6 +556,8 @@ export function FileManager({
         void upload(Array.from(event.dataTransfer.files))
       }}
     >
+      <PageHead title="文件" lead="服务器目录里的东西：jar、存档、配置和日志。" />
+
       <section className={`panel files${dragging ? ' files--dropping' : ''}`}>
         <div className="files__head">
           <button

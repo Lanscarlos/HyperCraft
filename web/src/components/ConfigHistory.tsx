@@ -15,6 +15,7 @@ import type {
   SnapshotTrigger,
 } from '../types'
 import { Modal } from './Modal'
+import { PageHead } from './Page'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
 /**
@@ -305,22 +306,36 @@ export function ConfigHistory({
     }
   }
 
+  const lead = (
+    <>
+      这台服务器配置文件的时间线：谁改了什么，什么时候改的，改回去。
+      <strong>这不是备份</strong> —— 世界、玩家数据和数据库都不在收录范围内。
+    </>
+  )
+
   if (!data) {
-    if (error) return <div className="alert alert--error">{error}</div>
     return (
-      <SkeletonScreen label="正在读取配置历史…">
-        <SkeletonPanel>
-          <Skeleton w="40%" h={14} />
-          <Skeleton w="72%" h={12} />
-          <Skeleton w="60%" h={12} />
-        </SkeletonPanel>
-      </SkeletonScreen>
+      <div className="stack">
+        <PageHead title="配置历史" lead={lead} />
+        {error ? (
+          <div className="alert alert--error">{error}</div>
+        ) : (
+          <SkeletonScreen inPage label="正在读取配置历史…">
+            <SkeletonPanel>
+              <Skeleton w="40%" h={14} />
+              <Skeleton w="72%" h={12} />
+              <Skeleton w="60%" h={12} />
+            </SkeletonPanel>
+          </SkeletonScreen>
+        )}
+      </div>
     )
   }
 
   if (!data.available) {
     return (
       <div className="stack">
+        <PageHead title="配置历史" lead={lead} />
         <div className="panel panel--warn">
           <h2 className="panel__title">这个实例没有启用配置历史</h2>
           <p className="chist__note">{data.reason ?? '面板没有启用这个模块。'}</p>
@@ -353,11 +368,15 @@ export function ConfigHistory({
 
   return (
     <div className="stack">
-      <header className="chart-head">
-        <h2 className="panel__title">
-          配置历史 <span className="muted">{timeline.length}</span>
-        </h2>
-        <div className="chart-head__actions">
+      <PageHead
+        title={
+          <>
+            配置历史 <span className="muted">{timeline.length}</span>
+          </>
+        }
+        lead={lead}
+        aside={
+        <div className="page__actions">
           <button
             className="btn"
             onClick={() => void refresh()}
@@ -386,12 +405,8 @@ export function ConfigHistory({
             整树还原（高级）
           </button>
         </div>
-      </header>
-
-      <p className="chart-note">
-        这台服务器配置文件的时间线：谁改了什么，什么时候改的，改回去。
-        <strong> 这不是备份</strong> —— 世界、玩家数据和数据库都不在收录范围内。
-      </p>
+        }
+      />
 
       {error && <div className="alert alert--error">{error}</div>}
 

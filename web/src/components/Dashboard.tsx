@@ -54,7 +54,20 @@ export function Dashboard({
   const worst = alerts[0]?.level
 
   return (
-    <Page wide>
+    <Page
+      wide
+      title="概览"
+      lead="这台机器上的每台服务器：在不在跑、吃了多少内存、磁盘还剩多少，以及要处理的告警。"
+      aside={
+        can(CAP.panelCreate) && (
+          <div className="actions">
+            <button className="btn btn--primary" onClick={onCreate}>
+              + 新建实例
+            </button>
+          </div>
+        )
+      }
+    >
       <div className="summary">
         <Summary
           label="运行中"
@@ -123,6 +136,9 @@ export function Dashboard({
       <section className="dashboard__instances">
         <div className="chart-head">
           <h2 className="panel__title">实例</h2>
+          {/* The create button used to sit here too. It is in the page head now,
+              where every other page keeps its one primary action, so this row
+              is only the way to the long list. */}
           <div className="chart-head__actions">
             {instances.length > 6 && (
               <button
@@ -130,11 +146,6 @@ export function Dashboard({
                 onClick={() => onNavigate({ kind: 'instances', query: '', state: 'all' })}
               >
                 所有实例
-              </button>
-            )}
-            {can(CAP.panelCreate) && (
-              <button className="btn btn--primary" onClick={onCreate}>
-                + 新建实例
               </button>
             )}
           </div>
