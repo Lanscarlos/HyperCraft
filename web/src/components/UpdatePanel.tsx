@@ -15,15 +15,17 @@ interface Props {
  *  that installs it. */
 export function UpdatePanel({ update, runningNames }: Props) {
   const [confirming, setConfirming] = useState(false)
-  const { status, updating, restarting, error, checking } = update
+  const [confirmingRollback, setConfirmingRollback] = useState(false)
+  const { status, updating, restarting, error, checking, action } = update
 
   if (!status) return null
 
   if (updating) {
     const phase = restarting ? 'restarting' : status.phase
+    const rolling = action === 'rollback'
     return (
       <section className="update update--busy">
-        <h2 className="update__title">正在更新面板</h2>
+        <h2 className="update__title">{rolling ? '正在回退面板' : '正在更新面板'}</h2>
         <UpdateProgress phase={phase} progress={status.progress} />
         <ShutdownProgress shutdown={status.shutdown} />
         <p className="update__note">
@@ -31,7 +33,9 @@ export function UpdatePanel({ update, runningNames }: Props) {
             ? '面板正在重启，页面会在它回来后自动刷新。服务器会随之恢复运行。'
             : phase === 'installing'
               ? '服务器都停好了，正在替换二进制。'
-              : '第一步：一边下载校验新版本，一边优雅停止服务器。两件事都完成之后，才会替换二进制并重启。'}
+              : rolling
+                ? '上一版的二进制就在这台机器上，不用下载。正在优雅停止服务器，停完才会换回去并重启。'
+                : '第一步：一边下载校验新版本，一边优雅停止服务器。两件事都完成之后，才会替换二进制并重启。'}
         </p>
       </section>
     )
@@ -130,6 +134,21 @@ export function UpdatePanel({ update, runningNames }: Props) {
         mirror={status.mirror}
         onChange={(next) => void update.setMirror(next)}
       />
+
+      <RollbackSection status={status} onRollback={() => setConfirmingRollback(true)} />
+
+      {confirmingRollback && status.previousVersion && (
+        <ConfirmRollbackDialog
+          version={status.previousVersion}
+          from={status.currentVersion}
+          runningNames={runningNames}
+          onCancel={() => setConfirmingRollback(false)}
+          onConfirm={() => {
+            setConfirmingRollback(false)
+            void update.rollback()
+          }}
+        />
+      )}
 
       {confirming && (
         <ConfirmUpdateDialog
@@ -309,6 +328,112 @@ function ShutdownProgress({ shutdown }: { shutdown?: UpdateShutdown }) {
       服务器 {shutdown.stopped}/{shutdown.total} 已停止
       {pending.length > 0 ? ` · 正在等待 ${pending.join('、')} 存档退出` : ' · 都停好了'}
     </p>
+  )
+}
+
+/** The way back to the build this panel updated away from. It is sitting next
+ *  to the running binary, so this needs no network and no release to still
+ *  exist on GitHub — which matters most for snapshots, where only the newest
+ *  few are kept.
+ *
+ *  Rendered only once an update has actually run: a fresh install has nothing
+ *  to say here, and saying it anyway would be noise on every new panel. */
+function RollbackSection({
+  status,
+  onRollback,
+}: {
+  status: UpdateStatus
+  onRollback: () => void
+}) {
+  if (!status.previousVersion) return null
+
+  return (
+    <div className="update__rollback">
+      <h3 className="update__subtitle">回退</h3>
+      {status.rollbackAvailable ? (
+        <>
+          <p className="update__note">
+            上一版 <strong>{status.previousVersion}</strong> 还在这台机器上，
+            可以直接换回去——不用下载，也不受 GitHub 上旧版本被清理的影响。
+          </p>
+          <div className="update__actions">
+            <button className="btn btn--danger" type="button" onClick={onRollback}>
+              退回 {status.previousVersion}
+            </button>
+          </div>
+        </>
+      ) : (
+        <p className="update__note">{status.rollbackWhy ?? '现在没有可以退回的版本。'}</p>
+      )}
+    </div>
+  )
+}
+
+/** Rolling back is the one action here that can lose data, so the dialog says
+ *  what and names the backup that makes it recoverable. */
+function ConfirmRollbackDialog({
+  version,
+  from,
+  runningNames,
+  onCancel,
+  onConfirm,
+}: {
+  version: string
+  from: string
+  runningNames: string[]
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <Modal onClose={onCancel}>
+      <div className="modal__card">
+        <h2 className="modal__title">退回 {version}</h2>
+        <p className="modal__lead">
+          面板会从 <strong>{from}</strong> 换回 <strong>{version}</strong>，
+          用的是更新时留在这台机器上的那个二进制，<strong>不下载任何东西</strong>。
+          先优雅停止服务器，停完才替换二进制并重启；任何一步失败都不会替换文件，
+          停掉的服务器会被重新拉起来。
+        </p>
+
+        <p className="modal__lead">
+          <strong>版本号往回走会丢东西。</strong>
+          旧版本读不懂新版本写进配置的字段，它一保存，那些字段就没了：登录凭据、
+          GitHub token、角色权限都可能受影响。所以面板会在替换之前，把自己的配置文件
+          （<code>panel.json</code>、<code>users.json</code> 等）原样复制一份到
+          <code>data</code> 目录下带时间戳的 <code>rollback-…</code> 文件夹里，
+          只保留最近三份。
+        </p>
+        <p className="modal__lead">
+          万一退回之后登不进面板，用 <code>./hypercraft -reset-password</code> 重置密码。
+        </p>
+
+        {runningNames.length > 0 ? (
+          <>
+            <p className="modal__lead">
+              下面 {runningNames.length} 个服务器会被<strong>优雅停止</strong>
+              （执行 stop、等待存档），面板重启后自动恢复运行：
+            </p>
+            <ul className="update__list">
+              {runningNames.map((name) => (
+                <li key={name}>{name}</li>
+              ))}
+            </ul>
+            <p className="modal__lead">期间玩家会掉线，请先确认没有人正在游戏中。</p>
+          </>
+        ) : (
+          <p className="modal__lead">当前没有服务器在运行，回退不会中断任何人。</p>
+        )}
+
+        <div className="modal__actions">
+          <button className="btn" type="button" onClick={onCancel}>
+            取消
+          </button>
+          <button className="btn btn--danger" type="button" onClick={onConfirm}>
+            确认退回
+          </button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
