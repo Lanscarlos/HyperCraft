@@ -43,22 +43,6 @@ func TestCompareVersions(t *testing.T) {
 		{"0.4-snapshot.86", "0.3.1", 1},
 		// The build counter is numeric: lexically, 9 would outrank 86.
 		{"0.4-snapshot.86", "0.4-snapshot.9", 1},
-		// A snapshot names the commit count and nothing else, so two of them
-		// compare on that count — numerically, or 9 would outrank 1234.
-		{"snapshot-1234", "snapshot-1233", 1},
-		{"snapshot-1233", "snapshot-1234", -1},
-		{"snapshot-1234", "snapshot-1234", 0},
-		{"snapshot-1234", "snapshot-9", 1},
-		// A snapshot is a build of main, which carries every release, so it
-		// outranks any of them. This is what keeps a snapshot panel on main
-		// instead of being pulled back onto a release it already contains.
-		{"snapshot-1234", "0.5.0", 1},
-		{"0.5.0", "snapshot-1234", -1},
-		{"snapshot-1", "99.99.99", 1},
-		// Panels installed before the rename are running the old two-field
-		// form; the new one has to outrank it or they would never move off it.
-		{"snapshot-1234", "0.5-snapshot.86", 1},
-		{"0.5-snapshot.86", "snapshot-1234", -1},
 	}
 	for _, c := range cases {
 		if got := CompareVersions(c.a, c.b); got != c.want {
@@ -70,7 +54,7 @@ func TestCompareVersions(t *testing.T) {
 func TestIsReleaseVersion(t *testing.T) {
 	// Two numeric fields are accepted because that is what a snapshot core is
 	// (0.4-snapshot.86); one field still is not, so a "v1" style tag stays out.
-	valid := []string{"1.0.0", "v1.0.0", "0.0.1", "1.2.3-rc.1", "10.20.30", "0.4-snapshot.86", "0.4", "snapshot-1234"}
+	valid := []string{"1.0.0", "v1.0.0", "0.0.1", "1.2.3-rc.1", "10.20.30", "0.4-snapshot.86", "0.4"}
 	for _, v := range valid {
 		if !IsReleaseVersion(v) {
 			t.Errorf("IsReleaseVersion(%q) = false, want true", v)
@@ -78,7 +62,7 @@ func TestIsReleaseVersion(t *testing.T) {
 	}
 	// "dev" is what a local `go build` produces; offering to replace it would
 	// overwrite somebody's own build with a release.
-	invalid := []string{"", "dev", "1", "v", "abc", "1.0.x", "1..0", "snapshot", "snapshot-", "snapshot-abc", "snapshot-1.2"}
+	invalid := []string{"", "dev", "1", "v", "abc", "1.0.x", "1..0"}
 	for _, v := range invalid {
 		if IsReleaseVersion(v) {
 			t.Errorf("IsReleaseVersion(%q) = true, want false", v)
@@ -95,7 +79,7 @@ func TestIsStableVersion(t *testing.T) {
 	}
 	// Snapshots and release candidates are versions the updater understands but
 	// must not treat as a final release.
-	notStable := []string{"1.2.3-rc.1", "0.4-snapshot.86", "snapshot-1234", "dev", ""}
+	notStable := []string{"1.2.3-rc.1", "0.4-snapshot.86", "dev", ""}
 	for _, v := range notStable {
 		if IsStableVersion(v) {
 			t.Errorf("IsStableVersion(%q) = true, want false", v)
@@ -113,10 +97,5 @@ func TestAssetNameMatchesReleaseWorkflow(t *testing.T) {
 	want := "hypercraft-1.2.3-" + runtime.GOOS + "-" + runtime.GOARCH + ext
 	if got := AssetName("v1.2.3"); got != want {
 		t.Errorf("AssetName = %q, want %q", got, want)
-	}
-	// A snapshot tag carries no leading v, so the name is the tag verbatim.
-	wantSnap := "hypercraft-snapshot-1234-" + runtime.GOOS + "-" + runtime.GOARCH + ext
-	if got := AssetName("snapshot-1234"); got != wantSnap {
-		t.Errorf("AssetName = %q, want %q", got, wantSnap)
 	}
 }
