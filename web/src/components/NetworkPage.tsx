@@ -188,6 +188,9 @@ export function NetworkPage({ instances, onOpenInstance, onCreate, focus, embed 
       ) : canvas ? (
         <NetworkCanvas
           data={view}
+          all={data}
+          focus={focus}
+          side={side}
           busy={busy}
           onLink={link}
           onRepair={repair}
@@ -197,6 +200,9 @@ export function NetworkPage({ instances, onOpenInstance, onCreate, focus, embed 
       ) : (
         <NetworkList
           data={view}
+          all={data}
+          focus={focus}
+          side={side}
           busy={busy}
           onLink={link}
           onRepair={repair}
@@ -225,25 +231,27 @@ type Side = 'proxy' | 'server' | null
  * The machine as seen from one end of a link.
  *
  * One card of your own on your side, every card you could legally connect to on
- * the other, and only the links you are part of. Filtering rather than a second
- * layout because the canvas is already symmetric: a proxy on the left and a
- * column of servers on the right is the same picture as a column of proxies on
- * the left and one server on the right, read from the other end.
+ * the other. Filtering rather than a second layout because the canvas is
+ * already symmetric: a proxy on the left and a column of servers on the right
+ * is the same picture as a column of proxies on the left and one server on the
+ * right, read from the other end.
+ *
+ * The *cards* are filtered and the links are not, which is deliberate and was
+ * not true at first. A proxy's sub-server table is one setting with several
+ * rows in it, and showing a server only its own row described a file that does
+ * not exist: you could not see that you are lobby #3 of four, and from the
+ * proxy's side you could not see that the server you are about to connect is
+ * already behind a different proxy. The rows a reader has no business editing
+ * from here are shown and not editable — see `own` in the two card lists —
+ * rather than hidden, because a table with rows missing is the kind of picture
+ * you make a decision against and get wrong.
  */
 function focused(data: NetworkResponse, focus: string | undefined, side: Side): NetworkResponse {
   if (side === 'proxy') {
-    return {
-      proxies: data.proxies.filter((proxy) => proxy.id === focus),
-      servers: data.servers,
-      links: data.links.filter((link) => link.proxyId === focus),
-    }
+    return { ...data, proxies: data.proxies.filter((proxy) => proxy.id === focus) }
   }
   if (side === 'server') {
-    return {
-      proxies: data.proxies,
-      servers: data.servers.filter((server) => server.id === focus),
-      links: data.links.filter((link) => link.serverId === focus),
-    }
+    return { ...data, servers: data.servers.filter((server) => server.id === focus) }
   }
   return data
 }
@@ -314,12 +322,36 @@ function Frame({
 }
 
 interface ViewProps {
+  /** Which cards to draw — one end of a link and everything it could reach,
+   *  or the whole machine. */
   data: NetworkResponse
+  /** The machine as the daemon reported it, for the rows that name an instance
+   *  whose card is not on this screen: a proxy's other sub-servers, or the
+   *  proxy some server is already behind. Filtering `data` is how a card is
+   *  kept off the canvas; it must not also cost that instance its name. */
+  all: NetworkResponse
+  /** The instance the reader is standing on, with the side it stands on. Rows
+   *  belonging to neither are shown and not editable. */
+  focus?: string
+  side: Side
   busy: boolean
   onLink: (proxyId: string, serverId: string) => void
   onRepair: (proxyId: string, serverId: string) => void
   onUnlink: (proxy: NetworkProxy, server: NetworkServer) => void
   onOpenInstance: (id: string) => void
+}
+
+/**
+ * Whether this row is the reader's to change.
+ *
+ * Only one case says no: standing on a server, looking at the proxy's table of
+ * sub-servers, at a row about some *other* server. That row is a fact about two
+ * instances you are not one of — 断开 on it would disconnect somebody else's
+ * server from a page about yours — so it stays legible and inert, and its name
+ * is the way to the page where it *is* editable.
+ */
+function editable(link: NetworkLink, focus: string | undefined, side: Side): boolean {
+  return side !== 'server' || link.serverId === focus
 }
 
 /** Where one card's connector sits, in the canvas's own coordinates. */
@@ -338,7 +370,17 @@ interface Dragging {
   over: string | null
 }
 
-function NetworkCanvas({ data, busy, onLink, onRepair, onUnlink, onOpenInstance }: ViewProps) {
+function NetworkCanvas({
+  data,
+  all,
+  focus,
+  side,
+  busy,
+  onLink,
+  onRepair,
+  onUnlink,
+  onOpenInstance,
+}: ViewProps) {
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const nodes = useRef(new Map<string, HTMLElement>())
   const [anchors, setAnchors] = useState<Record<string, Anchor>>({})
@@ -471,8 +513,10 @@ function NetworkCanvas({ data, busy, onLink, onRepair, onUnlink, onOpenInstance 
     return () => window.removeEventListener('keydown', onKey)
   }, [armed, drag])
 
-  const serverOf = (id: string) => data.servers.find((server) => server.id === id)
-  const proxyOf = (id: string) => data.proxies.find((proxy) => proxy.id === id)
+  // Off `all`, not off `data`: the cards on screen are a filtered view, and a
+  // row naming one that was filtered out still has to be able to say its name.
+  const serverOf = (id: string) => all.servers.find((server) => server.id === id)
+  const proxyOf = (id: string) => all.proxies.find((proxy) => proxy.id === id)
 
   return (
     <div className="netmap" ref={canvasRef} data-armed={armed?.kind}>
@@ -520,7 +564,9 @@ function NetworkCanvas({ data, busy, onLink, onRepair, onUnlink, onOpenInstance 
           <ProxyCard
             key={proxy.id}
             proxy={proxy}
-            data={data}
+            data={all}
+            focus={focus}
+            side={side}
             busy={busy}
             nodeRef={register(`proxy:${proxy.id}`)}
             armed={armed?.kind === 'proxy' && armed.id === proxy.id}
@@ -548,7 +594,7 @@ function NetworkCanvas({ data, busy, onLink, onRepair, onUnlink, onOpenInstance 
           <ServerCard
             key={server.id}
             server={server}
-            links={data.links.filter((link) => link.serverId === server.id)}
+            links={all.links.filter((link) => link.serverId === server.id)}
             proxyOf={proxyOf}
             busy={busy}
             nodeRef={register(`server:${server.id}`)}
@@ -615,6 +661,8 @@ function Connector({
 function ProxyCard({
   proxy,
   data,
+  focus,
+  side,
   busy,
   nodeRef,
   armed,
@@ -627,6 +675,8 @@ function ProxyCard({
 }: {
   proxy: NetworkProxy
   data: NetworkResponse
+  focus: string | undefined
+  side: Side
   busy: boolean
   nodeRef: (element: HTMLElement | null) => void
   armed: boolean
@@ -667,41 +717,60 @@ function ProxyCard({
         <ul className="netlinks">
           {links.map((link) => {
             const server = serverOf(link.serverId)
+            const mine = editable(link, focus, side)
             return (
-              <li className="netlink" key={link.name}>
+              <li className={`netlink${mine ? '' : ' netlink--other'}`} key={link.name}>
                 <div className="netlink__head">
                   <span className={`netlink__dot netlink__dot--${link.status}`} aria-hidden="true" />
                   <strong>{link.name}</strong>
-                  <span className="netlink__to">{server?.name ?? link.address}</span>
+                  {/* A row you cannot act on here can still be acted on
+                      somewhere, and the name is the way there. */}
+                  {mine || !server ? (
+                    <span className="netlink__to">{server?.name ?? link.address}</span>
+                  ) : (
+                    <button
+                      className="netlink__to netlink__open"
+                      type="button"
+                      onClick={() => onOpenInstance(server.id)}
+                    >
+                      {server.name}
+                    </button>
+                  )}
                   {link.try && <span className="badge">落点</span>}
                 </div>
-                {link.issues.length > 0 && (
+                {/* Somebody else's sub-server keeps its status dot and loses
+                    the list behind it: what is wrong with it is a sentence for
+                    its own page, and four of them stacked here would bury the
+                    one row on this card that is actually yours. */}
+                {mine && link.issues.length > 0 && (
                   <ul className="netlink__issues">
                     {link.issues.map((issue) => (
                       <li key={issue}>{issue}</li>
                     ))}
                   </ul>
                 )}
-                <div className="netlink__actions">
-                  {link.status !== 'ok' && (
+                {mine && (
+                  <div className="netlink__actions">
+                    {link.status !== 'ok' && (
+                      <button
+                        className="btn btn--row"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => onRepair(proxy.id, link.serverId)}
+                      >
+                        修复
+                      </button>
+                    )}
                     <button
-                      className="btn btn--row"
+                      className="btn btn--row btn--danger"
                       type="button"
-                      disabled={busy}
-                      onClick={() => onRepair(proxy.id, link.serverId)}
+                      disabled={busy || !server}
+                      onClick={() => server && onUnlink(proxy, server)}
                     >
-                      修复
+                      断开
                     </button>
-                  )}
-                  <button
-                    className="btn btn--row btn--danger"
-                    type="button"
-                    disabled={busy || !server}
-                    onClick={() => server && onUnlink(proxy, server)}
-                  >
-                    断开
-                  </button>
-                </div>
+                  </div>
+                )}
               </li>
             )
           })}
@@ -803,12 +872,24 @@ function ServerCard({
  * proxy and is any of it broken", and that is a list. Connecting is a picker
  * and a button, which is also the path a keyboard takes on a wide screen.
  */
-function NetworkList({ data, busy, onLink, onRepair, onUnlink, onOpenInstance }: ViewProps) {
+function NetworkList({
+  data,
+  all,
+  focus,
+  side,
+  busy,
+  onLink,
+  onRepair,
+  onUnlink,
+  onOpenInstance,
+}: ViewProps) {
   return (
     <div className="stack">
       {data.proxies.map((proxy) => {
-        const links = data.links.filter((link) => link.proxyId === proxy.id)
+        const links = all.links.filter((link) => link.proxyId === proxy.id)
         const linked = new Set(links.map((link) => link.serverId))
+        // Against the cards on screen, not against the machine: from a server's
+        // side the only thing this picker may offer is that server.
         const free = data.servers.filter((server) => !linked.has(server.id))
         return (
           <section className="panel" key={proxy.id}>
@@ -827,9 +908,10 @@ function NetworkList({ data, busy, onLink, onRepair, onUnlink, onOpenInstance }:
             ) : (
               <ul className="netlinks">
                 {links.map((link) => {
-                  const server = data.servers.find((entry) => entry.id === link.serverId)
+                  const server = all.servers.find((entry) => entry.id === link.serverId)
+                  const mine = editable(link, focus, side)
                   return (
-                    <li className="netlink" key={link.name}>
+                    <li className={`netlink${mine ? '' : ' netlink--other'}`} key={link.name}>
                       <div className="netlink__head">
                         <span
                           className={`netlink__dot netlink__dot--${link.status}`}
@@ -844,40 +926,42 @@ function NetworkList({ data, busy, onLink, onRepair, onUnlink, onOpenInstance }:
                         </button>
                         <span className="netlink__to">{link.name}</span>
                       </div>
-                      {link.issues.length > 0 && (
+                      {mine && link.issues.length > 0 && (
                         <ul className="netlink__issues">
                           {link.issues.map((issue) => (
                             <li key={issue}>{issue}</li>
                           ))}
                         </ul>
                       )}
-                      <div className="netlink__actions">
-                        {link.status !== 'ok' && (
+                      {mine && (
+                        <div className="netlink__actions">
+                          {link.status !== 'ok' && (
+                            <button
+                              className="btn btn--row"
+                              type="button"
+                              disabled={busy}
+                              onClick={() => onRepair(proxy.id, link.serverId)}
+                            >
+                              修复
+                            </button>
+                          )}
                           <button
-                            className="btn btn--row"
+                            className="btn btn--row btn--danger"
                             type="button"
-                            disabled={busy}
-                            onClick={() => onRepair(proxy.id, link.serverId)}
+                            disabled={busy || !server}
+                            onClick={() => server && onUnlink(proxy, server)}
                           >
-                            修复
+                            断开
                           </button>
-                        )}
-                        <button
-                          className="btn btn--row btn--danger"
-                          type="button"
-                          disabled={busy || !server}
-                          onClick={() => server && onUnlink(proxy, server)}
-                        >
-                          断开
-                        </button>
-                      </div>
+                        </div>
+                      )}
                     </li>
                   )
                 })}
               </ul>
             )}
 
-            <AddServer proxy={proxy} servers={free} busy={busy} onLink={onLink} />
+            <AddServer proxy={proxy} servers={free} side={side} busy={busy} onLink={onLink} />
           </section>
         )
       })}
@@ -888,17 +972,27 @@ function NetworkList({ data, busy, onLink, onRepair, onUnlink, onOpenInstance }:
 function AddServer({
   proxy,
   servers,
+  side,
   busy,
   onLink,
 }: {
   proxy: NetworkProxy
   servers: NetworkServer[]
+  side: Side
   busy: boolean
   onLink: (proxyId: string, serverId: string) => void
 }) {
   const [picked, setPicked] = useState('')
   if (servers.length === 0) {
-    return <p className="muted">这台机器上的服务端都已经连过来了。</p>
+    // The picker is empty for two different reasons and they are not the same
+    // sentence: on the panel-wide page every server is already behind this
+    // proxy, and from one server's side the only candidate there ever was is
+    // that server, which is already connected.
+    return (
+      <p className="muted">
+        {side === 'server' ? '这个服务端已经挂在它后面了。' : '这台机器上的服务端都已经连过来了。'}
+      </p>
+    )
   }
   return (
     <div className="netadd">

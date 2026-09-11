@@ -3465,8 +3465,49 @@ a:hover {
   border-radius: var(--radius);
 }
 
+/* Recessed for the same reason .netlink--other is, and it is the same rule:
+   on this card, a row with buttons is yours and a row without is not. This one
+   points at a machine the panel does not manage, so it never had buttons — but
+   it kept the raised surface, which put the one row nobody can act on at all
+   above the sub-servers somebody can. */
 .netlink--foreign {
+  background: none;
   color: var(--text-dim);
+}
+
+/* A row about two instances the reader is not one of: the proxy's *other*
+   sub-servers, read from one server's own page. Shown rather than filtered out,
+   because a sub-server table with rows missing is a picture of a file that does
+   not exist — and "which of the four am I, and is lobby2 already taken" is
+   precisely what somebody opens this card to find out. Recessed to the page
+   instead of raised off it, which is the whole difference between the rows with
+   buttons and the rows without. */
+.netlink--other {
+  background: none;
+  color: var(--text-dim);
+}
+
+/* The one thing such a row still does: it names an instance, and the name is
+   the way to the page where that link *is* editable. It stands in the address
+   slot and is painted like it — a title-weight button here would out-shout the
+   row that is actually yours. */
+.netlink__open {
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.netlink__open:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.netlink__open:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--ring);
 }
 
 .netlink__head {
