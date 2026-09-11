@@ -401,7 +401,6 @@ func (i *Instance) Start() error {
 		return fmt.Errorf("%w: 这个实例原来用启动脚本启动，请先在启动设置里指定核心和参数", ErrInvalidConfig)
 	}
 	switch {
-	case cfg.usesCustomCommand():
 	case len(cfg.ArgFiles) > 0:
 		// The jar form checks its jar; this form has to check its own target.
 		// Note that the jar check below cannot stand in for it: Jar is empty
@@ -501,16 +500,11 @@ func spawn(cfg Config, size viewport, tty bool) (spawned, error) {
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = cfg.Directory
 	cmd.Env = launchEnv()
-	// The Java choice reaches a script the only way it can: through the
-	// environment. A run.sh calls a bare "java", so without this the runtimes
-	// the panel downloaded are invisible to exactly the servers — Forge and
-	// friends — that are fussiest about which Java they get.
+	// The Java choice also reaches the process through the environment, not
+	// only through argv[0]: a server that shells out to a bare "java" of its
+	// own — an installer step, a restart helper — would otherwise miss the
+	// runtime the panel downloaded for it.
 	cmd.Env = withJavaEnv(cmd.Env, cfg.Java)
-	if cfg.usesCustomCommand() && cfg.javaToolOptionsEnabled() {
-		// Same reasoning for the console flags: commandLine returned the
-		// operator's argv verbatim, so consoleJVMArgs never went anywhere.
-		cmd.Env = withJavaToolOptions(cmd.Env, cfg.consoleJVMArgs(tty))
-	}
 	if tty {
 		cmd.Env = withTerminalEnv(cmd.Env)
 	}

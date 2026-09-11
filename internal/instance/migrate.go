@@ -28,11 +28,11 @@ import (
 // into one the panel builds the command line for. The bool reports whether
 // anything changed, and is false for every config that never used script mode.
 func migrateRetiredCommand(cfg Config) (Config, bool) {
-	if len(cfg.Command) == 0 {
+	if len(cfg.RetiredCommand) == 0 {
 		return cfg, false
 	}
-	original := slices.Clone(cfg.Command)
-	cfg.Command = nil
+	original := slices.Clone(cfg.RetiredCommand)
+	cfg.RetiredCommand = nil
 
 	if result, refusals := parseRetired(cfg, original); len(refusals) == 0 {
 		if migrated, err := applyLaunch(cfg, result); err == nil {

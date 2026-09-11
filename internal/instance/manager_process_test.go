@@ -22,7 +22,7 @@ func TestDeleteRefusesWhileRunning(t *testing.T) {
 	}
 	dir := created.Config().Directory
 	updated := created.Config()
-	updated.Command = fakeServer(t, dir, wellBehavedServer)
+	updated.Java, updated.Jar = fakeJava(t, dir, wellBehavedServer), "server.jar"
 	if _, err := mgr.Update(created.Config().ID, updated); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestStopAllEmptiesTheMachineAndLeavesTheInstancesUsable(t *testing.T) {
 			t.Fatalf("Create: %v", err)
 		}
 		cfg := created.Config()
-		cfg.Command = fakeServer(t, cfg.Directory, wellBehavedServer)
+		cfg.Java, cfg.Jar = fakeJava(t, cfg.Directory, wellBehavedServer), "server.jar"
 		if _, err := mgr.Update(cfg.ID, cfg); err != nil {
 			t.Fatalf("Update: %v", err)
 		}

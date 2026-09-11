@@ -181,8 +181,7 @@ func usersOf(instances []*instance.Instance, runtime javaruntime.Runtime) []*ins
 	var users []*instance.Instance
 	for _, inst := range instances {
 		cfg := inst.Config()
-		candidates := append([]string{cfg.Java}, cfg.Command...)
-		for _, candidate := range candidates {
+		for _, candidate := range []string{cfg.Java} {
 			if candidate == runtime.JavaPath || candidate == runtime.Path ||
 				strings.HasPrefix(candidate, prefix) {
 				users = append(users, inst)

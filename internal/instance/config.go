@@ -84,7 +84,12 @@ type Config struct {
 	// started. Those installers leave no runnable jar at all, so there is
 	// nothing for -jar to point at.
 	ArgFiles []string `json:"argFiles"`
-	Command  []string `json:"command"` // full argv; when set, the fields above are ignored
+	// RetiredCommand is not a launch path. It holds the argv of a config
+	// written before the panel stopped executing people's own start scripts,
+	// under the json key those files use, so that such a config still loads —
+	// and is then converted by migrateRetiredCommand and cleared. Nothing
+	// reads it to start anything.
+	RetiredCommand []string `json:"command,omitempty"`
 
 	// LegacyCommand is a tombstone, never executed. It holds the argv of an
 	// instance that used to launch through its own script, for the one case
@@ -110,17 +115,6 @@ type Config struct {
 	// ForceColor keeps ANSI colours on through a pipe. It has no effect in TTY
 	// mode, where the server can see a terminal and colours itself. Default true.
 	ForceColor *bool `json:"forceColor"`
-	// JavaToolOptions hands the panel's console JVM flags to a server whose
-	// command line the panel does not build, through the environment variable
-	// of the same name. It does nothing outside Command mode, where those
-	// flags already go on the command line.
-	//
-	// Without it a script-launched server picks its own charset and Chinese
-	// output comes back as mojibake, which is the single most common thing
-	// wrong with a custom launcher on this panel. The cost is one
-	// "Picked up JAVA_TOOL_OPTIONS:" line on stderr at every start — visible,
-	// harmless, and the reason this is a switch rather than a rule. Default true.
-	JavaToolOptions *bool `json:"javaToolOptions"`
 
 	// Supervision settings.
 	AutoStart      bool   `json:"autoStart"`      // start when the panel boots
@@ -172,14 +166,6 @@ func (c *Config) applyDefaults() {
 		// should behave like a console, not like a log file.
 		on := true
 		c.ForceColor = &on
-	}
-	if c.JavaToolOptions == nil {
-		// On by default, including for instances saved before the option
-		// existed: those are exactly the ones whose console has been showing
-		// mojibake, and the flags are overridable from the script itself,
-		// since the command line is applied after JAVA_TOOL_OPTIONS.
-		on := true
-		c.JavaToolOptions = &on
 	}
 	if c.TTY == nil {
 		// On by default, including for instances saved before the option
@@ -234,9 +220,6 @@ func (c *Config) validate() error {
 			}
 		}
 	}
-	if c.usesCustomCommand() && strings.TrimSpace(c.Command[0]) == "" {
-		return fmt.Errorf("%w: command's first element must be the executable", ErrInvalidConfig)
-	}
 	if _, ok := canonicalEncoding(c.Encoding); !ok {
 		return fmt.Errorf("%w: unknown console encoding %q", ErrInvalidConfig, c.Encoding)
 	}
@@ -273,27 +256,10 @@ func DefaultServerArgs(kind string) []string {
 // colour even though its stdout is a pipe.
 func (c *Config) colorForced() bool { return c.ForceColor == nil || *c.ForceColor }
 
-// javaToolOptionsEnabled reports whether the console JVM flags may travel
-// through the environment to a server the panel does not build a command line
-// for.
-func (c *Config) javaToolOptionsEnabled() bool {
-	return c.JavaToolOptions == nil || *c.JavaToolOptions
-}
-
-// UsesScript reports whether this instance launches through the operator's own
-// command line rather than the panel's java/jar one.
-//
-// It is the same question as usesCustomCommand, exported because it is the
-// axis the API and the UI branch on: in script mode the Java picker, the
-// memory fields and the argument lists do not build anything, and saying so is
-// most of what the launch settings page has to do.
-func (c Config) UsesScript() bool { return c.usesCustomCommand() }
-
 // EffectiveMaxMemoryMB is the heap ceiling this instance will actually run
 // with, which stops being MaxMemoryMB the moment the panel's -Xmx does not
-// reach the JVM — because a script owns the command line, or because the
-// launch is a list of @argfiles whose own -Xmx would win over anything put in
-// front of it.
+// reach the JVM: the launch is a list of @argfiles, and the -Xmx inside one of
+// them wins over anything put in front of it.
 //
 // Forge's run.sh passes @user_jvm_args.txt, so that file is the answer where
 // it exists. Zero means nobody knows — and a caller drawing a ceiling should
@@ -301,7 +267,7 @@ func (c Config) UsesScript() bool { return c.usesCustomCommand() }
 // memory chart with a -Xmx reference line invented out of a field the JVM
 // never saw is worse than a chart with no line at all.
 func (c Config) EffectiveMaxMemoryMB() int {
-	if !c.usesCustomCommand() && len(c.ArgFiles) == 0 {
+	if len(c.ArgFiles) == 0 {
 		return c.MaxMemoryMB
 	}
 	if c.Directory == "" {
@@ -364,16 +330,10 @@ func (c *Config) consoleJVMArgs(tty bool) []string {
 	return args
 }
 
-// usesCustomCommand reports whether this instance bypasses the java/jar path.
-func (c *Config) usesCustomCommand() bool { return len(c.Command) > 0 }
-
 // commandLine builds the argv used to launch the server. tty says which
 // console transport the process is about to get, since some of the JVM flags
 // exist only to paper over not having a terminal.
 func (c *Config) commandLine(tty bool) (string, []string, error) {
-	if c.usesCustomCommand() {
-		return c.Command[0], append([]string(nil), c.Command[1:]...), nil
-	}
 	console := c.consoleJVMArgs(tty)
 
 	if len(c.ArgFiles) > 0 {

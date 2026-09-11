@@ -101,30 +101,6 @@ func withJavaEnv(env []string, javaPath string) []string {
 	return env
 }
 
-// withJavaToolOptions passes JVM flags to a process the panel does not build a
-// command line for.
-//
-// The JVM applies JAVA_TOOL_OPTIONS before the command line, so every flag
-// here can still be overridden by the script itself — which is the same
-// precedence consoleJVMArgs has in jar mode, where it goes ahead of the
-// operator's own args. An inherited value is kept and placed after ours for
-// the same reason.
-//
-// The JVM prints "Picked up JAVA_TOOL_OPTIONS: ..." to stderr when this is
-// set. That line will appear in the console at every start; it is the price of
-// a server whose Chinese output is not mojibake, and Config.JavaToolOptions
-// turns it off for anyone who would rather have the quiet.
-func withJavaToolOptions(env []string, args []string) []string {
-	if len(args) == 0 {
-		return env
-	}
-	value := strings.Join(args, " ")
-	if inherited := envValue(env, "JAVA_TOOL_OPTIONS"); inherited != "" {
-		value += " " + inherited
-	}
-	return setEnv(env, "JAVA_TOOL_OPTIONS", value)
-}
-
 // terminalType is what a server on a pseudo-terminal is told it is talking to.
 //
 // The other end really is an xterm — xterm.js, driving the same escape

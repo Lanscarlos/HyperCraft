@@ -18,7 +18,7 @@ func scripted(t *testing.T, name, body string, command ...string) Config {
 	if name != "" {
 		write(t, filepath.Join(cfg.Directory, name), body)
 	}
-	cfg.Command = command
+	cfg.RetiredCommand = command
 	return cfg
 }
 
@@ -29,8 +29,8 @@ func TestMigrationConvertsAScriptedInstance(t *testing.T) {
 	if !changed {
 		t.Fatal("want the config to be migrated")
 	}
-	if len(got.Command) != 0 {
-		t.Errorf("Command = %q, want it retired", got.Command)
+	if len(got.RetiredCommand) != 0 {
+		t.Errorf("Command = %q, want it retired", got.RetiredCommand)
 	}
 	if got.NeedsLaunchSetup {
 		t.Error("NeedsLaunchSetup is set on a config that converted cleanly")
@@ -93,8 +93,8 @@ func TestMigrationFlagsWhatItCannotConvert(t *testing.T) {
 	if !slices.Equal(got.LegacyCommand, []string{"./bedrock_server"}) {
 		t.Errorf("LegacyCommand = %q, want the original argv kept for the operator", got.LegacyCommand)
 	}
-	if len(got.Command) != 0 {
-		t.Errorf("Command = %q, want it retired even when the migration failed", got.Command)
+	if len(got.RetiredCommand) != 0 {
+		t.Errorf("Command = %q, want it retired even when the migration failed", got.RetiredCommand)
 	}
 }
 
@@ -209,8 +209,8 @@ func TestLoadMigratesScriptedInstancesAndSavesThem(t *testing.T) {
 		t.Error("b was not flagged as needing launch settings")
 	}
 	for id, cfg := range got {
-		if len(cfg.Command) != 0 {
-			t.Errorf("%s still carries a command: %q", id, cfg.Command)
+		if len(cfg.RetiredCommand) != 0 {
+			t.Errorf("%s still carries a command: %q", id, cfg.RetiredCommand)
 		}
 	}
 	if len(store.saved) != 2 {

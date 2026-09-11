@@ -37,11 +37,6 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
   const [jar, setJar] = useState('')
   const [maxMemoryMB, setMaxMemoryMB] = useState(4096)
   const [found, setFound] = useState<HostInspection | null>(null)
-  // Ticked by default whenever the directory has a run.sh: that is how its
-  // owner already starts it, and for a modern Forge install it is the only way
-  // it starts at all. Untickable all the same — a directory can hold both a
-  // script and a perfectly good jar.
-  const [useScript, setUseScript] = useState(true)
   const [scanning, setScanning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -87,10 +82,6 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
   const taken = found?.takenBy
   const missing = found !== null && !found.exists
   const blocked = directory.trim() === '' || Boolean(taken) || missing
-  // The installer's own start script, when this directory has one. Its
-  // presence changes what is being adopted, so it is read once here and used
-  // by both the form and the submit.
-  const script0 = useScript ? (found?.launchScript ?? '') : ''
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -102,19 +93,13 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
       // a server would hand it --nogui, "stop" and a 服务器配置 page about a
       // file it does not have.
       const proxy = found?.proxy === true
-      // A directory whose installer left a run.sh is adopted the way its owner
-      // already starts it. Forge from 1.17 on has no runnable jar to point at,
-      // so importing it as a jar instance would produce one that cannot start
-      // and no hint as to why.
-      const script = script0 ? [`./${script0}`] : []
       const created = await api.createInstance({
         kind: proxy ? 'proxy' : 'server',
         name: name.trim(),
         directory: directory.trim(),
-        jar: script.length > 0 ? '' : jar.trim(),
+        jar: jar.trim(),
         loader: found?.loader ?? '',
         gameVersion: found?.gameVersion ?? '',
-        command: script,
         maxMemoryMB,
         minMemoryMB: Math.min(1024, maxMemoryMB),
         serverArgs: proxy ? [] : ['--nogui'],
@@ -163,27 +148,8 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
               <small>面板里怎么称呼它，随时可以改，和目录名无关。</small>
             </label>
 
-            {found.launchScript ? (
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={useScript}
-                  onChange={(e) => setUseScript(e.target.checked)}
-                />
-                <span>用目录里的 {found.launchScript} 启动（推荐）</span>
-                <small>
-                  {found.loader
-                    ? `这是一个 ${found.loader === 'neoforge' ? 'NeoForge' : 'Forge'} 服务端${
-                        found.gameVersion ? `（${found.gameVersion}）` : ''
-                      }，它没有可以直接跑的 jar —— 启动方式就是这个脚本。`
-                    : '目录里有这个启动脚本，按它原来的方式启动最稳妥。'}
-                  面板会原样执行它，只是把选中的 Java 放到 PATH 最前面。
-                  不勾就回到「面板拼命令」，得自己指定 jar。
-                </small>
-              </label>
-            ) : null}
 
-            {!script0 && (
+            {(
               <label className="field">
                 <span>服务端 jar 文件名</span>
                 <input
@@ -218,11 +184,7 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
                 value={maxMemoryMB}
                 onChange={(e) => setMaxMemoryMB(Number(e.target.value))}
               />
-              <small>
-                {script0
-                  ? '脚本自己决定内存，这个数只是面板用来画图的参考 —— Forge 的话，导入后可以在「实例设置」里直接改 user_jvm_args.txt。'
-                  : '原来的启动脚本用多少就填多少；导入不会去读那个脚本。'}
-              </small>
+              <small>原来用多少就填多少，导入后在「实例设置」里随时能改。</small>
             </label>
           </>
         )}
