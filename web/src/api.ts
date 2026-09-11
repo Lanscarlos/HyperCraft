@@ -633,6 +633,7 @@ export const api = {
   updateStatus: () => request<UpdateStatus>('GET', '/api/update'),
   checkUpdate: () => request<UpdateStatus>('POST', '/api/update/check'),
   applyUpdate: () => request<UpdateStatus>('POST', '/api/update/apply'),
+  rollbackUpdate: () => request<UpdateStatus>('POST', '/api/update/rollback'),
   setUpdateMirror: (mirror: string) =>
     request<UpdateStatus>('PUT', '/api/update/mirror', { mirror }),
   setUpdateChannel: (channel: UpdateChannel) =>

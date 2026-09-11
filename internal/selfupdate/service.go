@@ -64,6 +64,24 @@ type Hooks struct {
 	// servers on some later, unrelated restart.
 	ServersAborted func()
 
+	// RecordPrevious persists the version the update just replaced, which is
+	// the version <exe>.old now holds. Nothing on disk says what that file is,
+	// so without this a rollback has no target it can name or verify.
+	//
+	// Called only after the swap succeeded: a panel that failed to install
+	// would otherwise claim a rollback target that is the binary it is already
+	// running.
+	RecordPrevious func(version string)
+
+	// BackupState copies the panel's own state files somewhere safe and returns
+	// where they went. Called before a downgrade and only before a downgrade:
+	// an older build drops the fields it does not know the first time it writes
+	// one of those files back, and this copy is the only way back from that.
+	//
+	// Returning an error abandons the rollback with nothing touched — the
+	// backup is the reason a downgrade is safe to offer at all.
+	BackupState func(from, to string) (string, error)
+
 	// TriggerRestart asks the panel to shut down and then exec the newly
 	// installed binary, whose path it is given. By the time it runs the servers
 	// are already down. It must not block, and it must use that path rather
@@ -97,6 +115,17 @@ type Status struct {
 	CurrentIsSnapshot bool `json:"currentIsSnapshot"`
 	// LatestIsPrerelease marks the offered version as a snapshot or rc.
 	LatestIsPrerelease bool `json:"latestIsPrerelease"`
+	// PreviousVersion is the build <exe>.old holds — what a rollback would put
+	// back. Empty means no update has ever run on this panel.
+	PreviousVersion string `json:"previousVersion,omitempty"`
+	// RollbackAvailable means that binary is there, runs, and reports the
+	// version that was recorded. RollbackWhy carries the reason when it does
+	// not, so the UI can say what is wrong instead of hiding the button.
+	RollbackAvailable bool   `json:"rollbackAvailable"`
+	RollbackWhy       string `json:"rollbackWhy,omitempty"`
+	// BackupDir is where the state files were copied before the rollback that
+	// is running, or the last one this process performed.
+	BackupDir string `json:"backupDir,omitempty"`
 	// Downgrade means installing the offered version moves backwards; see
 	// Updater.Offer for the one case that happens in.
 	Downgrade bool `json:"downgrade"`
@@ -120,6 +149,20 @@ type Service struct {
 	progress  int
 	lastErr   string
 	shutdown  *Shutdown
+
+	// previous is the version <exe>.old holds, as recorded by the update that
+	// put it there, and rollbackPath/rollbackWhy are what asking that file
+	// about itself concluded. Cached rather than derived on demand: deciding
+	// costs a process launch, and the UI polls this status every few seconds.
+	// Refreshed when the record changes, which is the only thing that can make
+	// the answer change while the panel runs.
+	previous     string
+	rollbackPath string
+	rollbackWhy  string
+
+	// backupDir is where the last downgrade put the panel's state files, so the
+	// UI can tell the operator where to find them.
+	backupDir string
 }
 
 func NewService(repo, currentVersion, mirror string, channel Channel, hooks Hooks, log *slog.Logger) *Service {
@@ -164,6 +207,24 @@ func (s *Service) SetChannel(c Channel) error {
 	s.checkedAt = time.Time{}
 	s.checkErr = ""
 	return nil
+}
+
+// SetPreviousVersion records which version <exe>.old holds and works out
+// whether it can be rolled back to, caching the answer for Status.
+//
+// Called at startup with what panel.json remembers, and again whenever an
+// update replaces the binary. Both are the moments the answer can change; the
+// probe it runs is why this is not done per status poll.
+func (s *Service) SetPreviousVersion(v string) {
+	// Deliberately outside the lock: this launches a process, and the status
+	// the UI polls should not queue behind it.
+	path, why := s.up.InspectRollback(v)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.previous = v
+	s.rollbackPath = path
+	s.rollbackWhy = why
 }
 
 // Run checks on startup and then on a timer until ctx is cancelled.
@@ -232,6 +293,10 @@ func (s *Service) statusLocked() Status {
 		Mirror:            s.up.Mirror(),
 		Channel:           s.up.Channel(),
 		CurrentIsSnapshot: IsReleaseVersion(s.up.CurrentVersion()) && !IsStableVersion(s.up.CurrentVersion()),
+		PreviousVersion:   s.previous,
+		RollbackAvailable: s.rollbackPath != "",
+		RollbackWhy:       s.rollbackWhy,
+		BackupDir:         s.backupDir,
 		Eligible:          true,
 	}
 	if !s.checkedAt.IsZero() {
@@ -335,6 +400,15 @@ func (s *Service) Apply(ctx context.Context) error {
 func (s *Service) apply(ctx context.Context, rel *Release) error {
 	s.log.Info("update starting", "from", s.up.CurrentVersion(), "to", rel.Version)
 
+	// Installing something older — leaving the snapshot track is the way this
+	// happens here — loses whatever the older build does not know about, the
+	// same as a rollback does. Copied before anything else, while the fields
+	// are still in the files. See Service.rollback, which does this for the
+	// binary next door.
+	if err := s.backupBeforeDowngrade(rel.Version); err != nil {
+		return err
+	}
+
 	type download struct {
 		staged *Staged
 		err    error
@@ -397,6 +471,14 @@ func (s *Service) apply(ctx context.Context, rel *Release) error {
 		return err
 	}
 	s.log.Info("new binary installed", "version", rel.Version)
+
+	// The binary this replaced is now <exe>.old. Recorded here, between the
+	// swap and the restart, because it is the last moment this process knows
+	// both versions.
+	if s.hooks.RecordPrevious != nil {
+		s.hooks.RecordPrevious(s.up.CurrentVersion())
+	}
+	s.SetPreviousVersion(s.up.CurrentVersion())
 
 	s.mu.Lock()
 	s.phase = PhaseRestarting

@@ -2135,6 +2135,15 @@ export interface UpdateStatus {
   downgrade: boolean
   /** Present while an update is running: the servers it is stopping. */
   shutdown?: UpdateShutdown
+  /** The build sitting next to the running binary, left there by the update
+   *  that replaced it. Absent on a panel that has never updated itself. */
+  previousVersion?: string
+  /** True when that build is there, runs, and reports the version recorded for
+   *  it. False with a reason in rollbackWhy when it does not. */
+  rollbackAvailable: boolean
+  rollbackWhy?: string
+  /** Where the panel's state files were copied before the last downgrade. */
+  backupDir?: string
 }
 
 export type UpdateChannel = 'stable' | 'snapshot'

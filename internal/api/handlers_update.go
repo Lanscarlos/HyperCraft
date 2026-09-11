@@ -85,6 +85,45 @@ func (s *Server) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, s.updater.Status())
 }
 
+// handleUpdateRollback puts the panel back on the build the last update
+// replaced, which is sitting next to the running binary. Like an update it
+// outlives this request: it ends by stopping every server and replacing the
+// process. The UI follows it on GET /api/update, the same as an update.
+func (s *Server) handleUpdateRollback(w http.ResponseWriter, r *http.Request) {
+	if !s.updaterReady(w) {
+		return
+	}
+
+	status := s.updater.Status()
+	switch {
+	case !status.RollbackAvailable:
+		// The status already carries a reason in the operator's language —
+		// nothing recorded, the file is gone, it reports a different version.
+		why := status.RollbackWhy
+		if why == "" {
+			why = "现在没有可以退回的版本"
+		}
+		writeError(w, http.StatusBadRequest, why)
+		return
+	case status.Phase != selfupdate.PhaseIdle:
+		writeError(w, http.StatusConflict, "更新正在进行中")
+		return
+	}
+
+	s.log.Info("rollback requested", "from", status.CurrentVersion, "to", status.PreviousVersion)
+
+	// Not r.Context(): that is cancelled as soon as this response is written.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), applyTimeout)
+		defer cancel()
+		if err := s.updater.Rollback(ctx); err != nil {
+			s.log.Error("rollback failed", "err", err)
+		}
+	}()
+
+	writeJSON(w, http.StatusAccepted, s.updater.Status())
+}
+
 type mirrorRequest struct {
 	// Mirror is a URL prefix, or "" to download straight from GitHub.
 	Mirror string `json:"mirror"`

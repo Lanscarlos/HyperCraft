@@ -513,3 +513,78 @@ func waitForPhase(t *testing.T, svc *Service, phase Phase) {
 	}
 	t.Fatalf("updater never reached phase %q", phase)
 }
+
+func TestApplyRecordsTheVersionItReplaced(t *testing.T) {
+	// Commit leaves the old binary at <exe>.old, and nothing on disk says which
+	// version that file is. Recording it here is what later makes a rollback
+	// offerable at all — and it has to be recorded after the swap, or a panel
+	// that failed to install would claim a rollback target it does not have.
+	want := []byte("the new binary contents")
+	f := newFakeRelease(t, "1.2.0", want)
+
+	var recorded string
+	var exeWhenRecorded []byte
+	exe := filepath.Join(t.TempDir(), "hypercraft")
+
+	svc := NewService("owner/repo", "v1.0.0", "", ChannelStable, Hooks{
+		StopServers:    func(context.Context, func(Shutdown)) error { return nil },
+		TriggerRestart: func(string) {},
+		RecordPrevious: func(version string) {
+			recorded = version
+			exeWhenRecorded, _ = os.ReadFile(exe)
+		},
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	if err := os.WriteFile(exe, []byte("old binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	svc.up.apiBase = f.server.URL
+	svc.up.exePath = exe
+
+	if _, err := svc.Check(context.Background()); err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if err := svc.Apply(context.Background()); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	if recorded != "v1.0.0" {
+		t.Errorf("recorded previous version %q, want the version being replaced, v1.0.0", recorded)
+	}
+	if !bytes.Equal(exeWhenRecorded, want) {
+		t.Errorf("recorded before the swap: the binary held %q at that point", exeWhenRecorded)
+	}
+}
+
+func TestAFailedUpdateRecordsNoRollbackTarget(t *testing.T) {
+	// Nothing was replaced, so <exe>.old is whatever it was before — claiming
+	// the version this update failed to leave would point a rollback at the
+	// binary that is already running.
+	f := newFakeRelease(t, "1.2.0", []byte("never installed"))
+
+	recorded := false
+	svc := NewService("owner/repo", "v1.0.0", "", ChannelStable, Hooks{
+		StopServers: func(context.Context, func(Shutdown)) error {
+			return errors.New("a world refused to save")
+		},
+		TriggerRestart: func(string) {},
+		RecordPrevious: func(string) { recorded = true },
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	exe := filepath.Join(t.TempDir(), "hypercraft")
+	if err := os.WriteFile(exe, []byte("old binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	svc.up.apiBase = f.server.URL
+	svc.up.exePath = exe
+
+	if _, err := svc.Check(context.Background()); err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if err := svc.Apply(context.Background()); err == nil {
+		t.Fatal("Apply succeeded although the shutdown failed")
+	}
+	if recorded {
+		t.Error("a failed update recorded a rollback target")
+	}
+}

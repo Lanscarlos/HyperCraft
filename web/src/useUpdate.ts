@@ -21,6 +21,10 @@ export interface UpdateController {
   checking: boolean
   check: () => Promise<void>
   apply: () => Promise<void>
+  rollback: () => Promise<void>
+  /** Which of the two is running, so the busy view can describe the right one.
+   *  A rollback downloads nothing, which makes the update copy wrong for it. */
+  action: 'update' | 'rollback' | null
   setMirror: (mirror: string) => Promise<void>
   setChannel: (channel: UpdateChannel) => Promise<void>
 }
@@ -38,6 +42,7 @@ export interface UpdateController {
 export function useUpdate(enabled: boolean): UpdateController {
   const [status, setStatus] = useState<UpdateStatus | null>(null)
   const [updating, setUpdating] = useState(false)
+  const [action, setAction] = useState<'update' | 'rollback' | null>(null)
   const [restarting, setRestarting] = useState(false)
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -127,9 +132,22 @@ export function useUpdate(enabled: boolean): UpdateController {
     try {
       const next = await api.applyUpdate()
       setStatus(next)
+      setAction('update')
       setUpdating(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : '更新失败')
+    }
+  }, [])
+
+  const rollback = useCallback(async () => {
+    setError(null)
+    try {
+      const next = await api.rollbackUpdate()
+      setStatus(next)
+      setAction('rollback')
+      setUpdating(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '回退失败')
     }
   }, [])
 
@@ -168,6 +186,8 @@ export function useUpdate(enabled: boolean): UpdateController {
     checking,
     check,
     apply,
+    rollback,
+    action,
     setMirror,
     setChannel,
   }

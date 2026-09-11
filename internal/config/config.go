@@ -48,6 +48,16 @@ type Panel struct {
 	// there is nothing to express beyond the two channels, and stable is both
 	// the default and the safe answer for anything unrecognised.
 	UpdateChannel string `json:"updateChannel,omitempty"`
+	// PreviousVersion is the version <exe>.old holds — the build this panel
+	// updated away from, kept beside the running binary by Staged.Commit.
+	// Empty means there is nothing to roll back to: a fresh install, or a
+	// binary put in place by hand rather than by an update.
+	//
+	// Recorded here rather than derived from the file, because the file itself
+	// says nothing about which version it is, and asking it costs a process
+	// launch. See selfupdate.Updater.InspectRollback, which does ask it before
+	// trusting this field.
+	PreviousVersion string `json:"previousVersion,omitempty"`
 	// JavaSource is where Java runtime downloads are pulled from, by the id of
 	// one of javaruntime's sources. Empty means the automatic choice, which is
 	// both the default and what every config written before sources existed

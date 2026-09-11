@@ -3820,6 +3820,21 @@ details[open]::details-content {
   font-weight: 600;
 }
 
+/* Separated like the pickers below it, and for the same reason: it is a
+   different question from "install what is available". The heading earns its
+   place because this is the one action on the page that goes backwards. */
+.update__rollback {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.update__subtitle {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
 .update__mirror {
   margin-top: 14px;
   padding-top: 12px;
