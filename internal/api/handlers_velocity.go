@@ -199,10 +199,10 @@ func (s *Server) handleGetVelocity(w http.ResponseWriter, r *http.Request) {
 		s.writeFileError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, s.velocityResponse(inst, file, exists))
+	writeJSON(w, http.StatusOK, s.velocityResponse(r, inst, file, exists))
 }
 
-func (s *Server) velocityResponse(inst *instance.Instance, file *velocitycfg.File, exists bool) velocityResponse {
+func (s *Server) velocityResponse(r *http.Request, inst *instance.Instance, file *velocitycfg.File, exists bool) velocityResponse {
 	known := make([]velocitySettingUI, 0, len(velocitySettings))
 	entries := make([]velocitycfg.Entry, 0, len(velocitySettings))
 	for _, setting := range velocitySettings {
@@ -240,7 +240,7 @@ func (s *Server) velocityResponse(inst *instance.Instance, file *velocitycfg.Fil
 		Try:      try,
 		Forced:   forced,
 		Secret:   s.readForwardingSecret(inst, file),
-		Suggests: s.subServerSuggestions(inst, servers),
+		Suggests: s.subServerSuggestions(r, inst, servers),
 	}
 }
 
@@ -274,7 +274,7 @@ func (s *Server) readForwardingSecret(inst *instance.Instance, file *velocitycfg
 
 // subServerSuggestions are the other instances on this panel, with the address
 // their own server.properties says they listen on.
-func (s *Server) subServerSuggestions(proxy *instance.Instance, servers []velocityServer) []velocityCandidate {
+func (s *Server) subServerSuggestions(r *http.Request, proxy *instance.Instance, servers []velocityServer) []velocityCandidate {
 	taken := make(map[string]bool, len(servers))
 	for _, server := range servers {
 		taken[strings.ToLower(server.Address)] = true
@@ -286,7 +286,7 @@ func (s *Server) subServerSuggestions(proxy *instance.Instance, servers []veloci
 		used[strings.ToLower(server.Name)] = true
 	}
 
-	for _, other := range s.mgr.List() {
+	for _, other := range s.visibleInstances(r) {
 		cfg := other.Config()
 		if cfg.ID == proxy.Config().ID || cfg.IsProxy() {
 			continue
@@ -479,7 +479,7 @@ func (s *Server) handlePutVelocity(w http.ResponseWriter, r *http.Request) {
 
 	s.snapshotAfter(inst, confighist.TriggerUser, actorOf(r), "编辑 velocity.toml")
 	s.log.Info("velocity.toml saved", "instance", inst.Config().Name, "keys", len(req.Entries))
-	writeJSON(w, http.StatusOK, s.velocityResponse(inst, file, true))
+	writeJSON(w, http.StatusOK, s.velocityResponse(r, inst, file, true))
 }
 
 // applyVelocitySetting writes one value in the type its key is declared with.

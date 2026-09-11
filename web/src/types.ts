@@ -1773,6 +1773,11 @@ export interface User {
   roleId: string
   roleName: string
   /**
+   * The servers this account may touch; `null` means every server. Capabilities
+   * say what may be done, this says to which servers, and a request needs both.
+   */
+  instances: string[] | null
+  /**
    * Every capability this account has, in the vocabulary's own order. The
    * browser hides what it cannot use from this rather than from the role name:
    * a role is a set that an operator edits, so re-deriving it here would be a
@@ -1851,11 +1856,37 @@ export interface Account {
   roleId: string
   roleName: string
   disabled: boolean
+  /**
+   * The servers this account may touch, by id. `null` means every server,
+   * including ones created later; `[]` means none at all. The two are different
+   * and the editor has to keep them different — "I did not set this" and "I set
+   * this to nothing" are opposite intentions.
+   */
+  instances: string[] | null
   /** How many pairings this account holds, so the UI can say what deleting it cuts off. */
   devices: number
   createdAt: string
   /** The caller's own row. */
   self: boolean
+}
+
+/** What creating an account needs. */
+export interface NewAccount {
+  username: string
+  displayName?: string
+  roleId: string
+  password: string
+  /** null means every server; [] means none. See Account.instances. */
+  instances: string[] | null
+}
+
+/** The editable part of an account. Password is changed separately. */
+export interface AccountEdit {
+  username: string
+  displayName?: string
+  roleId: string
+  instances: string[] | null
+  disabled: boolean
 }
 
 /** One role: a named set of capabilities. */

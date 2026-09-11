@@ -21,7 +21,7 @@ const memberPass = "member-password-1"
 func (e *testEnv) asMember(username, role string) *testEnv {
 	e.t.Helper()
 
-	if _, err := e.accounts.AddUser(username, "", role, memberPass); err != nil {
+	if _, err := e.accounts.AddUser(username, "", role, memberPass, nil); err != nil {
 		e.t.Fatalf("AddUser(%s): %v", username, err)
 	}
 

@@ -1,6 +1,10 @@
 package authz
 
-import "testing"
+import (
+	"os"
+	"regexp"
+	"testing"
+)
 
 func TestCatalogueIsWellFormed(t *testing.T) {
 	seen := make(map[Cap]bool, len(catalogue))
@@ -55,5 +59,34 @@ func TestAllIsACopy(t *testing.T) {
 	got[0] = Info{}
 	if All()[0] != first {
 		t.Fatal("All() hands out the catalogue itself, not a copy")
+	}
+}
+
+// TestFrontendCapabilityIdsExist checks the capability ids the browser gates on
+// against the vocabulary they are meant to name.
+//
+// The front end hides what an account cannot use. A typo in one of those ids
+// fails closed — the page is hidden from somebody who is allowed to see it —
+// which is safe and completely invisible, so nothing else would catch it. The
+// ids live in one file for exactly this reason.
+func TestFrontendCapabilityIdsExist(t *testing.T) {
+	const source = "../../web/src/useCan.tsx"
+
+	data, err := os.ReadFile(source)
+	if err != nil {
+		t.Skipf("cannot read %s: %v", source, err)
+	}
+
+	// The CAP block's entries, as `name: 'capability:id',`.
+	entry := regexp.MustCompile(`(?m)^\s+\w+:\s+'([^']+)',`)
+	matches := entry.FindAllStringSubmatch(string(data), -1)
+	if len(matches) == 0 {
+		t.Fatalf("no capability ids found in %s; if the CAP block moved, move this test with it", source)
+	}
+
+	for _, match := range matches {
+		if !Valid(Cap(match[1])) {
+			t.Errorf("%s names %q, which is not in the vocabulary", source, match[1])
+		}
 	}
 }

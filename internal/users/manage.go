@@ -77,7 +77,7 @@ func presetRoles() []Role {
 }
 
 // AddUser creates an account.
-func (r *Registry) AddUser(username, displayName, roleID, password string) (User, error) {
+func (r *Registry) AddUser(username, displayName, roleID, password string, instances []string) (User, error) {
 	name, err := CleanUsername(username)
 	if err != nil {
 		return User{}, err
@@ -106,6 +106,7 @@ func (r *Registry) AddUser(username, displayName, roleID, password string) (User
 		Username:    name,
 		DisplayName: strings.TrimSpace(displayName),
 		RoleID:      roleID,
+		Instances:   normaliseGrant(roleID, instances),
 		Credential:  cred,
 		CreatedAt:   time.Now(),
 	}
@@ -120,7 +121,9 @@ type Edit struct {
 	Username    string
 	DisplayName string
 	RoleID      string
-	Disabled    bool
+	// Instances is the server grant; nil means every server. See User.Instances.
+	Instances []string
+	Disabled  bool
 }
 
 // UpdateUser applies an edit, refusing the two that would lock everybody out:
@@ -154,6 +157,7 @@ func (r *Registry) UpdateUser(id string, edit Edit) (User, error) {
 	u.Username = name
 	u.DisplayName = strings.TrimSpace(edit.DisplayName)
 	u.RoleID = edit.RoleID
+	u.Instances = normaliseGrant(edit.RoleID, edit.Instances)
 	u.Disabled = edit.Disabled
 	r.users[idx] = u
 	r.reindex()
@@ -321,6 +325,25 @@ func cleanCaps(caps []authz.Cap) ([]authz.Cap, error) {
 		}
 	}
 	return kept, nil
+}
+
+// normaliseGrant cleans a server grant, and forces an administrator's to nil.
+//
+// Restricting an administrator would be theatre: they can edit their own grant.
+// Worse, it would be theatre that locks somebody out of a server while leaving
+// them able to unlock it, which reads as a bug from both sides.
+func normaliseGrant(roleID string, instances []string) []string {
+	if roleID == RoleAdmin || instances == nil {
+		return nil
+	}
+	kept := make([]string, 0, len(instances))
+	for _, id := range instances {
+		id = strings.TrimSpace(id)
+		if id != "" && !slices.Contains(kept, id) {
+			kept = append(kept, id)
+		}
+	}
+	return kept
 }
 
 // ByUsername finds an account by login name, case-insensitively. Used by the

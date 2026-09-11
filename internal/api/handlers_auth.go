@@ -122,8 +122,11 @@ type userResponse struct {
 	// role name: hiding a button is a question about one capability, and
 	// re-deriving the answer from a role would put a second copy of the role
 	// table in the front end.
-	RoleID       string      `json:"roleId"`
-	RoleName     string      `json:"roleName"`
+	RoleID   string `json:"roleId"`
+	RoleName string `json:"roleName"`
+	// Instances is the caller's server grant, null for "every server". The
+	// browser needs it to know whether to offer a server picker at all.
+	Instances    []string    `json:"instances"`
 	Capabilities []authz.Cap `json:"capabilities"`
 	Version      string      `json:"version"`
 	// Device names the pairing when the request authenticated with a device
@@ -248,6 +251,7 @@ func (s *Server) describeUser(who principal, client, remote string) userResponse
 		DisplayName:  who.user.DisplayName,
 		RoleID:       who.user.RoleID,
 		RoleName:     roleName,
+		Instances:    who.user.Instances,
 		Capabilities: caps,
 		Version:      s.version,
 		Client:       client,

@@ -132,7 +132,7 @@ func (s *Server) handleJavaOverview(w http.ResponseWriter, r *http.Request) {
 		overview.Platform = javaruntime.Platform{Warning: err.Error()}
 	}
 
-	instances := s.mgr.List()
+	instances := s.visibleInstances(r)
 	for _, runtime := range runtimes {
 		view := runtimeView{Runtime: runtime, UsedBy: []string{}}
 		for _, inst := range usersOf(instances, runtime) {
@@ -298,7 +298,9 @@ func (s *Server) handleDeleteJava(w http.ResponseWriter, r *http.Request) {
 		s.writeJavaError(w, err)
 		return
 	}
-	for _, inst := range usersOf(s.mgr.List(), runtime) {
+	// Every instance: deleting a runtime a server is running on breaks that
+	// server whether or not the caller can see it. See allInstances.
+	for _, inst := range usersOf(s.allInstances(), runtime) {
 		if inst.State().Running() {
 			writeError(w, http.StatusConflict,
 				"实例「"+inst.Config().Name+"」正在用这个 Java 运行，先停掉它再删除")

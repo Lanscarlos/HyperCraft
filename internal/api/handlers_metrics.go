@@ -69,9 +69,11 @@ type instanceCounts struct {
 	Running int `json:"running"`
 }
 
-func (s *Server) handleSystem(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
 	var counts instanceCounts
-	for _, inst := range s.mgr.List() {
+	// The caller's own servers: this is the dashboard's "3 台，2 台在运行",
+	// and counting servers somebody cannot see would make it unreadable.
+	for _, inst := range s.visibleInstances(r) {
 		counts.Total++
 		if inst.State().Running() {
 			counts.Running++

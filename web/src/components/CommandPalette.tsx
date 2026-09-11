@@ -2,9 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { DUR } from '../motion'
 import type { Route } from '../routes'
-import { HOST_SECTIONS, LIBRARY_SECTIONS, LIBRARY_VIEWS, SETTINGS_SECTIONS, defaultView } from '../routes'
+import {
+  HOST_ENTRY_CAPS,
+  HOST_SECTIONS,
+  LIBRARY_SECTIONS,
+  LIBRARY_VIEWS,
+  SETTINGS_SECTIONS,
+  defaultView,
+} from '../routes'
 import type { InstanceStatus } from '../types'
 import { STATE_LABELS, isLive } from '../types'
+import { CAP, useCan } from '../useCan'
 import { useDismiss } from '../useDismiss'
 import { Icon } from './Icon'
 
@@ -42,6 +50,11 @@ export function CommandPalette({
   onCreate,
   onImport,
 }: Props) {
+  const can = useCan()
+  const reachableHost = useMemo(
+    () => new Set(HOST_ENTRY_CAPS.filter(([, cap]) => can(cap)).map(([id]) => id)),
+    [can],
+  )
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
   const input = useRef<HTMLInputElement | null>(null)
@@ -71,24 +84,37 @@ export function CommandPalette({
       })
     }
 
-    items.push(
-      { id: 'p:overview', group: '页面', label: '概览', keywords: 'dashboard shouye 首页', run: go({ kind: 'overview' }) },
-      {
+    // Destinations are filtered the same way the sidebar filters them. A
+    // palette that offers a page the panel will refuse is worse than a sidebar
+    // that does, because the palette is where you go when you cannot find
+    // something — being told it exists and then refused is the wrong answer
+    // twice.
+    items.push({
+      id: 'p:overview',
+      group: '页面',
+      label: '概览',
+      keywords: 'dashboard shouye 首页',
+      run: go({ kind: 'overview' }),
+    })
+    if (can(CAP.instanceView)) {
+      items.push({
         id: 'p:instances',
         group: '页面',
         label: '所有实例',
         keywords: 'instances list',
         run: go({ kind: 'instances', query: '', state: 'all' }),
-      },
-      {
+      })
+    }
+    if (can(CAP.panelNetwork)) {
+      items.push({
         id: 'p:network',
         group: '页面',
         label: '代理连线',
         keywords: 'network proxy velocity 拓扑 子服 群组 跨服',
         run: go({ kind: 'network' }),
-      },
-    )
-    for (const section of LIBRARY_SECTIONS) {
+      })
+    }
+    for (const section of LIBRARY_SECTIONS.filter((entry) => can(entry.cap))) {
       // Every second-level page too: 插件源 and 下载核心 are exactly the kind
       // of destination you reach for by name rather than by remembering which
       // entry they were filed under.
@@ -103,7 +129,7 @@ export function CommandPalette({
         })
       }
     }
-    for (const section of HOST_SECTIONS) {
+    for (const section of HOST_SECTIONS.filter((entry) => reachableHost.has(entry.id))) {
       items.push({
         id: `p:host:${section.id}`,
         group: '页面',
@@ -113,7 +139,7 @@ export function CommandPalette({
         run: go({ kind: 'host', section: section.id }),
       })
     }
-    for (const section of SETTINGS_SECTIONS) {
+    for (const section of SETTINGS_SECTIONS.filter((entry) => !entry.cap || can(entry.cap))) {
       items.push({
         id: `p:set:${section.id}`,
         group: '页面',
@@ -123,25 +149,27 @@ export function CommandPalette({
       })
     }
 
-    items.push(
-      {
-        id: 'a:new',
-        group: '操作',
-        label: '新建实例',
-        keywords: 'create new server',
-        run: onCreate,
-      },
-      {
-        id: 'a:import',
-        group: '操作',
-        label: '导入现有目录',
-        keywords: 'import adopt existing daoru 导入 已有',
-        run: onImport,
-      },
-    )
+    if (can(CAP.panelCreate)) {
+      items.push(
+        {
+          id: 'a:new',
+          group: '操作',
+          label: '新建实例',
+          keywords: 'create new server',
+          run: onCreate,
+        },
+        {
+          id: 'a:import',
+          group: '操作',
+          label: '导入现有目录',
+          keywords: 'import adopt existing daoru 导入 已有',
+          run: onImport,
+        },
+      )
+    }
 
     return items
-  }, [instances, onNavigate, onCreate, onImport])
+  }, [instances, onNavigate, onCreate, onImport, can, reachableHost])
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase()

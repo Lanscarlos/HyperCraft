@@ -275,7 +275,14 @@ func (s *Server) routes() http.Handler {
 	// to get it wrong.
 	protected := http.NewServeMux()
 	for _, rt := range s.protectedRoutes() {
-		protected.HandleFunc(rt.pattern, s.requireCaps(rt.need, rt.handler))
+		handler := s.requireCaps(rt.need, rt.handler)
+		// The grant is checked outside the capability, so a server the caller
+		// may not see answers 404 rather than telling them which capability
+		// they would have needed for it. See scope.go.
+		if instanceScopedPattern(rt.pattern) {
+			handler = s.requireInstance(handler)
+		}
+		protected.HandleFunc(rt.pattern, handler)
 	}
 
 	api.Handle("/api/", s.requireAuth(s.requireCSRF(protected)))

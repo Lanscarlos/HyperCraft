@@ -61,8 +61,8 @@ type schematicTarget struct {
 	Dirs  []schemlib.Target `json:"dirs"`
 }
 
-func (s *Server) schematicTargets() []schematicTarget {
-	instances := s.mgr.List()
+func (s *Server) schematicTargets(r *http.Request) []schematicTarget {
+	instances := s.visibleInstances(r)
 	out := make([]schematicTarget, 0, len(instances))
 	for _, inst := range instances {
 		cfg := inst.Config()
@@ -95,7 +95,7 @@ func (s *Server) handleSchematicLibrary(w http.ResponseWriter, r *http.Request) 
 		Root:    s.schematics.Root(),
 		Entries: entries,
 		Total:   total,
-		Targets: s.schematicTargets(),
+		Targets: s.schematicTargets(r),
 	})
 }
 
@@ -364,6 +364,14 @@ func (s *Server) handleInstallSchematic(w http.ResponseWriter, r *http.Request) 
 	var req installSchematicRequest
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "malformed request body")
+		return
+	}
+	// The one route that writes into a server named in the body rather than in
+	// the path, so requireInstance cannot see it and the check lands here.
+	// Before the lookup, so a server outside the grant answers exactly as an id
+	// that does not exist.
+	if !s.mayUseInstance(r, strings.TrimSpace(req.InstanceID)) {
+		refuseInstance(w)
 		return
 	}
 	inst, err := s.mgr.Get(strings.TrimSpace(req.InstanceID))

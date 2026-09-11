@@ -4,6 +4,7 @@ import type { MouseEvent, ReactNode, Ref } from 'react'
 import { DUR } from '../motion'
 import type { LibrarySection, Route, Scope } from '../routes'
 import {
+  HOST_ENTRY_CAPS,
   HOST_SECTIONS,
   LIBRARY_SECTIONS,
   LIBRARY_VIEWS,
@@ -21,6 +22,7 @@ import type { DatabaseController } from '../useDatabases'
 import type { JavaController } from '../useJava'
 import type { PluginController } from '../usePlugins'
 import type { SchematicController } from '../useSchematics'
+import { CAP, useCan } from '../useCan'
 import type { TerminalController } from '../useTerminal'
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
@@ -162,10 +164,68 @@ function GlobalScope(props: Props) {
     onCreate,
   } = props
 
+  const can = useCan()
   const running = instances.filter((item) => isLive(item.state)).length
   // Recently opened first, then whatever is on fire — a crashed server the
   // operator has not been in yet still has to be one click away.
   const shortlist = pickShortlist(instances, recents)
+
+  // The shared shelves, as rows rather than as five guarded blocks: what
+  // changes per row is the capability and the badge, and a list makes both
+  // readable at once.
+  const libraryRows = [
+    {
+      cap: CAP.panelJava,
+      navKey: 'library:java',
+      icon: 'java' as IconName,
+      label: 'Java 环境',
+      target: { kind: 'library', section: 'java', view: 'installed' } as Route,
+      badge: java.installing ? <span className="badge badge--update">安装中</span> : null,
+    },
+    {
+      cap: CAP.libraryCores,
+      navKey: 'library:cores',
+      icon: 'cores' as IconName,
+      label: '服务端核心',
+      target: { kind: 'library', section: 'cores', view: 'stock' } as Route,
+      badge: cores.downloading ? <span className="badge badge--update">下载中</span> : null,
+    },
+    {
+      cap: CAP.panelDatabases,
+      navKey: 'library:database',
+      icon: 'database' as IconName,
+      label: '数据库环境',
+      target: { kind: 'library', section: 'database', view: 'databases' } as Route,
+      badge: databases.installing ? <span className="badge badge--update">安装中</span> : null,
+    },
+    {
+      cap: CAP.libraryPlugins,
+      navKey: 'library:plugins',
+      icon: 'plugins' as IconName,
+      label: '插件库',
+      target: { kind: 'library', section: 'plugins', view: 'list' } as Route,
+      badge: plugins.downloading ? (
+        <span className="badge badge--update">下载中</span>
+      ) : plugins.updates > 0 ? (
+        <span className="badge badge--update">{plugins.updates}</span>
+      ) : null,
+    },
+    // Last of the five, and the only one a server can start without: the other
+    // four are what a server *is*, this is what somebody puts inside one.
+    {
+      cap: CAP.librarySchematics,
+      navKey: 'library:schematics',
+      icon: 'schematics' as IconName,
+      label: '建筑库',
+      target: { kind: 'library', section: 'schematics', view: 'list' } as Route,
+      badge: null,
+    },
+  ].filter((row) => can(row.cap))
+
+  // 主机 is one row leading to three pages behind three different capabilities,
+  // so it points at the first one this account can actually open.
+  const hostEntry = HOST_ENTRY_CAPS.find(([, cap]) => can(cap))?.[0] ?? null
+  const settingsEntry = SETTINGS_SECTIONS.find((entry) => !entry.cap || can(entry.cap))?.id ?? 'devices'
 
   return (
     <>
@@ -197,117 +257,102 @@ function GlobalScope(props: Props) {
           />
         </nav>
 
-        <Group label="实例" count={instances.length > 0 ? `${running}/${instances.length}` : null} />
-        <nav className="sidebar__nav" aria-label="实例导航">
-          <NavLink
-            {...props}
-            icon="instances"
-            label="所有实例"
-            target={{ kind: 'instances', query: '', state: 'all' }}
-            active={route.kind === 'instances'}
-          />
-          {shortlist.map((item) => (
-            <a
-              key={item.id}
-              className="sidebar__link sidebar__link--instance"
-              // Half of a pair: the scope header this row becomes carries the
-              // same key, which is how the two are matched up and animated
-              // into one another.
-              data-nav-key={`instance:${item.id}`}
-              href={pathOf({ kind: 'instance', id: item.id, section: 'console' })}
-              onClick={follow(() => {
-                captureScope(`instance:${item.id}`)
-                navigate({ kind: 'instance', id: item.id, section: 'console' })
-              })}
-              title={`${item.name} · ${STATE_LABELS[item.state]}`}
-            >
-              <span className="sidebar__initial" aria-hidden="true">
-                {item.name.slice(0, 1)}
-              </span>
-              <span className={`status__dot status__dot--${item.state}`} />
-              <span className="sidebar__name">{item.name}</span>
-              <span className="sidebar__state">{STATE_LABELS[item.state]}</span>
-            </a>
-          ))}
-          {instances.length === 0 && <p className="sidebar__empty">还没有实例，先新建一个吧。</p>}
-        </nav>
+        {/* Hidden wholesale for an account with no instance capabilities at
+            all, rather than shown empty: a group whose every row 404s is worse
+            than one that is not there. The shortlist is already only the
+            servers this account was granted — the list comes filtered from the
+            panel, so nothing here has to do the filtering. */}
+        {can(CAP.instanceView) && (
+          <>
+            <Group label="实例" count={instances.length > 0 ? `${running}/${instances.length}` : null} />
+            <nav className="sidebar__nav" aria-label="实例导航">
+              <NavLink
+                {...props}
+                icon="instances"
+                label="所有实例"
+                target={{ kind: 'instances', query: '', state: 'all' }}
+                active={route.kind === 'instances'}
+              />
+              {shortlist.map((item) => (
+                <a
+                  key={item.id}
+                  className="sidebar__link sidebar__link--instance"
+                  // Half of a pair: the scope header this row becomes carries the
+                  // same key, which is how the two are matched up and animated
+                  // into one another.
+                  data-nav-key={`instance:${item.id}`}
+                  href={pathOf({ kind: 'instance', id: item.id, section: 'console' })}
+                  onClick={follow(() => {
+                    captureScope(`instance:${item.id}`)
+                    navigate({ kind: 'instance', id: item.id, section: 'console' })
+                  })}
+                  title={`${item.name} · ${STATE_LABELS[item.state]}`}
+                >
+                  <span className="sidebar__initial" aria-hidden="true">
+                    {item.name.slice(0, 1)}
+                  </span>
+                  <span className={`status__dot status__dot--${item.state}`} />
+                  <span className="sidebar__name">{item.name}</span>
+                  <span className="sidebar__state">{STATE_LABELS[item.state]}</span>
+                </a>
+              ))}
+              {instances.length === 0 && (
+                <p className="sidebar__empty">
+                  {can(CAP.panelCreate) ? '还没有实例，先新建一个吧。' : '还没有分配给你的实例。'}
+                </p>
+              )}
+            </nav>
+          </>
+        )}
 
         {/* Two whole groups rather than six loose entries: a non-admin sub-user
-            gets neither, and hiding a group is one check instead of six.
+            gets neither, and hiding a group is one check instead of six. That
+            was written before there were sub-users; now it is literal — each
+            row names the capability it needs, and a group with nothing left in
+            it does not appear.
 
             The three read in the order a server actually gets built: Java runs
             the core, the core loads the plugins. Someone setting up for the
             first time can work straight down the group. */}
-        <Group label="资源库" />
-        <nav className="sidebar__nav" aria-label="资源库导航">
-          <NavLink
-            {...props}
-            icon="java"
-            label="Java 环境"
-            target={{ kind: 'library', section: 'java', view: 'installed' }}
-            navKey="library:java"
-            badge={java.installing ? <span className="badge badge--update">安装中</span> : null}
-          />
-          <NavLink
-            {...props}
-            icon="cores"
-            label="服务端核心"
-            target={{ kind: 'library', section: 'cores', view: 'stock' }}
-            navKey="library:cores"
-            badge={cores.downloading ? <span className="badge badge--update">下载中</span> : null}
-          />
-          <NavLink
-            {...props}
-            icon="database"
-            label="数据库环境"
-            target={{ kind: 'library', section: 'database', view: 'databases' }}
-            navKey="library:database"
-            badge={
-              databases.installing ? (
-                <span className="badge badge--update">安装中</span>
-              ) : null
-            }
-          />
-          <NavLink
-            {...props}
-            icon="plugins"
-            label="插件库"
-            target={{ kind: 'library', section: 'plugins', view: 'list' }}
-            navKey="library:plugins"
-            badge={
-              plugins.downloading ? (
-                <span className="badge badge--update">下载中</span>
-              ) : plugins.updates > 0 ? (
-                <span className="badge badge--update">{plugins.updates}</span>
-              ) : null
-            }
-          />
-          {/* Last of the five, and the only one a server can start without:
-              the other four are what a server *is*, this is what somebody
-              puts inside one. */}
-          <NavLink
-            {...props}
-            icon="schematics"
-            label="建筑库"
-            target={{ kind: 'library', section: 'schematics', view: 'list' }}
-            navKey="library:schematics"
-          />
-        </nav>
+        {libraryRows.length > 0 && (
+          <>
+            <Group label="资源库" />
+            <nav className="sidebar__nav" aria-label="资源库导航">
+              {libraryRows.map((row) => (
+                <NavLink
+                  key={row.navKey}
+                  {...props}
+                  icon={row.icon}
+                  label={row.label}
+                  target={row.target}
+                  navKey={row.navKey}
+                  badge={row.badge}
+                />
+              ))}
+            </nav>
+          </>
+        )}
 
         <Group label="系统" />
         <nav className="sidebar__nav" aria-label="系统导航">
-          <NavLink
-            {...props}
-            icon="host"
-            label="主机"
-            target={{ kind: 'host', section: 'metrics' }}
-            navKey="host"
-          />
+          {/* 主机 is three pages behind three different capabilities; the row
+              leads to whichever of them this account can open. */}
+          {hostEntry && (
+            <NavLink
+              {...props}
+              icon="host"
+              label="主机"
+              target={{ kind: 'host', section: hostEntry }}
+              navKey="host"
+            />
+          )}
+          {/* Always here, for everybody: its first page is the account's own
+              paired devices, which is not a capability anyone is granted. */}
           <NavLink
             {...props}
             icon="settings"
             label="面板设置"
-            target={{ kind: 'settings', section: 'devices' }}
+            target={{ kind: 'settings', section: settingsEntry }}
             active={route.kind === 'settings'}
             navKey="settings"
             badge={updateNotice ? <span className="badge badge--update">1</span> : null}
@@ -315,10 +360,12 @@ function GlobalScope(props: Props) {
         </nav>
       </div>
 
-      <button className="btn btn--primary sidebar__new" onClick={onCreate} title="新建实例">
-        <span aria-hidden="true">+</span>
-        <span className="sidebar__name">新建实例</span>
-      </button>
+      {can(CAP.panelCreate) && (
+        <button className="btn btn--primary sidebar__new" onClick={onCreate} title="新建实例">
+          <span aria-hidden="true">+</span>
+          <span className="sidebar__name">新建实例</span>
+        </button>
+      )}
     </>
   )
 }
@@ -349,6 +396,7 @@ function pickShortlist(instances: InstanceStatus[], recents: string[]): Instance
 
 function InstanceScope(props: Props) {
   const { route, instances, follow, navigate, plugins } = props
+  const can = useCan()
   const id = route.kind === 'instance' ? route.id : ''
   const instance = instances.find((item) => item.id === id) ?? null
 
@@ -367,7 +415,9 @@ function InstanceScope(props: Props) {
 
       <div className="sidebar__scroll">
         <nav className="sidebar__nav" aria-label="实例页面">
-          {instanceSections(instance?.kind).map((section) => (
+          {instanceSections(instance?.kind)
+            .filter((section) => can(section.cap))
+            .map((section) => (
             <a
               key={section.id}
               className={`sidebar__link${
@@ -424,6 +474,8 @@ const INSTANCE_ICONS: Record<string, IconName> = {
  * the row back where it was.
  */
 function LibraryScope(props: Props) {
+  // No capability filtering inside a shelf: which shelves exist is decided by
+  // the global nav, and these rows are pages of the one already open.
   const { route, follow, navigate, java, cores, plugins } = props
   const section: LibrarySection = route.kind === 'library' ? route.section : 'cores'
   const view = route.kind === 'library' ? route.view : defaultView(section)
@@ -591,6 +643,8 @@ const LIBRARY_VIEW_ICONS: Record<string, IconName> = {
 
 function HostScope(props: Props) {
   const { route, follow, navigate, system, terminal } = props
+  const can = useCan()
+  const reachable = new Set(HOST_ENTRY_CAPS.filter(([, cap]) => can(cap)).map(([id]) => id))
   const section = route.kind === 'host' ? route.section : 'metrics'
   // The shell is the one entry here that is not about looking at a number, and
   // it is a shell on the whole machine rather than inside a Minecraft process.
@@ -612,7 +666,7 @@ function HostScope(props: Props) {
 
       <div className="sidebar__scroll">
         <nav className="sidebar__nav" aria-label="主机页面">
-          {HOST_SECTIONS.filter((entry) => entry.id !== 'terminal').map((entry) => (
+          {HOST_SECTIONS.filter((entry) => entry.id !== 'terminal' && reachable.has(entry.id)).map((entry) => (
             <a
               key={entry.id}
               className={`sidebar__link${section === entry.id ? ' sidebar__link--active' : ''}`}
@@ -671,6 +725,8 @@ const HOST_ICONS: Record<string, IconName> = {
  */
 function SettingsScope(props: Props) {
   const { route, follow, navigate, user, updateNotice } = props
+  const can = useCan()
+  const sections = SETTINGS_SECTIONS.filter((entry) => !entry.cap || can(entry.cap))
   const section = route.kind === 'settings' ? route.section : 'devices'
 
   return (
@@ -688,7 +744,7 @@ function SettingsScope(props: Props) {
 
       <div className="sidebar__scroll">
         <nav className="sidebar__nav" aria-label="面板设置">
-          {SETTINGS_SECTIONS.map((entry) => (
+          {sections.map((entry) => (
             <a
               key={entry.id}
               className={`sidebar__link${section === entry.id ? ' sidebar__link--active' : ''}`}
@@ -713,6 +769,7 @@ function SettingsScope(props: Props) {
 const SETTINGS_ICONS: Record<string, IconName> = {
   devices: 'devices',
   security: 'lock',
+  users: 'users',
   plugins: 'github',
   update: 'update',
 }

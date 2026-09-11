@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/lanscarlos/hypercraft/internal/authz"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 )
 
@@ -109,7 +110,17 @@ func (s *Server) handleConsoleSocket(w http.ResponseWriter, r *http.Request) {
 	// a single concurrent writer).
 	notices := make(chan outbound, 8)
 	readerDone := make(chan struct{})
-	go s.consoleReadPump(conn, inst, att, notices, readerDone)
+	// The one route that carries two capabilities in two directions rather than
+	// as a pair of requirements: the socket streams output, which is the
+	// CapInstanceView the route declared, and it also accepts commands, which
+	// is CapInstanceConsole. Resolved here, once, because the principal lives
+	// on the request and the read pump outlives it.
+	//
+	// A caller without the second one gets a read-only socket rather than a
+	// refused handshake: somebody who may watch the console should see it, they
+	// just cannot type into it.
+	who, _ := principalFrom(r.Context())
+	go s.consoleReadPump(conn, inst, att, who.can(authz.CapInstanceConsole), notices, readerDone)
 
 	writeJSON := func(msg any) error {
 		if err := conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
@@ -199,6 +210,7 @@ func (s *Server) consoleReadPump(
 	conn *websocket.Conn,
 	inst *instance.Instance,
 	att instance.Attachment,
+	mayCommand bool,
 	notices chan<- outbound,
 	done chan<- struct{},
 ) {
@@ -248,6 +260,12 @@ func (s *Server) consoleReadPump(
 
 		switch msg.Type {
 		case "command":
+			if !mayCommand {
+				// Said back over the socket rather than closing it: the output
+				// this client is watching is output it is allowed to watch.
+				notify(notices, outbound{Type: "error", Message: "当前角色没有这项权限：发送控制台命令"})
+				continue
+			}
 			if err := inst.SendCommand(msg.Command); err != nil {
 				text := err.Error()
 				if errors.Is(err, instance.ErrNotRunning) {
