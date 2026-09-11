@@ -127,6 +127,9 @@ func (s *Server) handleJavaOverview(w http.ResponseWriter, r *http.Request) {
 	// A platform we cannot install for is still worth reporting: the page says
 	// so instead of offering a download that would fail.
 	if platform, err := javaruntime.CurrentPlatform(); err == nil {
+		// Whether this platform is a problem depends on the distribution, so
+		// the warning is asked for here rather than carried on the platform.
+		platform.Warning = javaruntime.PlatformWarning(javaruntime.DefaultDistribution, platform)
 		overview.Platform = platform
 	} else {
 		overview.Platform = javaruntime.Platform{Warning: err.Error()}
