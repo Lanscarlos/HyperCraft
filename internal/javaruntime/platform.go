@@ -76,3 +76,12 @@ func javaBinary() string {
 	}
 	return "java"
 }
+
+// javacBinary is the compiler's name inside a runtime's bin directory. Whether
+// it is there is what actually separates a JDK from a JRE.
+func javacBinary() string {
+	if runtime.GOOS == "windows" {
+		return "javac.exe"
+	}
+	return "javac"
+}
