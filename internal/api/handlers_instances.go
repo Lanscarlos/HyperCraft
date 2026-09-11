@@ -24,24 +24,22 @@ type instanceRequest struct {
 	// Loader and GameVersion are what the operator says this server is, for
 	// the cases nothing on disk can answer — chiefly a script-launched Forge
 	// server, which has no jar to read a name off.
-	Loader          string   `json:"loader"`
-	GameVersion     string   `json:"gameVersion"`
-	Java            string   `json:"java"`
-	Jar             string   `json:"jar"`
-	MinMemoryMB     int      `json:"minMemoryMB"`
-	MaxMemoryMB     int      `json:"maxMemoryMB"`
-	JVMArgs         []string `json:"jvmArgs"`
-	ServerArgs      []string `json:"serverArgs"`
-	ArgFiles        []string `json:"argFiles"`
-	Command         []string `json:"command"`
-	Encoding        string   `json:"encoding"`
-	TTY             *bool    `json:"tty"`
-	ForceColor      *bool    `json:"forceColor"`
-	JavaToolOptions *bool    `json:"javaToolOptions"`
-	AutoStart       bool     `json:"autoStart"`
-	AutoRestart     bool     `json:"autoRestart"`
-	StopCommand     string   `json:"stopCommand"`
-	StopTimeoutSec  int      `json:"stopTimeoutSec"`
+	Loader         string   `json:"loader"`
+	GameVersion    string   `json:"gameVersion"`
+	Java           string   `json:"java"`
+	Jar            string   `json:"jar"`
+	MinMemoryMB    int      `json:"minMemoryMB"`
+	MaxMemoryMB    int      `json:"maxMemoryMB"`
+	JVMArgs        []string `json:"jvmArgs"`
+	ServerArgs     []string `json:"serverArgs"`
+	ArgFiles       []string `json:"argFiles"`
+	Encoding       string   `json:"encoding"`
+	TTY            *bool    `json:"tty"`
+	ForceColor     *bool    `json:"forceColor"`
+	AutoStart      bool     `json:"autoStart"`
+	AutoRestart    bool     `json:"autoRestart"`
+	StopCommand    string   `json:"stopCommand"`
+	StopTimeoutSec int      `json:"stopTimeoutSec"`
 }
 
 // The two halves of instanceRequest.
@@ -59,13 +57,13 @@ var (
 	// launchFields decide what the machine executes: an argv, the program that
 	// runs it, or the directory it runs in. Every one of them is a way to run
 	// arbitrary code as the account the panel runs as.
-	launchFields = []string{"directory", "java", "jar", "argFiles", "jvmArgs", "serverArgs", "command"}
+	launchFields = []string{"directory", "java", "jar", "argFiles", "jvmArgs", "serverArgs"}
 
 	// settingsFields are the rest: labels, console behaviour, and what to do
 	// when the server stops. None of them changes what runs.
 	settingsFields = []string{
 		"name", "kind", "loader", "gameVersion", "encoding", "tty", "forceColor",
-		"javaToolOptions", "autoStart", "autoRestart", "stopCommand", "stopTimeoutSec",
+		"autoStart", "autoRestart", "stopCommand", "stopTimeoutSec",
 		"minMemoryMB", "maxMemoryMB",
 	}
 )
@@ -86,17 +84,15 @@ func (req instanceRequest) toConfig() instance.Config {
 		JVMArgs:     cleanArgs(req.JVMArgs),
 		ServerArgs:  cleanArgs(req.ServerArgs),
 		ArgFiles:    cleanArgs(req.ArgFiles),
-		Command:     cleanArgs(req.Command),
 		Encoding:    strings.TrimSpace(req.Encoding),
 		// Absent means "unset" for both of these: applyDefaults turns them on
 		// rather than silently taking Go's zero value for a bool.
-		TTY:             req.TTY,
-		ForceColor:      req.ForceColor,
-		JavaToolOptions: req.JavaToolOptions,
-		AutoStart:       req.AutoStart,
-		AutoRestart:     req.AutoRestart,
-		StopCommand:     strings.TrimSpace(req.StopCommand),
-		StopTimeoutSec:  req.StopTimeoutSec,
+		TTY:            req.TTY,
+		ForceColor:     req.ForceColor,
+		AutoStart:      req.AutoStart,
+		AutoRestart:    req.AutoRestart,
+		StopCommand:    strings.TrimSpace(req.StopCommand),
+		StopTimeoutSec: req.StopTimeoutSec,
 	}
 }
 

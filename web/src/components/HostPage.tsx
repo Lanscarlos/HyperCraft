@@ -403,7 +403,7 @@ function HostInstances({
                 {STATE_LABELS[item.state]}
               </span>
               <span className="rows__cell rows__cell--num" role="cell">
-                {xmx > 0 ? formatBytes(xmx) : item.command?.length ? '未知' : '未限制'}
+                {xmx > 0 ? formatBytes(xmx) : item.argFiles?.length ? '未知' : '未限制'}
               </span>
               <span className="rows__cell" role="cell">
                 <span className="share" aria-hidden="true">

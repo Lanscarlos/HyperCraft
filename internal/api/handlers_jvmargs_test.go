@@ -63,22 +63,21 @@ func TestTheMemorySettingLandsInUserJVMArgs(t *testing.T) {
 	}
 }
 
-// The whole reason for the file: with a script owning the command line, the
-// number in the instance config is not the heap ceiling, and the charts must
-// stop drawing it as one.
+// The whole reason for the file: an @argfile is expanded in place and the JVM
+// lets the last -Xmx win, so the number in the instance config is not the heap
+// ceiling, and the charts must stop drawing it as one.
 func TestTheReportedHeapCeilingFollowsTheFileNotTheConfig(t *testing.T) {
 	env := newTestEnv(t)
 	env.login()
 	inst := env.newTestInstance("forge")
-	env.writeScript(inst, "run.sh", "#!/bin/sh\nexec java @user_jvm_args.txt -jar server.jar\n", 0o755)
 	env.writeScript(inst, jvmargs.FileName, "-Xmx6G\n", 0o644)
 
-	// A config that says 2048 and a script that will never see it.
+	// A config that says 2048 and a JVM that will never see it.
 	resp := env.do(http.MethodPut, "/api/instances/"+inst.ID, instanceRequest{
 		Name:        inst.Name,
 		Directory:   inst.Directory,
 		MaxMemoryMB: 2048,
-		Command:     []string{"./run.sh"},
+		ArgFiles:    []string{jvmargs.FileName},
 	})
 	var updated instance.Status
 	decodeBody(t, resp, &updated)
@@ -96,17 +95,16 @@ func TestTheReportedHeapCeilingFollowsTheFileNotTheConfig(t *testing.T) {
 
 // No file, no honest answer — and a zero tells the charts to draw no line at
 // all rather than one nobody set.
-func TestAScriptWithNoArgsFileReportsAnUnknownCeiling(t *testing.T) {
+func TestAnArgFileLaunchWithNoArgsFileReportsAnUnknownCeiling(t *testing.T) {
 	env := newTestEnv(t)
 	env.login()
-	inst := env.newTestInstance("bedrock")
-	env.writeScript(inst, "bedrock_server", "#!/bin/sh\nsleep 1\n", 0o755)
+	inst := env.newTestInstance("forge")
 
 	resp := env.do(http.MethodPut, "/api/instances/"+inst.ID, instanceRequest{
 		Name:        inst.Name,
 		Directory:   inst.Directory,
 		MaxMemoryMB: 4096,
-		Command:     []string{"./bedrock_server"},
+		ArgFiles:    []string{jvmargs.FileName},
 	})
 	var updated instance.Status
 	decodeBody(t, resp, &updated)
