@@ -79,7 +79,12 @@ type Config struct {
 	MaxMemoryMB int      `json:"maxMemoryMB"` // -Xmx, 0 to omit
 	JVMArgs     []string `json:"jvmArgs"`     // extra flags before -jar
 	ServerArgs  []string `json:"serverArgs"`  // args after the jar, e.g. --nogui
-	Command     []string `json:"command"`     // full argv; when set, the fields above are ignored
+	// ArgFiles is the other launch target, mutually exclusive with Jar: a
+	// list of @-argument files, which is how Forge and NeoForge from 1.17 are
+	// started. Those installers leave no runnable jar at all, so there is
+	// nothing for -jar to point at.
+	ArgFiles []string `json:"argFiles"`
+	Command  []string `json:"command"` // full argv; when set, the fields above are ignored
 
 	// Console settings.
 	Encoding string `json:"encoding"` // console charset: auto (default), utf-8, gbk, …
@@ -202,6 +207,21 @@ func (c *Config) validate() error {
 			return fmt.Errorf("%w: jar must be a path inside the instance directory", ErrInvalidConfig)
 		}
 	}
+	if len(c.ArgFiles) > 0 {
+		if strings.TrimSpace(c.Jar) != "" {
+			return fmt.Errorf("%w: a launch is either a jar or argFiles, never both", ErrInvalidConfig)
+		}
+		for _, file := range c.ArgFiles {
+			if strings.TrimSpace(file) == "" {
+				return fmt.Errorf("%w: argFiles cannot contain an empty path", ErrInvalidConfig)
+			}
+			// Same confinement as the jar: an @file is read by the JVM with
+			// the instance directory as its working directory.
+			if filepath.IsAbs(file) || strings.Contains(filepath.ToSlash(file), "../") {
+				return fmt.Errorf("%w: argFiles must be paths inside the instance directory", ErrInvalidConfig)
+			}
+		}
+	}
 	if c.usesCustomCommand() && strings.TrimSpace(c.Command[0]) == "" {
 		return fmt.Errorf("%w: command's first element must be the executable", ErrInvalidConfig)
 	}
@@ -258,8 +278,10 @@ func (c *Config) javaToolOptionsEnabled() bool {
 func (c Config) UsesScript() bool { return c.usesCustomCommand() }
 
 // EffectiveMaxMemoryMB is the heap ceiling this instance will actually run
-// with, which stops being MaxMemoryMB the moment a script owns the command
-// line: the panel's -Xmx never reaches the JVM then.
+// with, which stops being MaxMemoryMB the moment the panel's -Xmx does not
+// reach the JVM — because a script owns the command line, or because the
+// launch is a list of @argfiles whose own -Xmx would win over anything put in
+// front of it.
 //
 // Forge's run.sh passes @user_jvm_args.txt, so that file is the answer where
 // it exists. Zero means nobody knows — and a caller drawing a ceiling should
@@ -267,7 +289,7 @@ func (c Config) UsesScript() bool { return c.usesCustomCommand() }
 // memory chart with a -Xmx reference line invented out of a field the JVM
 // never saw is worse than a chart with no line at all.
 func (c Config) EffectiveMaxMemoryMB() int {
-	if !c.usesCustomCommand() {
+	if !c.usesCustomCommand() && len(c.ArgFiles) == 0 {
 		return c.MaxMemoryMB
 	}
 	if c.Directory == "" {
@@ -340,11 +362,29 @@ func (c *Config) commandLine(tty bool) (string, []string, error) {
 	if c.usesCustomCommand() {
 		return c.Command[0], append([]string(nil), c.Command[1:]...), nil
 	}
-	if strings.TrimSpace(c.Jar) == "" {
-		return "", nil, fmt.Errorf("%w: no server jar configured", ErrInvalidConfig)
+	console := c.consoleJVMArgs(tty)
+
+	if len(c.ArgFiles) > 0 {
+		args := make([]string, 0, len(console)+len(c.JVMArgs)+len(c.ArgFiles)+len(c.ServerArgs))
+		args = append(args, console...)
+		args = append(args, c.JVMArgs...)
+		// No -Xms/-Xmx here on purpose. An @file is expanded in place and the
+		// JVM lets the last -Xmx win, so the one inside user_jvm_args.txt
+		// would override anything put in front of it. A heap flag that loses
+		// is worse than none: the panel would then report a ceiling the server
+		// never ran with. In this mode the heap is edited in the argfile — see
+		// EffectiveMaxMemoryMB and internal/jvmargs.
+		for _, file := range c.ArgFiles {
+			args = append(args, "@"+file)
+		}
+		args = append(args, c.ServerArgs...)
+		return c.Java, args, nil
 	}
 
-	console := c.consoleJVMArgs(tty)
+	if strings.TrimSpace(c.Jar) == "" {
+		return "", nil, fmt.Errorf("%w: no launch target configured: set either jar or argFiles", ErrInvalidConfig)
+	}
+
 	args := make([]string, 0, len(console)+len(c.JVMArgs)+len(c.ServerArgs)+4)
 	if c.MinMemoryMB > 0 {
 		args = append(args, fmt.Sprintf("-Xms%dM", c.MinMemoryMB))

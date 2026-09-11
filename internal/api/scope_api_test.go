@@ -209,7 +209,7 @@ func TestLaunchFieldsNeedTheLaunchCapability(t *testing.T) {
 	// Every dangerous field is refused, one at a time.
 	for _, field := range launchFields {
 		body := map[string]any{"name": "renamed", field: "x"}
-		if field == "jvmArgs" || field == "serverArgs" || field == "command" {
+		if field == "jvmArgs" || field == "serverArgs" || field == "argFiles" || field == "command" {
 			body[field] = []string{"x"}
 		}
 		if got := ops.status(http.MethodPut, "/api/instances/"+created.ID, body); got != http.StatusForbidden {

@@ -47,3 +47,25 @@ func TestInstanceRequestFieldsAreClassified(t *testing.T) {
 		}
 	}
 }
+
+// TestArgFilesReachTheConfig covers the other launch target. Forge and
+// NeoForge from 1.17 are started from @argfiles rather than a jar, so a
+// request that names them has to arrive intact — and, like every other way of
+// deciding what runs, behind CapInstanceLaunch.
+func TestArgFilesReachTheConfig(t *testing.T) {
+	req := instanceRequest{
+		Name:      "forge",
+		Kind:      "server",
+		Directory: "/srv/forge",
+		ArgFiles:  []string{"user_jvm_args.txt", "  ", "libraries/unix_args.txt"},
+	}
+
+	cfg := req.toConfig()
+	want := []string{"user_jvm_args.txt", "libraries/unix_args.txt"}
+	if !slices.Equal(cfg.ArgFiles, want) {
+		t.Errorf("ArgFiles = %q, want %q with the blank line dropped", cfg.ArgFiles, want)
+	}
+	if !slices.Contains(launchFields, "argFiles") {
+		t.Error("argFiles decides what the JVM runs, so it belongs in launchFields")
+	}
+}

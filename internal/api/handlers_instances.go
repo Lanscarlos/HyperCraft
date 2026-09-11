@@ -32,6 +32,7 @@ type instanceRequest struct {
 	MaxMemoryMB     int      `json:"maxMemoryMB"`
 	JVMArgs         []string `json:"jvmArgs"`
 	ServerArgs      []string `json:"serverArgs"`
+	ArgFiles        []string `json:"argFiles"`
 	Command         []string `json:"command"`
 	Encoding        string   `json:"encoding"`
 	TTY             *bool    `json:"tty"`
@@ -58,7 +59,7 @@ var (
 	// launchFields decide what the machine executes: an argv, the program that
 	// runs it, or the directory it runs in. Every one of them is a way to run
 	// arbitrary code as the account the panel runs as.
-	launchFields = []string{"directory", "java", "jar", "jvmArgs", "serverArgs", "command"}
+	launchFields = []string{"directory", "java", "jar", "argFiles", "jvmArgs", "serverArgs", "command"}
 
 	// settingsFields are the rest: labels, console behaviour, and what to do
 	// when the server stops. None of them changes what runs.
@@ -84,6 +85,7 @@ func (req instanceRequest) toConfig() instance.Config {
 		MaxMemoryMB: req.MaxMemoryMB,
 		JVMArgs:     cleanArgs(req.JVMArgs),
 		ServerArgs:  cleanArgs(req.ServerArgs),
+		ArgFiles:    cleanArgs(req.ArgFiles),
 		Command:     cleanArgs(req.Command),
 		Encoding:    strings.TrimSpace(req.Encoding),
 		// Absent means "unset" for both of these: applyDefaults turns them on
