@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 
@@ -73,10 +74,14 @@ type Inspection struct {
 	// there is.
 	Loader      string `json:"loader,omitempty"`
 	GameVersion string `json:"gameVersion,omitempty"`
-	// LaunchScript is the start script the installer wrote, relative to the
-	// directory. Empty when there is none — which for a modern Forge install
-	// means someone deleted it.
+	// LaunchScript is the best candidate, the first of LaunchScripts, kept as
+	// its own field because that is the one the import dialog offers first.
 	LaunchScript string `json:"launchScript,omitempty"`
+	// LaunchScripts are every file here that looks like a start script, best
+	// first. They are read for the launch settings inside them, never run, so
+	// a directory holding several is a list to choose from rather than an
+	// ambiguity to resolve.
+	LaunchScripts []string `json:"launchScripts,omitempty"`
 }
 
 // modLoaders are the layouts that identify a server with no jar to read a name
@@ -95,8 +100,25 @@ var modLoaders = []struct {
 	{"neoforge", "libraries/net/neoforged/neoforge", false},
 }
 
-// launchScripts are what those installers write, this platform's first.
-var launchScripts = []string{"run.sh", "run.bat"}
+// launchStems are the names a start script goes by, best first. Matched
+// against the file name with its extension removed, as a prefix, so
+// start_server.sh and 启动服务器.bat are covered without listing every variant
+// anyone has ever typed.
+//
+// run is first on purpose: it is what Forge's and NeoForge's installers write,
+// so where it exists it is the server's real launch and not somebody's helper.
+var launchStems = []string{"run", "start", "launch", "server", "启动", "开服"}
+
+// notLaunches are the scripts that live in the same directory and must never
+// be offered. Matched anywhere in the name and checked first, because the
+// mistake they prevent is the expensive one: an operator picks 安装.sh out of
+// the list and the panel adopts their installer as the way to start the
+// server. Failing to spot a launch script only costs them filling the form in
+// by hand.
+var notLaunches = []string{
+	"install", "安装", "setup", "update", "更新", "upgrade", "stop", "停止",
+	"restart", "重启", "backup", "备份", "uninstall", "卸载",
+}
 
 // serverJarHints are the file names a server jar is likely to have, best first.
 // A directory can easily hold a dozen jars (a modpack's libraries, an old
@@ -156,7 +178,10 @@ func Inspect(dir string) (Inspection, error) {
 	sort.Strings(out.Worlds)
 
 	out.Loader, out.GameVersion = detectLoader(listing.Path)
-	out.LaunchScript = findLaunchScript(listing.Path)
+	out.LaunchScripts = findLaunchScripts(listing.Entries)
+	if len(out.LaunchScripts) > 0 {
+		out.LaunchScript = out.LaunchScripts[0]
+	}
 
 	// Any one of these on its own is enough: a directory that has only ever
 	// been unpacked has a jar and nothing else, and one whose jar was deleted
@@ -199,21 +224,67 @@ func detectLoader(dir string) (string, string) {
 	return "", ""
 }
 
-// findLaunchScript returns the installer's start script, this platform's
-// first: a Windows host cannot run run.sh and a Linux host will not run
-// run.bat, and offering the wrong one produces a start that fails for a reason
-// that has nothing to do with the server.
-func findLaunchScript(dir string) string {
-	ordered := launchScripts
+// scriptExts are the extensions worth reading, this platform's first.
+//
+// Both kinds are offered on either host. The panel reads these scripts for the
+// launch settings written inside them and never executes them, so a run.bat on
+// a Linux box is still a perfectly good answer to "what does this server start
+// with" — it is just the less likely one, which is what the ordering says.
+func scriptExts() []string {
 	if runtime.GOOS == "windows" {
-		ordered = []string{"run.bat", "run.sh"}
+		return []string{".bat", ".cmd", ".sh"}
 	}
-	for _, name := range ordered {
-		if info, err := os.Stat(filepath.Join(dir, name)); err == nil && !info.IsDir() {
-			return name
+	return []string{".sh", ".bat", ".cmd"}
+}
+
+// findLaunchScripts returns every file here that looks like a start script,
+// best first.
+func findLaunchScripts(entries []Entry) []string {
+	exts := scriptExts()
+
+	type candidate struct {
+		name string
+		stem int
+		ext  int
+	}
+	var found []candidate
+
+	for _, entry := range entries {
+		if entry.IsDir {
+			continue
 		}
+		ext := strings.ToLower(filepath.Ext(entry.Name))
+		extRank := slices.Index(exts, ext)
+		if extRank < 0 {
+			continue
+		}
+		stem := strings.ToLower(strings.TrimSuffix(entry.Name, filepath.Ext(entry.Name)))
+		if slices.ContainsFunc(notLaunches, func(bad string) bool { return strings.Contains(stem, bad) }) {
+			continue
+		}
+		stemRank := slices.IndexFunc(launchStems, func(good string) bool { return strings.HasPrefix(stem, good) })
+		if stemRank < 0 {
+			continue
+		}
+		found = append(found, candidate{name: entry.Name, stem: stemRank, ext: extRank})
 	}
-	return ""
+
+	sort.Slice(found, func(i, j int) bool {
+		a, b := found[i], found[j]
+		if a.stem != b.stem {
+			return a.stem < b.stem
+		}
+		if a.ext != b.ext {
+			return a.ext < b.ext
+		}
+		return a.name < b.name
+	})
+
+	names := make([]string, len(found))
+	for i, c := range found {
+		names[i] = c.name
+	}
+	return names
 }
 
 // pickServerJar chooses the jar most likely to start this server: the best
