@@ -86,6 +86,18 @@ type Config struct {
 	ArgFiles []string `json:"argFiles"`
 	Command  []string `json:"command"` // full argv; when set, the fields above are ignored
 
+	// LegacyCommand is a tombstone, never executed. It holds the argv of an
+	// instance that used to launch through its own script, for the one case
+	// where the panel could not work out what that script actually ran. It
+	// exists so the operator has something to read while filling the launch
+	// settings in by hand, instead of a server whose old launch vanished with
+	// the upgrade.
+	LegacyCommand []string `json:"legacyCommand,omitempty"`
+	// NeedsLaunchSetup marks such an instance. It refuses to start until
+	// somebody says what to run — which is a far better answer than starting
+	// with whatever the empty launch fields happen to mean.
+	NeedsLaunchSetup bool `json:"needsLaunchSetup,omitempty"`
+
 	// Console settings.
 	Encoding string `json:"encoding"` // console charset: auto (default), utf-8, gbk, …
 	// TTY runs the server on a pseudo-terminal instead of pipes, which is the

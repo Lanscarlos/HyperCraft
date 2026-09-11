@@ -392,7 +392,27 @@ func (i *Instance) Start() error {
 		i.mu.Unlock()
 		return fmt.Errorf("create instance directory: %w", err)
 	}
-	if !cfg.usesCustomCommand() {
+	if cfg.NeedsLaunchSetup {
+		// Left over from the upgrade that retired script mode. Starting with
+		// whatever the empty launch fields happen to mean would be a server
+		// answering the start button with a stack trace about a missing jar,
+		// when the real answer is that nobody has said what to run yet.
+		i.mu.Unlock()
+		return fmt.Errorf("%w: 这个实例原来用启动脚本启动，请先在启动设置里指定核心和参数", ErrInvalidConfig)
+	}
+	switch {
+	case cfg.usesCustomCommand():
+	case len(cfg.ArgFiles) > 0:
+		// The jar form checks its jar; this form has to check its own target.
+		// Note that the jar check below cannot stand in for it: Jar is empty
+		// here, and Join(dir, "") is the directory itself, which always exists.
+		for _, file := range cfg.ArgFiles {
+			if _, err := os.Stat(filepath.Join(cfg.Directory, filepath.FromSlash(file))); err != nil {
+				i.mu.Unlock()
+				return fmt.Errorf("%w: argument file %q not found in %s", ErrInvalidConfig, file, cfg.Directory)
+			}
+		}
+	default:
 		if _, err := os.Stat(filepath.Join(cfg.Directory, cfg.Jar)); err != nil {
 			i.mu.Unlock()
 			return fmt.Errorf("%w: server jar %q not found in %s", ErrInvalidConfig, cfg.Jar, cfg.Directory)
@@ -930,6 +950,18 @@ func (i *Instance) UpdateConfig(next Config) error {
 
 	next.ID = i.cfg.ID
 	next.CreatedAt = i.cfg.CreatedAt
+
+	// Both are the panel's own bookkeeping from the upgrade that retired
+	// script mode, never the client's to send: carried across every edit, and
+	// cleared only by the one edit that answers them — saying what this
+	// instance launches. Clearing them on any save would mean a rename gives
+	// back the failure they exist to prevent, and taking them from the request
+	// would let a client hand itself a server that starts with empty launch
+	// settings.
+	next.LegacyCommand, next.NeedsLaunchSetup = i.cfg.LegacyCommand, i.cfg.NeedsLaunchSetup
+	if next.NeedsLaunchSetup && (strings.TrimSpace(next.Jar) != "" || len(next.ArgFiles) > 0) {
+		next.LegacyCommand, next.NeedsLaunchSetup = nil, false
+	}
 	if i.state.Running() && next.Directory != i.cfg.Directory {
 		return fmt.Errorf("%w: cannot change directory while the server is running", ErrInvalidConfig)
 	}
