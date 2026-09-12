@@ -20,9 +20,9 @@
  */
 
 import { crossFade } from './motion'
-import { notifyColours, syncChrome } from './theme'
+import { notifyColours, syncChrome, syncFavicon } from './theme'
 
-export type Palette = 'terracotta' | 'green' | 'yellow' | 'blue'
+export type Palette = 'sakura' | 'green' | 'yellow' | 'blue'
 
 export interface PaletteInfo {
   id: Palette
@@ -34,13 +34,13 @@ export interface PaletteInfo {
 /** Display order, default first. The three extras are Material Theme Builder
  *  schemes grown from one seed each; their token tables are in styles.css. */
 export const PALETTES: PaletteInfo[] = [
-  { id: 'terracotta', name: '赤陶', note: '出厂的暖陶色。' },
+  { id: 'sakura', name: '樱花', note: '出厂的暖粉色。' },
   { id: 'green', name: '松绿', note: '草木调的黄绿。' },
   { id: 'yellow', name: '杏黄', note: '四套里最亮的。' },
   { id: 'blue', name: '碧蓝', note: '唯一一套冷色。' },
 ]
 
-const DEFAULT: Palette = 'terracotta'
+const DEFAULT: Palette = 'sakura'
 
 /** Shared with the inline script in index.html — changing it here alone would
  *  strand a stored preference and flash the wrong scheme on load. */
@@ -85,6 +85,9 @@ export function applyPref(palette: Palette): void {
     if (palette === DEFAULT) delete document.documentElement.dataset.palette
     else document.documentElement.dataset.palette = palette
     syncChrome()
+    // The tab icon is an href rather than a painted surface, so it is the one
+    // mark in the panel a stylesheet cannot reach.
+    syncFavicon()
     // A scheme moves --term-* and --shell-* as well, and the two canvases paint
     // outside CSS: telling them after the cross-fade would leave the previous
     // scheme's rectangle sitting in the middle of the dissolve.

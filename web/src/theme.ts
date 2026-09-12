@@ -97,6 +97,47 @@ export function syncChrome(): void {
   if (bg) meta.content = bg
 }
 
+/** The two stop colours in the tab icon, in the order they appear in it. */
+const STOP = /stop-color='%23[0-9a-fA-F]{6}'/g
+
+/**
+ * The tab icon, repainted in the scheme now on screen.
+ *
+ * A favicon is an href, not a painted surface, so no rule in the stylesheet can
+ * reach it — which is how the mark in the sidebar ended up following the 配色
+ * while the one in the tab strip stayed the colour it shipped as.
+ *
+ * The cube itself is not redrawn here. The artwork lives in index.html (and,
+ * as JSX, in components/Logo.tsx) and a third copy in this module would be one
+ * more place to forget; instead the two gradient stops in the URI it already
+ * has are substituted, in order, with --mark-1 and --mark-2. If the icon is
+ * ever redrawn with a different number of stops this does nothing rather than
+ * producing a broken URI, and the tab keeps the mark it had.
+ *
+ * Those two tokens are the same in a scheme's light and dark blocks on purpose:
+ * a tab strip has no theme to follow, so the mark keeps one gradient in both.
+ */
+export function syncFavicon(): void {
+  const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+  if (!link) return
+
+  const styles = getComputedStyle(document.documentElement)
+  const stops = [
+    styles.getPropertyValue('--mark-1').trim(),
+    styles.getPropertyValue('--mark-2').trim(),
+  ]
+  // Before the stylesheet has arrived there is nothing to read, and the icon
+  // in the document is already the one the panel ships with.
+  if (!stops.every((stop) => /^#[0-9a-fA-F]{6}$/.test(stop))) return
+
+  const href = link.getAttribute('href') ?? ''
+  if ((href.match(STOP) ?? []).length !== stops.length) return
+
+  let i = 0
+  const next = href.replace(STOP, () => `stop-color='%23${stops[i++].slice(1)}'`)
+  if (next !== href) link.setAttribute('href', next)
+}
+
 type Listener = (theme: Theme) => void
 
 const listeners = new Set<Listener>()
