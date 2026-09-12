@@ -5,11 +5,10 @@ import { formatBytes, formatPercent } from '../format'
 import type { InstanceSection } from '../routes'
 import type { InstanceMetrics, InstanceStatus, StateInfo } from '../types'
 import { CAP, useCan } from '../useCan'
-import { STATE_LABELS, isLive, mergeState } from '../types'
+import { isLive, mergeState } from '../types'
 import { useTween } from '../useTween'
 import { useUptime } from '../useUptime'
 import { Console } from './Console'
-import { PowerControls } from './PowerControls'
 import { Sparkline } from './Sparkline'
 
 /** The window the tiles summarise. Long enough to show a spike, short enough
@@ -18,6 +17,9 @@ const TREND_MS = 5 * 60_000
 
 interface Props {
   instance: InstanceStatus
+  /** Polled by App, because the top bar's status strip reads the same samples
+   *  and one interval per instance is enough for both. */
+  metrics: InstanceMetrics | null
   /** False while another section is in front; the pane stays mounted so the
    *  console's socket and scrollback survive a trip to 文件. */
   active: boolean
@@ -35,11 +37,9 @@ interface Props {
  * The other sections are one click away in the sidebar and none of them are on
  * the critical path.
  */
-export function InstanceCockpit({ instance, active, onChanged, onOpenSection }: Props) {
-  const [error, setError] = useState<string | null>(null)
+export function InstanceCockpit({ instance, metrics, active, onChanged, onOpenSection }: Props) {
   const live = isLive(instance.state)
   const uptime = useUptime(instance.startedAt, live)
-  const metrics = useSeries(instance.id, active && live)
   const address = useAddress(instance, active)
 
   const trend = useMemo(() => {
@@ -68,10 +68,14 @@ export function InstanceCockpit({ instance, active, onChanged, onOpenSection }: 
     <div className="cockpit">
       <header className="cockpit__bar">
         <div className="cockpit__identity">
+          {/* The state pill that used to sit beside the name moved to the top
+              bar, where it is on screen from 文件 and 插件 too. Repeating it
+              here put the same word twice within an inch of itself. The dot
+              stays: it colours the title, and it is what the eye lands on
+              first on this page. */}
           <div className="cockpit__title">
             <span className={`status__dot status__dot--${instance.state}`} />
             <h1>{instance.name}</h1>
-            <span className={`pill pill--${instance.state}`}>{STATE_LABELS[instance.state]}</span>
           </div>
           <div className="cockpit__facts">
             <span title={instance.jar}>{basename(instance.jar) || '未设置核心'}</span>
@@ -86,11 +90,12 @@ export function InstanceCockpit({ instance, active, onChanged, onOpenSection }: 
           </div>
         </div>
 
-        <PowerControls instance={instance} onChanged={onChanged} onError={setError} />
       </header>
 
-      {error && <div className="alert alert--error">{error}</div>}
-      {instance.message && !error && <div className="instance__message">{instance.message}</div>}
+      {/* The daemon's own note about the last start or stop. A failed power
+          action is a toast now — it is raised from the top bar, which is on
+          every page, so its report cannot live in one page's banner slot. */}
+      {instance.message && <div className="instance__message">{instance.message}</div>}
 
       {/* Three tiles, not six rings. Each one is a number that changes what you
           do next; the rest of the history is a click away in 监控. */}
@@ -338,34 +343,6 @@ function CopyAddress({ address }: { address: string }) {
 }
 
 /** The instance's own CPU/memory history, polled while its page is in front. */
-function useSeries(id: string, enabled: boolean): InstanceMetrics | null {
-  const [data, setData] = useState<InstanceMetrics | null>(null)
-
-  useEffect(() => {
-    setData(null)
-    if (!enabled) return
-    let cancelled = false
-
-    const load = async () => {
-      try {
-        const fetched = await api.instanceMetrics(id)
-        if (!cancelled) setData(fetched)
-      } catch {
-        // Informational; the console itself reports a lost connection.
-      }
-    }
-
-    void load()
-    const timer = window.setInterval(() => void load(), 5000)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [id, enabled])
-
-  return data
-}
-
 /**
  * Where players type to get in.
  *

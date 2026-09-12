@@ -1827,6 +1827,88 @@ a:hover {
   margin-left: auto;
 }
 
+/* ------------------------------------------------- top bar instance strip
+
+   Whether the server is up, and what it is costing, on every page of the
+   instance rather than only on its console. Three screens into a file listing
+   there used to be nothing on the strip that said the server had crashed, and
+   stopping it meant navigating back through 控制台 first.
+
+   It goes here, after the trail, because this is the room the trail leaves:
+   even a deep path ends well short of the account controls on a wide window.
+
+   What it deliberately does not carry is TPS and the player count. The daemon
+   reads the server's stdout — it has no tick timing and no player registry —
+   so both would have to be guessed, and a wrong number costs more than a
+   missing one. */
+.topbar__instance {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Never the thing that shrinks. The trail beside it already truncates by
+     design, and on a phone — where the two are actually competing — the state
+     and the power buttons are what the panel was opened for, while the trail
+     is repeating a name the sidebar also has. Without this the pill lost its
+     label at 390px and left a bare dot. */
+  flex: none;
+}
+
+/* The readout is a pill and the power buttons are not, so the eye separates
+   "what is true" from "what you can do" without a label for either. */
+.topbar__status {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 30px;
+  padding: 0 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.topbar__status .status__dot {
+  margin: 0 8px 0 6px;
+}
+
+.topbar__state {
+  padding-right: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Divider and padding on the fact rather than gap on the row, so the space
+   either side of each hairline is the same 10px. */
+.topbar__fact {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border-left: 1px solid var(--border);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.topbar__fact b {
+  color: var(--text);
+  font-weight: 600;
+  /* The readings change every five seconds in place; without tabular figures
+     the row would jitter sideways on every sample. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Smaller than a page button: this row is 52px tall and already holds the
+   trail, the readout and the account controls. */
+.topbar__instance .btn {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.topbar__instance .power {
+  gap: 6px;
+}
+
 /* The trail. It wraps to nothing — a long instance name is truncated rather
    than allowed to push the account controls off the strip. */
 .crumbs {
@@ -2627,6 +2709,35 @@ a:hover {
   border-radius: var(--radius-sm);
   font-size: 13px;
   animation: rise 200ms var(--ease) both;
+}
+
+/* An alert the reader has to clear, for a report that arrives from the shell
+   rather than from the page under it: nothing about navigating away means the
+   failed start has been read, so it does not go on its own. */
+.alert--dismiss {
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 12px;
+}
+
+.alert__close {
+  flex: none;
+  padding: 0 4px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.alert__close:hover {
+  opacity: 1;
 }
 
 .alert--error {
@@ -8671,6 +8782,14 @@ button.rows__name:hover strong {
     --sidebar-w: 224px;
   }
 
+  /* The strip starts shedding facts here rather than wrapping: the trail beside
+     it grows with the path, and a top bar that grows to two rows moves every
+     page's content down by 52px. Uptime goes first — it is the one of the three
+     nobody is checking mid-task — and the cockpit still has all three. */
+  .topbar__fact--uptime {
+    display: none;
+  }
+
   .main {
     padding: 14px 16px 16px;
     padding-right: max(16px, env(safe-area-inset-right));
@@ -8709,6 +8828,24 @@ button.rows__name:hover strong {
 @media (max-width: 1024px) {
   .app {
     grid-template-columns: 1fr;
+  }
+
+  /* A phone keeps the state and the power buttons and nothing else. This is
+     the screen someone reads an alert on while away from a desk: whether the
+     server is up, and being able to stop or start it, is the whole job. The
+     readings are a click away in 控制台. */
+  .topbar__fact {
+    display: none;
+  }
+
+  /* The trail goes entirely. It never fit on this layout — even trimmed to its
+     last step it truncated to one character and a dot, which is debris rather
+     than navigation — and with the status strip taking its share there is less
+     room than there was. Nothing is lost: every page under here opens with its
+     own title saying the same word, and the steps above it are in the drawer
+     that the ☰ beside it opens. */
+  .crumbs {
+    display: none;
   }
 
   .sidebar {

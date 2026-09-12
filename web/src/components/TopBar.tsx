@@ -1,8 +1,12 @@
 import type { MouseEventHandler, RefObject } from 'react'
 
-import type { InstanceState, User } from '../types'
+import { formatBytes, formatPercent } from '../format'
+import type { InstanceMetrics, InstanceState, InstanceStatus, User } from '../types'
+import { STATE_LABELS, isLive } from '../types'
+import { useUptime } from '../useUptime'
 import { Icon } from './Icon'
 import { Menu } from './Menu'
+import { PowerControls } from './PowerControls'
 import { ThemeToggle } from './ThemeToggle'
 
 /** One step of the trail. The last one is where you are and never links. */
@@ -17,6 +21,16 @@ export interface Crumb {
 
 interface Props {
   crumbs: Crumb[]
+  /** The instance the current page belongs to, or null on a panel-wide page.
+   *  When it is set the strip appears; when it is not the bar is what it was. */
+  instance: InstanceStatus | null
+  /** Samples for that instance, polled once in App. */
+  metrics: InstanceMetrics | null
+  onInstanceChanged: (instance: InstanceStatus) => void
+  /** A failed start or stop. Raised to App rather than shown here: the strip is
+   *  32px tall and the message is a sentence, and it has to survive being read
+   *  — see the note on the banner in App. */
+  onPowerError: (message: string | null) => void
   user: User
   /** True while the sidebar is a drawer rather than a rail beside the content. */
   compact: boolean
@@ -47,6 +61,10 @@ interface Props {
  */
 export function TopBar({
   crumbs,
+  instance,
+  metrics,
+  onInstanceChanged,
+  onPowerError,
   user,
   compact,
   navOpen,
@@ -115,7 +133,13 @@ export function TopBar({
                   /
                 </span>
               )}
-              {crumb.state && <span className={`status__dot status__dot--${crumb.state}`} />}
+              {/* The strip carries the dot now, with the label beside it that
+                  says what the colour means; a second one 40px away in the
+                  trail was the same fact told worse. It stays for a trail
+                  rendered without a strip. */}
+              {crumb.state && !instance && (
+                <span className={`status__dot status__dot--${crumb.state}`} />
+              )}
               {crumb.href && !last ? (
                 <a className="crumbs__link" href={crumb.href} onClick={crumb.onClick}>
                   {crumb.label}
@@ -129,6 +153,15 @@ export function TopBar({
           )
         })}
       </nav>
+
+      {instance && (
+        <InstanceStrip
+          instance={instance}
+          metrics={metrics}
+          onChanged={onInstanceChanged}
+          onError={onPowerError}
+        />
+      )}
 
       <div className="topbar__right">
         <button
@@ -170,5 +203,76 @@ function UserMenu({
       </span>
       <span className="usermenu__name">{user.username}</span>
     </Menu>
+  )
+}
+
+/**
+ * Whether the server is up, and the two numbers that say how hard it is
+ * working — on every page of the instance, not just its console.
+ *
+ * This used to live only in the cockpit's own header, which meant that three
+ * screens into a file listing there was nothing on the page that said the
+ * server had crashed, and stopping it was a trip back through 控制台. The trail
+ * beside it had the room: on a wide window it ends well short of the account
+ * controls.
+ *
+ * What it does *not* show is TPS and the player count, which is what a panel
+ * like this normally puts here. The daemon reads the server's stdout; it has no
+ * player registry and no tick timing, so both would have to be invented. A
+ * number that is wrong is worse than a number that is missing.
+ */
+function InstanceStrip({
+  instance,
+  metrics,
+  onChanged,
+  onError,
+}: {
+  instance: InstanceStatus
+  metrics: InstanceMetrics | null
+  onChanged: (instance: InstanceStatus) => void
+  onError: (message: string | null) => void
+}) {
+  const live = isLive(instance.state)
+  const uptime = useUptime(instance.startedAt, live)
+  const latest = metrics?.samples[metrics.samples.length - 1] ?? null
+
+  // An em dash rather than 0: a stopped server has not got a CPU figure of
+  // zero, it has not got one at all. Same rule the cockpit's tiles follow.
+  const cpu = latest ? formatPercent(latest.cpuPercent) : '—'
+  const memory = latest ? formatBytes(latest.memoryBytes) : '—'
+
+  return (
+    // The power buttons sit beside the readout rather than over with the
+    // account controls: 停止 one gap away from 退出登录 is a slip waiting to
+    // happen, and the thing you stop is the thing this strip is describing.
+    <div className="topbar__instance">
+      <div className="topbar__status">
+        <span className={`status__dot status__dot--${instance.state}`} aria-hidden="true" />
+        <b className="topbar__state">{STATE_LABELS[instance.state]}</b>
+        {/* Only while there is something to report. A stopped server has no
+            uptime, no CPU and no memory — three em dashes in a row is a row of
+            noise, and the state beside them already said why. As the window
+            narrows the live ones drop one at a time, least useful first; all
+            three are still on the cockpit, so nothing here is the only copy. */}
+        {live && (
+          <>
+            <span className="topbar__fact topbar__fact--uptime">
+              已运行 <b>{uptime ?? '—'}</b>
+            </span>
+            <span className="topbar__fact topbar__fact--cpu">
+              CPU <b>{cpu}</b>
+            </span>
+            <span className="topbar__fact topbar__fact--memory">
+              内存 <b>{memory}</b>
+            </span>
+          </>
+        )}
+      </div>
+      {/* A failed start used to print into the cockpit's own error slot, which
+          is off screen from every page but 控制台 — and this control is on all
+          of them. It goes up to App, which has a banner over whatever page is
+          showing. */}
+      <PowerControls instance={instance} onChanged={onChanged} variant="compact" onError={onError} />
+    </div>
   )
 }

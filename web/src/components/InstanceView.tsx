@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { DUR } from '../motion'
 import type { InstanceSection } from '../routes'
-import type { InstanceStatus } from '../types'
+import type { InstanceMetrics, InstanceStatus } from '../types'
 import type { CoreController } from '../useCores'
 import type { PluginController } from '../usePlugins'
 import { ConfigHistory } from './ConfigHistory'
@@ -20,6 +20,9 @@ import { VelocityConfig } from './VelocityConfig'
 
 interface Props {
   instance: InstanceStatus
+  /** Resource samples for this instance, polled once in App and shared with
+   *  the top bar's status strip. */
+  metrics: InstanceMetrics | null
   /** Every instance on the machine, for 代理连线: a link's other end is some
    *  other server, and the page has to notice when one is created or deleted
    *  somewhere else. */
@@ -59,6 +62,7 @@ interface Props {
  */
 export function InstanceView({
   instance,
+  metrics,
   instances,
   section,
   cores,
@@ -122,6 +126,7 @@ export function InstanceView({
       <Pane id="console" active={section === 'console'} leaving={leaving === 'console'}>
         <InstanceCockpit
           instance={instance}
+          metrics={metrics}
           active={section === 'console'}
           onChanged={onChanged}
           onOpenSection={onOpenSection}

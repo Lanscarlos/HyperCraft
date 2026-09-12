@@ -45,13 +45,14 @@ import {
 import type { InstanceSection, LibrarySection, LibraryView, Route, StateFilter } from './routes'
 import { captureScope } from './scopeMorph'
 import type { InstanceStatus, User } from './types'
-import { mergeState } from './types'
+import { isLive, mergeState } from './types'
 import { useCores } from './useCores'
 import { useDatabases } from './useDatabases'
 import { useJava } from './useJava'
 import { useMediaQuery } from './useMediaQuery'
 import { usePlugins } from './usePlugins'
 import { useRecents } from './useRecents'
+import { useSeries } from './useSeries'
 import { useSchematics } from './useSchematics'
 import { useSystem } from './useSystem'
 import { useTerminal } from './useTerminal'
@@ -435,6 +436,25 @@ export default function App() {
     }
   }
 
+  // A failed start or stop from the top bar's strip. It lives here rather than
+  // in the bar because the bar is 32px tall and this is a sentence, and rather
+  // than in a toast because toasts expire — toast.ts keeps errors out for
+  // exactly that reason, and a start that did not happen has to still be on
+  // screen when the operator looks back at it.
+  const [powerError, setPowerError] = useState<string | null>(null)
+
+  const selectedId = route.kind === 'instance' ? route.id : null
+  const selected = instances.find((item) => item.id === selectedId) ?? null
+  // Above the login and boot guards, not beside the render that uses it: a
+  // hook after an early return is called on some renders and not others, and
+  // React counts that as the hook order changing (#310). The poll itself is
+  // inert until there is a selected instance to poll for.
+  //
+  // The cockpit's tiles and the top bar's status strip read the same samples,
+  // and the strip is on screen on every instance page — so one poll lives here
+  // and the result goes to both rather than each of them owning an interval.
+  const metrics = useSeries(selected?.id ?? null, selected !== null && isLive(selected.state))
+
   if (checkingSession) {
     return <div className="boot">正在检查登录状态…</div>
   }
@@ -442,8 +462,6 @@ export default function App() {
     return <Login onSignedIn={setUser} />
   }
 
-  const selectedId = route.kind === 'instance' ? route.id : null
-  const selected = instances.find((item) => item.id === selectedId) ?? null
   // Matches the backend's State.Running(), which is what decides the list of
   // servers recorded for resume — so the update dialog promises exactly what
   // will happen.
@@ -549,6 +567,10 @@ export default function App() {
         <div className="shell">
           <TopBar
             crumbs={crumbs}
+            instance={selected}
+            metrics={metrics}
+            onInstanceChanged={applyInstance}
+            onPowerError={setPowerError}
             user={user}
             compact={compact}
             navOpen={navOpen}
@@ -564,6 +586,18 @@ export default function App() {
 
           <main className="main" id="main" tabIndex={-1}>
             {loadError && <div className="alert alert--error">{loadError}</div>}
+            {powerError && (
+              <div className="alert alert--error alert--dismiss" role="alert">
+                <span>{powerError}</span>
+                <button
+                  className="alert__close"
+                  onClick={() => setPowerError(null)}
+                  aria-label="关闭"
+                >
+                  ×
+                </button>
+              </div>
+            )}
 
             {/* The shell survives a crashed page, and navigating away is what
                 recovers from one — hence the route as the reset key. */}
@@ -722,6 +756,7 @@ export default function App() {
                   <InstanceView
                     key={selected.id}
                     instance={selected}
+                    metrics={metrics}
                     instances={instances}
                     section={route.section}
                     cores={cores}
