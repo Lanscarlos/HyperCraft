@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -511,5 +512,40 @@ func TestTransferReportsTruncatedBody(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "下载中断") {
 		t.Fatalf("expected a truncation failure, got %v", err)
+	}
+}
+
+// Modrinth publishes a SHA-512 and no SHA-256, so that is what a Modrinth jar
+// has to be checked against — the recorded digest stays SHA-256 either way,
+// because that is the identity everything downstream matches on.
+func TestTransferVerifiesSHA512(t *testing.T) {
+	body := "a fine plugin jar"
+	wide := sha512.Sum512([]byte(body))
+	narrow := sha256.Sum256([]byte(body))
+
+	digest, err := transferOnce(t, Asset{
+		Name:   "plug.jar",
+		Size:   int64(len(body)) - 3,
+		URL:    jarServer(t, body),
+		SHA512: hex.EncodeToString(wide[:]),
+	})
+	if err != nil {
+		t.Fatalf("transfer: %v", err)
+	}
+	if digest != hex.EncodeToString(narrow[:]) {
+		t.Errorf("recorded digest is %q, want the SHA-256 of the bytes", digest)
+	}
+}
+
+func TestTransferRejectsSHA512Mismatch(t *testing.T) {
+	body := "a fine plugin jar"
+	_, err := transferOnce(t, Asset{
+		Name:   "plug.jar",
+		Size:   int64(len(body)),
+		URL:    jarServer(t, body),
+		SHA512: strings.Repeat("ab", 64),
+	})
+	if !errors.Is(err, ErrChecksum) {
+		t.Fatalf("expected a checksum failure, got %v", err)
 	}
 }

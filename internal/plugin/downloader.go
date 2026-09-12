@@ -3,9 +3,11 @@ package plugin
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"log/slog"
 	"os"
@@ -601,14 +603,26 @@ func (d *Downloader) transfer(ctx context.Context, pub *Job, temp string, src So
 	// drives the progress bar, and the cap falls back to the same ceiling an
 	// undeclared size gets — there to bound the disk a runaway redirect can
 	// eat, not to verify anything.
-	sized := asset.Size > 0 && asset.SHA256 == ""
+	sized := asset.Size > 0 && !asset.verifiable()
 	limit := int64(maxUnknownSize)
 	if sized {
 		limit = asset.Size
 	}
+
+	// The SHA-256 is always computed, whatever the source published: it is the
+	// identity the library records and the fleet is reconciled against, not
+	// the proof. A second digest is only computed when there is a published
+	// one to compare it to, because hashing 30 MB twice for nothing is a cost
+	// every download would pay.
 	digest := sha256.New()
+	writers := []io.Writer{file, digest}
+	var wide hash.Hash
+	if asset.SHA512 != "" {
+		wide = sha512.New()
+		writers = append(writers, wide)
+	}
 	progress := &progressWriter{
-		to: io.MultiWriter(file, digest),
+		to: io.MultiWriter(writers...),
 		report: func(n int64) {
 			d.mu.Lock()
 			pub.Downloaded = n
@@ -641,16 +655,30 @@ func (d *Downloader) transfer(ctx context.Context, pub *Job, temp string, src So
 	// compared rather than only recorded — the field has been carried on the
 	// asset since the registries went in, and nothing ever read it.
 	sum := hex.EncodeToString(digest.Sum(nil))
-	if asset.SHA256 != "" && !strings.EqualFold(sum, asset.SHA256) {
-		// A short body is the one checksum failure with an obvious cause, and
-		// "the connection dropped, run it again" is very different advice
-		// from "this source is serving the wrong jar".
-		if asset.Size > 0 && written < asset.Size {
-			return "", fmt.Errorf("%w: 下载中断，只收到 %d 字节，应为 %d", ErrChecksum, written, asset.Size)
-		}
-		return "", fmt.Errorf("%w: 校验和不符，算出 %s，应为 %s", ErrChecksum, sum, strings.ToLower(asset.SHA256))
+	if err := verifyDigest(asset, sum, wide, written); err != nil {
+		return "", err
 	}
 	return sum, nil
+}
+
+// verifyDigest checks the bytes against whichever digest the source published.
+// sum is the SHA-256 of what arrived and wide the SHA-512 of it, non-nil only
+// when there was a published SHA-512 to check.
+func verifyDigest(asset Asset, sum string, wide hash.Hash, written int64) error {
+	algo, got, want := "SHA-256", sum, asset.SHA256
+	if wide != nil {
+		algo, got, want = "SHA-512", hex.EncodeToString(wide.Sum(nil)), asset.SHA512
+	}
+	if want == "" || strings.EqualFold(got, want) {
+		return nil
+	}
+	// A short body is the one checksum failure with an obvious cause, and
+	// "the connection dropped, run it again" is very different advice from
+	// "this source is serving the wrong jar".
+	if asset.Size > 0 && written < asset.Size {
+		return fmt.Errorf("%w: 下载中断，只收到 %d 字节，应为 %d", ErrChecksum, written, asset.Size)
+	}
+	return fmt.Errorf("%w: %s 不符，算出 %s，应为 %s", ErrChecksum, algo, got, strings.ToLower(want))
 }
 
 func (d *Downloader) finish(pub *Job, state JobState, err error) {

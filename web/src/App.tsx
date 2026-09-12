@@ -485,7 +485,7 @@ export default function App() {
   // last move to undo and the tree is the only thing left that knows the way
   // out.
   const backRoute = backTo ?? parentOf(route)
-  // Leaving the scope is exactly the movement 返回上级 in the sidebar makes, so
+  // Leaving the scope is exactly the movement the sidebar's own exit makes, so
   // it is captured the same way and the header shrinks back into the row it
   // came from — the button being somewhere else does not make it a different
   // act.

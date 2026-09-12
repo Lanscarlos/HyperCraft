@@ -11,11 +11,12 @@ import {
   SETTINGS_SECTIONS,
   defaultView,
   instanceSections,
+  navKeyOf,
   pathOf,
   samePage,
 } from '../routes'
 import { captureScope, playScope } from '../scopeMorph'
-import type { InstanceStatus, SystemInfo, User } from '../types'
+import type { Capability, InstanceStatus, SystemInfo, User } from '../types'
 import { STATE_LABELS, isLive } from '../types'
 import type { CoreController } from '../useCores'
 import type { DatabaseController } from '../useDatabases'
@@ -69,11 +70,12 @@ interface Props {
  * console three levels deep is a console nobody uses.
  *
  * What an inner scope owes the reader in exchange is a way out and a way
- * across: every one of them opens with 返回上级 and the name of the thing you
- * are inside. And it does not simply appear — the row you clicked flies up to
- * become that header while the list it belonged to clears out of the way, so
- * the replacement is something you watched happen rather than something you
- * have to re-read the sidebar to understand. See scopeMorph.ts.
+ * across: every one of them opens with the name of the thing you are inside
+ * and closes, at the foot of the column, with the way back out of it. And it
+ * does not simply appear — the row you clicked flies up to become that header
+ * while the list it belonged to clears out of the way, so the replacement is
+ * something you watched happen rather than something you have to re-read the
+ * sidebar to understand. See scopeMorph.ts.
  */
 export function Sidebar(props: Props) {
   const { scope, sidebarRef, compact, railed, onToggleRail } = props
@@ -121,27 +123,40 @@ export function Sidebar(props: Props) {
         <GlobalScope {...props} />
       )}
 
-      {/* The fold, at the foot of the column it folds.
-          It used to be the leftmost button in the top bar — a chevron pointing
-          left, in the corner every browser and every phone puts 返回 in — so
-          the control that narrows the navigation was sitting exactly where a
-          reader expects the control that leaves the page. Moved down here it is
-          attached to the thing it acts on, and that corner is free for the back
-          button people were already trying to press. */}
-      {!compact && (
-        <button
-          className="sidebar__fold"
-          onClick={onToggleRail}
-          title={railed ? '展开侧边栏（[）' : '收起侧边栏（[）'}
-          aria-label={railed ? '展开侧边栏' : '收起侧边栏'}
-          aria-expanded={!railed}
-          aria-controls="sidebar"
-        >
-          <Icon name={railed ? 'expand' : 'collapse'} />
-          <span className="sidebar__name">收起侧边栏</span>
-          <kbd className="sidebar__kbd">[</kbd>
-        </button>
-      )}
+      {/* One slot at the foot of the column, and what fills it depends on
+          which column this is.
+
+          On the panel's own sidebar it is the fold. It used to be the leftmost
+          button in the top bar — a chevron pointing left, in the corner every
+          browser and every phone puts 返回 in — so the control that narrows the
+          navigation was sitting exactly where a reader expects the control that
+          leaves the page. Moved down here it is attached to the thing it acts
+          on, and that corner is free for the back button people were already
+          trying to press.
+
+          Inside a scope it is the way out instead. A scope is somewhere you
+          leave far more often than you fold, and the two controls want the same
+          slot — the quiet one at the bottom that acts on the whole column
+          rather than naming a page. The fold does not disappear with it: `[`
+          still works in every scope, and the panel's own sidebar, which is
+          where you are when you decide how wide the navigation should be, still
+          has the button. */}
+      {scope === 'global'
+        ? !compact && (
+            <button
+              className="sidebar__fold"
+              onClick={onToggleRail}
+              title={railed ? '展开侧边栏（[）' : '收起侧边栏（[）'}
+              aria-label={railed ? '展开侧边栏' : '收起侧边栏'}
+              aria-expanded={!railed}
+              aria-controls="sidebar"
+            >
+              <Icon name={railed ? 'expand' : 'collapse'} />
+              <span className="sidebar__name">收起侧边栏</span>
+              <kbd className="sidebar__kbd">[</kbd>
+            </button>
+          )
+        : <ScopeExit {...props} />}
     </aside>
   )
 }
@@ -158,10 +173,6 @@ function GlobalScope(props: Props) {
     user,
     updateNotice,
     alertCount,
-    java,
-    databases,
-    cores,
-    plugins,
     onCreate,
   } = props
 
@@ -171,57 +182,7 @@ function GlobalScope(props: Props) {
   // operator has not been in yet still has to be one click away.
   const shortlist = pickShortlist(instances, recents)
 
-  // The shared shelves, as rows rather than as five guarded blocks: what
-  // changes per row is the capability and the badge, and a list makes both
-  // readable at once.
-  const libraryRows = [
-    {
-      cap: CAP.panelJava,
-      navKey: 'library:java',
-      icon: 'java' as IconName,
-      label: 'Java 环境',
-      target: { kind: 'library', section: 'java', view: 'installed' } as Route,
-      badge: java.installing ? <span className="badge badge--update">安装中</span> : null,
-    },
-    {
-      cap: CAP.libraryCores,
-      navKey: 'library:cores',
-      icon: 'cores' as IconName,
-      label: '服务端核心',
-      target: { kind: 'library', section: 'cores', view: 'stock' } as Route,
-      badge: cores.downloading ? <span className="badge badge--update">下载中</span> : null,
-    },
-    {
-      cap: CAP.panelDatabases,
-      navKey: 'library:database',
-      icon: 'database' as IconName,
-      label: '数据库环境',
-      target: { kind: 'library', section: 'database', view: 'databases' } as Route,
-      badge: databases.installing ? <span className="badge badge--update">安装中</span> : null,
-    },
-    {
-      cap: CAP.libraryPlugins,
-      navKey: 'library:plugins',
-      icon: 'plugins' as IconName,
-      label: '插件库',
-      target: { kind: 'library', section: 'plugins', view: 'list' } as Route,
-      badge: plugins.downloading ? (
-        <span className="badge badge--update">下载中</span>
-      ) : plugins.updates > 0 ? (
-        <span className="badge badge--update">{plugins.updates}</span>
-      ) : null,
-    },
-    // Last of the five, and the only one a server can start without: the other
-    // four are what a server *is*, this is what somebody puts inside one.
-    {
-      cap: CAP.librarySchematics,
-      navKey: 'library:schematics',
-      icon: 'schematics' as IconName,
-      label: '建筑库',
-      target: { kind: 'library', section: 'schematics', view: 'list' } as Route,
-      badge: null,
-    },
-  ].filter((row) => can(row.cap))
+  const libraryRows = shelfRows(props).filter((row) => can(row.cap))
 
   // 主机 is one row leading to three pages behind three different capabilities,
   // so it points at the first one this account can actually open.
@@ -323,12 +284,12 @@ function GlobalScope(props: Props) {
             <nav className="sidebar__nav" aria-label="资源库导航">
               {libraryRows.map((row) => (
                 <NavLink
-                  key={row.navKey}
+                  key={row.section}
                   {...props}
                   icon={row.icon}
                   label={row.label}
                   target={row.target}
-                  navKey={row.navKey}
+                  navKey={`library:${row.section}`}
                   badge={row.badge}
                 />
               ))}
@@ -407,8 +368,6 @@ function InstanceScope(props: Props) {
     <>
       <ScopeHead
         {...props}
-        backLabel="返回实例列表"
-        backTo={{ kind: 'instances', query: '', state: 'all' }}
         switcherLabel="切换实例（⌘K）"
         navKey={`instance:${id}`}
         name={instance?.name ?? '实例'}
@@ -461,6 +420,79 @@ const INSTANCE_ICONS: Record<string, IconName> = {
 
 // ----------------------------------------------------------------- library
 
+interface ShelfRow {
+  section: LibrarySection
+  cap: Capability
+  icon: IconName
+  label: string
+  target: Route
+  badge: ReactNode
+}
+
+/**
+ * The five shelves, as rows rather than as five guarded blocks: what changes
+ * per row is the capability and the badge, and a list makes both readable at
+ * once.
+ *
+ * Built here rather than inside either caller because both sidebars show this
+ * list — the panel's own, and the one inside a shelf — and the badges are the
+ * reason they have to be the same list. A download started from 服务端核心 is
+ * still running when you step across to 插件库, and a 下载中 that only the
+ * outer sidebar knew how to draw would vanish exactly when you left the page
+ * that could have told you about it.
+ */
+function shelfRows(props: Props): ShelfRow[] {
+  const { java, databases, cores, plugins } = props
+  return [
+    {
+      section: 'java',
+      cap: CAP.panelJava,
+      icon: 'java',
+      label: 'Java 环境',
+      target: { kind: 'library', section: 'java', view: 'installed' },
+      badge: java.installing ? <span className="badge badge--update">安装中</span> : null,
+    },
+    {
+      section: 'cores',
+      cap: CAP.libraryCores,
+      icon: 'cores',
+      label: '服务端核心',
+      target: { kind: 'library', section: 'cores', view: 'stock' },
+      badge: cores.downloading ? <span className="badge badge--update">下载中</span> : null,
+    },
+    {
+      section: 'database',
+      cap: CAP.panelDatabases,
+      icon: 'database',
+      label: '数据库环境',
+      target: { kind: 'library', section: 'database', view: 'databases' },
+      badge: databases.installing ? <span className="badge badge--update">安装中</span> : null,
+    },
+    {
+      section: 'plugins',
+      cap: CAP.libraryPlugins,
+      icon: 'plugins',
+      label: '插件库',
+      target: { kind: 'library', section: 'plugins', view: 'list' },
+      badge: plugins.downloading ? (
+        <span className="badge badge--update">下载中</span>
+      ) : plugins.updates > 0 ? (
+        <span className="badge badge--update">{plugins.updates}</span>
+      ) : null,
+    },
+    // Last of the five, and the only one a server can start without: the other
+    // four are what a server *is*, this is what somebody puts inside one.
+    {
+      section: 'schematics',
+      cap: CAP.librarySchematics,
+      icon: 'schematics',
+      label: '建筑库',
+      target: { kind: 'library', section: 'schematics', view: 'list' },
+      badge: null,
+    },
+  ]
+}
+
 /**
  * One shelf of the shared library, with its pages as the whole navigation.
  *
@@ -473,23 +505,28 @@ const INSTANCE_ICONS: Record<string, IconName> = {
  * under a row you clicked is a fourth thing the reader has to have learned.
  *
  * So a shelf is a scope now, on exactly the terms an instance is: the row flies
- * up and becomes this header, its pages come up underneath, and 返回上级 puts
- * the row back where it was.
+ * up and becomes this header, its pages come up underneath, and the exit at the
+ * foot of the column puts the row back where it was.
+ *
+ * What a shelf has that the other scopes do not is four siblings, and they are
+ * in this column too — see the group below the pages.
  */
 function LibraryScope(props: Props) {
-  // No capability filtering inside a shelf: which shelves exist is decided by
-  // the global nav, and these rows are pages of the one already open.
+  // No capability filtering on the *pages*: which shelves exist is decided by
+  // the global nav, and these rows are pages of the one already open. The
+  // sibling shelves below are a different matter — those are destinations, and
+  // an account that cannot open 数据库环境 must not be shown a way in.
   const { route, follow, navigate, java, cores, plugins } = props
+  const can = useCan()
   const section: LibrarySection = route.kind === 'library' ? route.section : 'cores'
   const view = route.kind === 'library' ? route.view : defaultView(section)
   const entry = LIBRARY_SECTIONS.find((item) => item.id === section)
+  const siblings = shelfRows(props).filter((row) => row.section !== section && can(row.cap))
 
   return (
     <>
       <ScopeHead
         {...props}
-        backLabel="返回面板"
-        backTo={{ kind: 'overview' }}
         switcherLabel={undefined}
         navKey={`library:${section}`}
         name={entry?.label ?? '资源库'}
@@ -537,6 +574,36 @@ function LibraryScope(props: Props) {
             )
           })}
         </nav>
+
+        {/* The other four shelves, in the same column.
+            Without them a shelf is a room with one door: the five are ordered
+            the way a server actually gets built — Java runs the core, the core
+            loads the plugins, the plugins ask for the database — and that is a
+            path somebody walks in one sitting. Sending them back out to the
+            panel and in again between each step made the panel's own ordering
+            the one thing its navigation would not let you follow.
+
+            The shelf you are standing in is not in the list; it is the header
+            above, and a row that navigates to where you already are is a row
+            that teaches people the list is decorative. */}
+        {siblings.length > 0 && (
+          <>
+            <Group label="其他资源库" />
+            <nav className="sidebar__nav" aria-label="切换资源库">
+              {siblings.map((row) => (
+                <NavLink
+                  key={row.section}
+                  {...props}
+                  icon={row.icon}
+                  label={row.label}
+                  target={row.target}
+                  navKey={`library:${row.section}`}
+                  badge={row.badge}
+                />
+              ))}
+            </nav>
+          </>
+        )}
 
         {section === 'plugins' && <ApiBudget plugins={plugins} />}
       </div>
@@ -658,8 +725,6 @@ function HostScope(props: Props) {
     <>
       <ScopeHead
         {...props}
-        backLabel="返回面板"
-        backTo={{ kind: 'overview' }}
         switcherLabel={undefined}
         navKey="host"
         name={system?.host.hostname || '本机'}
@@ -736,8 +801,6 @@ function SettingsScope(props: Props) {
     <>
       <ScopeHead
         {...props}
-        backLabel="返回面板"
-        backTo={{ kind: 'overview' }}
         switcherLabel={undefined}
         navKey="settings"
         name="面板设置"
@@ -780,21 +843,76 @@ const SETTINGS_ICONS: Record<string, IconName> = {
 
 // ----------------------------------------------------------------- pieces
 
-/** The fixed top of an inner scope: the way out, and what you are inside. */
+/**
+ * Where each scope goes when you leave it, and what to call the way out.
+ *
+ * A table rather than a prop on each scope: the exit is rendered by Sidebar,
+ * one level above the component that knows which scope it is, and threading a
+ * route back up through props to a sibling of the thing that produced it is
+ * how the two ends of an animation end up disagreeing about the key.
+ */
+const SCOPE_EXITS: Partial<Record<Scope, { to: Route; label: string }>> = {
+  instance: { to: { kind: 'instances', query: '', state: 'all' }, label: '返回实例列表' },
+  library: { to: { kind: 'overview' }, label: '返回面板' },
+  host: { to: { kind: 'overview' }, label: '返回面板' },
+  settings: { to: { kind: 'overview' }, label: '返回面板' },
+}
+
+/**
+ * The way out of an inner scope, at the foot of the column.
+ *
+ * Named for where it goes rather than "返回上一级", the same way the top bar's
+ * back button is: one step up from 实例设置 is the instance list, one step up
+ * from 建筑库 is the panel, and a reader who has to click to find out which is
+ * a reader the label failed.
+ *
+ * The title repeats that label rather than adding to it, as every row in here
+ * does, because folded the label is the thing that is gone.
+ */
+function ScopeExit(props: Props) {
+  const { route, scope, follow, navigate } = props
+  const exit = SCOPE_EXITS[scope]
+  if (!exit) return null
+
+  // Pairs with the row that opened this scope, which is what makes leaving the
+  // exact reverse of entering: the header shrinks back down into the row it
+  // came from, and the list it displaced comes back in from above and below.
+  const navKey = navKeyOf(route)
+
+  return (
+    <a
+      className="sidebar__exit"
+      href={pathOf(exit.to)}
+      onClick={follow(() => {
+        if (navKey) captureScope(navKey)
+        navigate(exit.to)
+      })}
+      title={exit.label}
+    >
+      <Icon name="back" />
+      <span className="sidebar__name">{exit.label}</span>
+    </a>
+  )
+}
+
+/**
+ * The fixed top of an inner scope: what you are inside.
+ *
+ * It used to carry the way out as well, on a row above the name. That row is
+ * at the foot of the column now — see ScopeExit — and the reason is what the
+ * top of a navigation column is worth: it is the first thing read on every
+ * screen in the scope, and it was being spent on the one destination you leave
+ * by pressing the back button you already have, in the top bar, two hundred
+ * pixels away and pointing at the same place.
+ */
 function ScopeHead({
-  follow,
-  navigate,
   onOpenPalette,
-  backLabel,
-  backTo,
   switcherLabel,
   navKey,
   name,
   meta,
   dot,
 }: Props & {
-  backLabel: string
-  backTo: Route
   switcherLabel?: string
   /** Pairs this header with the row it came from, in both directions. */
   navKey: string
@@ -819,23 +937,6 @@ function ScopeHead({
 
   return (
     <div className="sidebar__scope">
-      <a
-        className="sidebar__back"
-        href={pathOf(backTo)}
-        // The same capture as the row that opened this scope, which is what
-        // makes leaving the exact reverse: the header shrinks back down into
-        // the row it came from, and the list it displaced comes back in from
-        // above and below.
-        onClick={follow(() => {
-          captureScope(navKey)
-          navigate(backTo)
-        })}
-        title={backLabel}
-      >
-        <Icon name="back" />
-        <span className="sidebar__name">返回上级</span>
-      </a>
-
       {switcherLabel ? (
         <button
           className="sidebar__entity sidebar__entity--switch"
