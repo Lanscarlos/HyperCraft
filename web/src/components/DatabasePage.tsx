@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 
 import { ask, askWithToggle } from '../confirm'
 import { formatBytes, formatDate } from '../format'
-import type { LibraryView } from '../routes'
 import { toast } from '../toast'
 import type {
   DatabaseEngine,
@@ -20,18 +19,6 @@ import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleto
  *  and the two have to be the same string or the page moves when it loads. */
 const DB_LEAD =
   '不少插件要数据库：LuckPerms 存权限、CoreProtect 存日志、Plan 存统计。这里装的数据库归面板所有，不动系统里的服务，建好之后把连接串复制到插件配置里就行。'
-
-const TITLES: Partial<Record<LibraryView, string>> = {
-  databases: '数据库环境',
-  engines: '已装引擎',
-  install: '安装引擎',
-}
-
-const LEADS: Partial<Record<LibraryView, string>> = {
-  databases: DB_LEAD,
-  engines: '引擎是数据库程序本身，装一次可以给多个数据库共用。删掉引擎不会动数据，但跑在上面的数据库会起不来。',
-  install: '从官方渠道下载数据库程序。下载走服务器自己的网络，关掉网页也会继续。',
-}
 
 const STATE_LABELS: Record<DatabaseService['state'], string> = {
   stopped: '已停止',
@@ -65,15 +52,7 @@ const STATE_DOTS: Record<DatabaseService['state'], string> = {
  * panel starts and stops, and it has *credentials* the operator has to be able
  * to read back.
  */
-export function DatabasePage({
-  databases,
-  view,
-  onOpenView,
-}: {
-  databases: DatabaseController
-  view: LibraryView
-  onOpenView: (view: LibraryView) => void
-}) {
+export function DatabasePage({ databases }: { databases: DatabaseController }) {
   const { overview, job, installing, busy } = databases
 
   if (!overview) {
@@ -81,7 +60,7 @@ export function DatabasePage({
     // away means the page opens with its own name on it, and only what was
     // actually being fetched arrives later.
     return (
-      <Page wide title={TITLES[view] ?? '数据库环境'} lead={DB_LEAD}>
+      <Page wide title="数据库环境" lead={DB_LEAD}>
         <SkeletonScreen inPage label="正在读取数据库…">
           <SkeletonPanel title={false}>
             <div className="chart-head">
@@ -102,52 +81,51 @@ export function DatabasePage({
   return (
     <Page
       wide
-      title={TITLES[view] ?? '数据库环境'}
-      lead={LEADS[view] ?? DB_LEAD}
+      title="数据库环境"
+      lead={DB_LEAD}
       aside={
         <p className="meta-chips">
+          {/* The count and how many of them are up, in one chip. The other
+              three — os/arch, engine total — are facts about the machine and
+              the disk, not about the thing you came to look at. */}
+          <span>
+            {services.length > 0
+              ? `${services.length} 个数据库 · ${live} 个运行中`
+              : '还没建数据库'}
+          </span>
+          {installs.length > 0 && <span>引擎共 {formatBytes(totalSize)}</span>}
           {platform.os && (
             <span>
               {platform.os}/{platform.arch}
             </span>
           )}
-          <span>{services.length} 个数据库</span>
-          {live > 0 && <span>{live} 个运行中</span>}
-          {installs.length > 0 && <span>引擎共 {formatBytes(totalSize)}</span>}
         </p>
       }
     >
       {platform.warning && <div className="alert alert--error">{platform.warning}</div>}
       {databases.error && <div className="alert alert--error">{databases.error}</div>}
 
-      {/* An install keeps running after you navigate away, so it is reported on
-          whichever of these pages you happen to be looking at. */}
-      {view !== 'install' && job && (job.state === 'downloading' || job.state === 'extracting') && (
+      {/* An install keeps running after you navigate away, so it is reported at
+          the top of the page rather than inside the card that started it. */}
+      {job && (job.state === 'downloading' || job.state === 'extracting') && (
         <InstallStatus job={job} engines={engines} />
       )}
 
-      {view === 'databases' && (
-        <ServiceList
-          databases={databases}
-          services={services}
-          installs={installs}
-          engines={engines}
-          onOpenView={onOpenView}
-        />
-      )}
+      {/* Three cards, in the order of the three questions: what databases do I
+          have, what engines are they built on, and how do I get another engine.
+          They were three pages, and the engine list is why the split never paid
+          — after the first install it is a card you glance at, not a page you
+          navigate to. */}
+      <ServiceList
+        databases={databases}
+        services={services}
+        installs={installs}
+        engines={engines}
+      />
 
-      {view === 'engines' && (
-        <EngineList
-          databases={databases}
-          installs={installs}
-          engines={engines}
-          onOpenView={onOpenView}
-        />
-      )}
+      <EngineList databases={databases} installs={installs} engines={engines} />
 
-      {view === 'install' && (
-        <InstallEngine databases={databases} engines={engines} busy={busy || installing} />
-      )}
+      <InstallEngine databases={databases} engines={engines} busy={busy || installing} />
     </Page>
   )
 }
@@ -159,13 +137,11 @@ function ServiceList({
   services,
   installs,
   engines,
-  onOpenView,
 }: {
   databases: DatabaseController
   services: DatabaseService[]
   installs: DatabaseInstall[]
   engines: DatabaseEngine[]
-  onOpenView: (view: LibraryView) => void
 }) {
   const [creating, setCreating] = useState(false)
   // Which database the pane beside the table is describing. Null until
@@ -220,11 +196,10 @@ function ServiceList({
               {usable.length === 0 ? (
                 <>
                   <p>还没有装数据库引擎，建不了数据库。</p>
+                  {/* No link: 安装引擎 is the last card on this page now, so
+                      pointing at it is pointing down. */}
                   <p className="muted">
-                    <button className="link" type="button" onClick={() => onOpenView('install')}>
-                      先装一个引擎
-                    </button>
-                    ，MySQL 的精简包只有 60 MB 左右，装完就能建库。
+                    先在下面装一个引擎，MySQL 的精简包只有 60 MB 左右，装完就能建库。
                   </p>
                 </>
               ) : (
@@ -717,12 +692,10 @@ function EngineList({
   databases,
   installs,
   engines,
-  onOpenView,
 }: {
   databases: DatabaseController
   installs: DatabaseInstall[]
   engines: DatabaseEngine[]
-  onOpenView: (view: LibraryView) => void
 }) {
   const remove = async (install: DatabaseInstall) => {
     const ok = await ask({
@@ -742,15 +715,13 @@ function EngineList({
   if (installs.length === 0) {
     return (
       <section className="panel">
-        <div className="welcome__empty">
-          <p>还没有装过数据库引擎。</p>
-          <p className="muted">
-            <button className="link" type="button" onClick={() => onOpenView('install')}>
-              挑一个装上
-            </button>
-            ，全程不动系统里的服务，也不需要 root 之外的额外配置。
-          </p>
+        <div className="chart-head">
+          <h2 className="panel__title">已装引擎</h2>
+          <p className="chart-head__meta">引擎是数据库程序本身，一个可以给多个数据库共用</p>
         </div>
+        <p className="muted">
+          还没有装过。下面挑一个装上 —— 全程不动系统里的服务，也不需要 root 之外的额外配置。
+        </p>
       </section>
     )
   }
@@ -758,9 +729,10 @@ function EngineList({
   return (
     <section className="panel">
       <div className="chart-head">
-        <h2 className="panel__title">已安装</h2>
+        <h2 className="panel__title">已装引擎</h2>
         <p className="chart-head__meta">
-          共 {formatBytes(installs.reduce((sum, entry) => sum + entry.size, 0))}
+          共 {formatBytes(installs.reduce((sum, entry) => sum + entry.size, 0))} · 删掉引擎不会动数据，
+          但跑在上面的数据库会起不来
         </p>
       </div>
 
@@ -890,30 +862,38 @@ function InstallEngine({
 
   return (
     <section className="panel">
-      {job && <InstallStatus job={job} engines={engines} />}
-
-      <div className="field">
-        <span>选择数据库</span>
-        <div className="choice-grid choice-grid--wide">
-          {engines.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              className={`choice${entry.id === engine ? ' choice--active' : ''}`}
-              aria-pressed={entry.id === engine}
-              disabled={installing}
-              onClick={() => {
-                setEngine(entry.id)
-                setVersion(null)
-                setCustom('')
-              }}
-            >
-              <span className="choice__label">{entry.name}</span>
-              <span className="choice__note">{entry.note}</span>
-            </button>
-          ))}
+      {/* Which of the three, in the card's head. It is one choice out of three
+          and it scopes everything below it, which is the shape of a tab strip
+          rather than of a grid of tiles the size of the versions underneath. */}
+      <div className="chart-head">
+        <h2 className="panel__title">安装引擎</h2>
+        <p className="chart-head__meta">
+          {engineInfo ? `二进制来自 ${engineInfo.vendor}` : '从官方渠道下载'} ·
+          下载走服务器自己的网络，关掉网页也会继续
+        </p>
+        <div className="chart-head__tools">
+          <div className="segmented segmented--inline" role="group" aria-label="选择数据库">
+            {engines.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={`segmented__option${
+                  entry.id === engine ? ' segmented__option--active' : ''
+                }`}
+                aria-pressed={entry.id === engine}
+                title={entry.note}
+                disabled={installing}
+                onClick={() => {
+                  setEngine(entry.id)
+                  setVersion(null)
+                  setCustom('')
+                }}
+              >
+                <strong>{entry.name}</strong>
+              </button>
+            ))}
+          </div>
         </div>
-        {engineInfo && <small>二进制来自：{engineInfo.vendor}</small>}
       </div>
 
       {list === undefined ? (
@@ -928,12 +908,6 @@ function InstallEngine({
           {/* One line per build, with the button on the line. Picking a point
               release and then hunting for an 安装 button under the form was a
               second step for a decision the line had already made. */}
-          <div className="chart-head">
-            <h2 className="panel__title">可安装</h2>
-            <p className="chart-head__meta">
-              {list.length} 个版本{engineInfo ? ` · 来自 ${engineInfo.vendor}` : ''}
-            </p>
-          </div>
           <div className="pick-grid">
             {list.map((entry) => {
               const running = installing && job?.version === entry.version

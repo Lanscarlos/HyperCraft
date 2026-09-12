@@ -648,18 +648,9 @@ export default function App() {
                 )
               ) : route.kind === 'library' ? (
                 route.section === 'java' ? (
-                  <JavaPage
-                    java={java}
-                    view={route.view}
-                    onOpenView={(view) => openLibrary('java', view)}
-                    onOpenCores={() => openLibrary('cores', 'stock')}
-                  />
+                  <JavaPage java={java} onOpenCores={() => openLibrary('cores', 'stock')} />
                 ) : route.section === 'database' ? (
-                  <DatabasePage
-                    databases={databases}
-                    view={route.view}
-                    onOpenView={(view) => openLibrary('database', view)}
-                  />
+                  <DatabasePage databases={databases} />
                 ) : route.section === 'schematics' ? (
                   route.view === 'list' ? (
                     <SchematicLibraryPage

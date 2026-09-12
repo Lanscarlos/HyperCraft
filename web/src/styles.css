@@ -9371,6 +9371,26 @@ small.field__bad {
   color: var(--text);
 }
 
+/* A segmented control that is a property of the card rather than of the page.
+
+   .segmented sizes its options `1 1 150px`, which is right on 启动设置 where
+   the control *is* the question and gets a row to itself — and wrong in a card
+   head, where JRE / JDK is the smallest decision on the page and was coming
+   out as the largest element on it. The note drops to a `title` here: there is
+   no room for it at this size, and it is a thing you read once. */
+.segmented--inline {
+  gap: 2px;
+  padding: 3px;
+  align-self: center;
+}
+
+.segmented--inline .segmented__option {
+  flex: none;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .segmented__option strong {
   font-size: 13px;
 }
