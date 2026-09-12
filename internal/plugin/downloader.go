@@ -589,9 +589,22 @@ func (d *Downloader) transfer(ctx context.Context, pub *Job, temp string, src So
 		return "", err
 	}
 
-	limit := asset.Size
-	if limit <= 0 {
-		limit = maxUnknownSize
+	// sized marks the case where the declared size is the only check there
+	// is — every GitHub release, and Modrinth and SpigotMC too — and so has
+	// to be exact.
+	//
+	// Where a source does publish a digest it is both the stronger check and
+	// the more reliable one: Azul's Java metadata under-reports a package by
+	// 9 bytes while publishing the right SHA-256 for it, which turned a
+	// perfectly good install into "exceeds the declared size" until the gate
+	// moved (see javaruntime.Installer.download). So with a digest the size
+	// drives the progress bar, and the cap falls back to the same ceiling an
+	// undeclared size gets — there to bound the disk a runaway redirect can
+	// eat, not to verify anything.
+	sized := asset.Size > 0 && asset.SHA256 == ""
+	limit := int64(maxUnknownSize)
+	if sized {
+		limit = asset.Size
 	}
 	digest := sha256.New()
 	progress := &progressWriter{
@@ -615,13 +628,29 @@ func (d *Downloader) transfer(ctx context.Context, pub *Job, temp string, src So
 	if closeErr != nil {
 		return "", closeErr
 	}
-	if written > limit {
-		return "", fmt.Errorf("%w: download exceeds the declared %d bytes", ErrUpstream, limit)
+	switch {
+	case sized && written > limit:
+		return "", fmt.Errorf("%w: 下载的内容比声明的 %d 字节还多", ErrUpstream, limit)
+	case sized && written != asset.Size:
+		return "", fmt.Errorf("%w: 收到 %d 字节，应为 %d", ErrUpstream, written, asset.Size)
+	case written > limit:
+		return "", fmt.Errorf("%w: 下载超过 %d 字节的上限，已中止", ErrUpstream, limit)
 	}
-	if asset.Size > 0 && written != asset.Size {
-		return "", fmt.Errorf("%w: got %d bytes, expected %d", ErrUpstream, written, asset.Size)
+
+	// The digest a source published, when it published one, is finally
+	// compared rather than only recorded — the field has been carried on the
+	// asset since the registries went in, and nothing ever read it.
+	sum := hex.EncodeToString(digest.Sum(nil))
+	if asset.SHA256 != "" && !strings.EqualFold(sum, asset.SHA256) {
+		// A short body is the one checksum failure with an obvious cause, and
+		// "the connection dropped, run it again" is very different advice
+		// from "this source is serving the wrong jar".
+		if asset.Size > 0 && written < asset.Size {
+			return "", fmt.Errorf("%w: 下载中断，只收到 %d 字节，应为 %d", ErrChecksum, written, asset.Size)
+		}
+		return "", fmt.Errorf("%w: 校验和不符，算出 %s，应为 %s", ErrChecksum, sum, strings.ToLower(asset.SHA256))
 	}
-	return hex.EncodeToString(digest.Sum(nil)), nil
+	return sum, nil
 }
 
 func (d *Downloader) finish(pub *Job, state JobState, err error) {

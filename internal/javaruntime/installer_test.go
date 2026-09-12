@@ -25,6 +25,14 @@ type fakeAdoptium struct {
 	gate chan struct{}
 	// corrupt makes the CDN hand back something else.
 	corrupt bool
+	// declaredSize, when non-zero, is the size the API advertises instead of
+	// the archive's real one — what Azul does to us in practice.
+	declaredSize int64
+	// noChecksum drops the checksum from the metadata, leaving the declared
+	// size as the only thing the download can be checked against.
+	noChecksum bool
+	// truncate cuts the body short, the way a dropped connection does.
+	truncate bool
 }
 
 func newFakeAdoptium(t *testing.T, archive []byte) *fakeAdoptium {
@@ -41,7 +49,15 @@ func newFakeAdoptium(t *testing.T, archive []byte) *fakeAdoptium {
 			return
 		}
 		sum := sha256.Sum256(fake.archive)
-		w.Write([]byte(releasePayload(fake.URL+"/jre.tar.gz", hex.EncodeToString(sum[:]), int64(len(fake.archive)))))
+		checksum := hex.EncodeToString(sum[:])
+		if fake.noChecksum {
+			checksum = ""
+		}
+		size := int64(len(fake.archive))
+		if fake.declaredSize != 0 {
+			size = fake.declaredSize
+		}
+		w.Write([]byte(releasePayload(fake.URL+"/jre.tar.gz", checksum, size)))
 	})
 	mux.HandleFunc("/jre.tar.gz", func(w http.ResponseWriter, r *http.Request) {
 		if fake.gate != nil {
@@ -53,6 +69,10 @@ func newFakeAdoptium(t *testing.T, archive []byte) *fakeAdoptium {
 		}
 		if fake.corrupt {
 			w.Write(make([]byte, len(fake.archive)))
+			return
+		}
+		if fake.truncate {
+			w.Write(fake.archive[:len(fake.archive)/2])
 			return
 		}
 		w.Write(fake.archive)
@@ -289,6 +309,71 @@ func TestInstallRejectsCorruptArchive(t *testing.T) {
 	// looks like an installed runtime.
 	if entries, err := os.ReadDir(root); err == nil && len(entries) != 0 {
 		t.Errorf("leftovers after a failed install: %+v", entries)
+	}
+}
+
+// Azul's metadata under-reports a package's size — Zulu 25.0.4.1's linux/x64
+// JRE is declared 61117500 bytes and is 61117509 on cdn.azul.com, matching the
+// SHA-256 Azul published for it — so an install must go by the checksum and
+// not by the number next to it.
+func TestInstallAcceptsMisdeclaredSizeWhenChecksumMatches(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fixture archive contains symlinks")
+	}
+	archive := buildTarGz(t, jdkEntries())
+	fake := newFakeAdoptium(t, archive)
+	fake.declaredSize = int64(len(archive)) - 9
+	installer, _ := newTestInstaller(t, fake)
+
+	if _, err := installer.Start(DistTemurin, 21, ImageJRE, SourceOfficial); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	done := awaitInstall(t, installer)
+	if done.State != JobDone {
+		t.Fatalf("install failed: %s / %s", done.State, done.Error)
+	}
+}
+
+// Without a checksum the declared size is the only integrity check there is,
+// so it stays exact.
+func TestInstallRejectsMisdeclaredSizeWithoutChecksum(t *testing.T) {
+	archive := buildTarGz(t, jdkEntries())
+	fake := newFakeAdoptium(t, archive)
+	fake.noChecksum = true
+	fake.declaredSize = int64(len(archive)) - 9
+	installer, root := newTestInstaller(t, fake)
+
+	if _, err := installer.Start(DistTemurin, 21, ImageJRE, SourceOfficial); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	done := awaitInstall(t, installer)
+	if done.State != JobFailed {
+		t.Fatalf("expected a failure, got %s", done.State)
+	}
+	if !strings.Contains(done.Error, "声明的") {
+		t.Errorf("expected a size error, got %q", done.Error)
+	}
+	if entries, err := os.ReadDir(root); err == nil && len(entries) != 0 {
+		t.Errorf("leftovers after a failed install: %+v", entries)
+	}
+}
+
+// A body that stops early no longer runs into the size check, so the checksum
+// failure has to be the one that explains it.
+func TestInstallReportsTruncatedDownload(t *testing.T) {
+	fake := newFakeAdoptium(t, buildTarGz(t, jdkEntries()))
+	fake.truncate = true
+	installer, _ := newTestInstaller(t, fake)
+
+	if _, err := installer.Start(DistTemurin, 21, ImageJRE, SourceOfficial); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	done := awaitInstall(t, installer)
+	if done.State != JobFailed {
+		t.Fatalf("expected a failure, got %s", done.State)
+	}
+	if !strings.Contains(done.Error, "下载中断") {
+		t.Errorf("expected a truncation error, got %q", done.Error)
 	}
 }
 

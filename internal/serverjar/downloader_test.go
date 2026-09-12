@@ -24,6 +24,14 @@ type upstream struct {
 	gate chan struct{}
 	// corrupt makes the CDN serve something other than what it advertised.
 	corrupt bool
+	// declaredSize, when non-zero, is the size the API advertises instead of
+	// the jar's real one.
+	declaredSize int64
+	// noChecksum drops the published checksum, leaving the declared size as
+	// the only thing the download can be checked against.
+	noChecksum bool
+	// truncate cuts the body short, the way a dropped connection does.
+	truncate bool
 }
 
 func newUpstream(t *testing.T, body []byte) *upstream {
@@ -32,7 +40,15 @@ func newUpstream(t *testing.T, body []byte) *upstream {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/projects/paper/versions/1.21.11/builds/latest", func(w http.ResponseWriter, r *http.Request) {
 		sum := sha256.Sum256(up.body)
-		w.Write([]byte(buildPayload(up.URL+"/artifact.jar", hex.EncodeToString(sum[:]), int64(len(up.body)))))
+		checksum := hex.EncodeToString(sum[:])
+		if up.noChecksum {
+			checksum = ""
+		}
+		size := int64(len(up.body))
+		if up.declaredSize != 0 {
+			size = up.declaredSize
+		}
+		w.Write([]byte(buildPayload(up.URL+"/artifact.jar", checksum, size)))
 	})
 	mux.HandleFunc("/artifact.jar", func(w http.ResponseWriter, r *http.Request) {
 		if up.gate != nil {
@@ -45,6 +61,9 @@ func newUpstream(t *testing.T, body []byte) *upstream {
 		payload := up.body
 		if up.corrupt {
 			payload = []byte(strings.Repeat("x", len(up.body)))
+		}
+		if up.truncate {
+			payload = payload[:len(payload)/2]
 		}
 		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
 		w.Write(payload)
@@ -167,6 +186,62 @@ func TestDownloadRejectsBadChecksum(t *testing.T) {
 	}
 	if _, ok := read(t, library, "paper-1.21.11-132.jar"+partSuffix); ok {
 		t.Errorf("part file was left behind")
+	}
+}
+
+// Upstream's declared size is not always right — Azul's metadata under-reports
+// a Zulu package by 9 bytes, and a core API can do the same — so a jar whose
+// checksum matches must install whatever the number next to it said.
+func TestDownloadAcceptsMisdeclaredSizeWhenChecksumMatches(t *testing.T) {
+	up := newUpstream(t, []byte("a fine paper jar"))
+	up.declaredSize = int64(len(up.body)) - 3
+	downloader, library := newTestDownloader(t, up)
+
+	if _, err := downloader.Start(Request{Project: "paper", Version: "1.21.11"}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	done := awaitJob(t, downloader)
+	if done.State != JobDone {
+		t.Fatalf("download failed: %s / %q", done.State, done.Error)
+	}
+	if data, ok := read(t, library, done.CoreID); !ok || string(data) != string(up.body) {
+		t.Fatalf("jar not written intact: %q (present=%v)", data, ok)
+	}
+}
+
+// Without a published checksum the declared size is the only integrity check
+// there is, so it stays exact.
+func TestDownloadRejectsMisdeclaredSizeWithoutChecksum(t *testing.T) {
+	up := newUpstream(t, []byte("a fine paper jar"))
+	up.noChecksum = true
+	up.declaredSize = int64(len(up.body)) - 3
+	downloader, library := newTestDownloader(t, up)
+
+	if _, err := downloader.Start(Request{Project: "paper", Version: "1.21.11"}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	done := awaitJob(t, downloader)
+	if done.State != JobFailed || !strings.Contains(done.Error, "声明的") {
+		t.Fatalf("expected a size failure, got %s / %q", done.State, done.Error)
+	}
+	if entries, err := os.ReadDir(library.Root()); err == nil && len(entries) != 0 {
+		t.Errorf("leftovers after a failed download: %+v", entries)
+	}
+}
+
+// A body that stops early no longer trips the size check, so the checksum
+// failure has to be the one that explains it.
+func TestDownloadReportsTruncatedBody(t *testing.T) {
+	up := newUpstream(t, []byte("a fine paper jar"))
+	up.truncate = true
+	downloader, _ := newTestDownloader(t, up)
+
+	if _, err := downloader.Start(Request{Project: "paper", Version: "1.21.11"}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	done := awaitJob(t, downloader)
+	if done.State != JobFailed || !strings.Contains(done.Error, "下载中断") {
+		t.Fatalf("expected a truncation failure, got %s / %q", done.State, done.Error)
 	}
 }
 
