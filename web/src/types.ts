@@ -360,6 +360,13 @@ export interface ServerConfigSetting {
   hint?: string
   default: string
   group: string
+  /** An in-game command that applies this without a restart, for the few that
+   *  have one. See the note in handlers_serverconfig.go for why the row carries
+   *  this rather than a 需重启 flag. */
+  live?: string
+  /** What opening this up actually costs. Only on the settings that can expose
+   *  a server. */
+  risk?: string
 }
 
 export interface ServerConfigGroup {
@@ -372,6 +379,9 @@ export interface ServerConfigFile {
   id: string
   label: string
   lead: string
+  /** The one line under the filename on the file picker's card. `lead` is the
+   *  full sentence, shown once the file is open. */
+  blurb: string
   path: string
   /** False before the server has written it — the settings still edit, and
    *  saving creates a file holding exactly what was changed. */

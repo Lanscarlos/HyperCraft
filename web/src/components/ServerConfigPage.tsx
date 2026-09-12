@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api'
-import type { InstanceStatus, ServerConfigFile, ServerConfigSetting } from '../types'
+import type { InstanceStatus, ServerConfigFile } from '../types'
+import { ConfigLayout, ConfigRow, ConfigSaveBar, changedKeys } from './ConfigLayout'
 import { PageHead } from './Page'
 import { PropertiesEditor } from './PropertiesEditor'
-import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
 /** The first tab is not a file the daemon lists — it is server.properties,
@@ -53,8 +53,16 @@ export function ServerConfigPage({ instance }: { instance: InstanceStatus }) {
   }, [instance.id])
 
   const tabs = [
-    { id: PROPERTIES, label: 'server.properties' },
-    ...(files ?? []).map((file) => ({ id: file.id, label: file.label })),
+    // server.properties is not one of the daemon's files — it has its own
+    // endpoints and its own editor — so its blurb is written here rather than
+    // coming down with the rest.
+    { id: PROPERTIES, label: 'server.properties', blurb: '端口、难度、白名单', exists: true },
+    ...(files ?? []).map((file) => ({
+      id: file.id,
+      label: file.label,
+      blurb: file.blurb,
+      exists: file.exists,
+    })),
   ]
   const current = (files ?? []).find((file) => file.id === open)
 
@@ -62,22 +70,35 @@ export function ServerConfigPage({ instance }: { instance: InstanceStatus }) {
     <div className="stack">
       <PageHead
         title="服务器配置"
-        lead="server.properties，以及核心自己的几份配置文件。只列常改的项，整个文件在「文件」页里。"
+        lead="server.properties，以及核心自己的几份配置文件。选一个开始改。"
       />
 
       {/* Rendered even while the list is loading, so the page does not shift
-          under the pointer the moment it arrives. */}
-      <div className="configtabs" role="tablist" aria-label="配置文件">
+          under the pointer the moment it arrives.
+
+          Cards rather than chips: five filenames in a row of pills is five
+          things that look alike and read as one long word, and the question
+          people arrive with is not "which file is called what" but "which file
+          holds the thing I want". The line under the name answers that, and it
+          needs a card to sit on. */}
+      <div className="filecards" role="tablist" aria-label="配置文件">
         {tabs.map((tab) => (
           <button
-            className={`chip${open === tab.id ? ' chip--active' : ''}`}
+            className={`filecard${open === tab.id ? ' filecard--on' : ''}`}
             type="button"
             key={tab.id}
             role="tab"
             aria-selected={open === tab.id}
             onClick={() => setOpen(tab.id)}
           >
-            {tab.label}
+            <span className="filecard__name">
+              {tab.label}
+              {/* The server writes these on first boot. Saying so is the
+                  difference between "this file is empty" and "this panel is
+                  broken". */}
+              {!tab.exists && <span className="filecard__new">未创建</span>}
+            </span>
+            <span className="filecard__blurb">{tab.blurb}</span>
           </button>
         ))}
       </div>
@@ -87,7 +108,21 @@ export function ServerConfigPage({ instance }: { instance: InstanceStatus }) {
       {open === PROPERTIES ? (
         <PropertiesEditor instance={instance} />
       ) : current ? (
-        <ServerConfigForm instance={instance} file={current} key={current.id} />
+        <ServerConfigForm
+          instance={instance}
+          file={current}
+          key={current.id}
+          onCreated={() =>
+            // Saving into a file the server has not written yet creates it, so
+            // the card must stop calling it 未创建 — otherwise the page is
+            // telling the operator something they just disproved.
+            setFiles((list) =>
+              (list ?? []).map((entry) =>
+                entry.id === current.id ? { ...entry, exists: true } : entry,
+              ),
+            )
+          }
+        />
       ) : (
         <SkeletonScreen label="正在读取配置文件…">
           <SkeletonPanel title={false}>
@@ -109,9 +144,12 @@ export function ServerConfigPage({ instance }: { instance: InstanceStatus }) {
 function ServerConfigForm({
   instance,
   file,
+  onCreated,
 }: {
   instance: InstanceStatus
   file: ServerConfigFile
+  /** The first successful save into a file that did not exist. */
+  onCreated: () => void
 }) {
   const [data, setData] = useState<ServerConfigFile>(file)
   const [values, setValues] = useState<Record<string, string>>(() =>
@@ -125,16 +163,38 @@ function ServerConfigForm({
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [onlyChanged, setOnlyChanged] = useState(false)
 
   const present = useMemo(
     () => new Set(data.entries.map((entry) => entry.key)),
     [data.entries],
   )
 
+  /** What each key says in the file right now. Absent means the file has no
+   *  such line, which is a different thing from an empty value. */
+  const original = useMemo(
+    () => Object.fromEntries(data.entries.map((entry) => [entry.key, entry.value])),
+    [data.entries],
+  )
+
+  // What the rows are marked by. `dirty` is add-only on purpose — it decides
+  // what gets written, and the comment above says why — but a key typed back
+  // to what it already was is not a change, and a badge saying otherwise is
+  // the page lying about a diff the operator can read.
+  const changed = useMemo(() => changedKeys(values, original), [values, original])
+
   const adopt = (saved: ServerConfigFile) => {
     setData(saved)
     setValues(Object.fromEntries(saved.entries.map((entry) => [entry.key, entry.value])))
     setDirty(new Set())
+  }
+
+  /** Back to what the file says, for every key at once. */
+  const discard = () => {
+    setValues(Object.fromEntries(data.entries.map((entry) => [entry.key, entry.value])))
+    setDirty(new Set())
+    setStatus(null)
+    setError(null)
   }
 
   const grouped = useMemo(() => {
@@ -162,7 +222,9 @@ function ServerConfigForm({
         setStatus('没有修改')
         return
       }
-      adopt(await api.saveServerConfig(instance.id, data.id, entries))
+      const saved = await api.saveServerConfig(instance.id, data.id, entries)
+      adopt(saved)
+      if (saved.exists) onCreated()
       setStatus('已保存，重启服务器后生效')
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')
@@ -184,9 +246,7 @@ function ServerConfigForm({
 
   return (
     <form className="stack" onSubmit={save}>
-      <p className="muted">
-        {data.lead} 文件在 <code>{data.path}</code>。
-      </p>
+      <p className="muted">{data.lead}</p>
 
       {!data.exists && (
         <div className="alert">
@@ -196,97 +256,50 @@ function ServerConfigForm({
         </div>
       )}
 
-      {grouped.map((group) =>
-        group.settings.length === 0 ? null : (
-          <section className="panel panel--form" key={group.id}>
-            <h3 className="panel__title">{group.label}</h3>
-            {group.hint && <p className="muted">{group.hint}</p>}
-            {group.settings.map((setting) => (
-              <ConfigField
-                key={setting.key}
-                setting={setting}
-                value={values[setting.key] ?? setting.default}
-                unset={!present.has(setting.key) && !dirty.has(setting.key)}
-                onChange={(value) => set(setting.key, value)}
-              />
-            ))}
-          </section>
-        ),
-      )}
+      <ConfigLayout
+        groups={grouped.filter((group) => group.settings.length > 0)}
+        counts={Object.fromEntries(grouped.map((group) => [group.id, group.settings.length]))}
+        changed={changed.size}
+        onlyChanged={onlyChanged}
+        onToggleOnlyChanged={() => setOnlyChanged((on) => !on)}
+        note="面板只写入你改动过的键，其余保持文件原样（含注释与顺序）。这里只列常改的项，整个文件在「文件」页里。"
+        path={data.path}
+      >
+        {grouped.map((group) => {
+          const rows = group.settings.filter(
+            (setting) => !onlyChanged || changed.has(setting.key),
+          )
+          if (rows.length === 0) return null
+          return (
+            <section className="panel cfg__group" data-group={group.id} key={group.id}>
+              <h3 className="panel__title">{group.label}</h3>
+              {group.hint && <p className="muted">{group.hint}</p>}
+              {rows.map((setting) => (
+                <ConfigRow
+                  key={setting.key}
+                  setting={setting}
+                  value={values[setting.key] ?? setting.default}
+                  unset={!present.has(setting.key) && !dirty.has(setting.key)}
+                  changed={changed.has(setting.key)}
+                  original={original[setting.key]}
+                  onChange={(value) => set(setting.key, value)}
+                />
+              ))}
+            </section>
+          )
+        })}
 
-      <p className="muted">
-        这里只列了常改的项。整个文件在「文件」页里，改完回来这一页会读到新值。
-      </p>
+        {error && <div className="alert alert--error">{error}</div>}
+        {status && <div className="alert alert--ok">{status}</div>}
 
-      {error && <div className="alert alert--error">{error}</div>}
-      {status && <div className="alert alert--ok">{status}</div>}
+        <div className="actions">
+          <button className="btn" type="button" onClick={() => void reload()}>
+            重新读取
+          </button>
+        </div>
+      </ConfigLayout>
 
-      <div className="actions">
-        <button className="btn btn--primary" type="submit" disabled={busy}>
-          保存配置
-        </button>
-        <button className="btn" type="button" onClick={() => void reload()}>
-          重新读取
-        </button>
-      </div>
+      <ConfigSaveBar changed={changed.size} busy={busy} onDiscard={discard} />
     </form>
-  )
-}
-
-function ConfigField({
-  setting,
-  value,
-  unset,
-  onChange,
-}: {
-  setting: ServerConfigSetting
-  value: string
-  unset: boolean
-  onChange: (value: string) => void
-}) {
-  const hint = [setting.hint, unset ? '当前使用默认值，未写入文件' : null]
-    .filter(Boolean)
-    .join(' · ')
-
-  if (setting.type === 'boolean') {
-    return (
-      <label className="checkbox">
-        <input
-          type="checkbox"
-          checked={value === 'true'}
-          onChange={(e) => onChange(e.target.checked ? 'true' : 'false')}
-        />
-        <span>
-          {setting.label}
-          {hint && <small> — {hint}</small>}
-        </span>
-      </label>
-    )
-  }
-
-  return (
-    <label className="field">
-      <span>{setting.label}</span>
-      {setting.type === 'select' ? (
-        <Select
-          ariaLabel={setting.label}
-          value={value}
-          options={[
-            // An unset key must not silently become the first option.
-            ...(setting.options?.includes(value) ? [] : [{ value, label: value || '(未设置)' }]),
-            ...(setting.options ?? []).map((option) => ({ value: option, label: option })),
-          ]}
-          onChange={onChange}
-        />
-      ) : (
-        <input
-          type={setting.type === 'number' ? 'number' : 'text'}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          spellCheck={false}
-        />
-      )}
-      {hint && <small>{hint}</small>}
-    </label>
   )
 }
