@@ -4404,17 +4404,6 @@ a:hover {
 /* Cards in one grid row stretch to the tallest of them, and the control is
    pushed to the bottom of the card — so controls line up across a row however
    long the notes above them ran. */
-.jvmcard {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  padding: 10px 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-
 /* An argument that does not fit a control takes the whole row: what lives
    there is the long form — a -javaagent with its options, an --add-opens
    naming two modules — and there is nothing to put beside it anyway. */
@@ -5178,20 +5167,28 @@ details[open]::details-content {
   gap: 12px;
 }
 
+/* The surface every panel of content sits on — five of these once, with five
+   paddings, two radii, two surfaces, and shadow on an arbitrary two. Callers
+   keep their own block class alongside it, so the rules for what goes *inside*
+   a card stay where they were written; only the container is shared.
+
+   It used to be a <button>: hence the cursor, the font-family and the hover
+   lift it carried. Every single caller then cancelled all of that with
+   .card--static, because a card with its own buttons cannot itself be one. So
+   the base is the plain container now, and the lift lives on :has() below,
+   where it was already doing the real work. */
 .card {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
   padding: 16px;
   background: var(--surface-1);
-  background-image: linear-gradient(180deg, var(--sheen), transparent 80px);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
   color: var(--text);
-  cursor: pointer;
   text-align: left;
-  font-family: inherit;
   font-size: 14px;
   transition:
     border-color var(--dur) var(--ease),
@@ -5199,18 +5196,19 @@ details[open]::details-content {
     box-shadow var(--dur) var(--ease);
 }
 
-.card:hover {
-  border-color: var(--border-strong);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow);
+.card--tight {
+  padding: 12px 14px;
 }
 
-/* All the way back down and a shade under, so the lift the hover gave it is
-   visibly spent rather than merely paused. */
-.card:active {
-  transform: translateY(0) scale(var(--press));
-  box-shadow: var(--shadow-sm);
-  transition-duration: var(--dur-1);
+/* The card's own padding is zero because its children each bring their own —
+   a cover image that has to reach the border, then a body that must not. */
+.card--flush {
+  padding: 0;
+}
+
+/* A card inside a card. */
+.card--sunken {
+  background: var(--surface-2);
 }
 
 .card__head {
@@ -6870,14 +6868,6 @@ details[open]::details-content {
 }
 
 .schemcard {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  padding: 12px 14px 10px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
   transition: border-color var(--dur) var(--ease);
 }
 
@@ -7655,19 +7645,6 @@ small.field__bad {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px;
-}
-
-.kpi {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  padding: 12px 14px;
-  background: var(--surface-1);
-  background-image: linear-gradient(180deg, var(--sheen), transparent 64px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
 }
 
 .kpi__head {
@@ -10098,29 +10075,19 @@ button.rows__name:hover strong {
   gap: 12px;
 }
 
-/* A card with its own buttons cannot itself be a button, so the clickable part
-   is a child and the card is a plain container. */
-.card--static {
-  cursor: default;
-}
-
-.card--static:hover {
-  border-color: var(--border);
-  transform: none;
-  box-shadow: var(--shadow-sm);
-}
-
-/* …and the card still lifts when the pointer is over that child, so the
-   hover target does not feel smaller than the card. */
-.card--static:has(.card__open:hover) {
+/* The clickable part of a card is a child, not the card — a card with its own
+   buttons cannot itself be a button. The card still lifts when the pointer is
+   over that child, so the hover target does not feel smaller than the card. */
+.card:has(.card__open:hover) {
   border-color: var(--border-strong);
   transform: translateY(-2px);
   box-shadow: var(--shadow);
 }
 
 /* Same for the press: it is the child that is being clicked, but it is the
-   card that has to answer. */
-.card--static:has(.card__open:active) {
+   card that has to answer. All the way back down and a shade under, so the
+   lift the hover gave it is visibly spent rather than merely paused. */
+.card:has(.card__open:active) {
   transform: translateY(0) scale(var(--press));
   box-shadow: var(--shadow-sm);
   transition-duration: var(--dur-1);
@@ -11804,12 +11771,6 @@ button.rows__name:hover strong {
 }
 
 .browse-card {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
   transition:
     border-color var(--dur) var(--ease),
     box-shadow var(--dur) var(--ease);

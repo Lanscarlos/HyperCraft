@@ -6,6 +6,7 @@ import { cpuVerdict, instanceEvents, memoryVerdict } from '../instanceEvents'
 import type { Verdict } from '../instanceEvents'
 import type { InstanceMetrics, InstanceStatus } from '../types'
 import { isLive } from '../types'
+import { Card } from './Card'
 import { PageHead } from './Page'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 import { CHART_HEIGHT, TimeSeriesChart, type Point } from './TimeSeriesChart'
@@ -351,13 +352,13 @@ function Kpi({
   note: string
 }) {
   return (
-    <div className="kpi">
+    <Card pad="tight" className="kpi">
       <div className="kpi__head">
         <span className="kpi__label">{label}</span>
         {verdict && <span className={`kpi__verdict kpi__verdict--${verdict.level}`}>{verdict.label}</span>}
       </div>
       <strong className="kpi__value">{value}</strong>
       <small className="kpi__note">{note}</small>
-    </div>
+    </Card>
   )
 }

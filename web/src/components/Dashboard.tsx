@@ -11,6 +11,7 @@ import { useLiveMetrics } from '../useLiveMetrics'
 import type { LiveMetric } from '../useLiveMetrics'
 import { useUptime } from '../useUptime'
 import { Button } from './Button'
+import { Card } from './Card'
 import { Page } from './Page'
 import { PowerControls } from './PowerControls'
 
@@ -242,7 +243,7 @@ function InstanceCard({
   const share = metric && xmx > 0 ? Math.min(100, (metric.memoryBytes / xmx) * 100) : null
 
   return (
-    <div className={`card card--static card--${instance.state}`}>
+    <Card className={`card--${instance.state}`}>
       <button className="card__open" onClick={onOpen}>
         <div className="card__head">
           <span className={`status__dot status__dot--${instance.state}`} />
@@ -294,7 +295,7 @@ function InstanceCard({
           控制台
         </button>
       </div>
-    </div>
+    </Card>
   )
 }
 

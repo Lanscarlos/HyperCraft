@@ -10,6 +10,7 @@ import type {
   PluginSourceKind,
 } from '../types'
 import { Button } from './Button'
+import { Card } from './Card'
 import { CompatBadge } from './PluginCompat'
 import { PluginDrawer } from './PluginDrawer'
 import { PluginIcon } from './PluginIcon'
@@ -819,7 +820,9 @@ function BrowseCard({
   const unjudgeable = judged && listing.compat?.state === 'unknown'
 
   return (
-    <article
+    <Card
+      as="article"
+      pad="none"
       className={`browse-card${bad ? ' browse-card--dim' : ''}${focused ? ' browse-card--focused' : ''}`}
       role="listitem"
     >
@@ -868,7 +871,7 @@ function BrowseCard({
         )}
         <span className="badge browse-card__source">{sourceLabel(listing.source)}</span>
       </div>
-    </article>
+    </Card>
   )
 }
 

@@ -12,6 +12,7 @@ import type {
 } from '../types'
 import type { SchematicController } from '../useSchematics'
 import { Button } from './Button'
+import { Card } from './Card'
 import { Modal } from './Modal'
 import { Page } from './Page'
 import { SchematicDialog } from './SchematicPreview'
@@ -262,7 +263,7 @@ export function SchematicCard({
   const size = `${facts.width} × ${facts.height} × ${facts.length}`
 
   return (
-    <article className="schemcard" role="listitem">
+    <Card as="article" pad="tight" className="schemcard" role="listitem">
       {/* The whole head is the way in: the question a shelf of builds raises is
           "which one is this", and the answer is the preview. */}
       <button className="schemcard__open" onClick={onPreview} title={`预览「${entry.name}」`}>
@@ -330,7 +331,7 @@ export function SchematicCard({
           删除
         </button>
       </footer>
-    </article>
+    </Card>
   )
 }
 

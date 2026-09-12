@@ -7,6 +7,7 @@ import { toast } from '../toast'
 import type { SchematicItem, SchematicMarketResult, SchematicSource } from '../types'
 import type { SchematicController } from '../useSchematics'
 import { Button } from './Button'
+import { Card } from './Card'
 import { Page } from './Page'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
@@ -218,7 +219,7 @@ function MarketCard({
       : null
 
   return (
-    <article className="schemcard" role="listitem">
+    <Card as="article" pad="tight" className="schemcard" role="listitem">
       <div className="schemcard__open schemcard__open--static">
         <span className="schemcard__title">
           <strong title={item.name}>{item.name}</strong>
@@ -278,7 +279,7 @@ function MarketCard({
           </a>
         )}
       </footer>
-    </article>
+    </Card>
   )
 }
 
