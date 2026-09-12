@@ -13,6 +13,16 @@
  * stays the source of truth. Nothing here can express something you could not
  * have typed, which is what keeps this from becoming a second, competing way
  * to configure a JVM.
+ *
+ * The row editor added later (jvmFlags.ts, components/JVMArgsEditor.tsx) does
+ * not reopen this. What is rejected above is a catalogue that decides which
+ * flags you may set; the rows decide only how an argument is *typed*, and they
+ * read that off the syntax — -XX:+Name is a boolean on every JVM there has
+ * ever been, with no version predicate to go stale. A flag the panel has never
+ * heard of still gets a row and is still saved verbatim. The line to keep is
+ * the last sentence of the paragraph above: whatever is added here or there,
+ * it must not become possible to configure something you could not have typed,
+ * and it must not become impossible to type something the panel does not know.
  */
 
 export interface JVMPreset {

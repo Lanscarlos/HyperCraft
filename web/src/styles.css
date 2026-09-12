@@ -4211,6 +4211,180 @@ a:hover {
   color: var(--text-dim);
 }
 
+/* The 列表 / 文本 pair. It follows .chip--right rather than carrying its own
+   auto margin: one margin-left: auto in a flex row pushes everything after it
+   too, so a second would only split the space between the two of them. */
+.presets__view {
+  display: flex;
+  gap: 4px;
+}
+
+/* ------------------------------------------------- JVM arguments, as rows
+
+   The same one-per-line text the textarea holds, shown one argument to a row
+   with the control its syntax asks for. Why the type is read off the syntax
+   instead of a catalogue of known flags is in jvmFlags.ts.
+
+   A row is a wrapping flex line rather than a grid, for the reason .subserver
+   is one: the controls are three different widths — a pair of chips, a number,
+   a URL — and there is nothing worth lining up between rows, so at 390px a row
+   simply takes two lines instead of the page gaining a breakpoint.
+
+   The widths below are all qualified with .jvmarg on purpose. They override
+   input.input-slim / .select.input-slim, which tie with them on specificity
+   and sit later in this sheet — without the extra class every field in a row
+   would be 200px wide. */
+.jvmargs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.jvmargs__empty {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.jvmargs__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.jvmarg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* Name and control share the row's slack inside this; the ✕ sits outside it so
+   it keeps the far edge even when the control wraps under the name.
+
+   flex-basis: 0 rather than auto, and it is the whole narrow-screen story: on
+   `auto` the body asks for its max-content width, which at 390px leaves no
+   room for the ✕ beside it and drops the button onto a third line of its own.
+   From zero the body takes only what is left once the ✕ has its 30px, wraps
+   the control under the name inside itself, and every row is two lines. */
+.jvmarg__body {
+  display: flex;
+  flex: 1 1 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+/* min-width: 0 because the name is monospace and does not wrap on its own:
+   -XX:G1MixedGCLiveThresholdPercent is 33 characters and would otherwise set
+   the width of every row in the list. */
+.jvmarg__name {
+  flex: 1 1 180px;
+  min-width: 0;
+  padding: 4px 6px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  /* A text caret, because that is what clicking it gives you — the row turns
+     into the line of text it came from. */
+  cursor: text;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  /* break-word and not anywhere: `anywhere` also shrinks the min-content width,
+     and the name then breaks at the first opportunity it has — leaving `-XX:`
+     alone on a line above the flag it belongs to. This breaks a long name only
+     once it genuinely does not fit. */
+  overflow-wrap: break-word;
+  text-align: left;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.jvmarg__name:hover {
+  background: var(--bg-input);
+  border-color: var(--border-strong);
+}
+
+.jvmarg__name:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* The -XX: or -D every name in the list repeats, dimmed so the eye lands on
+   the part that differs between rows. */
+.jvmarg__prefix {
+  color: var(--text-faint);
+}
+
+.jvmarg__control {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.jvmarg__bool {
+  display: flex;
+  gap: 4px;
+}
+
+.jvmarg input.jvmarg__num {
+  width: 104px;
+}
+
+/* Holds a URL or an encoding name, so it gives ground before the name does. */
+.jvmarg input.jvmarg__text {
+  flex: 1 1 180px;
+  width: auto;
+  min-width: 0;
+}
+
+.jvmarg .select.jvmarg__unit {
+  width: 92px;
+}
+
+/* An argument this panel cannot classify, and any row being retyped. It takes
+   the whole row apart from the ✕ — there is nothing else to put beside it, and
+   what lives here is the long form: a -javaagent with its options, an
+   --add-opens naming two modules. */
+.jvmarg input.jvmarg__free {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+}
+
+.jvmarg__del {
+  flex: 0 0 auto;
+}
+
+/* flex-basis: 100% puts the note on its own line under the row it explains,
+   whatever the controls above it did with the space. */
+.jvmarg .jvmarg__note {
+  flex: 1 1 100%;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.jvmargs__foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
 /* ---------------------------------------------------------------- update */
 
 .update {
