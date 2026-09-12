@@ -5,6 +5,7 @@ import { ask } from '../confirm'
 import { formatBytes, formatDate, formatSince } from '../format'
 import { highlight, langOf } from '../highlight'
 import { toast } from '../toast'
+import { useMediaQuery } from '../useMediaQuery'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
 import { FileIcon, extensionOf } from './FileIcon'
 import { FileTree } from './FileTree'
@@ -108,6 +109,26 @@ export function FileManager({
   // one filters rows of one directory, this one filters the tree — and only
   // what the tree has already read.
   const [treeQuery, setTreeQuery] = useState('')
+  // Below the drawer breakpoint the pane already shows one column at a time
+  // (see narrowPane), which is what edit mode is *for* — offering it there
+  // would be a second state that changes nothing. The number is the one in
+  // App's DRAWER_QUERY; the media queries in styles.css are the third place it
+  // lives, and all three have to move together.
+  const roomy = !useMediaQuery('(max-width: 1024px)')
+  // Between the two breakpoints there is room for two columns but not for two
+  // comfortable ones: 260 of tree out of 1100 is a quarter of the width spent
+  // on a column you glance at. So it starts folded there and opens over the
+  // editor rather than squeezing it.
+  const tight = useMediaQuery('(max-width: 1200px)')
+  const [treeOpen, setTreeOpen] = useState(true)
+
+  useEffect(() => {
+    if (!roomy) setEditing(false)
+  }, [roomy])
+
+  useEffect(() => {
+    if (editing) setTreeOpen(!tight)
+  }, [editing, tight])
 
   // Leaving the section leaves the mode. It could be remembered instead, but
   // then coming back to 文件 would land on a page with no listing and no
@@ -802,6 +823,7 @@ export function FileManager({
       <div
         className={editing ? 'fm fm--editing' : 'fm'}
         data-pane={editor ? narrowPane : 'list'}
+        data-tree={editing ? (treeOpen ? 'on' : 'off') : undefined}
       >
         <aside className="fm__tree">
           {/* In edit mode the listing's toolbar is off screen, so the four
@@ -847,6 +869,14 @@ export function FileManager({
                   aria-label="刷新"
                 >
                   <Glyph name="refresh" className={pending ? 'spin' : undefined} />
+                </button>
+                <button
+                  className="btn btn--icon"
+                  onClick={() => setTreeOpen(false)}
+                  title="收起目录树"
+                  aria-label="收起目录树"
+                >
+                  <Glyph name="folder" />
                 </button>
                 <button
                   className="btn btn--icon ftree__leave"
@@ -956,14 +986,16 @@ export function FileManager({
               <Glyph name="refresh" className={pending ? 'spin' : undefined} />
             </button>
 
-            <button
-              className="btn"
-              onClick={() => setEditing(true)}
-              title="把这一屏交给编辑器：列表让位，目录树带上文件"
-            >
-              <Glyph name="doc" />
-              编辑模式
-            </button>
+            {roomy && (
+              <button
+                className="btn"
+                onClick={() => setEditing(true)}
+                title="把这一屏交给编辑器：列表让位，目录树带上文件"
+              >
+                <Glyph name="doc" />
+                编辑模式
+              </button>
+            )}
 
             <div className="file-toolbar__find">
               <Glyph name="search" />
@@ -1137,6 +1169,7 @@ export function FileManager({
               tabs={tabs}
               activeTab={activeTab}
               onBackToList={() => setNarrowPane('list')}
+              onShowTree={editing && !treeOpen ? () => setTreeOpen(true) : undefined}
               onSelectTab={(path: string) => setActiveTab(path)}
               onCloseTab={(path: string) => void closeTab(path)}
               busy={busy}
@@ -1354,6 +1387,7 @@ function FileEditor({
   tabs,
   activeTab,
   onBackToList,
+  onShowTree,
   onSelectTab,
   onCloseTab,
   busy,
@@ -1370,6 +1404,9 @@ function FileEditor({
   /** Narrow layouts only: the listing is off screen there, and closing every
    *  tab must not be the only way back to it. */
   onBackToList: () => void
+  /** Edit mode with the tree folded away: without this there is no way back to
+   *  it, and the only thing on screen is the file you are already looking at. */
+  onShowTree?: () => void
   onSelectTab: (path: string) => void
   onCloseTab: (path: string) => void
   busy: boolean
@@ -1433,6 +1470,18 @@ function FileEditor({
         <button type="button" className="editor__back" onClick={onBackToList}>
           ← 文件列表
         </button>
+
+        {onShowTree && (
+          <button
+            type="button"
+            className="btn btn--icon editor__tree"
+            onClick={onShowTree}
+            title="显示目录树"
+            aria-label="显示目录树"
+          >
+            <Glyph name="folder" />
+          </button>
+        )}
 
         <div className="etabs" role="tablist" aria-label="打开的文件">
           {tabs.map((tab) => (

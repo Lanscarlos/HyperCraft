@@ -6690,6 +6690,42 @@ small.field__bad {
   min-height: 0;
 }
 
+/* Folded away: the editor takes the whole row. The button that brings the tree
+   back lives on the editor's own head, because with the tree gone there is
+   nothing else on screen to put it on. */
+.fm--editing[data-tree='off'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.fm--editing[data-tree='off'] .fm__tree {
+  display: none;
+}
+
+.editor__tree {
+  align-self: flex-start;
+}
+
+/* Two columns fit here, but not two comfortable ones. So the tree comes back
+   *over* the editor instead of taking a quarter of a width that is already
+   short — the editor keeps the row either way, and nothing reflows when the
+   tree opens and shuts. */
+@media (max-width: 1200px) {
+  .fm--editing {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fm--editing[data-tree='on'] .fm__tree {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 260px;
+    box-shadow: var(--shadow-lg);
+  }
+}
+
 /* The listing's own column-dropping is keyed to the viewport, which stopped
    being a fair proxy for its width the moment it became one of three panes: at
    a 1440px window this panel is about 450px wide, which is the width the
