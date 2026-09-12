@@ -16,6 +16,14 @@ interface Props extends HeadProps {
    * instead of a reading column. Paragraphs stay capped either way.
    */
   wide?: boolean
+  /**
+   * A full-bleed workspace: one canvas that takes every pixel it is given,
+   * rather than a column of content to read. The file pane's edit mode is the
+   * only caller today. Content pages must not use it — prose has
+   * --content-max and tiles have --content-max-wide, and those two are still
+   * the whole of the choice for anything you read rather than work in.
+   */
+  full?: boolean
   /** Optional: a page that is still loading is a head and nothing else. */
   children?: ReactNode
 }
@@ -54,11 +62,13 @@ export function PageHead({ title, lead, aside, above }: HeadProps) {
  * one looked almost right, which is the worst way for a mistake to look. Now
  * there is one frame and one decision to make: prose, or tiles.
  */
-export function Page({ title, lead, aside, above, wide, children }: Props) {
+export function Page({ title, lead, aside, above, wide, full, children }: Props) {
   const head = above ?? title ?? lead ?? aside
+  // full wins over wide: a caller asking for both means the workspace.
+  const form = full ? 'page page--full' : wide ? 'page page--wide' : 'page'
 
   return (
-    <div className={wide ? 'page page--wide' : 'page'}>
+    <div className={form}>
       {head !== undefined && <PageHead title={title} lead={lead} aside={aside} above={above} />}
       {children}
     </div>

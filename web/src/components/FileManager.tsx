@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactElement } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ApiError, api, downloadURL, previewURL, uploadFiles } from '../api'
 import { ask } from '../confirm'
 import { formatBytes, formatDate, formatSince } from '../format'
+import { highlight, langOf } from '../highlight'
 import { toast } from '../toast'
+import { useMediaQuery } from '../useMediaQuery'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
+import { FileIcon, extensionOf } from './FileIcon'
 import { FileTree } from './FileTree'
+import type { TreeNode } from './FileTree'
+import { Glyph } from './Glyph'
+import type { MenuItem } from './Menu'
 import { Modal } from './Modal'
 import { PageHead } from './Page'
 import { SchematicPreview } from './SchematicPreview'
@@ -59,10 +64,18 @@ const DOWNLOAD_GAP = 400
 
 export function FileManager({
   instance,
+  active,
   jump,
   onOpenHistory,
+  onWorkspaceChange,
 }: {
   instance: InstanceStatus
+  /** Whether this section is the one on screen. Sections stay mounted behind
+   *  whatever replaced them (see InstanceView), so "no longer visible" is not
+   *  the same event as unmounting — and edit mode has to end on both. */
+  active: boolean
+  /** Asks the shell to fold to the rail for as long as edit mode is on. */
+  onWorkspaceChange?: (full: boolean) => void
   jump?: FileJump
   /** Sends the open file to 配置历史. Absent when nothing upstream can switch
    *  sections, and when the panel has no config history at all. */
@@ -84,6 +97,53 @@ export function FileManager({
   // way back: with two files open there would otherwise be no way to reach the
   // listing without closing both.
   const [narrowPane, setNarrowPane] = useState<'list' | 'editor'>('list')
+  // The file pane has two jobs — managing files, and reading or writing one —
+  // and they want opposite layouts. Editing mode is the second one: the listing
+  // steps aside, the tree takes over answering "what is in here", and the
+  // editor gets the width that was being spent on a column of file sizes.
+  //
+  // Deliberately not persisted. Landing on 文件 in a mode set last week, with
+  // no listing and no toolbar, is a page that looks broken.
+  const [editing, setEditing] = useState(false)
+  // Edit mode's own filter, separate from the listing's 在当前目录中查找: that
+  // one filters rows of one directory, this one filters the tree — and only
+  // what the tree has already read.
+  const [treeQuery, setTreeQuery] = useState('')
+  // Below the drawer breakpoint the pane already shows one column at a time
+  // (see narrowPane), which is what edit mode is *for* — offering it there
+  // would be a second state that changes nothing. The number is the one in
+  // App's DRAWER_QUERY; the media queries in styles.css are the third place it
+  // lives, and all three have to move together.
+  const roomy = !useMediaQuery('(max-width: 1024px)')
+  // Between the two breakpoints there is room for two columns but not for two
+  // comfortable ones: 260 of tree out of 1100 is a quarter of the width spent
+  // on a column you glance at. So it starts folded there and opens over the
+  // editor rather than squeezing it.
+  const tight = useMediaQuery('(max-width: 1200px)')
+  const [treeOpen, setTreeOpen] = useState(true)
+
+  useEffect(() => {
+    if (!roomy) setEditing(false)
+  }, [roomy])
+
+  useEffect(() => {
+    if (editing) setTreeOpen(true)
+  }, [editing])
+
+  // Leaving the section leaves the mode. It could be remembered instead, but
+  // then coming back to 文件 would land on a page with no listing and no
+  // toolbar — the same thing persisting it would do.
+  useEffect(() => {
+    if (!active) setEditing(false)
+  }, [active])
+
+  // The shell follows the mode, and gets it back on the way out. Unmounting is
+  // the path a route change takes, and it has to hand the rail back too.
+  useEffect(() => {
+    onWorkspaceChange?.(editing)
+  }, [editing, onWorkspaceChange])
+
+  useEffect(() => () => onWorkspaceChange?.(false), [onWorkspaceChange])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
@@ -142,6 +202,20 @@ export function FileManager({
     () => tabs.find((tab) => tab.path === activeTab) ?? null,
     [tabs, activeTab],
   )
+
+  // The tabs already show this; the tree shows it too because in edit mode the
+  // tree is what gets scanned, and an unsaved file you cannot see is one you
+  // lose by walking away from the page.
+  const dirtyPaths = useMemo(
+    () => new Set(tabs.filter((tab) => tab.content !== tab.original).map((tab) => tab.path)),
+    [tabs],
+  )
+
+  // Folding the tree away buys room for the editor, so with no file open there
+  // is nothing to buy it for — and the button that brings the tree back lives
+  // on the editor's own head, which is not on screen either. Folded and empty
+  // is a dead end, so it is not a state that can be reached.
+  const treeShown = treeOpen || editor === null
 
   /** Brings a file to the front, opening a tab for it if it has none. A file
    *  already open is never re-read: it may have unsaved edits in it. */
@@ -216,6 +290,25 @@ export function FileManager({
     setTreeKey((key) => key + 1)
     void load(dir)
   }
+
+  // Escape leaves the mode, including from inside the editor — that is where
+  // the caret spends nearly all of its time in this mode, and a way out that
+  // only works when nothing is focused is not a way out.
+  //
+  // The filter box is the one exception: Escape there already means "clear what
+  // I typed", and that is the smaller, more local undo of the two. Press it
+  // twice and the second one leaves.
+  useEffect(() => {
+    if (!editing) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      const target = event.target as HTMLElement | null
+      if (target?.classList.contains('ftree__find')) return
+      setEditing(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [editing])
 
   /**
    * "Type a name", as a promise — the same shape as `ask` in confirm.ts, and
@@ -366,6 +459,123 @@ export function FileManager({
     if (!ok) return
     await guard(() => api.deleteFile(instance.id, entry.path), `已删除 ${entry.name}`)
   }
+
+  /**
+   * The row actions the listing keeps in its 操作 column, for a tree that is
+   * standing in for the listing.
+   *
+   * Deliberately not reusing `rename`/`remove`: those two are written for a row
+   * of the *current* directory and join new names onto `dir`. A tree row can be
+   * three levels away from where the listing is standing, and renaming
+   * plugins/Foo/bar.yml would have moved it to the root.
+   */
+  const renameInTree = async (node: TreeNode) => {
+    const parent = parentOf(node.path)
+    // Names already in that directory, so a clash is caught in the dialog
+    // rather than as a 409 afterwards. One extra listing on a rename is
+    // cheaper than the round trip it saves.
+    let taken: string[] = takenNames
+    if (parent !== dir) {
+      try {
+        taken = (await api.listFiles(instance.id, parent)).entries.map((entry) => entry.name)
+      } catch {
+        // Unreadable from here: let the server be the one to refuse.
+        taken = []
+      }
+    }
+    const next = await askName({
+      title: `重命名${node.isDir ? '文件夹' : '文件'}`,
+      label: '新名称',
+      initial: node.name,
+      confirmLabel: '重命名',
+      taken,
+    })
+    if (!next || next === node.name) return
+    await guard(
+      () => api.renameFile(instance.id, node.path, joinPath(parent, next)),
+      `已重命名为 ${next}`,
+    )
+    retab(node.path, joinPath(parent, next))
+    setTreeKey((key) => key + 1)
+  }
+
+  const removeInTree = async (node: TreeNode) => {
+    const ok = await ask({
+      title: `删除${node.isDir ? '文件夹' : '文件'}「${node.name}」？`,
+      lead: node.isDir
+        ? '文件夹里的所有内容会一起删除，无法撤销。'
+        : '删除后无法撤销，请确认这不是存档或配置。',
+      confirmLabel: '删除',
+      danger: true,
+    })
+    if (!ok) return
+    await guard(() => api.deleteFile(instance.id, node.path), `已删除 ${node.name}`)
+    retab(node.path, null)
+    setTreeKey((key) => key + 1)
+  }
+
+  /**
+   * Follows a path that moved or went away through the open tabs.
+   *
+   * A tab left pointing at a file that is no longer there fails at save time,
+   * which is the worst possible moment to find out — the text is in the box and
+   * the file it belongs to is gone. `to` of null closes them instead.
+   */
+  const retab = (from: string, to: string | null) => {
+    const moved = (path: string) =>
+      path === from ? to : path.startsWith(`${from}/`) && to !== null
+        ? to + path.slice(from.length)
+        : path.startsWith(`${from}/`)
+          ? null
+          : path
+    setTabs((current) =>
+      current
+        .map((tab) => {
+          const next = moved(tab.path)
+          return next === null ? null : { ...tab, path: next }
+        })
+        .filter((tab): tab is EditorState => tab !== null),
+    )
+    setActiveTab((current) => (current === null ? null : moved(current)))
+  }
+
+  const treeMenu = useCallback(
+    (node: TreeNode): MenuItem[] => [
+      {
+        label: '重命名',
+        disabled: busy || !listing?.writable,
+        onSelect: () => void renameInTree(node),
+      },
+      {
+        label: '复制路径',
+        onSelect: () => {
+          void navigator.clipboard?.writeText(node.path)
+          toast(`已复制 ${node.path}`)
+        },
+      },
+      ...(node.isDir
+        ? []
+        : [
+            {
+              label: '下载',
+              onSelect: () => {
+                const link = document.createElement('a')
+                link.href = downloadURL(instance.id, node.path)
+                link.download = node.name
+                link.click()
+              },
+            },
+          ]),
+      {
+        label: '删除',
+        danger: true,
+        disabled: busy || !listing?.writable,
+        onSelect: () => void removeInTree(node),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [busy, listing?.writable, instance.id, dir, takenNames],
+  )
 
   /**
    * Deleting a selection, one request at a time.
@@ -579,7 +789,7 @@ export function FileManager({
 
   return (
     <div
-      className="stack"
+      className={editing ? 'stack stack--full' : 'stack'}
       onDragEnter={(event) => {
         if (!hasFiles(event.dataTransfer)) return
         dragDepth.current += 1
@@ -601,254 +811,370 @@ export function FileManager({
         void upload(Array.from(event.dataTransfer.files))
       }}
     >
-      <PageHead
-        title="文件"
-        lead="服务器目录里的东西：jar、存档、配置和日志。点一个文件直接打开，可以同时开着几个对照。"
-      />
+      {/* The mode's whole point is vertical room, and the title plus the
+          sentence under it are the first eight lines it buys back. */}
+      {!editing && (
+        <PageHead
+          title="文件"
+          lead="服务器目录里的东西：jar、存档、配置和日志。点一个文件直接打开，可以同时开着几个对照。"
+        />
+      )}
 
       {/* Tree, listing, editor. The editor used to replace the listing — one
           file at a time, and comparing two configs meant closing the first and
           remembering what it said. `data-pane` is what the narrow layout reads:
           below 1024 there is only room for one of these, and which one depends
           on whether anything is open. */}
-      <div className="fm" data-pane={editor ? narrowPane : 'list'}>
+      <div
+        className={editing ? 'fm fm--editing' : 'fm'}
+        data-pane={editor ? narrowPane : 'list'}
+        data-tree={editing ? (treeShown ? 'on' : 'off') : undefined}
+      >
         <aside className="fm__tree">
+          {/* In edit mode the listing's toolbar is off screen, so the four
+              buttons that are pressed daily come here. They act on the
+              directory the tree is standing in, which is why it is named just
+              below them: a 上传 that writes into an unnamed directory is a
+              button nobody presses twice. */}
+          {editing && (
+            <>
+              <div className="ftree__bar">
+                <button
+                  className="btn btn--icon"
+                  onClick={() => fileInput.current?.click()}
+                  disabled={busy || !listing.writable}
+                  title={listing.writable ? '上传到当前目录' : readOnlyHere}
+                  aria-label="上传文件"
+                >
+                  <Glyph name="upload" />
+                </button>
+                <button
+                  className="btn btn--icon"
+                  onClick={() => void createFile()}
+                  disabled={busy || !listing.writable}
+                  title={listing.writable ? '新建文件' : readOnlyHere}
+                  aria-label="新建文件"
+                >
+                  <Glyph name="new-file" />
+                </button>
+                <button
+                  className="btn btn--icon"
+                  onClick={() => void createFolder()}
+                  disabled={busy || !listing.writable}
+                  title={listing.writable ? '新建文件夹' : readOnlyHere}
+                  aria-label="新建文件夹"
+                >
+                  <Glyph name="new-folder" />
+                </button>
+                <button
+                  className="btn btn--icon"
+                  onClick={refresh}
+                  disabled={busy || pending}
+                  title="刷新"
+                  aria-label="刷新"
+                >
+                  <Glyph name="refresh" className={pending ? 'spin' : undefined} />
+                </button>
+                {editor !== null && (
+                  <button
+                    className="btn btn--icon"
+                    onClick={() => setTreeOpen(false)}
+                    title="收起目录树"
+                    aria-label="收起目录树"
+                  >
+                    <Glyph name="folder" />
+                  </button>
+                )}
+                <button
+                  className="btn btn--icon ftree__leave"
+                  onClick={() => setEditing(false)}
+                  title="退出编辑模式（Esc）"
+                  aria-label="退出编辑模式"
+                >
+                  <Glyph name="up" />
+                </button>
+              </div>
+              <p className="ftree__where" title={dir || '实例根目录'}>
+                {dir === '' ? '实例根目录' : dir}
+              </p>
+              <input
+                className="ftree__find"
+                type="search"
+                value={treeQuery}
+                placeholder="筛选已展开的目录"
+                aria-label="筛选已展开的目录"
+                onChange={(event) => setTreeQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') setTreeQuery('')
+                }}
+              />
+            </>
+          )}
           <FileTree
             instanceId={instance.id}
             path={dir}
             reloadKey={treeKey}
+            showFiles={editing}
+            openPath={activeTab}
+            dirtyPaths={dirtyPaths}
+            filter={editing ? treeQuery : ''}
+            menuFor={editing ? treeMenu : undefined}
             onOpen={(next) => void load(next)}
+            onOpenFile={(next) => {
+              // Below 1200 the tree is an overlay sitting on top of the editor,
+              // so picking a file is also how it gets dismissed — the same
+              // reasoning as the navigation drawer in App. Above it the tree
+              // has a column of its own and nothing is covered.
+              if (tight) setTreeOpen(false)
+              void openPath(next)
+            }}
           />
         </aside>
 
-      <section className={`panel files${dragging ? ' files--dropping' : ''}`}>
-        <div className="files__head">
-          <button
-            className="files__up"
-            onClick={() => void load(parentOf(dir))}
-            disabled={dir === '' || pending}
-            title="返回上一级"
-            aria-label="返回上一级"
-          >
-            <Glyph name="up" />
-          </button>
-          <Breadcrumb dir={dir} onNavigate={(next) => void load(next)} />
-        </div>
+      {/* Gone rather than narrowed in edit mode: a column of file sizes
+          beside an open config is the width that was making the config
+          scroll sideways. */}
+      {!editing && (
+        <section className={`panel files${dragging ? ' files--dropping' : ''}`}>
+          <div className="files__head">
+            <button
+              className="files__up"
+              onClick={() => void load(parentOf(dir))}
+              disabled={dir === '' || pending}
+              title="返回上一级"
+              aria-label="返回上一级"
+            >
+              <Glyph name="up" />
+            </button>
+            <Breadcrumb dir={dir} onNavigate={(next) => void load(next)} />
+          </div>
 
-        <div className="file-toolbar">
-          {/* A confined role can walk through the folders on the way to the one
-              it may edit, but not write in them. Offering the buttons there
-              would be offering a request the panel refuses. */}
-          <button
-            className="btn btn--primary"
-            onClick={() => fileInput.current?.click()}
-            disabled={busy || !listing.writable}
-            title={listing.writable ? undefined : readOnlyHere}
-          >
-            <Glyph name="upload" />
-            上传文件
-          </button>
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            hidden
-            onChange={(event) => {
-              void upload(Array.from(event.target.files ?? []))
-              event.target.value = ''
-            }}
-          />
-          <button
-            className="btn"
-            disabled={busy || !listing.writable}
-            title={listing.writable ? undefined : readOnlyHere}
-            onClick={() => void createFolder()}
-          >
-            <Glyph name="new-folder" />
-            新建文件夹
-          </button>
-          <button
-            className="btn"
-            disabled={busy || !listing.writable}
-            title={listing.writable ? undefined : readOnlyHere}
-            onClick={() => void createFile()}
-          >
-            <Glyph name="new-file" />
-            新建文件
-          </button>
-          <button
-            className="btn btn--icon"
-            onClick={refresh}
-            disabled={busy || pending}
-            title="刷新"
-            aria-label="刷新"
-          >
-            <Glyph name="refresh" className={pending ? 'spin' : undefined} />
-          </button>
-
-          <div className="file-toolbar__find">
-            <Glyph name="search" />
+          <div className="file-toolbar">
+            {/* A confined role can walk through the folders on the way to the one
+                it may edit, but not write in them. Offering the buttons there
+                would be offering a request the panel refuses. */}
+            <button
+              className="btn btn--primary"
+              onClick={() => fileInput.current?.click()}
+              disabled={busy || !listing.writable}
+              title={listing.writable ? undefined : readOnlyHere}
+            >
+              <Glyph name="upload" />
+              上传文件
+            </button>
             <input
-              className="file-toolbar__search"
-              type="search"
-              value={query}
-              placeholder="在当前目录中查找"
-              aria-label="在当前目录中查找"
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape') setQuery('')
+              ref={fileInput}
+              type="file"
+              multiple
+              hidden
+              onChange={(event) => {
+                void upload(Array.from(event.target.files ?? []))
+                event.target.value = ''
               }}
             />
-          </div>
-        </div>
-
-        {selectedEntries.length > 0 && (
-          <div className="file-bulk">
-            <span className="file-bulk__count">已选择 {selectedEntries.length} 项</span>
             <button
               className="btn"
-              disabled={busy}
-              onClick={() => void downloadMany(selectedEntries)}
+              disabled={busy || !listing.writable}
+              title={listing.writable ? undefined : readOnlyHere}
+              onClick={() => void createFolder()}
             >
-              <Glyph name="download" />
-              下载
+              <Glyph name="new-folder" />
+              新建文件夹
             </button>
             <button
-              className="btn btn--danger"
-              disabled={busy}
-              onClick={() => void removeMany(selectedEntries)}
+              className="btn"
+              disabled={busy || !listing.writable}
+              title={listing.writable ? undefined : readOnlyHere}
+              onClick={() => void createFile()}
             >
-              <Glyph name="trash" />
-              删除
+              <Glyph name="new-file" />
+              新建文件
             </button>
-            <button className="link file-bulk__clear" onClick={() => setSelected(new Set())}>
-              取消选择
+            <button
+              className="btn btn--icon"
+              onClick={refresh}
+              disabled={busy || pending}
+              title="刷新"
+              aria-label="刷新"
+            >
+              <Glyph name="refresh" className={pending ? 'spin' : undefined} />
             </button>
-          </div>
-        )}
 
-        {progress != null && (
-          <div className="progress">
-            <div className="progress__bar" style={{ width: `${Math.round(progress * 100)}%` }} />
-            <span className="progress__label">{Math.round(progress * 100)}%</span>
-          </div>
-        )}
+            {roomy && (
+              <button
+                className="btn"
+                onClick={() => setEditing(true)}
+                title="把这一屏交给编辑器：列表让位，目录树带上文件"
+              >
+                <Glyph name="doc" />
+                编辑模式
+              </button>
+            )}
 
-        {error && (
-          <div className="alert alert--error">
-            {error}
-            <button className="link" onClick={() => setError(null)}>
-              知道了
-            </button>
-          </div>
-        )}
-
-        <div className="table-scroll" data-pending={pending || undefined}>
-          <table className="data-table data-table--files">
-            <colgroup>
-              <col className="col--tick" />
-              <col />
-              <col className="col--size" />
-              <col className="col--time" />
-              <col className="col--ops" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th className="col--tick">
-                  <input
-                    ref={tickAllRef}
-                    type="checkbox"
-                    className="tick"
-                    checked={allTicked}
-                    disabled={rows.length === 0}
-                    aria-label="全选"
-                    onChange={() =>
-                      setSelected(
-                        allTicked ? new Set() : new Set(rows.map((entry) => entry.path)),
-                      )
-                    }
-                  />
-                </th>
-                <SortHeader label="名称" column="name" sort={sort} onSort={toggleSort} />
-                <SortHeader label="大小" column="size" sort={sort} onSort={toggleSort} align="num" />
-                <SortHeader label="修改时间" column="modified" sort={sort} onSort={toggleSort} />
-                <th className="col--ops">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
-                <tr className="file-empty__row">
-                  <td colSpan={5}>
-                    {query ? (
-                      <div className="file-empty">
-                        <p>没有匹配「{query}」的文件。</p>
-                        <button className="btn" onClick={() => setQuery('')}>
-                          清除筛选
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="file-empty">
-                        <Glyph name="folder-open" className="file-empty__glyph" />
-                        <p>这个目录是空的。把服务端 jar 或插件拖进来就能开始。</p>
-                        <button className="btn" onClick={() => fileInput.current?.click()}>
-                          上传文件
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              )}
-              {rows.map((entry) => (
-                <FileRow
-                  key={entry.path}
-                  entry={entry}
-                  instanceId={instance.id}
-                  busy={busy}
-                  ticked={selected.has(entry.path)}
-                  onTick={() => toggleOne(entry.path)}
-                  onOpen={() => void openEntry(entry)}
-                  onRename={() => void rename(entry)}
-                  onDelete={() => void remove(entry)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="files__foot">
-          <span>
-            {folders} 个文件夹 · {files} 个文件
-            {files > 0 && ` · 共 ${formatBytes(totalBytes)}`}
-            {query && rows.length !== entries.length && ` · 已筛选出 ${rows.length} 项`}
-          </span>
-          {/* The path and the promise about it are two elements rather than one
-              line, because one line means the path's ellipsis eats the promise:
-              on a phone the whole "所有操作都被限制在这个目录内" disappeared and
-              only a truncated path was left. */}
-          <span className="files__root" title={listing.root}>
-            <code>{listing.root}</code>
-            {/* Two different promises. Without a role rule the honest sentence
-                is the instance directory; with one it is narrower, and saying
-                the wider thing would be telling somebody they can reach files
-                the panel will refuse them. */}
-            <span className="files__root-note">
-              {listing.scope.length > 0
-                ? `· 你的角色只能操作 ${listing.scope.join('、')}`
-                : '· 所有操作都被限制在这个目录内'}
-            </span>
-          </span>
-        </div>
-
-        {dragging && (
-          <div className="file-drop" aria-hidden="true">
-            <div className="file-drop__card">
-              <Glyph name="upload" className="file-drop__glyph" />
-              松开即可上传到 <b>{dir === '' ? '实例根目录' : dir}</b>
-              <small>单文件上限 {formatBytes(listing.maxUploadBytes)}</small>
+            <div className="file-toolbar__find">
+              <Glyph name="search" />
+              <input
+                className="file-toolbar__search"
+                type="search"
+                value={query}
+                placeholder="在当前目录中查找"
+                aria-label="在当前目录中查找"
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') setQuery('')
+                }}
+              />
             </div>
           </div>
-        )}
-      </section>
+
+          {selectedEntries.length > 0 && (
+            <div className="file-bulk">
+              <span className="file-bulk__count">已选择 {selectedEntries.length} 项</span>
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={() => void downloadMany(selectedEntries)}
+              >
+                <Glyph name="download" />
+                下载
+              </button>
+              <button
+                className="btn btn--danger"
+                disabled={busy}
+                onClick={() => void removeMany(selectedEntries)}
+              >
+                <Glyph name="trash" />
+                删除
+              </button>
+              <button className="link file-bulk__clear" onClick={() => setSelected(new Set())}>
+                取消选择
+              </button>
+            </div>
+          )}
+
+          {progress != null && (
+            <div className="progress">
+              <div className="progress__bar" style={{ width: `${Math.round(progress * 100)}%` }} />
+              <span className="progress__label">{Math.round(progress * 100)}%</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="alert alert--error">
+              {error}
+              <button className="link" onClick={() => setError(null)}>
+                知道了
+              </button>
+            </div>
+          )}
+
+          <div className="table-scroll" data-pending={pending || undefined}>
+            <table className="data-table data-table--files">
+              <colgroup>
+                <col className="col--tick" />
+                <col />
+                <col className="col--size" />
+                <col className="col--time" />
+                <col className="col--ops" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className="col--tick">
+                    <input
+                      ref={tickAllRef}
+                      type="checkbox"
+                      className="tick"
+                      checked={allTicked}
+                      disabled={rows.length === 0}
+                      aria-label="全选"
+                      onChange={() =>
+                        setSelected(
+                          allTicked ? new Set() : new Set(rows.map((entry) => entry.path)),
+                        )
+                      }
+                    />
+                  </th>
+                  <SortHeader label="名称" column="name" sort={sort} onSort={toggleSort} />
+                  <SortHeader label="大小" column="size" sort={sort} onSort={toggleSort} align="num" />
+                  <SortHeader label="修改时间" column="modified" sort={sort} onSort={toggleSort} />
+                  <th className="col--ops">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 && (
+                  <tr className="file-empty__row">
+                    <td colSpan={5}>
+                      {query ? (
+                        <div className="file-empty">
+                          <p>没有匹配「{query}」的文件。</p>
+                          <button className="btn" onClick={() => setQuery('')}>
+                            清除筛选
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="file-empty">
+                          <Glyph name="folder-open" className="file-empty__glyph" />
+                          <p>这个目录是空的。把服务端 jar 或插件拖进来就能开始。</p>
+                          <button className="btn" onClick={() => fileInput.current?.click()}>
+                            上传文件
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                {rows.map((entry) => (
+                  <FileRow
+                    key={entry.path}
+                    entry={entry}
+                    instanceId={instance.id}
+                    busy={busy}
+                    ticked={selected.has(entry.path)}
+                    onTick={() => toggleOne(entry.path)}
+                    onOpen={() => void openEntry(entry)}
+                    onRename={() => void rename(entry)}
+                    onDelete={() => void remove(entry)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="files__foot">
+            <span>
+              {folders} 个文件夹 · {files} 个文件
+              {files > 0 && ` · 共 ${formatBytes(totalBytes)}`}
+              {query && rows.length !== entries.length && ` · 已筛选出 ${rows.length} 项`}
+            </span>
+            {/* The path and the promise about it are two elements rather than one
+                line, because one line means the path's ellipsis eats the promise:
+                on a phone the whole "所有操作都被限制在这个目录内" disappeared and
+                only a truncated path was left. */}
+            <span className="files__root" title={listing.root}>
+              <code>{listing.root}</code>
+              {/* Two different promises. Without a role rule the honest sentence
+                  is the instance directory; with one it is narrower, and saying
+                  the wider thing would be telling somebody they can reach files
+                  the panel will refuse them. */}
+              <span className="files__root-note">
+                {listing.scope.length > 0
+                  ? `· 你的角色只能操作 ${listing.scope.join('、')}`
+                  : '· 所有操作都被限制在这个目录内'}
+              </span>
+            </span>
+          </div>
+
+          {dragging && (
+            <div className="file-drop" aria-hidden="true">
+              <div className="file-drop__card">
+                <Glyph name="upload" className="file-drop__glyph" />
+                松开即可上传到 <b>{dir === '' ? '实例根目录' : dir}</b>
+                <small>单文件上限 {formatBytes(listing.maxUploadBytes)}</small>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
         <div className="fm__editor">
           {editor ? (
@@ -857,6 +1183,7 @@ export function FileManager({
               tabs={tabs}
               activeTab={activeTab}
               onBackToList={() => setNarrowPane('list')}
+              onShowTree={editing && !treeShown ? () => setTreeOpen(true) : undefined}
               onSelectTab={(path: string) => setActiveTab(path)}
               onCloseTab={(path: string) => void closeTab(path)}
               busy={busy}
@@ -873,7 +1200,11 @@ export function FileManager({
             // anything is opened, on every open and every close.
             <div className="fm__blank">
               <Glyph name="doc" />
-              <p>从中间的列表里点一个文件，会在这里打开。</p>
+              <p>
+                {editing
+                  ? '从左边的目录树里点一个文件，会在这里打开。'
+                  : '从中间的列表里点一个文件，会在这里打开。'}
+              </p>
               <p className="muted">可以同时开着几个，用上面的标签切换。</p>
             </div>
           )}
@@ -906,7 +1237,6 @@ function FileRow({
   onRename: () => void
   onDelete: () => void
 }) {
-  const kind = kindOf(entry)
   const openable = entry.isDir || entry.editable || isImage(entry.name) || isSchematic(entry.name)
 
   return (
@@ -922,9 +1252,7 @@ function FileRow({
       </td>
       <td>
         <div className="filecell">
-          <span className={`fileicon fileicon--${TONE[kind]}`}>
-            <Glyph name={GLYPH[kind]} />
-          </span>
+          <FileIcon name={entry.name} dir={entry.isDir} />
           <button
             className={`file-link${openable ? '' : ' file-link--plain'}`}
             onClick={onOpen}
@@ -1073,6 +1401,7 @@ function FileEditor({
   tabs,
   activeTab,
   onBackToList,
+  onShowTree,
   onSelectTab,
   onCloseTab,
   busy,
@@ -1089,6 +1418,9 @@ function FileEditor({
   /** Narrow layouts only: the listing is off screen there, and closing every
    *  tab must not be the only way back to it. */
   onBackToList: () => void
+  /** Edit mode with the tree folded away: without this there is no way back to
+   *  it, and the only thing on screen is the file you are already looking at. */
+  onShowTree?: () => void
   onSelectTab: (path: string) => void
   onCloseTab: (path: string) => void
   busy: boolean
@@ -1120,6 +1452,19 @@ function FileEditor({
   // it looks. Memoised because the Blob is an allocation per keystroke.
   const bytes = useMemo(() => new Blob([editor.content]).size, [editor.content])
 
+  const hl = useRef<HTMLPreElement | null>(null)
+  const lang = useMemo(() => langOf(editor.path), [editor.path])
+  // Past the threshold the gutter is already off (see `lines`), and tokenising
+  // a 400 000-character log on every keystroke is the same bad trade twice.
+  const huge = lines === 0
+  // A frame behind the textarea on purpose: typing must never wait on a
+  // tokeniser, and a colour that lands one frame late is invisible.
+  const deferred = useDeferredValue(editor.content)
+  const painted = useMemo(
+    () => (huge || !lang.prism ? null : highlight(deferred, lang.prism)),
+    [deferred, huge, lang.prism],
+  )
+
   // A tab away with unsaved changes is a browser-level event; the panel's own
   // 返回 already asks.
   useEffect(() => {
@@ -1140,6 +1485,18 @@ function FileEditor({
           ← 文件列表
         </button>
 
+        {onShowTree && (
+          <button
+            type="button"
+            className="btn btn--icon editor__tree"
+            onClick={onShowTree}
+            title="显示目录树"
+            aria-label="显示目录树"
+          >
+            <Glyph name="folder" />
+          </button>
+        )}
+
         <div className="etabs" role="tablist" aria-label="打开的文件">
           {tabs.map((tab) => (
             <div
@@ -1154,9 +1511,7 @@ function FileEditor({
                 onClick={() => onSelectTab(tab.path)}
                 title={tab.path}
               >
-                <span className={`fileicon fileicon--${TONE[kindOfName(tab.path)]}`}>
-                  <Glyph name={GLYPH[kindOfName(tab.path)]} />
-                </span>
+                <FileIcon name={baseName(tab.path)} />
                 {baseName(tab.path)}
                 {tab.content !== tab.original && (
                   <span className="etabs__dot" aria-label="有未保存的修改" />
@@ -1186,28 +1541,49 @@ function FileEditor({
               {gutterText}
             </div>
           )}
-          <textarea
-            className="editor__text"
-            value={editor.content}
-            onChange={(event) => onChange(event.target.value)}
-            onScroll={(event) => {
-              if (gutter.current) gutter.current.scrollTop = event.currentTarget.scrollTop
-            }}
-            onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-            onClick={(event) => setCaret(event.currentTarget.selectionStart)}
-            onKeyUp={(event) => setCaret(event.currentTarget.selectionStart)}
-            onKeyDown={(event) => {
-              // The shortcut everyone's fingers already know, and without it
-              // the browser offers to save the whole page as HTML.
-              if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
-                event.preventDefault()
-                onSave()
-              }
-            }}
-            spellCheck={false}
-            wrap="off"
-            aria-label={`编辑 ${editor.path}`}
-          />
+          <div className="editor__wrap">
+            {/* Under the textarea, never in front of it: it must not take a
+                click, a selection, or a screen reader's attention. Safe as
+                innerHTML — see highlight(), which escapes every character Prism
+                does not wrap itself. */}
+            {painted !== null && (
+              <pre
+                className="editor__hl"
+                ref={hl}
+                aria-hidden="true"
+                dangerouslySetInnerHTML={{ __html: painted }}
+              />
+            )}
+            <textarea
+              className={painted !== null ? 'editor__text editor__text--lit' : 'editor__text'}
+              value={editor.content}
+              onChange={(event) => onChange(event.target.value)}
+              onScroll={(event) => {
+                // Both mirrors, from the one event: three layers that scroll
+                // apart are three layers that say different things about the
+                // same line.
+                if (gutter.current) gutter.current.scrollTop = event.currentTarget.scrollTop
+                if (hl.current) {
+                  hl.current.scrollTop = event.currentTarget.scrollTop
+                  hl.current.scrollLeft = event.currentTarget.scrollLeft
+                }
+              }}
+              onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+              onClick={(event) => setCaret(event.currentTarget.selectionStart)}
+              onKeyUp={(event) => setCaret(event.currentTarget.selectionStart)}
+              onKeyDown={(event) => {
+                // The shortcut everyone's fingers already know, and without it
+                // the browser offers to save the whole page as HTML.
+                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+                  event.preventDefault()
+                  onSave()
+                }
+              }}
+              spellCheck={false}
+              wrap="off"
+              aria-label={`编辑 ${editor.path}`}
+            />
+          </div>
         </div>
 
         {/* What an editor's foot is for: the facts you check before saving,
@@ -1215,7 +1591,7 @@ function FileEditor({
             thing that sends someone to this box is usually a console line
             ending in "at line 42". */}
         <div className="editor__status">
-          <span>{languageOf(editor.path)}</span>
+          <span>{lang.label}</span>
           <span>UTF-8</span>
           <span>{editor.content.includes('\r\n') ? 'CRLF' : 'LF'}</span>
           <span>
@@ -1224,6 +1600,7 @@ function FileEditor({
           <span className="editor__status-right">
             {formatBytes(bytes)}
             {lines > 0 && ` · ${lines} 行`}
+            {huge && ' · 文件过大，已关闭高亮'}
           </span>
           <span className={dirty ? 'editor__dot editor__dot--dirty' : 'editor__dot'}>
             {dirty ? '有未保存的修改' : '已是最新'}
@@ -1373,285 +1750,6 @@ function NameList({ names }: { names: string[] }) {
   )
 }
 
-/* --------------------------------------------------------------- glyphs */
-
-type GlyphName =
-  | 'cube'
-  | 'up'
-  | 'home'
-  | 'upload'
-  | 'download'
-  | 'refresh'
-  | 'search'
-  | 'rename'
-  | 'trash'
-  | 'new-folder'
-  | 'new-file'
-  | 'folder'
-  | 'folder-open'
-  | 'doc'
-  | 'config'
-  | 'image'
-  | 'archive'
-  | 'jar'
-  | 'script'
-  | 'data'
-
-const GLYPHS: Record<GlyphName, ReactElement> = {
-  up: <path d="M12 20V5m0 0-6 6m6-6 6 6" />,
-  home: <path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19v-8.5Z" />,
-  upload: (
-    <>
-      <path d="M12 16V4m0 0-4.5 4.5M12 4l4.5 4.5" />
-      <path d="M4.5 15v3.5a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V15" />
-    </>
-  ),
-  download: (
-    <>
-      <path d="M12 4v12m0 0-4.5-4.5M12 16l4.5-4.5" />
-      <path d="M4.5 16v2.5a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V16" />
-    </>
-  ),
-  refresh: (
-    <>
-      <path d="M20 12a8 8 0 1 1-2.6-5.9" />
-      <path d="M20 4v4.5h-4.5" />
-    </>
-  ),
-  search: (
-    <>
-      <circle cx="10.5" cy="10.5" r="6" />
-      <path d="m15 15 4.5 4.5" />
-    </>
-  ),
-  // A pencil: renaming is writing on the thing, not moving it.
-  rename: (
-    <>
-      <path d="M4.5 19.5h4L20 8a2.1 2.1 0 0 0-3-3L5.5 16.5l-1 3Z" />
-      <path d="m14.5 6.5 3 3" />
-    </>
-  ),
-  trash: (
-    <>
-      <path d="M4.5 6.5h15M9.5 6.5V5a1.5 1.5 0 0 1 1.5-1.5h2A1.5 1.5 0 0 1 14.5 5v1.5" />
-      <path d="M6.5 6.5 7.5 20a1.5 1.5 0 0 0 1.5 1.4h6a1.5 1.5 0 0 0 1.5-1.4l1-13.5" />
-      <path d="M10.5 10.5v7M13.5 10.5v7" />
-    </>
-  ),
-  'new-folder': (
-    <>
-      <path d="M4 6.5a2 2 0 0 1 2-2h3.4l1.8 2.2H18a2 2 0 0 1 2 2v3" />
-      <path d="M4 6.5v11a2 2 0 0 0 2 2h7" />
-      <path d="M17.5 15v6M14.5 18h6" />
-    </>
-  ),
-  'new-file': (
-    <>
-      <path d="M13.5 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h4" />
-      <path d="M13.5 3.5 19 9v3" />
-      <path d="M18 15v6M15 18h6" />
-    </>
-  ),
-  folder: <path d="M4 6.5A2 2 0 0 1 6 4.5h3.4l1.8 2.2H18a2 2 0 0 1 2 2v8.8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6.5Z" />,
-  'folder-open': (
-    <>
-      <path d="M4 18.5V6.5a2 2 0 0 1 2-2h3.4l1.8 2.2H18a2 2 0 0 1 2 2v1.8" />
-      <path d="M4 18.5 6.4 11h15.1l-2.4 7.5H4Z" />
-    </>
-  ),
-  doc: (
-    <>
-      <path d="M13.5 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9l-5.5-5.5Z" />
-      <path d="M13.5 3.5V9H19" />
-      <path d="M8.5 13.5h7M8.5 17h4.5" />
-    </>
-  ),
-  // Sliders, the same shape the settings page uses: a file of knobs.
-  config: (
-    <>
-      <path d="M3.5 8h8M16 8h4.5M3.5 16h4.5M12.5 16h8" />
-      <circle cx="13.75" cy="8" r="2.25" />
-      <circle cx="10.25" cy="16" r="2.25" />
-    </>
-  ),
-  image: (
-    <>
-      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
-      <circle cx="9" cy="9.75" r="1.6" />
-      <path d="m4.5 17.5 4.75-4.75 3.25 3.25 2.75-2.5 4.75 4" />
-    </>
-  ),
-  archive: (
-    <>
-      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
-      <path d="M3.5 9.5h17M10.25 13h3.5" />
-    </>
-  ),
-  // The cube the core library uses: a jar is a packaged build.
-  jar: (
-    <>
-      <path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z" />
-      <path d="m4 7.5 8 4.5 8-4.5M12 12v9" />
-    </>
-  ),
-  script: (
-    <>
-      <rect x="3" y="4.5" width="18" height="15" rx="2.5" />
-      <path d="m7.5 10 2.5 2.5-2.5 2.5M13 15h3.5" />
-    </>
-  ),
-  data: (
-    <>
-      <ellipse cx="12" cy="6.5" rx="7.5" ry="3" />
-      <path d="M4.5 6.5v11c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-11" />
-      <path d="M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3" />
-    </>
-  ),
-  // An isometric block, the same projection the preview draws in.
-  cube: (
-    <>
-      <path d="M12 3.2 20.5 8v8L12 20.8 3.5 16V8Z" />
-      <path d="M3.5 8 12 12.6 20.5 8" />
-      <path d="M12 12.6v8.2" />
-    </>
-  ),
-}
-
-/**
- * The file manager's own icon set.
- *
- * Separate from components/Icon because these are about file types rather than
- * navigation, and drawn on the same 24px grid with the same stroke so a row of
- * them lines up with the rest of the panel.
- */
-function Glyph({ name, className }: { name: GlyphName; className?: string }) {
-  return (
-    <svg
-      className={className ? `icon ${className}` : 'icon'}
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      {GLYPHS[name]}
-    </svg>
-  )
-}
-
-/* ----------------------------------------------------------- file kinds */
-
-type Kind =
-  | 'dir'
-  | 'jar'
-  | 'archive'
-  | 'image'
-  | 'schem'
-  | 'config'
-  | 'text'
-  | 'script'
-  | 'data'
-  | 'plain'
-
-const KIND_BY_EXT: Record<string, Kind> = {
-  '.jar': 'jar',
-  '.zip': 'archive',
-  '.tar': 'archive',
-  '.gz': 'archive',
-  '.tgz': 'archive',
-  '.rar': 'archive',
-  '.7z': 'archive',
-  '.xz': 'archive',
-  '.zst': 'archive',
-  '.png': 'image',
-  '.jpg': 'image',
-  '.jpeg': 'image',
-  '.gif': 'image',
-  '.webp': 'image',
-  '.bmp': 'image',
-  '.ico': 'image',
-  '.svg': 'image',
-  '.yml': 'config',
-  '.yaml': 'config',
-  '.json': 'config',
-  '.properties': 'config',
-  '.toml': 'config',
-  '.conf': 'config',
-  '.cfg': 'config',
-  '.ini': 'config',
-  '.xml': 'config',
-  '.env': 'config',
-  '.mcmeta': 'config',
-  '.txt': 'text',
-  '.md': 'text',
-  '.log': 'text',
-  '.csv': 'text',
-  '.lang': 'text',
-  '.snbt': 'text',
-  '.sh': 'script',
-  '.bat': 'script',
-  '.cmd': 'script',
-  '.ps1': 'script',
-  '.dat': 'data',
-  '.dat_old': 'data',
-  '.mca': 'data',
-  '.mcr': 'data',
-  '.nbt': 'data',
-  '.schem': 'schem',
-  '.schematic': 'schem',
-  '.db': 'data',
-  '.lock': 'data',
-}
-
-const GLYPH: Record<Kind, GlyphName> = {
-  dir: 'folder',
-  jar: 'jar',
-  archive: 'archive',
-  image: 'image',
-  schem: 'cube',
-  config: 'config',
-  text: 'doc',
-  script: 'script',
-  data: 'data',
-  plain: 'doc',
-}
-
-/** Four tints rather than nine. The point of the colour is to let the eye
- *  find the folders and then the configs; a rainbow would be a legend to
- *  learn. */
-const TONE: Record<Kind, string> = {
-  dir: 'dir',
-  jar: 'pkg',
-  archive: 'pkg',
-  image: 'media',
-  // Same tint as an image, and for the same reason: this is a file the panel
-  // can show you rather than one you have to take away and open.
-  schem: 'media',
-  config: 'conf',
-  script: 'conf',
-  text: 'plain',
-  data: 'plain',
-  plain: 'plain',
-}
-
-function extensionOf(name: string): string {
-  const dot = name.lastIndexOf('.')
-  return dot > 0 ? name.slice(dot).toLowerCase() : ''
-}
-
-function kindOf(entry: FileEntry): Kind {
-  return entry.isDir ? 'dir' : kindOfName(entry.name)
-}
-
-function kindOfName(name: string): Kind {
-  return KIND_BY_EXT[extensionOf(name)] ?? 'plain'
-}
-
 /** Only the types the panel serves inline; see previewTypes in handlers_fs.go.
  *  SVG is deliberately not among them, so it is a download here too. */
 const PREVIEWABLE = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico'])
@@ -1711,21 +1809,3 @@ function position(text: string, offset: number): { line: number; column: number 
 /** What the status line calls this file. Extension only — the panel does not
  *  parse these, and claiming to would be claiming a syntax check it has not
  *  got. */
-function languageOf(path: string): string {
-  const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
-  const known: Record<string, string> = {
-    yml: 'YAML',
-    yaml: 'YAML',
-    json: 'JSON',
-    properties: 'Properties',
-    toml: 'TOML',
-    conf: 'Conf',
-    cfg: 'Conf',
-    txt: '纯文本',
-    log: '日志',
-    sh: 'Shell',
-    md: 'Markdown',
-    kts: 'Kotlin Script',
-  }
-  return known[ext] ?? (ext ? ext.toUpperCase() : '纯文本')
-}
