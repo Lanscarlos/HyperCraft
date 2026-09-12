@@ -1284,13 +1284,10 @@ a:hover {
   margin-left: auto;
 }
 
-/* The two things that can sit at the foot of the column — the fold on the
-   panel's own sidebar, the way out inside a scope — see Sidebar.tsx for why
-   they share one slot. Both are painted a step quieter than a navigation row
-   and ruled off from the list above: whatever else they do, neither is one more
-   page in the list they are sitting under. */
-.sidebar__fold,
-.sidebar__exit {
+/* The fold, at the foot of the column it folds. Painted a step quieter than a
+   navigation row and ruled off from the list above it: it is a control on this
+   column, not one more page in the list it sits under. */
+.sidebar__fold {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1311,17 +1308,22 @@ a:hover {
     color var(--dur) var(--ease);
 }
 
-.sidebar__fold:hover,
-.sidebar__exit:hover {
-  background: var(--surface-2);
-  color: var(--text);
-}
-
-/* The exit is a destination rather than a switch, so it reads a step louder
-   than the fold and, like every other link in here, has no underline to lose.
-   Back is the one row that moves in the direction it goes. */
+/* The way out of a scope, in the column's top-left corner and directly on top
+   of the header naming what you are inside. The two are one block — a label and
+   the thing it leaves — so the 12px the sidebar puts between blocks is pulled
+   back to the 6px .sidebar__scope uses inside itself. It reads a step louder
+   than the fold because it is a destination rather than a switch, and like
+   every other link in here it has no underline to lose. */
 .sidebar__exit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 6px 8px;
+  margin-bottom: -6px;
+  border-radius: var(--radius);
   color: var(--text-dim);
+  font-size: 12px;
   text-decoration: none;
   transition:
     background var(--dur) var(--ease),
@@ -1329,6 +1331,13 @@ a:hover {
     transform var(--dur-1) var(--ease);
 }
 
+.sidebar__fold:hover,
+.sidebar__exit:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Back is the one row that moves in the direction it goes. */
 .sidebar__exit:active {
   transform: translateX(-2px);
 }
@@ -1339,9 +1348,9 @@ a:hover {
   height: 15px;
 }
 
-/* Folded, it is the one row that has to stay findable with its label gone —
-   it is the only way back out of the fold, and inside a scope the only way back
-   out of the scope — so both centre like every other folded row. */
+/* Folded, both are rows that have to stay findable with their labels gone —
+   the fold is the only way back out of the fold, the exit the only way back out
+   of the scope — so both centre like every other folded row. */
 .app[data-rail='on'] :is(.sidebar__fold, .sidebar__exit) {
   display: grid;
   place-items: center;

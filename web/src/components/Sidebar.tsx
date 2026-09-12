@@ -75,8 +75,8 @@ interface Props {
  * console three levels deep is a console nobody uses.
  *
  * What an inner scope owes the reader in exchange is a way out and a way
- * across: every one of them opens with the name of the thing you are inside
- * and closes, at the foot of the column, with the way back out of it. And it
+ * across: every one of them opens with the way back out of it and, under that,
+ * the name of the thing you are inside. And it
  * does not simply appear — the row you clicked flies up to become that header
  * while the list it belonged to clears out of the way, so the replacement is
  * something you watched happen rather than something you have to re-read the
@@ -136,6 +136,16 @@ export function Sidebar(props: Props) {
       tabIndex={-1}
       data-scope={scope}
     >
+      {/* The way out, above the header of the scope it leaves: the top-left
+          corner of a navigation column is where a reader looks for 返回, the
+          same reflex every browser and every phone trains, and it costs the
+          list below it nothing — the header was always going to be pinned
+          there anyway. It sat at the foot for a while, sharing the fold's
+          slot, on the argument that the top bar's back button already points
+          at the same place; in use that argument loses to the reflex, because
+          the corner is where the hand goes before the eye has read anything. */}
+      <ScopeExit {...props} />
+
       {scope === 'instance' ? (
         <InstanceScope {...props} />
       ) : scope === 'library' ? (
@@ -148,40 +158,28 @@ export function Sidebar(props: Props) {
         <GlobalScope {...props} />
       )}
 
-      {/* One slot at the foot of the column, and what fills it depends on
-          which column this is.
-
-          On the panel's own sidebar it is the fold. It used to be the leftmost
-          button in the top bar — a chevron pointing left, in the corner every
-          browser and every phone puts 返回 in — so the control that narrows the
-          navigation was sitting exactly where a reader expects the control that
-          leaves the page. Moved down here it is attached to the thing it acts
-          on, and that corner is free for the back button people were already
-          trying to press.
-
-          Inside a scope it is the way out instead. A scope is somewhere you
-          leave far more often than you fold, and the two controls want the same
-          slot — the quiet one at the bottom that acts on the whole column
-          rather than naming a page. The fold does not disappear with it: `[`
-          still works in every scope, and the panel's own sidebar, which is
-          where you are when you decide how wide the navigation should be, still
-          has the button. */}
-      {scope === 'global'
-        ? !compact && (
-            <button
-              className="sidebar__fold"
-              onClick={onToggleRail}
-              title={railed ? '展开侧边栏（[）' : '收起侧边栏（[）'}
-              aria-label={railed ? '展开侧边栏' : '收起侧边栏'}
-              aria-expanded={!railed}
-              aria-controls="sidebar"
-            >
-              <Icon name={railed ? 'expand' : 'collapse'} />
-              <span className="sidebar__name">收起侧边栏</span>
-              <kbd className="sidebar__kbd">[</kbd>
-            </button>
-          )
-        : <ScopeExit {...props} />}
+      {/* The fold, at the foot of the column it folds — in every scope, not
+          only the panel's own: how wide the navigation should be is a decision
+          about this column, and a control that acts on the whole column belongs
+          at its quiet end rather than in the corner the way out now holds. It
+          used to be the leftmost button in the top bar, where every browser and
+          every phone puts 返回, so the control that narrows the navigation was
+          sitting exactly where a reader expects the control that leaves the
+          page. */}
+      {!compact && (
+        <button
+          className="sidebar__fold"
+          onClick={onToggleRail}
+          title={railed ? '展开侧边栏（[）' : '收起侧边栏（[）'}
+          aria-label={railed ? '展开侧边栏' : '收起侧边栏'}
+          aria-expanded={!railed}
+          aria-controls="sidebar"
+        >
+          <Icon name={railed ? 'expand' : 'collapse'} />
+          <span className="sidebar__name">收起侧边栏</span>
+          <kbd className="sidebar__kbd">[</kbd>
+        </button>
+      )}
     </aside>
   )
 }
@@ -904,7 +902,7 @@ const SCOPE_EXITS: Partial<Record<Scope, { to: Route; label: string }>> = {
 }
 
 /**
- * The way out of an inner scope, at the foot of the column.
+ * The way out of an inner scope, in the top-left corner of the column.
  *
  * Named for where it goes rather than "返回上一级", the same way the top bar's
  * back button is: one step up from 实例设置 is the instance list, one step up
@@ -943,12 +941,11 @@ function ScopeExit(props: Props) {
 /**
  * The fixed top of an inner scope: what you are inside.
  *
- * It used to carry the way out as well, on a row above the name. That row is
- * at the foot of the column now — see ScopeExit — and the reason is what the
- * top of a navigation column is worth: it is the first thing read on every
- * screen in the scope, and it was being spent on the one destination you leave
- * by pressing the back button you already have, in the top bar, two hundred
- * pixels away and pointing at the same place.
+ * The way out sits on the row above it — see ScopeExit — rather than inside
+ * this block, because the two are rendered a level apart: the exit is drawn by
+ * Sidebar, which knows every scope, and threading a route back down into the
+ * component that knows which scope it is would give the two ends of the morph
+ * two different opinions about the key.
  */
 function ScopeHead({
   onOpenPalette,
