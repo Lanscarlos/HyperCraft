@@ -60,10 +60,18 @@ const DOWNLOAD_GAP = 400
 
 export function FileManager({
   instance,
+  active,
   jump,
   onOpenHistory,
+  onWorkspaceChange,
 }: {
   instance: InstanceStatus
+  /** Whether this section is the one on screen. Sections stay mounted behind
+   *  whatever replaced them (see InstanceView), so "no longer visible" is not
+   *  the same event as unmounting — and edit mode has to end on both. */
+  active: boolean
+  /** Asks the shell to fold to the rail for as long as edit mode is on. */
+  onWorkspaceChange?: (full: boolean) => void
   jump?: FileJump
   /** Sends the open file to 配置历史. Absent when nothing upstream can switch
    *  sections, and when the panel has no config history at all. */
@@ -93,6 +101,21 @@ export function FileManager({
   // Deliberately not persisted. Landing on 文件 in a mode set last week, with
   // no listing and no toolbar, is a page that looks broken.
   const [editing, setEditing] = useState(false)
+
+  // Leaving the section leaves the mode. It could be remembered instead, but
+  // then coming back to 文件 would land on a page with no listing and no
+  // toolbar — the same thing persisting it would do.
+  useEffect(() => {
+    if (!active) setEditing(false)
+  }, [active])
+
+  // The shell follows the mode, and gets it back on the way out. Unmounting is
+  // the path a route change takes, and it has to hand the rail back too.
+  useEffect(() => {
+    onWorkspaceChange?.(editing)
+  }, [editing, onWorkspaceChange])
+
+  useEffect(() => () => onWorkspaceChange?.(false), [onWorkspaceChange])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
