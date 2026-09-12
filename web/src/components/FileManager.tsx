@@ -7,7 +7,9 @@ import { toast } from '../toast'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
 import { FileIcon, extensionOf } from './FileIcon'
 import { FileTree } from './FileTree'
+import type { TreeNode } from './FileTree'
 import { Glyph } from './Glyph'
+import type { MenuItem } from './Menu'
 import { Modal } from './Modal'
 import { PageHead } from './Page'
 import { SchematicPreview } from './SchematicPreview'
@@ -101,6 +103,10 @@ export function FileManager({
   // Deliberately not persisted. Landing on 文件 in a mode set last week, with
   // no listing and no toolbar, is a page that looks broken.
   const [editing, setEditing] = useState(false)
+  // Edit mode's own filter, separate from the listing's 在当前目录中查找: that
+  // one filters rows of one directory, this one filters the tree — and only
+  // what the tree has already read.
+  const [treeQuery, setTreeQuery] = useState('')
 
   // Leaving the section leaves the mode. It could be remembered instead, but
   // then coming back to 文件 would land on a page with no listing and no
@@ -428,6 +434,123 @@ export function FileManager({
   }
 
   /**
+   * The row actions the listing keeps in its 操作 column, for a tree that is
+   * standing in for the listing.
+   *
+   * Deliberately not reusing `rename`/`remove`: those two are written for a row
+   * of the *current* directory and join new names onto `dir`. A tree row can be
+   * three levels away from where the listing is standing, and renaming
+   * plugins/Foo/bar.yml would have moved it to the root.
+   */
+  const renameInTree = async (node: TreeNode) => {
+    const parent = parentOf(node.path)
+    // Names already in that directory, so a clash is caught in the dialog
+    // rather than as a 409 afterwards. One extra listing on a rename is
+    // cheaper than the round trip it saves.
+    let taken: string[] = takenNames
+    if (parent !== dir) {
+      try {
+        taken = (await api.listFiles(instance.id, parent)).entries.map((entry) => entry.name)
+      } catch {
+        // Unreadable from here: let the server be the one to refuse.
+        taken = []
+      }
+    }
+    const next = await askName({
+      title: `重命名${node.isDir ? '文件夹' : '文件'}`,
+      label: '新名称',
+      initial: node.name,
+      confirmLabel: '重命名',
+      taken,
+    })
+    if (!next || next === node.name) return
+    await guard(
+      () => api.renameFile(instance.id, node.path, joinPath(parent, next)),
+      `已重命名为 ${next}`,
+    )
+    retab(node.path, joinPath(parent, next))
+    setTreeKey((key) => key + 1)
+  }
+
+  const removeInTree = async (node: TreeNode) => {
+    const ok = await ask({
+      title: `删除${node.isDir ? '文件夹' : '文件'}「${node.name}」？`,
+      lead: node.isDir
+        ? '文件夹里的所有内容会一起删除，无法撤销。'
+        : '删除后无法撤销，请确认这不是存档或配置。',
+      confirmLabel: '删除',
+      danger: true,
+    })
+    if (!ok) return
+    await guard(() => api.deleteFile(instance.id, node.path), `已删除 ${node.name}`)
+    retab(node.path, null)
+    setTreeKey((key) => key + 1)
+  }
+
+  /**
+   * Follows a path that moved or went away through the open tabs.
+   *
+   * A tab left pointing at a file that is no longer there fails at save time,
+   * which is the worst possible moment to find out — the text is in the box and
+   * the file it belongs to is gone. `to` of null closes them instead.
+   */
+  const retab = (from: string, to: string | null) => {
+    const moved = (path: string) =>
+      path === from ? to : path.startsWith(`${from}/`) && to !== null
+        ? to + path.slice(from.length)
+        : path.startsWith(`${from}/`)
+          ? null
+          : path
+    setTabs((current) =>
+      current
+        .map((tab) => {
+          const next = moved(tab.path)
+          return next === null ? null : { ...tab, path: next }
+        })
+        .filter((tab): tab is EditorState => tab !== null),
+    )
+    setActiveTab((current) => (current === null ? null : moved(current)))
+  }
+
+  const treeMenu = useCallback(
+    (node: TreeNode): MenuItem[] => [
+      {
+        label: '重命名',
+        disabled: busy || !listing?.writable,
+        onSelect: () => void renameInTree(node),
+      },
+      {
+        label: '复制路径',
+        onSelect: () => {
+          void navigator.clipboard?.writeText(node.path)
+          toast(`已复制 ${node.path}`)
+        },
+      },
+      ...(node.isDir
+        ? []
+        : [
+            {
+              label: '下载',
+              onSelect: () => {
+                const link = document.createElement('a')
+                link.href = downloadURL(instance.id, node.path)
+                link.download = node.name
+                link.click()
+              },
+            },
+          ]),
+      {
+        label: '删除',
+        danger: true,
+        disabled: busy || !listing?.writable,
+        onSelect: () => void removeInTree(node),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [busy, listing?.writable, instance.id, dir, takenNames],
+  )
+
+  /**
    * Deleting a selection, one request at a time.
    *
    * Sequential rather than parallel: these are directory operations on one
@@ -680,15 +803,74 @@ export function FileManager({
         data-pane={editor ? narrowPane : 'list'}
       >
         <aside className="fm__tree">
+          {/* In edit mode the listing's toolbar is off screen, so the four
+              buttons that are pressed daily come here. They act on the
+              directory the tree is standing in, which is why it is named just
+              below them: a 上传 that writes into an unnamed directory is a
+              button nobody presses twice. */}
           {editing && (
-            <button
-              className="btn btn--icon"
-              onClick={() => setEditing(false)}
-              title="退出编辑模式（Esc）"
-              aria-label="退出编辑模式"
-            >
-              <Glyph name="up" />
-            </button>
+            <>
+              <div className="ftree__bar">
+                <button
+                  className="btn btn--icon"
+                  onClick={() => fileInput.current?.click()}
+                  disabled={busy || !listing.writable}
+                  title={listing.writable ? '上传到当前目录' : readOnlyHere}
+                  aria-label="上传文件"
+                >
+                  <Glyph name="upload" />
+                </button>
+                <button
+                  className="btn btn--icon"
+                  onClick={() => void createFile()}
+                  disabled={busy || !listing.writable}
+                  title={listing.writable ? '新建文件' : readOnlyHere}
+                  aria-label="新建文件"
+                >
+                  <Glyph name="new-file" />
+                </button>
+                <button
+                  className="btn btn--icon"
+                  onClick={() => void createFolder()}
+                  disabled={busy || !listing.writable}
+                  title={listing.writable ? '新建文件夹' : readOnlyHere}
+                  aria-label="新建文件夹"
+                >
+                  <Glyph name="new-folder" />
+                </button>
+                <button
+                  className="btn btn--icon"
+                  onClick={refresh}
+                  disabled={busy || pending}
+                  title="刷新"
+                  aria-label="刷新"
+                >
+                  <Glyph name="refresh" className={pending ? 'spin' : undefined} />
+                </button>
+                <button
+                  className="btn btn--icon ftree__leave"
+                  onClick={() => setEditing(false)}
+                  title="退出编辑模式（Esc）"
+                  aria-label="退出编辑模式"
+                >
+                  <Glyph name="up" />
+                </button>
+              </div>
+              <p className="ftree__where" title={dir || '实例根目录'}>
+                {dir === '' ? '实例根目录' : dir}
+              </p>
+              <input
+                className="ftree__find"
+                type="search"
+                value={treeQuery}
+                placeholder="筛选已展开的目录"
+                aria-label="筛选已展开的目录"
+                onChange={(event) => setTreeQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') setTreeQuery('')
+                }}
+              />
+            </>
           )}
           <FileTree
             instanceId={instance.id}
@@ -697,6 +879,8 @@ export function FileManager({
             showFiles={editing}
             openPath={activeTab}
             dirtyPaths={dirtyPaths}
+            filter={editing ? treeQuery : ''}
+            menuFor={editing ? treeMenu : undefined}
             onOpen={(next) => void load(next)}
             onOpenFile={(next) => void openPath(next)}
           />

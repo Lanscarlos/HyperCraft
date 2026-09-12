@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { FileIcon } from './FileIcon'
 import { Icon } from './Icon'
+import { Menu } from './Menu'
+import type { MenuItem } from './Menu'
 
 /**
  * The directory tree beside the listing.
@@ -43,9 +45,14 @@ interface Props {
    * and the filter box says so in as many words.
    */
   filter?: string
+  /** The per-row actions, as a menu. Absent outside edit mode: the listing has
+   *  its own 操作 column and two of them would be two places to look. */
+  menuFor?: (node: TreeNode) => MenuItem[]
 }
 
-interface Node {
+/** One row of the tree. Exported because the row actions live in FileManager,
+ *  which owns every request the panel makes about files. */
+export interface TreeNode {
   name: string
   path: string
   isDir: boolean
@@ -61,8 +68,9 @@ export function FileTree({
   dirtyPaths,
   onOpenFile,
   filter,
+  menuFor,
 }: Props) {
-  const [children, setChildren] = useState<Record<string, Node[]>>({})
+  const [children, setChildren] = useState<Record<string, TreeNode[]>>({})
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState<Set<string>>(new Set())
 
@@ -130,7 +138,7 @@ export function FileTree({
   }
 
   const visible = useCallback(
-    (dir: string): Node[] => {
+    (dir: string): TreeNode[] => {
       const all = children[dir] ?? []
       const kept = showFiles ? all : all.filter((node) => node.isDir)
       const needle = (filter ?? '').trim().toLowerCase()
@@ -158,6 +166,7 @@ export function FileTree({
     onToggle: toggle,
     onOpen,
     onOpenFile,
+    menuFor,
   }
 
   return (
@@ -178,23 +187,24 @@ export function FileTree({
 }
 
 interface BranchProps {
-  dirs: Node[]
+  dirs: TreeNode[]
   depth: number
   path: string
   openPath?: string | null
   dirtyPaths?: Set<string>
   open: Set<string>
   loading: Set<string>
-  visible: (dir: string) => Node[]
+  visible: (dir: string) => TreeNode[]
   loaded: (dir: string) => boolean
   onToggle: (dir: string) => void
   onOpen: (dir: string) => void
   onOpenFile?: (path: string) => void
+  menuFor?: (node: TreeNode) => MenuItem[]
 }
 
 function Branch({ dirs, depth, ...rest }: BranchProps) {
-  const { path, openPath, dirtyPaths, open, loading, visible, loaded, onToggle, onOpen, onOpenFile } =
-    rest
+  const { path, openPath, dirtyPaths, open, loading, visible, loaded } = rest
+  const { onToggle, onOpen, onOpenFile, menuFor } = rest
 
   return (
     <>
@@ -214,6 +224,8 @@ function Branch({ dirs, depth, ...rest }: BranchProps) {
             // after the fact is better than one that never does: a directory
             // nobody has opened is drawn as openable.
             hasChildren={node.isDir && (!loaded(node.path) || visible(node.path).length > 0)}
+            menu={menuFor?.(node)}
+            label={node.name}
             onToggle={() => onToggle(node.path)}
             onOpen={() => (node.isDir ? onOpen(node.path) : onOpenFile?.(node.path))}
           />
@@ -234,16 +246,22 @@ function Row({
   current,
   dirty,
   hasChildren,
+  menu,
+  label,
   onToggle,
   onOpen,
 }: {
-  node: Node
+  node: TreeNode
   depth: number
   open: boolean
   loading: boolean
   current: boolean
   dirty?: boolean
   hasChildren: boolean
+  /** Absent outside edit mode, and on the root row, which is not a thing that
+   *  can be renamed or deleted. */
+  menu?: MenuItem[]
+  label?: string
   onToggle: () => void
   onOpen: () => void
 }) {
@@ -275,6 +293,19 @@ function Row({
         {dirty && <span className="ftree__dot" aria-label="有未保存的修改" />}
       </button>
       {loading && <span className="ftree__wait" aria-hidden="true" />}
+      {/* A button rather than a hijacked right-click: taking over the context
+          menu costs the reader "open in a new tab" and every habit like it,
+          and leaves a keyboard with no way in at all. */}
+      {menu && (
+        <Menu
+          className="ftree__more"
+          items={menu}
+          title={`${label ?? node.name} 的操作`}
+          ariaLabel={`${label ?? node.name} 的操作`}
+        >
+          ⋯
+        </Menu>
+      )}
     </div>
   )
 }
@@ -282,7 +313,7 @@ function Row({
 /** Directories first, then names. Not the order the listing arrives in: that
  *  order is the listing's business, and a tree with files scattered between
  *  folders is a tree nobody can scan. */
-function byKindThenName(a: Node, b: Node): number {
+function byKindThenName(a: TreeNode, b: TreeNode): number {
   if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
   return a.name.localeCompare(b.name, 'zh')
 }
