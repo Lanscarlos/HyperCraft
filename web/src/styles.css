@@ -6638,6 +6638,30 @@ small.field__bad {
     color var(--dur) var(--ease);
 }
 
+.ftree__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The same mark the tab strip uses, for the same fact. Pushed to the right
+   edge so a column of them reads as one list of "these are unsaved". */
+.ftree__dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+/* The tree's icons sit in a 26px row rather than a table cell, so they must
+   not take the listing's own sizing with them. */
+.ftree .fileicon {
+  flex: 0 0 auto;
+}
+
 .ftree__row:hover {
   background: var(--surface-2);
   color: var(--text);
@@ -6676,8 +6700,14 @@ small.field__bad {
   cursor: default;
 }
 
+/* A row of three now — icon, name, unsaved dot — rather than a bare label, so
+   it lays them out itself. The ellipsis moved onto .ftree__label with the
+   text: a flex container cannot truncate what it does not directly hold. */
 .ftree__name {
+  display: flex;
   flex: 1;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
   overflow: hidden;
   padding: 0;
@@ -6687,8 +6717,6 @@ small.field__bad {
   cursor: pointer;
   font: inherit;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .ftree__wait {

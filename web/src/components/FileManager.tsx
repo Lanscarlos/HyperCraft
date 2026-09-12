@@ -175,6 +175,14 @@ export function FileManager({
     [tabs, activeTab],
   )
 
+  // The tabs already show this; the tree shows it too because in edit mode the
+  // tree is what gets scanned, and an unsaved file you cannot see is one you
+  // lose by walking away from the page.
+  const dirtyPaths = useMemo(
+    () => new Set(tabs.filter((tab) => tab.content !== tab.original).map((tab) => tab.path)),
+    [tabs],
+  )
+
   /** Brings a file to the front, opening a tab for it if it has none. A file
    *  already open is never re-read: it may have unsaved edits in it. */
   const openEditor = useCallback((next: EditorState) => {
@@ -686,7 +694,11 @@ export function FileManager({
             instanceId={instance.id}
             path={dir}
             reloadKey={treeKey}
+            showFiles={editing}
+            openPath={activeTab}
+            dirtyPaths={dirtyPaths}
             onOpen={(next) => void load(next)}
+            onOpenFile={(next) => void openPath(next)}
           />
         </aside>
 
