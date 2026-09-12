@@ -145,6 +145,10 @@ export interface KnownFlag {
    *  panel is not in a position to tell the two apart. */
   min?: number
   max?: number
+  /** What the number is counted in, printed after the field. Only where the
+   *  unit is not already in the flag's own name — MaxGCPauseMillis says Millis
+   *  itself, but 毫秒 next to the box is what someone skimming reads. */
+  suffix?: string
 }
 
 /**
@@ -172,20 +176,20 @@ export const KNOWN_FLAGS: KnownFlag[] = [
   { sample: '-XX:+UseStringDeduplication', note: '合并重复字符串，省一点内存。只对 G1 有效。' },
 
   // ---- the numbers
-  { sample: '-XX:MaxGCPauseMillis=200', note: 'GC 停顿的目标毫秒数。调小会更频繁地 GC，不是越小越好。', min: 1, max: 10000 },
-  { sample: '-XX:G1NewSizePercent=30', note: '新生代占堆的最小比例。Aikar 那套按内存给 30 或 40。', min: 0, max: 100 },
-  { sample: '-XX:G1MaxNewSizePercent=40', note: '新生代占堆的最大比例。', min: 0, max: 100 },
+  { sample: '-XX:MaxGCPauseMillis=200', note: 'GC 停顿的目标毫秒数。调小会更频繁地 GC，不是越小越好。', min: 1, max: 10000, suffix: '毫秒' },
+  { sample: '-XX:G1NewSizePercent=30', note: '新生代占堆的最小比例。Aikar 那套按内存给 30 或 40。', min: 0, max: 100, suffix: '%' },
+  { sample: '-XX:G1MaxNewSizePercent=40', note: '新生代占堆的最大比例。', min: 0, max: 100, suffix: '%' },
   { sample: '-XX:G1HeapRegionSize=8M', note: 'G1 分区大小。堆大于 12 GB 时 Aikar 用 16M。' },
-  { sample: '-XX:G1ReservePercent=20', note: '预留给晋升失败的堆比例，调高更保守。', min: 0, max: 50 },
-  { sample: '-XX:G1HeapWastePercent=5', note: '允许浪费的堆比例，低于它就不再混合回收。', min: 0, max: 100 },
-  { sample: '-XX:G1MixedGCCountTarget=4', note: '一轮混合回收分几次做完。', min: 1, max: 32 },
-  { sample: '-XX:InitiatingHeapOccupancyPercent=15', note: '堆占用到这个比例就开始并发标记。', min: 0, max: 100 },
-  { sample: '-XX:G1MixedGCLiveThresholdPercent=90', note: '存活对象超过这个比例的分区不参与混合回收。', min: 0, max: 100 },
-  { sample: '-XX:G1RSetUpdatingPauseTimePercent=5', note: '停顿里留给 RSet 更新的时间比例。', min: 0, max: 100 },
+  { sample: '-XX:G1ReservePercent=20', note: '预留给晋升失败的堆比例，调高更保守。', min: 0, max: 50, suffix: '%' },
+  { sample: '-XX:G1HeapWastePercent=5', note: '允许浪费的堆比例，低于它就不再混合回收。', min: 0, max: 100, suffix: '%' },
+  { sample: '-XX:G1MixedGCCountTarget=4', note: '一轮混合回收分几次做完。', min: 1, max: 32, suffix: '次' },
+  { sample: '-XX:InitiatingHeapOccupancyPercent=15', note: '堆占用到这个比例就开始并发标记。', min: 0, max: 100, suffix: '%' },
+  { sample: '-XX:G1MixedGCLiveThresholdPercent=90', note: '存活对象超过这个比例的分区不参与混合回收。', min: 0, max: 100, suffix: '%' },
+  { sample: '-XX:G1RSetUpdatingPauseTimePercent=5', note: '停顿里留给 RSet 更新的时间比例。', min: 0, max: 100, suffix: '%' },
   { sample: '-XX:SurvivorRatio=32', note: 'Eden 与 Survivor 区的大小比例。', min: 1, max: 1024 },
-  { sample: '-XX:MaxTenuringThreshold=1', note: '对象熬过几次 GC 就晋升到老年代。', min: 0, max: 15 },
-  { sample: '-XX:ParallelGCThreads=8', note: 'GC 停顿期间用几个线程。留空让 JVM 按核心数决定通常更好。', min: 1, max: 64 },
-  { sample: '-XX:ConcGCThreads=2', note: '并发标记用几个线程，一般取上面那个的四分之一。', min: 1, max: 32 },
+  { sample: '-XX:MaxTenuringThreshold=1', note: '对象熬过几次 GC 就晋升到老年代。', min: 0, max: 15, suffix: '次' },
+  { sample: '-XX:ParallelGCThreads=8', note: 'GC 停顿期间用几个线程。留空让 JVM 按核心数决定通常更好。', min: 1, max: 64, suffix: '个线程' },
+  { sample: '-XX:ConcGCThreads=2', note: '并发标记用几个线程，一般取上面那个的四分之一。', min: 1, max: 32, suffix: '个线程' },
 
   // ---- system properties
   { sample: '-Dusing.aikars.flags=https://mcflags.emc.gs', note: 'Aikar 那套参数的标记，Paper 用它判断你是不是照着调过。' },
@@ -204,3 +208,37 @@ export const knownFor = (flag: Flag): KnownFlag | undefined => INDEX.get(flagKey
  *  the dropdown would be a third thing to get wrong. A flag that already
  *  carries one keeps it regardless of what it is called. */
 export const wantsUnit = (flag: Flag): boolean => flag.unit !== '' || /Size$/.test(flag.name)
+
+/**
+ * Completion candidates for the argument being typed.
+ *
+ * Matches the note as well as the flag, so 停顿 finds MaxGCPauseMillis without
+ * anyone having to know it is spelled that way — which is the only reason the
+ * notes are worth carrying into the picker at all. Whatever is typed stays
+ * submittable no matter what this returns; an empty result is a list with
+ * nothing in it, never a rejection.
+ */
+export function suggestFlags(query: string, limit = 8): KnownFlag[] {
+  const raw = query.trim()
+  const q = raw.toLowerCase()
+  if (q === '') return KNOWN_FLAGS.slice(0, limit)
+
+  const scored: Array<[number, KnownFlag]> = []
+  for (const entry of KNOWN_FLAGS) {
+    const sample = entry.sample.toLowerCase()
+    // A flag you have started spelling outranks one that merely contains the
+    // letters, which outranks one whose Chinese note mentions them.
+    const tier = sample.startsWith(q) ? 0 : sample.includes(q) ? 1 : entry.note.includes(raw) ? 2 : -1
+    if (tier < 0) continue
+    // Within a tier, earlier is more on-topic. It matters most for the notes:
+    // searching 停顿 should reach MaxGCPauseMillis, whose note opens on the
+    // word, before UseZGC, which mentions it in passing — and catalogue order,
+    // which is what a plain tie leaves you with, has no opinion about that.
+    const where = tier === 2 ? entry.note.indexOf(raw) : sample.indexOf(q)
+    scored.push([tier * 1000 + where, entry])
+  }
+  return scored
+    .sort((a, b) => a[0] - b[0])
+    .slice(0, limit)
+    .map(([, entry]) => entry)
+}
