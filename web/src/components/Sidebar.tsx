@@ -78,26 +78,46 @@ interface Props {
  * sidebar to understand. See scopeMorph.ts.
  */
 export function Sidebar(props: Props) {
-  const { scope, sidebarRef, compact, railed, onToggleRail } = props
+  const { route, scope, sidebarRef, compact, railed, onToggleRail } = props
   const self = useRef<HTMLElement | null>(null)
-  const previous = useRef<Scope>(scope)
 
-  // Entering or leaving a scope is the one navigation in the panel that
-  // replaces the whole sidebar, so it is the one that has to be shown rather
-  // than simply performed — see scopeMorph.ts, which has already taken a copy
-  // of the outgoing list by the time this runs. `useLayoutEffect`, not
-  // `useEffect`: the incoming header has to be measured and moved back to
+  /**
+   * Which scope, and *which one* of it.
+   *
+   * `scope` alone was enough while the only way into a shelf was from the
+   * panel. It is not any more: two shelves are two different sidebars rather
+   * than two pages of one, so stepping between them is the same wholesale
+   * replacement as entering the library — and the row that does it captures a
+   * copy on the way out, exactly like the row in the panel does. Keyed on
+   * `scope`, the effect below did not fire for that step, so nothing ever
+   * played the copy and it sat opaque over the new column until its own safety
+   * timeout swept it up: two sidebars printed over each other for half a
+   * second.
+   *
+   * navKeyOf names this identity, and it is the same string the two ends of
+   * the animation are paired by — so the effect now fires exactly when there
+   * is a pair to play, and still stays put for a page change inside one shelf
+   * or one server, which keeps its key.
+   */
+  const identity = navKeyOf(route) ?? scope
+  const previous = useRef<string>(identity)
+
+  // Entering, leaving or crossing between scopes is the one navigation in the
+  // panel that replaces the whole sidebar, so it is the one that has to be
+  // shown rather than simply performed — see scopeMorph.ts, which has already
+  // taken a copy of the outgoing list by the time this runs. `useLayoutEffect`,
+  // not `useEffect`: the incoming header has to be measured and moved back to
   // where the row was in the same frame it is committed, or the first frame
   // paints it at its destination and the movement starts from the wrong place.
   useLayoutEffect(() => {
     const el = self.current
-    if (previous.current === scope || !el) return
-    previous.current = scope
+    if (previous.current === identity || !el) return
+    previous.current = identity
     playScope(el)
     el.dataset.entering = ''
     const timer = window.setTimeout(() => delete el.dataset.entering, DUR.slow)
     return () => window.clearTimeout(timer)
-  }, [scope])
+  }, [identity])
 
   return (
     <aside
