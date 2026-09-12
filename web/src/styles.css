@@ -6530,6 +6530,58 @@ small.field__bad {
   align-items: start;
 }
 
+/* Edit mode: the tree and the editor, and nothing between them. The listing is
+   not narrowed here, it is gone — a column of file sizes beside an open config
+   is exactly the width that was making the config scroll sideways. */
+.fm--editing {
+  grid-template-columns: 260px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  /* Both panes run the full height of the pane rather than sitting at the top
+     of it: what the mode buys is vertical room, and `start` would hand it back. */
+  align-items: stretch;
+}
+
+.fm--editing .fm__tree {
+  display: flex;
+  flex-direction: column;
+  max-height: none;
+  min-height: 0;
+}
+
+/* Every layer from the pane down has to give up its content height, or the
+   editor sizes to its text and pushes a second scrollbar onto the page. This
+   is the repo's most frequent layout bug, and a four-deep flex column is where
+   it likes to happen. */
+.fm--editing .fm__editor,
+.fm--editing .fm__editor > .stack,
+.fm--editing .editor-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Outside the mode the editor is a fixed box you can drag taller. Inside it,
+   it is the page. */
+.fm--editing .editor {
+  height: auto;
+  flex: 1;
+  min-height: 0;
+  resize: none;
+}
+
+/* Only the layout below 1024 hides the listing behind a button. In edit mode
+   the listing is not somewhere else, it is off. */
+.fm--editing .editor__back {
+  display: none;
+}
+
+.fm--editing .fm__blank {
+  flex: 1;
+  min-height: 0;
+}
+
 /* The listing's own column-dropping is keyed to the viewport, which stopped
    being a fair proxy for its width the moment it became one of three panes: at
    a 1440px window this panel is about 450px wide, which is the width the

@@ -85,6 +85,14 @@ export function FileManager({
   // way back: with two files open there would otherwise be no way to reach the
   // listing without closing both.
   const [narrowPane, setNarrowPane] = useState<'list' | 'editor'>('list')
+  // The file pane has two jobs — managing files, and reading or writing one —
+  // and they want opposite layouts. Editing mode is the second one: the listing
+  // steps aside, the tree takes over answering "what is in here", and the
+  // editor gets the width that was being spent on a column of file sizes.
+  //
+  // Deliberately not persisted. Landing on 文件 in a mode set last week, with
+  // no listing and no toolbar, is a page that looks broken.
+  const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
@@ -217,6 +225,26 @@ export function FileManager({
     setTreeKey((key) => key + 1)
     void load(dir)
   }
+
+  // Escape leaves the mode. Not while typing: Escape in the editor is how the
+  // browser's own find bar is dismissed, and in a filter box it clears the box
+  // — neither should throw the whole layout away.
+  useEffect(() => {
+    if (!editing) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      const target = event.target as HTMLElement | null
+      if (
+        target?.isContentEditable ||
+        (target != null && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      ) {
+        return
+      }
+      setEditing(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [editing])
 
   /**
    * "Type a name", as a promise — the same shape as `ask` in confirm.ts, and
@@ -580,7 +608,7 @@ export function FileManager({
 
   return (
     <div
-      className="stack"
+      className={editing ? 'stack stack--full' : 'stack'}
       onDragEnter={(event) => {
         if (!hasFiles(event.dataTransfer)) return
         dragDepth.current += 1
@@ -602,18 +630,35 @@ export function FileManager({
         void upload(Array.from(event.dataTransfer.files))
       }}
     >
-      <PageHead
-        title="文件"
-        lead="服务器目录里的东西：jar、存档、配置和日志。点一个文件直接打开，可以同时开着几个对照。"
-      />
+      {/* The mode's whole point is vertical room, and the title plus the
+          sentence under it are the first eight lines it buys back. */}
+      {!editing && (
+        <PageHead
+          title="文件"
+          lead="服务器目录里的东西：jar、存档、配置和日志。点一个文件直接打开，可以同时开着几个对照。"
+        />
+      )}
 
       {/* Tree, listing, editor. The editor used to replace the listing — one
           file at a time, and comparing two configs meant closing the first and
           remembering what it said. `data-pane` is what the narrow layout reads:
           below 1024 there is only room for one of these, and which one depends
           on whether anything is open. */}
-      <div className="fm" data-pane={editor ? narrowPane : 'list'}>
+      <div
+        className={editing ? 'fm fm--editing' : 'fm'}
+        data-pane={editor ? narrowPane : 'list'}
+      >
         <aside className="fm__tree">
+          {editing && (
+            <button
+              className="btn btn--icon"
+              onClick={() => setEditing(false)}
+              title="退出编辑模式（Esc）"
+              aria-label="退出编辑模式"
+            >
+              <Glyph name="up" />
+            </button>
+          )}
           <FileTree
             instanceId={instance.id}
             path={dir}
@@ -622,234 +667,248 @@ export function FileManager({
           />
         </aside>
 
-      <section className={`panel files${dragging ? ' files--dropping' : ''}`}>
-        <div className="files__head">
-          <button
-            className="files__up"
-            onClick={() => void load(parentOf(dir))}
-            disabled={dir === '' || pending}
-            title="返回上一级"
-            aria-label="返回上一级"
-          >
-            <Glyph name="up" />
-          </button>
-          <Breadcrumb dir={dir} onNavigate={(next) => void load(next)} />
-        </div>
+      {/* Gone rather than narrowed in edit mode: a column of file sizes
+          beside an open config is the width that was making the config
+          scroll sideways. */}
+      {!editing && (
+        <section className={`panel files${dragging ? ' files--dropping' : ''}`}>
+          <div className="files__head">
+            <button
+              className="files__up"
+              onClick={() => void load(parentOf(dir))}
+              disabled={dir === '' || pending}
+              title="返回上一级"
+              aria-label="返回上一级"
+            >
+              <Glyph name="up" />
+            </button>
+            <Breadcrumb dir={dir} onNavigate={(next) => void load(next)} />
+          </div>
 
-        <div className="file-toolbar">
-          {/* A confined role can walk through the folders on the way to the one
-              it may edit, but not write in them. Offering the buttons there
-              would be offering a request the panel refuses. */}
-          <button
-            className="btn btn--primary"
-            onClick={() => fileInput.current?.click()}
-            disabled={busy || !listing.writable}
-            title={listing.writable ? undefined : readOnlyHere}
-          >
-            <Glyph name="upload" />
-            上传文件
-          </button>
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            hidden
-            onChange={(event) => {
-              void upload(Array.from(event.target.files ?? []))
-              event.target.value = ''
-            }}
-          />
-          <button
-            className="btn"
-            disabled={busy || !listing.writable}
-            title={listing.writable ? undefined : readOnlyHere}
-            onClick={() => void createFolder()}
-          >
-            <Glyph name="new-folder" />
-            新建文件夹
-          </button>
-          <button
-            className="btn"
-            disabled={busy || !listing.writable}
-            title={listing.writable ? undefined : readOnlyHere}
-            onClick={() => void createFile()}
-          >
-            <Glyph name="new-file" />
-            新建文件
-          </button>
-          <button
-            className="btn btn--icon"
-            onClick={refresh}
-            disabled={busy || pending}
-            title="刷新"
-            aria-label="刷新"
-          >
-            <Glyph name="refresh" className={pending ? 'spin' : undefined} />
-          </button>
-
-          <div className="file-toolbar__find">
-            <Glyph name="search" />
+          <div className="file-toolbar">
+            {/* A confined role can walk through the folders on the way to the one
+                it may edit, but not write in them. Offering the buttons there
+                would be offering a request the panel refuses. */}
+            <button
+              className="btn btn--primary"
+              onClick={() => fileInput.current?.click()}
+              disabled={busy || !listing.writable}
+              title={listing.writable ? undefined : readOnlyHere}
+            >
+              <Glyph name="upload" />
+              上传文件
+            </button>
             <input
-              className="file-toolbar__search"
-              type="search"
-              value={query}
-              placeholder="在当前目录中查找"
-              aria-label="在当前目录中查找"
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape') setQuery('')
+              ref={fileInput}
+              type="file"
+              multiple
+              hidden
+              onChange={(event) => {
+                void upload(Array.from(event.target.files ?? []))
+                event.target.value = ''
               }}
             />
-          </div>
-        </div>
-
-        {selectedEntries.length > 0 && (
-          <div className="file-bulk">
-            <span className="file-bulk__count">已选择 {selectedEntries.length} 项</span>
             <button
               className="btn"
-              disabled={busy}
-              onClick={() => void downloadMany(selectedEntries)}
+              disabled={busy || !listing.writable}
+              title={listing.writable ? undefined : readOnlyHere}
+              onClick={() => void createFolder()}
             >
-              <Glyph name="download" />
-              下载
+              <Glyph name="new-folder" />
+              新建文件夹
             </button>
             <button
-              className="btn btn--danger"
-              disabled={busy}
-              onClick={() => void removeMany(selectedEntries)}
+              className="btn"
+              disabled={busy || !listing.writable}
+              title={listing.writable ? undefined : readOnlyHere}
+              onClick={() => void createFile()}
             >
-              <Glyph name="trash" />
-              删除
+              <Glyph name="new-file" />
+              新建文件
             </button>
-            <button className="link file-bulk__clear" onClick={() => setSelected(new Set())}>
-              取消选择
+            <button
+              className="btn btn--icon"
+              onClick={refresh}
+              disabled={busy || pending}
+              title="刷新"
+              aria-label="刷新"
+            >
+              <Glyph name="refresh" className={pending ? 'spin' : undefined} />
             </button>
-          </div>
-        )}
 
-        {progress != null && (
-          <div className="progress">
-            <div className="progress__bar" style={{ width: `${Math.round(progress * 100)}%` }} />
-            <span className="progress__label">{Math.round(progress * 100)}%</span>
-          </div>
-        )}
-
-        {error && (
-          <div className="alert alert--error">
-            {error}
-            <button className="link" onClick={() => setError(null)}>
-              知道了
+            <button
+              className="btn"
+              onClick={() => setEditing(true)}
+              title="把这一屏交给编辑器：列表让位，目录树带上文件"
+            >
+              <Glyph name="doc" />
+              编辑模式
             </button>
-          </div>
-        )}
 
-        <div className="table-scroll" data-pending={pending || undefined}>
-          <table className="data-table data-table--files">
-            <colgroup>
-              <col className="col--tick" />
-              <col />
-              <col className="col--size" />
-              <col className="col--time" />
-              <col className="col--ops" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th className="col--tick">
-                  <input
-                    ref={tickAllRef}
-                    type="checkbox"
-                    className="tick"
-                    checked={allTicked}
-                    disabled={rows.length === 0}
-                    aria-label="全选"
-                    onChange={() =>
-                      setSelected(
-                        allTicked ? new Set() : new Set(rows.map((entry) => entry.path)),
-                      )
-                    }
-                  />
-                </th>
-                <SortHeader label="名称" column="name" sort={sort} onSort={toggleSort} />
-                <SortHeader label="大小" column="size" sort={sort} onSort={toggleSort} align="num" />
-                <SortHeader label="修改时间" column="modified" sort={sort} onSort={toggleSort} />
-                <th className="col--ops">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
-                <tr className="file-empty__row">
-                  <td colSpan={5}>
-                    {query ? (
-                      <div className="file-empty">
-                        <p>没有匹配「{query}」的文件。</p>
-                        <button className="btn" onClick={() => setQuery('')}>
-                          清除筛选
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="file-empty">
-                        <Glyph name="folder-open" className="file-empty__glyph" />
-                        <p>这个目录是空的。把服务端 jar 或插件拖进来就能开始。</p>
-                        <button className="btn" onClick={() => fileInput.current?.click()}>
-                          上传文件
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              )}
-              {rows.map((entry) => (
-                <FileRow
-                  key={entry.path}
-                  entry={entry}
-                  instanceId={instance.id}
-                  busy={busy}
-                  ticked={selected.has(entry.path)}
-                  onTick={() => toggleOne(entry.path)}
-                  onOpen={() => void openEntry(entry)}
-                  onRename={() => void rename(entry)}
-                  onDelete={() => void remove(entry)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="files__foot">
-          <span>
-            {folders} 个文件夹 · {files} 个文件
-            {files > 0 && ` · 共 ${formatBytes(totalBytes)}`}
-            {query && rows.length !== entries.length && ` · 已筛选出 ${rows.length} 项`}
-          </span>
-          {/* The path and the promise about it are two elements rather than one
-              line, because one line means the path's ellipsis eats the promise:
-              on a phone the whole "所有操作都被限制在这个目录内" disappeared and
-              only a truncated path was left. */}
-          <span className="files__root" title={listing.root}>
-            <code>{listing.root}</code>
-            {/* Two different promises. Without a role rule the honest sentence
-                is the instance directory; with one it is narrower, and saying
-                the wider thing would be telling somebody they can reach files
-                the panel will refuse them. */}
-            <span className="files__root-note">
-              {listing.scope.length > 0
-                ? `· 你的角色只能操作 ${listing.scope.join('、')}`
-                : '· 所有操作都被限制在这个目录内'}
-            </span>
-          </span>
-        </div>
-
-        {dragging && (
-          <div className="file-drop" aria-hidden="true">
-            <div className="file-drop__card">
-              <Glyph name="upload" className="file-drop__glyph" />
-              松开即可上传到 <b>{dir === '' ? '实例根目录' : dir}</b>
-              <small>单文件上限 {formatBytes(listing.maxUploadBytes)}</small>
+            <div className="file-toolbar__find">
+              <Glyph name="search" />
+              <input
+                className="file-toolbar__search"
+                type="search"
+                value={query}
+                placeholder="在当前目录中查找"
+                aria-label="在当前目录中查找"
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') setQuery('')
+                }}
+              />
             </div>
           </div>
-        )}
-      </section>
+
+          {selectedEntries.length > 0 && (
+            <div className="file-bulk">
+              <span className="file-bulk__count">已选择 {selectedEntries.length} 项</span>
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={() => void downloadMany(selectedEntries)}
+              >
+                <Glyph name="download" />
+                下载
+              </button>
+              <button
+                className="btn btn--danger"
+                disabled={busy}
+                onClick={() => void removeMany(selectedEntries)}
+              >
+                <Glyph name="trash" />
+                删除
+              </button>
+              <button className="link file-bulk__clear" onClick={() => setSelected(new Set())}>
+                取消选择
+              </button>
+            </div>
+          )}
+
+          {progress != null && (
+            <div className="progress">
+              <div className="progress__bar" style={{ width: `${Math.round(progress * 100)}%` }} />
+              <span className="progress__label">{Math.round(progress * 100)}%</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="alert alert--error">
+              {error}
+              <button className="link" onClick={() => setError(null)}>
+                知道了
+              </button>
+            </div>
+          )}
+
+          <div className="table-scroll" data-pending={pending || undefined}>
+            <table className="data-table data-table--files">
+              <colgroup>
+                <col className="col--tick" />
+                <col />
+                <col className="col--size" />
+                <col className="col--time" />
+                <col className="col--ops" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className="col--tick">
+                    <input
+                      ref={tickAllRef}
+                      type="checkbox"
+                      className="tick"
+                      checked={allTicked}
+                      disabled={rows.length === 0}
+                      aria-label="全选"
+                      onChange={() =>
+                        setSelected(
+                          allTicked ? new Set() : new Set(rows.map((entry) => entry.path)),
+                        )
+                      }
+                    />
+                  </th>
+                  <SortHeader label="名称" column="name" sort={sort} onSort={toggleSort} />
+                  <SortHeader label="大小" column="size" sort={sort} onSort={toggleSort} align="num" />
+                  <SortHeader label="修改时间" column="modified" sort={sort} onSort={toggleSort} />
+                  <th className="col--ops">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 && (
+                  <tr className="file-empty__row">
+                    <td colSpan={5}>
+                      {query ? (
+                        <div className="file-empty">
+                          <p>没有匹配「{query}」的文件。</p>
+                          <button className="btn" onClick={() => setQuery('')}>
+                            清除筛选
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="file-empty">
+                          <Glyph name="folder-open" className="file-empty__glyph" />
+                          <p>这个目录是空的。把服务端 jar 或插件拖进来就能开始。</p>
+                          <button className="btn" onClick={() => fileInput.current?.click()}>
+                            上传文件
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                {rows.map((entry) => (
+                  <FileRow
+                    key={entry.path}
+                    entry={entry}
+                    instanceId={instance.id}
+                    busy={busy}
+                    ticked={selected.has(entry.path)}
+                    onTick={() => toggleOne(entry.path)}
+                    onOpen={() => void openEntry(entry)}
+                    onRename={() => void rename(entry)}
+                    onDelete={() => void remove(entry)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="files__foot">
+            <span>
+              {folders} 个文件夹 · {files} 个文件
+              {files > 0 && ` · 共 ${formatBytes(totalBytes)}`}
+              {query && rows.length !== entries.length && ` · 已筛选出 ${rows.length} 项`}
+            </span>
+            {/* The path and the promise about it are two elements rather than one
+                line, because one line means the path's ellipsis eats the promise:
+                on a phone the whole "所有操作都被限制在这个目录内" disappeared and
+                only a truncated path was left. */}
+            <span className="files__root" title={listing.root}>
+              <code>{listing.root}</code>
+              {/* Two different promises. Without a role rule the honest sentence
+                  is the instance directory; with one it is narrower, and saying
+                  the wider thing would be telling somebody they can reach files
+                  the panel will refuse them. */}
+              <span className="files__root-note">
+                {listing.scope.length > 0
+                  ? `· 你的角色只能操作 ${listing.scope.join('、')}`
+                  : '· 所有操作都被限制在这个目录内'}
+              </span>
+            </span>
+          </div>
+
+          {dragging && (
+            <div className="file-drop" aria-hidden="true">
+              <div className="file-drop__card">
+                <Glyph name="upload" className="file-drop__glyph" />
+                松开即可上传到 <b>{dir === '' ? '实例根目录' : dir}</b>
+                <small>单文件上限 {formatBytes(listing.maxUploadBytes)}</small>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
         <div className="fm__editor">
           {editor ? (
@@ -874,7 +933,11 @@ export function FileManager({
             // anything is opened, on every open and every close.
             <div className="fm__blank">
               <Glyph name="doc" />
-              <p>从中间的列表里点一个文件，会在这里打开。</p>
+              <p>
+                {editing
+                  ? '从左边的目录树里点一个文件，会在这里打开。'
+                  : '从中间的列表里点一个文件，会在这里打开。'}
+              </p>
               <p className="muted">可以同时开着几个，用上面的标签切换。</p>
             </div>
           )}
