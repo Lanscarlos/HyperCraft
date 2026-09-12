@@ -6,13 +6,14 @@
 // versions, and rolling one back is a routine repair — so the library keeps
 // every version it has downloaded rather than a single current file.
 //
-// What this trusts: releases come from GitHub over HTTPS and are recorded with
-// the SHA-256 the panel computed while downloading. GitHub releases carry no
-// published checksum to verify against, so unlike a Java runtime or a Paper
-// jar there is nothing to compare the bytes to — the trust anchor is GitHub's
-// TLS and whoever can publish to the repository the operator named. The
-// recorded digest is there so the same file can be recognised later, not so a
-// tampered one can be rejected on the way in.
+// What this trusts depends on who published the jar. A source that publishes a
+// digest — Hangar does — has its jars checked against it on the way in, the
+// same as a Java runtime or a Paper core, and a mismatch is refused. A GitHub
+// release publishes no checksum, and neither does Modrinth in the shape this
+// panel reads, so for those the trust anchor is HTTPS and whoever can publish
+// to the source the operator named; the SHA-256 recorded for them is computed
+// from the bytes that arrived, and is there so the same file can be recognised
+// later rather than so a tampered one can be rejected.
 //
 // A repository does not have to be public. An operator who publishes their own
 // plugin to a private repository can give the panel a GitHub access token, and
@@ -46,6 +47,10 @@ var (
 	// unauthenticated panel gets 60 API calls an hour, and "try again later"
 	// is a very different instruction from "check the repository name".
 	ErrRateLimited = errors.New("GitHub API rate limit reached")
+	// ErrChecksum is returned when a jar does not match the digest its source
+	// published for it. Only a source that publishes one can produce this —
+	// see the package comment.
+	ErrChecksum = errors.New("checksum mismatch")
 	// ErrNoRelease means the repository has no release this plugin can use.
 	ErrNoRelease = errors.New("no usable release found")
 	// ErrNoAsset means a release published nothing that looks like a plugin.
