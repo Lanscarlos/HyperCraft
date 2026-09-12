@@ -411,6 +411,12 @@ export function LaunchSettings({
     <form className="stack" onSubmit={save}>
       <PageHead title="实例设置" lead="名称、目录、核心、Java 和内存，以及它怎么启动。" />
 
+      <LaunchCheckPanel
+        check={check}
+        legacyCommand={instance.legacyCommand ?? []}
+        onRecheck={() => setCheckRev((rev) => rev + 1)}
+      />
+
       <section className="panel panel--form">
         <div className="panel__aside">
           <h3 className="panel__title">基本信息</h3>
@@ -484,12 +490,6 @@ export function LaunchSettings({
         onApplied={onCoreApplied}
         onOpenLibrary={onOpenLibrary}
         jarIgnored={argFileMode}
-      />
-
-      <LaunchCheckPanel
-        check={check}
-        legacyCommand={instance.legacyCommand ?? []}
-        onRecheck={() => setCheckRev((rev) => rev + 1)}
       />
 
       <section className="panel panel--form">
@@ -914,6 +914,26 @@ function LaunchCheckPanel({
 }) {
   if (check === null) return null
 
+  // No findings is the normal case and does not deserve a card: a heading that
+  // says "everything is fine" is one the eye has to process on every visit to
+  // learn nothing. One line under the page head says it and gets out of the way.
+  if (check.issues.length === 0) {
+    return (
+      <div className="launchstrip">
+        <span className="launchstrip__dot" aria-hidden="true" />
+        <span>
+          没发现问题。
+          {check.mode === 'argfile'
+            ? '参数文件都在目录里。'
+            : '核心和目录都对得上。'}
+        </span>
+        <button className="link" type="button" onClick={onRecheck}>
+          重新检查
+        </button>
+      </div>
+    )
+  }
+
   return (
     <section className="panel panel--form">
       <div className="panel__aside">
@@ -922,14 +942,6 @@ function LaunchCheckPanel({
       </div>
 
       <div className="panel__body">
-      {check.issues.length === 0 ? (
-        <p className="muted">
-          没发现问题。
-          {check.mode === 'argfile'
-            ? '参数文件都在目录里。'
-            : '核心和目录都对得上。'}
-        </p>
-      ) : (
         <ul className="launchcheck">
           {check.issues.map((issue) => (
             <li
@@ -950,13 +962,12 @@ function LaunchCheckPanel({
             </li>
           ))}
         </ul>
-      )}
 
-      <div className="actions">
-        <Button size="row" type="button" onClick={onRecheck}>
-          重新检查
-        </Button>
-      </div>
+        <div className="actions">
+          <Button size="row" type="button" onClick={onRecheck}>
+            重新检查
+          </Button>
+        </div>
       </div>
     </section>
   )

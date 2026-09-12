@@ -2945,6 +2945,35 @@ a:hover {
    copied verbatim out of the operator's own script, and that line has to be
    monospaced, horizontally scrollable and visibly not our words — otherwise
    "nohup java -jar server.jar &" reads as something the panel is saying. */
+/* The pre-flight check when it has nothing to report, which is most of the
+   time. A whole card for "everything is fine" costs a heading, a border and a
+   scroll; one line under the page head says the same and leaves the width to
+   the form. The findings still get the card — see LaunchCheckPanel. */
+.launchstrip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.launchstrip__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--ok);
+}
+
+.launchstrip > span {
+  min-width: 0;
+}
+
+.launchstrip > .link {
+  margin-left: auto;
+}
+
 .launchcheck {
   display: grid;
   gap: 8px;
