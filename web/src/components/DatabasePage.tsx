@@ -11,6 +11,7 @@ import type {
   DatabaseService,
 } from '../types'
 import type { DatabaseController } from '../useDatabases'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Page } from './Page'
 import { Select } from './Select'
@@ -286,10 +287,10 @@ function ServiceRow({
         <div className="asset__title">
           <span className="asset__label">
             <strong>{service.name}</strong>
-            <span className="badge">{service.version}</span>
-            {running && <span className="badge badge--live">运行中</span>}
-            {service.state === 'failed' && <span className="badge badge--update">启动失败</span>}
-            {service.missing && <span className="badge badge--update">引擎已删除</span>}
+            <Badge>{service.version}</Badge>
+            {running && <Badge tone="live">运行中</Badge>}
+            {service.state === 'failed' && <Badge tone="update">启动失败</Badge>}
+            {service.missing && <Badge tone="update">引擎已删除</Badge>}
           </span>
           <span className="asset__sub">
             <span>
@@ -622,8 +623,8 @@ function EngineList({
                     {engines.find((entry) => entry.id === install.engine)?.name ?? install.engine}{' '}
                     {install.version}
                   </strong>
-                  {install.live && <span className="badge badge--live">运行中</span>}
-                  {install.problem && <span className="badge badge--update">跑不起来</span>}
+                  {install.live && <Badge tone="live">运行中</Badge>}
+                  {install.problem && <Badge tone="update">跑不起来</Badge>}
                 </span>
                 <span className="asset__sub">
                   <span>
@@ -672,9 +673,9 @@ function EngineList({
                 <span className="asset__users">
                   使用中：
                   {install.usedBy.map((name) => (
-                    <span className="badge" key={name}>
+                    <Badge key={name}>
                       {name}
-                    </span>
+                    </Badge>
                   ))}
                 </span>
               ) : (
@@ -788,8 +789,8 @@ function InstallEngine({
                 <span className="choice__value">{entry.series}</span>
                 <span className="choice__label">
                   {entry.version}
-                  {entry.lts && <span className="badge">长期支持</span>}
-                  {entry.installed && <span className="badge badge--ok">已安装</span>}
+                  {entry.lts && <Badge>长期支持</Badge>}
+                  {entry.installed && <Badge tone="ok">已安装</Badge>}
                 </span>
                 <span className="choice__note">{entry.note}</span>
               </button>

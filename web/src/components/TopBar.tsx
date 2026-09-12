@@ -7,6 +7,7 @@ import { useUptime } from '../useUptime'
 import { Icon } from './Icon'
 import { Menu } from './Menu'
 import { PowerControls } from './PowerControls'
+import { StatusDot } from './StatusDot'
 import { ThemeToggle } from './ThemeToggle'
 
 /** One step of the trail. The last one is where you are and never links. */
@@ -138,7 +139,7 @@ export function TopBar({
                   trail was the same fact told worse. It stays for a trail
                   rendered without a strip. */}
               {crumb.state && !instance && (
-                <span className={`status__dot status__dot--${crumb.state}`} />
+                <StatusDot state={crumb.state} />
               )}
               {crumb.href && !last ? (
                 <a className="crumbs__link" href={crumb.href} onClick={crumb.onClick}>
@@ -247,7 +248,7 @@ function InstanceStrip({
     // happen, and the thing you stop is the thing this strip is describing.
     <div className="topbar__instance">
       <div className="topbar__status">
-        <span className={`status__dot status__dot--${instance.state}`} aria-hidden="true" />
+        <StatusDot state={instance.state} />
         <b className="topbar__state">{STATE_LABELS[instance.state]}</b>
         {/* Only while there is something to report. A stopped server has no
             uptime, no CPU and no memory — three em dashes in a row is a row of

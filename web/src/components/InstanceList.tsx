@@ -7,9 +7,11 @@ import { CAP, useCan } from '../useCan'
 import { STATE_LABELS, byUrgency, isLive } from '../types'
 import { useLiveMetrics } from '../useLiveMetrics'
 import { useUptime } from '../useUptime'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Page } from './Page'
 import { PowerControls } from './PowerControls'
+import { StatusDot } from './StatusDot'
 
 const FILTERS: { id: StateFilter; label: string }[] = [
   { id: 'all', label: '全部' },
@@ -187,7 +189,7 @@ function Row({
         <small className="rows__path">{instance.directory}</small>
       </button>
       <span className="rows__cell" role="cell">
-        <span className={`status__dot status__dot--${instance.state}`} />
+        <StatusDot state={instance.state} />
         {STATE_LABELS[instance.state]}
         {uptime && <small> · {uptime}</small>}
       </span>
@@ -199,7 +201,7 @@ function Row({
         {/* A proxy and a server are told apart by their jar name at best, and
             not at all once it has been renamed. The list is where you pick
             which one to open, so it says which is which. */}
-        {instance.kind === 'proxy' && <span className="badge">代理端</span>}
+        {instance.kind === 'proxy' && <Badge>代理端</Badge>}
       </span>
       <span className="rows__cell rows__cell--end" role="cell">
         <PowerControls

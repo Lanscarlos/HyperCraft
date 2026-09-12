@@ -1712,7 +1712,7 @@ function ImagePreview({
         <p className="modal__lead">
           {formatBytes(entry.size)} · {formatDate(entry.modified)}
         </p>
-        <div className="preview">
+        <div className="file-preview">
           {broken ? (
             <p className="muted">这张图片无法显示，可能已经损坏或格式不受支持。</p>
           ) : (

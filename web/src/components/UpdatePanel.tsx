@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { UPDATE_CHANNELS, UPDATE_MIRRORS } from '../types'
 import type { UpdateChannel, UpdateShutdown, UpdateStatus, UpdateVersion } from '../types'
 import type { UpdateController } from '../useUpdate'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Modal } from './Modal'
 
@@ -57,14 +58,14 @@ export function UpdatePanel({ update, runningNames }: Props) {
           <dt>当前版本</dt>
           <dd>
             {status.currentVersion}
-            {status.currentIsSnapshot && <span className="badge">快照</span>}
+            {status.currentIsSnapshot && <Badge>快照</Badge>}
           </dd>
         </div>
         <div>
           <dt>最新版本</dt>
           <dd>
             {status.latestVersion ?? '尚未检查'}
-            {status.latestIsPrerelease && <span className="badge">快照</span>}
+            {status.latestIsPrerelease && <Badge>快照</Badge>}
           </dd>
         </div>
         <div>
@@ -433,8 +434,8 @@ function VersionList({
           <div className="update__version" key={entry.tag}>
             <div className="update__version-name">
               <strong>{entry.version}</strong>
-              {entry.current && <span className="badge">当前</span>}
-              {entry.prerelease && <span className="badge">快照</span>}
+              {entry.current && <Badge>当前</Badge>}
+              {entry.prerelease && <Badge>快照</Badge>}
               {entry.publishedAt && (
                 <small>{new Date(entry.publishedAt).toLocaleDateString()}</small>
               )}

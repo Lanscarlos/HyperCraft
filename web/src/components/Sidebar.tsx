@@ -26,10 +26,12 @@ import type { PluginController } from '../usePlugins'
 import type { SchematicController } from '../useSchematics'
 import { CAP, useCan } from '../useCan'
 import type { TerminalController } from '../useTerminal'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
 import { Logo } from './Logo'
+import { StatusDot } from './StatusDot'
 
 interface Props {
   route: Route
@@ -237,7 +239,7 @@ function GlobalScope(props: Props) {
           <strong>HyperCraft</strong>
           <small>
             {user.version}
-            {updateNotice && <span className="badge badge--update">{updateNotice}</span>}
+            {updateNotice && <Badge tone="update">{updateNotice}</Badge>}
           </small>
         </div>
       </a>
@@ -299,7 +301,7 @@ function GlobalScope(props: Props) {
                   <span className="sidebar__initial" aria-hidden="true">
                     {item.name.slice(0, 1)}
                   </span>
-                  <span className={`status__dot status__dot--${item.state}`} />
+                  <StatusDot state={item.state} />
                   <span className="sidebar__name">{item.name}</span>
                   <span className="sidebar__state">{STATE_LABELS[item.state]}</span>
                 </a>
@@ -363,7 +365,7 @@ function GlobalScope(props: Props) {
             target={{ kind: 'settings', section: settingsEntry }}
             active={route.kind === 'settings'}
             navKey="settings"
-            badge={updateNotice ? <span className="badge badge--update">1</span> : null}
+            badge={updateNotice ? <Badge tone="update">1</Badge> : null}
           />
         </nav>
       </div>
@@ -416,7 +418,7 @@ function InstanceScope(props: Props) {
         navKey={`instance:${id}`}
         name={instance?.name ?? '实例'}
         meta={instance ? STATE_LABELS[instance.state] : '找不到这个实例'}
-        dot={instance ? <span className={`status__dot status__dot--${instance.state}`} /> : null}
+        dot={instance ? <StatusDot state={instance.state} /> : null}
       />
 
       <div className="sidebar__scroll">
@@ -441,7 +443,7 @@ function InstanceScope(props: Props) {
               <Icon name={INSTANCE_ICONS[section.id]} />
               <span className="sidebar__name">{section.label}</span>
               {section.id === 'plugins' && plugins.updates > 0 && (
-                <span className="badge badge--update">{plugins.updates}</span>
+                <Badge tone="update">{plugins.updates}</Badge>
               )}
             </a>
           ))}
@@ -494,7 +496,7 @@ function shelfRows(props: Props): ShelfRow[] {
       icon: 'java',
       label: 'Java 环境',
       target: { kind: 'library', section: 'java', view: 'installed' },
-      badge: java.installing ? <span className="badge badge--update">安装中</span> : null,
+      badge: java.installing ? <Badge tone="update">安装中</Badge> : null,
     },
     {
       section: 'cores',
@@ -502,7 +504,7 @@ function shelfRows(props: Props): ShelfRow[] {
       icon: 'cores',
       label: '服务端核心',
       target: { kind: 'library', section: 'cores', view: 'stock' },
-      badge: cores.downloading ? <span className="badge badge--update">下载中</span> : null,
+      badge: cores.downloading ? <Badge tone="update">下载中</Badge> : null,
     },
     {
       section: 'database',
@@ -510,7 +512,7 @@ function shelfRows(props: Props): ShelfRow[] {
       icon: 'database',
       label: '数据库环境',
       target: { kind: 'library', section: 'database', view: 'databases' },
-      badge: databases.installing ? <span className="badge badge--update">安装中</span> : null,
+      badge: databases.installing ? <Badge tone="update">安装中</Badge> : null,
     },
     {
       section: 'plugins',
@@ -519,9 +521,9 @@ function shelfRows(props: Props): ShelfRow[] {
       label: '插件库',
       target: { kind: 'library', section: 'plugins', view: 'list' },
       badge: plugins.downloading ? (
-        <span className="badge badge--update">下载中</span>
+        <Badge tone="update">下载中</Badge>
       ) : plugins.updates > 0 ? (
-        <span className="badge badge--update">{plugins.updates}</span>
+        <Badge tone="update">{plugins.updates}</Badge>
       ) : null,
     },
     // Last of the five, and the only one a server can start without: the other
@@ -584,16 +586,16 @@ function LibraryScope(props: Props) {
             const current = view === page.id
             const badge =
               section === 'cores' && page.id === 'download' && cores.downloading ? (
-                <span className="badge badge--update">下载中</span>
+                <Badge tone="update">下载中</Badge>
               ) : section === 'java' && page.id === 'install' && java.installing ? (
-                <span className="badge badge--update">安装中</span>
+                <Badge tone="update">安装中</Badge>
               ) : section === 'plugins' && page.id === 'list' && plugins.updates > 0 ? (
-                <span className="badge badge--update">{plugins.updates}</span>
+                <Badge tone="update">{plugins.updates}</Badge>
               ) : // A count rather than 下载中: with a queue the interesting
               // number is how many, and the row is the way to the page that
               // says which.
               section === 'plugins' && page.id === 'queue' && plugins.active > 0 ? (
-                <span className="badge badge--update">{plugins.active}</span>
+                <Badge tone="update">{plugins.active}</Badge>
               ) : null
 
             return (
@@ -806,7 +808,7 @@ function HostScope(props: Props) {
             >
               <Icon name="lock" />
               <span className="sidebar__name">SSH 终端</span>
-              {!terminal.status?.enabled && <span className="badge">未开启</span>}
+              {!terminal.status?.enabled && <Badge>未开启</Badge>}
             </a>
           </nav>
         )}
@@ -866,7 +868,7 @@ function SettingsScope(props: Props) {
               <Icon name={SETTINGS_ICONS[entry.id]} />
               <span className="sidebar__name">{entry.label}</span>
               {entry.id === 'update' && updateNotice && (
-                <span className="badge badge--update">{updateNotice}</span>
+                <Badge tone="update">{updateNotice}</Badge>
               )}
             </a>
           ))}

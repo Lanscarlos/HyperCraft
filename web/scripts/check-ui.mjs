@@ -130,7 +130,62 @@ function ruleIconButtonsAreLabelled() {
   }
 }
 
-const RULES = [ruleNoUndefinedClasses, ruleIconButtonsAreLabelled]
+/** Overrides that are written on purpose. Each needs a reason. */
+const OVERRIDE_ALLOWED = new Map([
+  [
+    '.pdot--foreign',
+    '有意覆盖：库外来源画成空心环，而不是第七种颜色。见 styles.css 里该规则上方的注释。',
+  ],
+])
+
+/** Rule: no selector silently overrides its own earlier declaration.
+ *
+ *  Writing a selector twice is not itself wrong here. This sheet is organised
+ *  by narrative, not by selector: `.sidebar__group` is defined where the
+ *  sidebar is built and again, additively, in the passage about folding it,
+ *  each with the comment that explains that behaviour. Splitting those apart
+ *  would move the comments away from what they explain.
+ *
+ *  What is always a bug is the same *property* declared twice, because then
+ *  one of the two blocks is quietly not doing what it says. `.badge--warn`
+ *  was written twice; the later block dropped the earlier one's border-color,
+ *  so warning badges lost their tinted edge and nobody noticed. `.preview`
+ *  was two different components that happened to pick the same name, each
+ *  leaking properties into the other. */
+function ruleNoSilentOverrides() {
+  const lines = fs.readFileSync(CSS, 'utf8').split('\n')
+  const blocks = new Map()
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(\.[a-zA-Z0-9_-]+(?:__[a-zA-Z0-9_-]+)?(?:--[a-zA-Z0-9_-]+)?) \{$/.exec(lines[i])
+    if (!m) continue
+    // The last line of a selector group is not a second definition: a shared
+    // rule for `.a, .b` followed by a specific rule for `.b` is ordinary CSS,
+    // and thirteen of this sheet's twenty-one apparent duplicates were that.
+    if ((lines[i - 1] ?? '').trimEnd().endsWith(',')) continue
+    const props = new Set()
+    for (let j = i + 1; j < lines.length && lines[j] !== '}'; j++) {
+      const p = /^\s{2}([a-z-]+):/.exec(lines[j])
+      if (p) props.add(p[1])
+    }
+    if (!blocks.has(m[1])) blocks.set(m[1], [])
+    blocks.get(m[1]).push({ line: i + 1, props })
+  }
+  for (const [selector, list] of blocks) {
+    if (list.length < 2 || OVERRIDE_ALLOWED.has(selector)) continue
+    const clashes = new Set()
+    for (let a = 0; a < list.length; a++) {
+      for (let b = a + 1; b < list.length; b++) {
+        for (const p of list[b].props) if (list[a].props.has(p)) clashes.add(p)
+      }
+    }
+    if (clashes.size > 0) {
+      const where = list.map((x) => x.line).join(' 与 ')
+      problems.push(`${selector} 在第 ${where} 行重复声明了 ${[...clashes].join('、')}`)
+    }
+  }
+}
+
+const RULES = [ruleNoUndefinedClasses, ruleIconButtonsAreLabelled, ruleNoSilentOverrides]
 
 for (const rule of RULES) rule()
 

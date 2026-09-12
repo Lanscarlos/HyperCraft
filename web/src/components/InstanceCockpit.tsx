@@ -8,8 +8,10 @@ import { CAP, useCan } from '../useCan'
 import { isLive, mergeState } from '../types'
 import { useTween } from '../useTween'
 import { useUptime } from '../useUptime'
+import { Badge } from './Badge'
 import { Console } from './Console'
 import { Sparkline } from './Sparkline'
+import { StatusDot } from './StatusDot'
 
 /** The window the tiles summarise. Long enough to show a spike, short enough
  *  that it is still about right now. */
@@ -74,7 +76,7 @@ export function InstanceCockpit({ instance, metrics, active, onChanged, onOpenSe
               stays: it colours the title, and it is what the eye lands on
               first on this page. */}
           <div className="cockpit__title">
-            <span className={`status__dot status__dot--${instance.state}`} />
+            <StatusDot state={instance.state} />
             <h1>{instance.name}</h1>
           </div>
           <div className="cockpit__facts">
@@ -82,7 +84,7 @@ export function InstanceCockpit({ instance, metrics, active, onChanged, onOpenSe
             {/* Which of the two this is decides half of what the rest of the
                 panel shows, so it is said once, here, beside the jar it comes
                 from. */}
-            {instance.kind === 'proxy' && <span className="badge">代理端</span>}
+            {instance.kind === 'proxy' && <Badge>代理端</Badge>}
             <span title={instance.java}>{javaLabel(instance.java)}</span>
             {uptime ? <span>已运行 {uptime}</span> : <span>{stopNote(instance)}</span>}
             {instance.pid ? <span>PID {instance.pid}</span> : null}

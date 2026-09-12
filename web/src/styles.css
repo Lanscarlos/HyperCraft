@@ -2922,19 +2922,6 @@ a:hover {
   color: var(--text-dim);
 }
 
-/* Facts that ride along with the state — pid, uptime, exit code. Boxed so a
-   row of them reads as data rather than as a sentence. */
-.status__meta {
-  padding: 1px 8px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  color: var(--text-dim);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 /* State is the one thing on screen that changes without anyone touching it,
    and a dot that snaps from grey to green is a change you only catch if you
    happened to be looking at it. Over a fifth of a second it is caught in
@@ -6489,12 +6476,18 @@ details[open]::details-content {
 
 /* ---- dialogs ---------------------------------------------------------- */
 
-/* Wide enough for a 512px server icon to be shown at its own size. */
-.modal__card--wide {
-  width: min(680px, 100%);
-}
+/* The width of a 展示 dialog is set below, next to the listing dialogs it was
+   written for. There used to be a second .modal__card--wide here asking for
+   680px so a 512px server icon could be shown at its own size; the later rule
+   overrode it, so that has not been what any dialog did for some time. Widening
+   the icon dialog again is a decision on its own, not a side effect of this
+   one. */
 
-.preview {
+/* Renamed off `.preview`, which the plugin-source dialog also called its
+   release-asset box. Same name, two components, one stylesheet: the later rule
+   took the padding, background and radius, and this one handed that text box a
+   chequerboard and `place-items: center` in exchange. */
+.file-preview {
   display: grid;
   place-items: center;
   padding: 16px;
@@ -9515,11 +9508,6 @@ input.input-slim:disabled {
 .badge--alert {
   background: var(--danger-soft);
   color: var(--danger-ink);
-}
-
-.badge--warn {
-  background: var(--caution-soft);
-  color: var(--caution-ink);
 }
 
 .chart-head__actions {

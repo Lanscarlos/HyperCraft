@@ -11,6 +11,7 @@ import type {
   SystemJava,
 } from '../types'
 import type { JavaController } from '../useJava'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Page } from './Page'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
@@ -289,8 +290,8 @@ export function JavaPage({
                     <span className="choice__value">{entry.major}</span>
                     <span className="choice__label">
                       Java {entry.major}
-                      {entry.lts && <span className="badge">LTS</span>}
-                      {entry.installed && <span className="badge badge--ok">已安装</span>}
+                      {entry.lts && <Badge>LTS</Badge>}
+                      {entry.installed && <Badge tone="ok">已安装</Badge>}
                     </span>
                     <span className="choice__note">{majorNote(entry.major, entry.lts)}</span>
                   </button>
@@ -450,7 +451,7 @@ function SourcePicker({
             >
               <span className="choice__label">
                 {entry.name}
-                {entry.default && <span className="badge">推荐</span>}
+                {entry.default && <Badge>推荐</Badge>}
               </span>
               <span className="choice__note">{entry.note}</span>
             </button>
@@ -475,7 +476,7 @@ function SourcePicker({
             >
               <span className="choice__label">
                 {entry.name}
-                {entry.default && <span className="badge">推荐</span>}
+                {entry.default && <Badge>推荐</Badge>}
               </span>
               <span className="choice__note">{entry.note}</span>
             </button>
@@ -523,7 +524,7 @@ function SystemRow({ system }: { system: SystemJava }) {
         <div className="asset__title">
           <span className="asset__label">
             <strong>系统 Java {system.major || '?'}</strong>
-            <span className="badge">来自 {system.source}</span>
+            <Badge>来自 {system.source}</Badge>
           </span>
           <span className="asset__sub">
             <span>{system.vendor || '未知发行方'}</span>
@@ -567,8 +568,8 @@ function RuntimeRow({
         <div className="asset__title">
           <span className="asset__label">
             <strong>Java {runtime.major}</strong>
-            <span className="badge">{runtime.imageType.toUpperCase()}</span>
-            {runtime.live && <span className="badge badge--live">运行中</span>}
+            <Badge>{runtime.imageType.toUpperCase()}</Badge>
+            {runtime.live && <Badge tone="live">运行中</Badge>}
           </span>
           <span className="asset__sub">
             <span>{runtime.vendor || '未知发行方'}</span>
@@ -597,9 +598,9 @@ function RuntimeRow({
           <span className="asset__users">
             使用中：
             {runtime.usedBy.map((name) => (
-              <span className="badge" key={name}>
+              <Badge key={name}>
                 {name}
-              </span>
+              </Badge>
             ))}
           </span>
         ) : (

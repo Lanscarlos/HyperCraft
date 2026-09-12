@@ -19,6 +19,7 @@ import type {
 } from '../types'
 import { hasPluginUpdate, isLive, isReconStatus, statusLabel } from '../types'
 import type { PluginController } from '../usePlugins'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Menu } from './Menu'
 import { Modal } from './Modal'
@@ -29,6 +30,7 @@ import { PluginImportDialog } from './PluginImportDialog'
 import { PluginInstallDialog } from './PluginInstallDialog'
 import { PluginLibraryDrawer } from './PluginLibraryDrawer'
 import { PluginSourceDialog } from './PluginSourceDialog'
+import { StatusDot } from './StatusDot'
 
 /**
  * 插件列表 — every plugin the panel holds, and what is actually running.
@@ -644,14 +646,14 @@ function PluginRow({
           <span className="ptable__name-line">
             <strong>{row.name}</strong>
             {row.pinned && (
-              <span className="badge badge--muted" title={`锁定在 ${row.pinned}，不跟上游走`}>
+              <Badge tone="muted" title={`锁定在 ${row.pinned}，不跟上游走`}>
                 已锁定
-              </span>
+              </Badge>
             )}
             {row.selfUpdate && (
-              <span className="badge badge--muted" title="这个插件被允许自己改写 jar，哈希漂移只记录不告警">
+              <Badge tone="muted" title="这个插件被允许自己改写 jar，哈希漂移只记录不告警">
                 允许自更新
-              </span>
+              </Badge>
             )}
             {/* The name the jar declares, when it is not the name above it.
                 On the name line rather than in the source line below, because
@@ -665,12 +667,13 @@ function PluginRow({
                 name a duplicate clash, a config directory and a dependency
                 list are all written against. */}
             {declaredName(row) && (
-              <span
-                className="badge badge--muted ptable__declared"
+              <Badge
+                tone="muted"
+                className="ptable__declared"
                 title={`jar 的 plugin.yml 声明的名字是 ${declaredName(row)}，服务端按它加载、查重和建配置目录`}
               >
                 声明名 {declaredName(row)}
-              </span>
+              </Badge>
             )}
           </span>
           {/* Titled, because this line is 230px wide and nowrap: what it
@@ -829,7 +832,7 @@ function UseChip({ use, onOpen }: { use: PluginUse; onOpen: () => void }) {
           : `${use.name} 上是 ${use.version}，比库里旧`
       }
     >
-      <span className={`status__dot status__dot--${use.state}`} />
+      <StatusDot state={use.state} />
       {use.name}
       <span className="usechip__what">{trouble ? statusLabel(trouble) : use.version}</span>
     </button>
@@ -956,11 +959,11 @@ function ForeignSection({
               {jar.dir}/{jar.fileName}
             </code>
             {jar.adoptable ? (
-              <span className="badge badge--ok" title={`和库里的 ${jar.adoptable.name} ${jar.adoptable.version} 校验和一致`}>
+              <Badge tone="ok" title={`和库里的 ${jar.adoptable.name} ${jar.adoptable.version} 校验和一致`}>
                 是库里的 {jar.adoptable.version}
-              </span>
+              </Badge>
             ) : (
-              <span className="badge badge--muted">不在库中</span>
+              <Badge tone="muted">不在库中</Badge>
             )}
             <Button
               size="small"
@@ -1381,7 +1384,7 @@ function BulkInstallDialog({
                     )
                   }
                 />
-                <span className={`status__dot status__dot--${instance.state}`} />
+                <StatusDot state={instance.state} />
                 <span>{instance.name}</span>
               </label>
             ))}
