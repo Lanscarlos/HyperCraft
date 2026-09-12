@@ -12,6 +12,7 @@ import type {
 } from '../types'
 import type { JavaController } from '../useJava'
 import { Page } from './Page'
+import { Shelf } from './Shelf'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
 /** Named because the page renders it before its data arrives as well as after,
@@ -159,7 +160,6 @@ export function JavaPage({
     )
   }
 
-  const selected = majors.find((entry) => entry.major === major)
   const runtimes = overview.runtimes
   const totalSize = runtimes.reduce((sum, runtime) => sum + runtime.size, 0)
   // Both distributions ship every major, but only the LTS ones (and whatever
@@ -235,7 +235,7 @@ export function JavaPage({
             </p>
           </div>
         ) : (
-          <div className="asset-list">
+          <Shelf head={['运行时', '完整版本', '体积', '安装于', '使用中的实例', '']}>
             {overview.system && <SystemRow system={overview.system} />}
             {runtimes.map((runtime) => (
               <RuntimeRow
@@ -245,7 +245,7 @@ export function JavaPage({
                 onRemove={() => void remove(runtime)}
               />
             ))}
-          </div>
+          </Shelf>
         )}
       </section>
       )}
@@ -262,42 +262,11 @@ export function JavaPage({
           </p>
         ) : (
           <>
-            <div className="field">
-              <div className="field__head">
-                <span>选择版本</span>
-                {(hiddenMajors > 0 || showAllMajors) && (
-                  <button
-                    className="link"
-                    type="button"
-                    onClick={() => setShowAllMajors((on) => !on)}
-                  >
-                    {showAllMajors ? '只看 LTS 版本' : `显示全部 ${majors.length} 个版本`}
-                  </button>
-                )}
-              </div>
-              <div className="choice-grid">
-                {visibleMajors.map((entry) => (
-                  <button
-                    key={entry.major}
-                    type="button"
-                    className={`choice${entry.major === major ? ' choice--active' : ''}`}
-                    aria-pressed={entry.major === major}
-                    disabled={installing}
-                    onClick={() => setMajor(entry.major)}
-                  >
-                    <span className="choice__value">{entry.major}</span>
-                    <span className="choice__label">
-                      Java {entry.major}
-                      {entry.lts && <span className="badge">LTS</span>}
-                      {entry.installed && <span className="badge badge--ok">已安装</span>}
-                    </span>
-                    <span className="choice__note">{majorNote(entry.major, entry.lts)}</span>
-                  </button>
-                ))}
-              </div>
-              <small>标注的是这个大版本对应的服务端版本区间，拿不准就选 LTS。</small>
-            </div>
-
+            {/* JRE or JDK is a property of the download, not of the version, so
+                it sits above the list rather than inside every tile — and it
+                is above rather than in the head because the head is where the
+                *source* lives and two control clusters in one 44px strip is
+                the row that wraps first on a laptop. */}
             <div className="field">
               <span>镜像类型</span>
               <div className="segmented" role="group" aria-label="镜像类型">
@@ -319,42 +288,90 @@ export function JavaPage({
               </div>
             </div>
 
-            {sources.length > 0 && (
-              <p className="chart-note">
-                发行版：{distributionName}，下载源：{sourceName} ——{' '}
-                <button className="link" type="button" onClick={() => onOpenView('source')}>
-                  换一个
-                </button>
-                。国内机器下得慢的话，那一页可以换发行版或换个镜像。
+            {/* The list used to be a chooser: press a version, then find the
+                install button under the form. Nobody picking Java 21 out of
+                four tiles wants a second step to say so, so the button is on
+                the line — and the version that would have been preselected is
+                tinted instead, which is all that selection was ever telling
+                anyone. */}
+            <div className="chart-head">
+              <h2 className="panel__title">可安装</h2>
+              <p className="chart-head__meta">
+                {distributionName} · 下载源 {sourceName}
               </p>
-            )}
-
-            <div className="actions">
-              {installing ? (
-                <button
-                  className="btn btn--danger"
-                  onClick={() => void java.cancel()}
-                  disabled={busy}
-                >
-                  取消安装
-                </button>
-              ) : (
-                <button
-                  className="btn btn--primary"
-                  onClick={() =>
-                    major != null &&
-                    void java.install(distribution ?? '', major, imageType, source ?? '')
-                  }
-                  disabled={busy || major == null}
-                >
-                  {selected?.installed ? '重新安装' : '安装'} Java {major ?? ''}{' '}
-                  {imageType.toUpperCase()}
-                </button>
-              )}
-              <span className="file-toolbar__hint">
-                装到 <code>{overview.root}</code>，不会碰系统里的 Java。
-              </span>
+              <div className="chart-head__tools">
+                {(hiddenMajors > 0 || showAllMajors) && (
+                  <button
+                    className="link"
+                    type="button"
+                    onClick={() => setShowAllMajors((on) => !on)}
+                  >
+                    {showAllMajors ? '只看 LTS 版本' : `显示全部 ${majors.length} 个版本`}
+                  </button>
+                )}
+                {sources.length > 0 && (
+                  <button className="link" type="button" onClick={() => onOpenView('source')}>
+                    换发行版或下载源
+                  </button>
+                )}
+              </div>
             </div>
+
+            <div className="pick-grid">
+              {visibleMajors.map((entry) => {
+                const running = installing && job?.major === entry.major
+                return (
+                  <div
+                    key={entry.major}
+                    className={`pick${entry.major === major ? ' pick--on' : ''}`}
+                  >
+                    <span className="pick__tile">{entry.major}</span>
+                    <div className="pick__body">
+                      <span className="pick__name">
+                        <strong>Java {entry.major}</strong>
+                        {entry.lts && <span className="badge">LTS</span>}
+                        {entry.installed && <span className="badge badge--ok">已安装</span>}
+                      </span>
+                      <span className="pick__meta">
+                        {majorNote(entry.major, entry.lts)} · {imageType.toUpperCase()}
+                      </span>
+                    </div>
+                    {running ? (
+                      <button
+                        className="btn btn--small btn--danger"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void java.cancel()}
+                      >
+                        取消
+                      </button>
+                    ) : (
+                      <button
+                        className="btn btn--small"
+                        type="button"
+                        disabled={busy || installing}
+                        onClick={() => {
+                          setMajor(entry.major)
+                          void java.install(
+                            distribution ?? '',
+                            entry.major,
+                            imageType,
+                            source ?? '',
+                          )
+                        }}
+                      >
+                        {entry.installed ? '重装' : '安装'}
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            <p className="chart-note">
+              标注的是这个大版本对应的服务端版本区间，拿不准就选 LTS。装到{' '}
+              <code>{overview.root}</code>，不会碰系统里的 Java。
+            </p>
           </>
         )}
       </section>

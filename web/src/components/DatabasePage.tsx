@@ -13,6 +13,7 @@ import type {
 import type { DatabaseController } from '../useDatabases'
 import { Page } from './Page'
 import { Select } from './Select'
+import { Shelf } from './Shelf'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
 /** Named because the page renders it before its data arrives as well as after,
@@ -38,6 +39,17 @@ const STATE_LABELS: Record<DatabaseService['state'], string> = {
   running: '运行中',
   stopping: '停止中',
   failed: '启动失败',
+}
+
+/** The dot an instance's status uses, borrowed so a database that will not
+ *  start looks like a server that will not start. Its vocabulary calls that
+ *  state 崩溃 rather than 失败, which is the only word that differs. */
+const STATE_DOTS: Record<DatabaseService['state'], string> = {
+  stopped: 'stopped',
+  starting: 'starting',
+  running: 'running',
+  stopping: 'stopping',
+  failed: 'crashed',
 }
 
 /**
@@ -156,7 +168,13 @@ function ServiceList({
   onOpenView: (view: LibraryView) => void
 }) {
   const [creating, setCreating] = useState(false)
+  // Which database the pane beside the table is describing. Null until
+  // something is clicked, and then resolved against the live list rather than
+  // stored as an object — a database that is deleted or renamed under this
+  // must not leave a stale copy of itself on screen.
+  const [picked, setPicked] = useState<string | null>(null)
   const usable = installs.filter((install) => !install.problem)
+  const current = services.find((service) => service.id === picked) ?? services[0]
 
   const remove = async (service: DatabaseService) => {
     // One card with a checkbox rather than two questions: whether the data goes
@@ -178,129 +196,147 @@ function ServiceList({
   }
 
   return (
-    <>
-      <section className="panel">
-        <div className="chart-head">
-          <h2 className="panel__title">我的数据库</h2>
-          <p className="chart-head__meta">
-            {services.length > 0 ? `面板管理 ${services.length} 个` : '还没有建过数据库'}
-          </p>
-        </div>
+    /* The table says which databases exist; the pane beside it says everything
+       about the one being looked at. They were one thing — 每行自带连接串、
+       JDBC 和密码 — which made four databases four screens long and moved the
+       one string somebody has to read character by character to a different
+       place on the page each time.
 
-        {services.length === 0 ? (
-          <div className="welcome__empty">
-            {usable.length === 0 ? (
-              <>
-                <p>还没有装数据库引擎，建不了数据库。</p>
-                <p className="muted">
-                  <button className="link" type="button" onClick={() => onOpenView('install')}>
-                    先装一个引擎
-                  </button>
-                  ，MySQL 的精简包只有 60 MB 左右，装完就能建库。
-                </p>
-              </>
-            ) : (
-              <>
-                <p>引擎装好了，还没有建过数据库。</p>
-                <p className="muted">
-                  <button className="link" type="button" onClick={() => setCreating(true)}>
-                    建一个
-                  </button>
-                  ，端口、账号、密码面板都会给默认值，建完直接复制连接串。
-                </p>
-              </>
-            )}
+       No split until there is something to put in the pane: a two-track grid
+       with an empty second track is 356px of nothing beside the 还没有建过
+       empty state. */
+    <div className={current ? 'dbsplit' : undefined}>
+      <div className="dbsplit__main">
+        <section className="panel">
+          <div className="chart-head">
+            <h2 className="panel__title">我的数据库</h2>
+            <p className="chart-head__meta">
+              {services.length > 0 ? `面板管理 ${services.length} 个` : '还没有建过数据库'}
+            </p>
           </div>
-        ) : (
-          <div className="asset-list">
-            {services.map((service) => (
-              <ServiceRow
-                key={service.id}
-                service={service}
-                busy={databases.busy}
-                onStart={() => void databases.start(service.id)}
-                onStop={() => void databases.stop(service.id)}
-                onRemove={() => void remove(service)}
-                onToggleAutoStart={() =>
-                  void databases.update(service.id, { autoStart: !service.autoStart })
-                }
-              />
-            ))}
-          </div>
+
+          {services.length === 0 ? (
+            <div className="welcome__empty">
+              {usable.length === 0 ? (
+                <>
+                  <p>还没有装数据库引擎，建不了数据库。</p>
+                  <p className="muted">
+                    <button className="link" type="button" onClick={() => onOpenView('install')}>
+                      先装一个引擎
+                    </button>
+                    ，MySQL 的精简包只有 60 MB 左右，装完就能建库。
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>引擎装好了，还没有建过数据库。</p>
+                  <p className="muted">
+                    <button className="link" type="button" onClick={() => setCreating(true)}>
+                      建一个
+                    </button>
+                    ，端口、账号、密码面板都会给默认值，建完直接复制连接串。
+                  </p>
+                </>
+              )}
+            </div>
+          ) : (
+            <Shelf head={['数据库', '监听', '库名', '建于', '状态', '']}>
+              {services.map((service) => (
+                <ServiceRow
+                  key={service.id}
+                  service={service}
+                  busy={databases.busy}
+                  picked={service.id === current?.id}
+                  onPick={() => setPicked(service.id)}
+                  onStart={() => void databases.start(service.id)}
+                  onStop={() => void databases.stop(service.id)}
+                />
+              ))}
+            </Shelf>
+          )}
+
+          {usable.length > 0 && (
+            <div className="actions">
+              <button
+                className="btn btn--primary"
+                type="button"
+                disabled={databases.busy || creating}
+                onClick={() => setCreating(true)}
+              >
+                新建数据库
+              </button>
+              <span className="muted">
+                一个引擎可以建多个数据库，端口面板会自动错开。
+              </span>
+            </div>
+          )}
+        </section>
+
+        {creating && (
+          <CreateForm
+            databases={databases}
+            installs={usable}
+            engines={engines}
+            onDone={() => setCreating(false)}
+          />
         )}
+      </div>
 
-        {usable.length > 0 && (
-          <div className="actions">
-            <button
-              className="btn btn--primary"
-              type="button"
-              disabled={databases.busy || creating}
-              onClick={() => setCreating(true)}
-            >
-              新建数据库
-            </button>
-            <span className="muted">
-              一个引擎可以建多个数据库，端口面板会自动错开。
-            </span>
-          </div>
-        )}
-      </section>
-
-      {creating && (
-        <CreateForm
-          databases={databases}
-          installs={usable}
-          engines={engines}
-          onDone={() => setCreating(false)}
+      {current && (
+        <ServiceDetail
+          service={current}
+          busy={databases.busy}
+          onRemove={() => void remove(current)}
+          onStart={() => void databases.start(current.id)}
+          onStop={() => void databases.stop(current.id)}
+          onToggleAutoStart={() =>
+            void databases.update(current.id, { autoStart: !current.autoStart })
+          }
         />
       )}
-    </>
+    </div>
   )
 }
 
 function ServiceRow({
   service,
   busy,
+  picked,
+  onPick,
   onStart,
   onStop,
-  onRemove,
-  onToggleAutoStart,
 }: {
   service: DatabaseService
   busy: boolean
+  picked: boolean
+  onPick: () => void
   onStart: () => void
   onStop: () => void
-  onRemove: () => void
-  onToggleAutoStart: () => void
 }) {
   const running = service.state === 'running'
   const moving = service.state === 'starting' || service.state === 'stopping'
 
   return (
-    <article className="asset">
-      <div className="asset__head">
+    <article className={`asset${picked ? ' asset--picked' : ''}`}>
+      {/* The name is the row's hit target rather than the whole row: two of
+          the six cells are already buttons, and a click handler on the article
+          would swallow the one that matters most — 停止. */}
+      <button className="asset__pick" type="button" aria-pressed={picked} onClick={onPick}>
         <span className={`asset__tile${running ? ' asset__tile--accent' : ''}`}>
           {service.engine.slice(0, 2).toUpperCase()}
         </span>
-        <div className="asset__title">
+        <span className="asset__title">
           <span className="asset__label">
             <strong>{service.name}</strong>
             <span className="badge">{service.version}</span>
-            {running && <span className="badge badge--live">运行中</span>}
-            {service.state === 'failed' && <span className="badge badge--update">启动失败</span>}
             {service.missing && <span className="badge badge--update">引擎已删除</span>}
           </span>
           <span className="asset__sub">
-            <span>
-              {STATE_LABELS[service.state]}
-              {service.autoStart && ' · 跟随面板启动'}
-            </span>
+            <span>{service.autoStart ? '跟随面板启动' : '手动启动'}</span>
             <code title={service.dir}>{service.dir}</code>
           </span>
-        </div>
-      </div>
-
-      {service.error && <div className="alert alert--error">{service.error}</div>}
+        </span>
+      </button>
 
       <dl className="asset__facts asset__facts--split">
         <div>
@@ -319,9 +355,113 @@ function ServiceRow({
         </div>
       </dl>
 
+      <span className="asset__users">
+        <span
+          className={`status__dot status__dot--${STATE_DOTS[service.state]}`}
+          aria-hidden="true"
+        />
+        {STATE_LABELS[service.state]}
+      </span>
+
+      <span className="asset__actions asset__actions--split">
+        {running || moving ? (
+          <button className="link" disabled={busy || moving} onClick={onStop}>
+            {service.state === 'stopping' ? '停止中…' : '停止'}
+          </button>
+        ) : (
+          <button
+            className="link"
+            disabled={busy || service.missing}
+            title={service.missing ? '这个数据库的引擎已经被删掉了，重新装一个同版本的即可' : undefined}
+            onClick={onStart}
+          >
+            启动
+          </button>
+        )}
+      </span>
+    </article>
+  )
+}
+
+/**
+ * Everything about the one database that is selected: how to connect to it,
+ * what to paste into a plugin, and the two decisions that are not reversible.
+ *
+ * It is a pane rather than an expanded row because the connection string is
+ * the thing this page exists for — it should be in the same place on the
+ * screen every time, not wherever the fourth row happens to be.
+ */
+function ServiceDetail({
+  service,
+  busy,
+  onStart,
+  onStop,
+  onRemove,
+  onToggleAutoStart,
+}: {
+  service: DatabaseService
+  busy: boolean
+  onStart: () => void
+  onStop: () => void
+  onRemove: () => void
+  onToggleAutoStart: () => void
+}) {
+  const running = service.state === 'running'
+  const moving = service.state === 'starting' || service.state === 'stopping'
+
+  return (
+    <aside className="dbdetail" aria-label={`${service.name} 的连接信息`}>
+      <div className="dbdetail__head">
+        <span className={`asset__tile${running ? ' asset__tile--accent' : ''}`}>
+          {service.engine.slice(0, 2).toUpperCase()}
+        </span>
+        <strong>{service.name}</strong>
+        <span className="badge">{STATE_LABELS[service.state]}</span>
+      </div>
+
+      {service.error && (
+        <div className="dbdetail__sec">
+          <div className="alert alert--error">{service.error}</div>
+        </div>
+      )}
+
+      <div className="dbdetail__sec">
+        <span className="dbdetail__label">连接信息</span>
+        <div className="dbdetail__row">
+          <span>主机</span>
+          <code>
+            {service.bind}:{service.port}
+          </code>
+        </div>
+        <div className="dbdetail__row">
+          <span>库名</span>
+          <code>{service.database}</code>
+        </div>
+        {service.user && (
+          <>
+            <div className="dbdetail__row">
+              <span>用户</span>
+              <code>{service.user}</code>
+            </div>
+            {/* Shown rather than masked. It is not a secret the panel is
+                keeping from the operator — every plugin that uses it stores
+                the same string in its own config — and a field they have to
+                reveal before every copy would be theatre with a cost. */}
+            <div className="dbdetail__row">
+              <span>密码</span>
+              <code>{service.password}</code>
+            </div>
+          </>
+        )}
+        <div className="dbdetail__row">
+          <span>目录</span>
+          <code title={service.dir}>{service.dir}</code>
+        </div>
+      </div>
+
       <Connection service={service} />
 
-      <footer className="asset__actions asset__actions--split">
+      <div className="dbdetail__sec">
         <label className="check">
           <input
             type="checkbox"
@@ -331,37 +471,47 @@ function ServiceRow({
           />
           <span>面板启动时自动开</span>
         </label>
-        <span className="asset__users">
+      </div>
+
+      <div className="dbdetail__sec">
+        <span className="dbdetail__label">操作</span>
+        <div className="dbdetail__actions">
           {running || moving ? (
-            <button className="link" disabled={busy || moving} onClick={onStop}>
-              {service.state === 'stopping' ? '停止中…' : '停止'}
+            <button className="btn btn--small" type="button" disabled={busy || moving} onClick={onStop}>
+              停止
             </button>
           ) : (
             <button
-              className="link"
+              className="btn btn--small"
+              type="button"
               disabled={busy || service.missing}
-              title={service.missing ? '这个数据库的引擎已经被删掉了，重新装一个同版本的即可' : undefined}
               onClick={onStart}
             >
               启动
             </button>
           )}
-          <button className="link link--danger" disabled={busy || running || moving} onClick={onRemove}>
+          <button
+            className="btn btn--small btn--danger"
+            type="button"
+            disabled={busy || running || moving}
+            title={running || moving ? '先停下来再删' : undefined}
+            onClick={onRemove}
+          >
             删除
           </button>
-        </span>
-      </footer>
-    </article>
+        </div>
+      </div>
+    </aside>
   )
 }
 
 /**
- * The connection details, which are the reason this whole page exists.
+ * The two strings that get pasted into a plugin's config, which are the reason
+ * this whole page exists.
  *
- * The password is shown rather than masked. It is not a secret the panel is
- * keeping from the operator — every plugin that uses it will store the same
- * string in its own config file — and a masked field they have to reveal before
- * every copy would be theatre with a cost.
+ * A section of the detail pane rather than part of every row: a URI has no
+ * spaces to wrap at, so it needs a line of its own, and four of those lines
+ * turned a list of four databases into four screens.
  */
 function Connection({ service }: { service: DatabaseService }) {
   const copy = async (label: string, value: string) => {
@@ -376,28 +526,34 @@ function Connection({ service }: { service: DatabaseService }) {
   }
 
   return (
-    <div className="field">
-      <div className="field__head">
-        <span>连接信息</span>
+    <div className="dbdetail__sec">
+      <span className="dbdetail__label">
+        <span>连接串</span>
         <button className="link" type="button" onClick={() => void copy('连接串', service.uri)}>
-          复制连接串
+          复制
         </button>
-      </div>
+      </span>
       <code className="asset__conn">{service.uri}</code>
+
       {service.jdbc && (
-        <div className="field__head">
-          <small>插件配置里常写成 JDBC 形式</small>
-          <button className="link" type="button" onClick={() => void copy('JDBC 地址', service.jdbc ?? '')}>
-            复制 JDBC
-          </button>
-        </div>
+        <>
+          <span className="dbdetail__label">
+            <span>JDBC —— 插件配置里常写成这个形式</span>
+            <button
+              className="link"
+              type="button"
+              onClick={() => void copy('JDBC 地址', service.jdbc ?? '')}
+            >
+              复制
+            </button>
+          </span>
+          <code className="asset__conn">{service.jdbc}</code>
+        </>
       )}
-      {service.jdbc && <code className="asset__conn">{service.jdbc}</code>}
-      <small>
-        {service.user
-          ? `用户名 ${service.user}，密码 ${service.password}`
-          : '这个引擎没有账号密码，只监听本机，别的机器连不上。'}
-      </small>
+
+      {!service.user && (
+        <small>这个引擎没有账号密码，只监听本机，别的机器连不上。</small>
+      )}
     </div>
   )
 }
@@ -608,7 +764,7 @@ function EngineList({
         </p>
       </div>
 
-      <div className="asset-list">
+      <Shelf head={['引擎', '', '体积', '安装于', '使用中的数据库', '']}>
         {installs.map((install) => (
           <article className="asset" key={install.id}>
             <div className="asset__head">
@@ -690,7 +846,7 @@ function EngineList({
             </footer>
           </article>
         ))}
-      </div>
+      </Shelf>
     </section>
   )
 }
@@ -730,7 +886,6 @@ function InstallEngine({
     })
   }, [list])
 
-  const chosen = custom.trim() !== '' ? custom.trim() : version
   const engineInfo = engines.find((entry) => entry.id === selected)
 
   return (
@@ -769,33 +924,62 @@ function InstallEngine({
           已有的数据库照常启动。也可以在下面直接填版本号试试。
         </p>
       ) : (
-        <div className="field">
-          <span>选择版本</span>
-          <div className="choice-grid">
-            {list.map((entry) => (
-              <button
-                key={entry.version}
-                type="button"
-                className={`choice${entry.version === version && custom === '' ? ' choice--active' : ''}`}
-                aria-pressed={entry.version === version && custom === ''}
-                disabled={installing}
-                onClick={() => {
-                  setVersion(entry.version)
-                  setCustom('')
-                }}
-              >
-                <span className="choice__value">{entry.series}</span>
-                <span className="choice__label">
-                  {entry.version}
-                  {entry.lts && <span className="badge">长期支持</span>}
-                  {entry.installed && <span className="badge badge--ok">已安装</span>}
-                </span>
-                <span className="choice__note">{entry.note}</span>
-              </button>
-            ))}
+        <>
+          {/* One line per build, with the button on the line. Picking a point
+              release and then hunting for an 安装 button under the form was a
+              second step for a decision the line had already made. */}
+          <div className="chart-head">
+            <h2 className="panel__title">可安装</h2>
+            <p className="chart-head__meta">
+              {list.length} 个版本{engineInfo ? ` · 来自 ${engineInfo.vendor}` : ''}
+            </p>
+          </div>
+          <div className="pick-grid">
+            {list.map((entry) => {
+              const running = installing && job?.version === entry.version
+              return (
+                <div
+                  key={entry.version}
+                  className={`pick${entry.version === version ? ' pick--on' : ''}`}
+                >
+                  <span className="pick__tile">{entry.series}</span>
+                  <div className="pick__body">
+                    <span className="pick__name">
+                      <strong>{entry.version}</strong>
+                      {entry.lts && <span className="badge">长期支持</span>}
+                      {entry.installed && <span className="badge badge--ok">已安装</span>}
+                    </span>
+                    <span className="pick__meta">{entry.note}</span>
+                  </div>
+                  {running ? (
+                    <button
+                      className="btn btn--small btn--danger"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void databases.cancelInstall()}
+                    >
+                      取消
+                    </button>
+                  ) : (
+                    <button
+                      className="btn btn--small"
+                      type="button"
+                      disabled={busy || installing}
+                      onClick={() => {
+                        setVersion(entry.version)
+                        setCustom('')
+                        void databases.install(engine, entry.version)
+                      }}
+                    >
+                      {entry.installed ? '重装' : '安装'}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
           </div>
           <small>拿不准就选标了「长期支持」的那个。</small>
-        </div>
+        </>
       )}
 
       <div className="field">
@@ -822,10 +1006,10 @@ function InstallEngine({
         ) : (
           <button
             className="btn btn--primary"
-            disabled={busy || !chosen}
-            onClick={() => chosen && void databases.install(engine, chosen)}
+            disabled={busy || custom.trim() === ''}
+            onClick={() => void databases.install(engine, custom.trim())}
           >
-            安装 {engineInfo?.name ?? ''} {chosen ?? ''}
+            安装填写的版本
           </button>
         )}
         <span className="muted">装完还要建一个数据库才能用。</span>
