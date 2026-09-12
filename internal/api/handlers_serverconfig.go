@@ -40,6 +40,15 @@ type serverConfigSettingUI struct {
 	// carry yet so an absent setting reads as its real behaviour.
 	Default string `json:"default"`
 	Group   string `json:"group"`
+	// Live is the in-game command that applies this without a restart, for the
+	// few that have one. Same field and same reasoning as knownPropertyUI's —
+	// the restart is true of every key in these files, so what a row can
+	// usefully carry is the exception.
+	Live string `json:"live,omitempty"`
+	// Risk spells out what opening this up actually costs. Only the settings
+	// that can expose a server carry one; a warning on every row is a warning
+	// on none.
+	Risk string `json:"risk,omitempty"`
 }
 
 type serverConfigGroup struct {
@@ -51,9 +60,13 @@ type serverConfigGroup struct {
 // serverConfigFile is one editable file: what it is called, where it lives, and
 // which of its keys the panel offers.
 type serverConfigFile struct {
-	ID     string
-	Label  string
-	Lead   string
+	ID    string
+	Label string
+	Lead  string
+	// Blurb is the one line under the filename on the file picker's card —
+	// what this file is for, short enough to sit on a card without wrapping
+	// past two lines. Lead is the full sentence, shown once the file is open.
+	Blurb  string
 	Path   string
 	Groups []serverConfigGroup
 	Known  []serverConfigSettingUI
@@ -63,6 +76,7 @@ type serverConfigFileResponse struct {
 	ID     string                  `json:"id"`
 	Label  string                  `json:"label"`
 	Lead   string                  `json:"lead"`
+	Blurb  string                  `json:"blurb"`
 	Path   string                  `json:"path"`
 	Exists bool                    `json:"exists"`
 	Groups []serverConfigGroup     `json:"groups"`
@@ -99,6 +113,7 @@ var bukkitConfig = serverConfigFile{
 	ID:    fileBukkit,
 	Label: "bukkit.yml",
 	Lead:  "Bukkit 的老配置，所有插件服都有。生物生成上限和自动保存间隔在这里。",
+	Blurb: "生物上限与自动保存",
 	Path:  pathBukkit,
 	Groups: []serverConfigGroup{
 		{ID: "basic", Label: "基本"},
@@ -131,6 +146,7 @@ var spigotConfig = serverConfigFile{
 	ID:    fileSpigot,
 	Label: "spigot.yml",
 	Lead:  "Spigot 及其衍生核心的配置。挂代理端要开的 bungeecord 就在这里。",
+	Blurb: "代理转发与实体优化",
 	Path:  pathSpigot,
 	Groups: []serverConfigGroup{
 		{ID: "basic", Label: "基本"},
@@ -138,7 +154,9 @@ var spigotConfig = serverConfigFile{
 		{ID: "world", Label: "世界优化", Hint: "写在 world-settings.default 下，对所有世界生效。"},
 	},
 	Known: []serverConfigSettingUI{
-		{Key: "settings.bungeecord", Label: "BungeeCord / 传统转发", Type: "boolean", Default: "false", Group: "basic", Hint: "代理端用 legacy 或 bungeeguard 转发时打开；用 modern（Velocity）转发的话保持关闭。「代理连线」页会自动配它"},
+		{Key: "settings.bungeecord", Label: "BungeeCord / 传统转发", Type: "boolean", Default: "false", Group: "basic",
+			Hint: "代理端用 legacy 或 bungeeguard 转发时打开；用 modern（Velocity）转发的话保持关闭。「代理连线」页会自动配它",
+			Risk: "打开后这台服会无条件相信连接里带的玩家身份。它的端口必须只对代理端开放，否则任何人都能绕过代理直连并冒用任意 UUID"},
 		{Key: "settings.restart-on-crash", Label: "崩溃后自动重启", Type: "boolean", Default: "false", Group: "basic", Hint: "面板自己有守护，这里一般保持关闭，两边都开会打架"},
 		{Key: "settings.restart-script", Label: "重启脚本", Type: "text", Default: "./start.sh", Group: "basic"},
 		{Key: "settings.timeout-time", Label: "看门狗超时 (秒)", Type: "number", Default: "60", Group: "basic", Hint: "主线程卡这么久就判定服务器死了"},
@@ -172,6 +190,7 @@ var paperGlobalConfig = serverConfigFile{
 	ID:    filePaperGlobal,
 	Label: "paper-global.yml",
 	Lead:  "Paper 1.19 之后的全局配置。代理端转发（Velocity modern）在这里配。",
+	Blurb: "Velocity 转发与踢出提示",
 	Path:  pathPaperGlobal,
 	Groups: []serverConfigGroup{
 		{ID: "proxy", Label: "代理转发", Hint: "挂在代理端后面时，子服从哪里拿玩家的真实 IP 和 UUID。「代理连线」页会自动配这几项。"},
@@ -179,7 +198,8 @@ var paperGlobalConfig = serverConfigFile{
 		{ID: "misc", Label: "杂项"},
 	},
 	Known: []serverConfigSettingUI{
-		{Key: "proxies.velocity.enabled", Label: "启用 Velocity 转发", Type: "boolean", Default: "false", Group: "proxy"},
+		{Key: "proxies.velocity.enabled", Label: "启用 Velocity 转发", Type: "boolean", Default: "false", Group: "proxy",
+			Risk: "开了但密钥填错，玩家会全部连不进来；开了而端口对外可达，别人就能绕过代理直连。密钥必须和代理端 forwarding.secret 一致"},
 		{Key: "proxies.velocity.secret", Label: "Velocity 转发密钥", Type: "text", Default: "", Group: "proxy", Hint: "必须和代理端 forwarding.secret 里的一模一样"},
 		{Key: "proxies.velocity.online-mode", Label: "Velocity 侧正版验证", Type: "boolean", Default: "false", Group: "proxy", Hint: "代理端开了正版验证，这里也要开"},
 		{Key: "proxies.bungee-cord.online-mode", Label: "BungeeCord 侧正版验证", Type: "boolean", Default: "true", Group: "proxy", Hint: "用传统转发时才有意义"},
@@ -206,6 +226,7 @@ var paperWorldConfig = serverConfigFile{
 	ID:    filePaperWorld,
 	Label: "paper-world-defaults.yml",
 	Lead:  "Paper 对所有世界生效的默认值。大部分「优化服务端」的教程改的是这里。",
+	Blurb: "性能调优与反矿透",
 	Path:  pathPaperWorld,
 	Groups: []serverConfigGroup{
 		{ID: "spawning", Label: "生物生成与清理"},
@@ -237,6 +258,7 @@ var paperLegacyConfig = serverConfigFile{
 	ID:    filePaperLegacy,
 	Label: "paper.yml",
 	Lead:  "Paper 1.19 之前的配置。新版本已经拆成 config/ 下的几个文件了。",
+	Blurb: "旧版 Paper 的全部配置",
 	Path:  pathPaperLegacy,
 	Groups: []serverConfigGroup{
 		{ID: "proxy", Label: "代理转发"},
@@ -272,6 +294,20 @@ func serverConfigFiles(browser *serverfiles.Browser) []serverConfigFile {
 		return append(files, paperLegacyConfig)
 	}
 	return append(files, paperGlobalConfig, paperWorldConfig)
+}
+
+// allServerConfigFiles is every file the panel knows how to edit, including
+// the two Paper layouts that are never offered together. Only the tables that
+// must hold for all of them read this — serverConfigFiles is what a request
+// gets.
+func allServerConfigFiles() []serverConfigFile {
+	return []serverConfigFile{
+		bukkitConfig,
+		spigotConfig,
+		paperGlobalConfig,
+		paperWorldConfig,
+		paperLegacyConfig,
+	}
 }
 
 func serverConfigFor(browser *serverfiles.Browser, id string) (serverConfigFile, bool) {
@@ -323,6 +359,7 @@ func (s *Server) serverConfigFileResponse(inst *instance.Instance, spec serverCo
 		ID:      spec.ID,
 		Label:   spec.Label,
 		Lead:    spec.Lead,
+		Blurb:   spec.Blurb,
 		Path:    spec.Path,
 		Exists:  exists,
 		Groups:  spec.Groups,
