@@ -9624,38 +9624,99 @@ input.input-slim:disabled {
    air — and stack into a card below the drawer breakpoint, where five columns
    would each be forty pixels wide. */
 
-.rows {
+/* ------------------------------------------------------------------ 表格
+
+   Every list of rows in the panel. There were four of these — ptable,
+   plugin-table, rows, asset — and the first three's container rules were
+   byte-identical apart from the radius. Four header heights, four row
+   heights, three paddings, and nothing anywhere saying which to pick, so a
+   new page used whichever one it was copied from.
+
+   The columns are the only part that is genuinely per-table, so that is the
+   only thing each caller still declares. Everything else — the border, the
+   radius, the header, the row height, the hover, the separators — is here.
+
+   `.data-table` is deliberately NOT one of these. It is a real <table> with
+   <th>/<td>, and folding it into a div grid would take row-and-column
+   navigation away from screen readers in exchange for tidiness. */
+.dtable {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   overflow: hidden;
   background: var(--surface-1);
 }
 
-.rows__head,
-.rows__row {
+.dtable__head,
+.dtable__row {
   display: grid;
-  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 1.2fr) auto;
-  align-items: center;
   gap: 12px;
+  align-items: center;
   padding: 0 14px;
-  min-height: 48px;
-  border-bottom: 1px solid var(--border);
+  /* Instance names, six-deep paths, plugin descriptions: every column here
+     can hold text that would otherwise blow the grid open. */
+  min-width: 0;
 }
 
-.rows__head {
-  min-height: 36px;
+.dtable__head {
+  min-height: 34px;
   background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
   color: var(--text-faint);
   font-size: 11px;
+}
+
+.dtable__row {
+  min-height: 48px;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--dur-1) var(--ease);
+}
+
+.dtable__row:last-child {
+  border-bottom: none;
+}
+
+.dtable__row:hover {
+  background: var(--surface-2);
+}
+
+/* Two other densities, for the tables that already had them. The design doc
+   asks for 40 as the default; that number belongs to its 4px grid and its
+   28/32 control heights, and importing one number out of a system we have not
+   adopted would make the tables disagree with everything around them. So the
+   default is what these tables already are, and this is here for when the
+   rest of it lands. */
+.dtable--compact .dtable__row {
+  min-height: 40px;
+}
+
+.dtable--roomy .dtable__row {
+  min-height: 58px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.dtable__empty {
+  padding: 22px 14px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+.rows__head,
+.rows__row {
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 1.2fr) auto;
+}
+
+/* This header is set in small caps and the others are not. Converging it is a
+   visible change to two pages rather than a structural one, so it waits for
+   the appearance pass along with the radii — see docs/design-system.md. */
+.rows__head {
+  min-height: 36px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-}
-
-.rows__row:last-child {
-  border-bottom: none;
 }
 
 /* A row is too wide to move without the whole table looking loose, so its
@@ -12249,15 +12310,6 @@ button.rows__name:hover strong {
    A dense table whose job is to expose problems. Failures are pinned to the
    top by the API and painted red here, with the reason under the name — the
    reason is the content of the row, not a detail behind a tooltip. */
-.plugin-table {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--surface-1);
-}
-
 /* 插件 · 版本 · 状态 · 操作, in that order. Name and version are one fact —
    which build of what is sitting in this directory — and the status column used
    to run down the middle of it, so the two halves of every row's identity were
@@ -12271,37 +12323,29 @@ button.rows__name:hover strong {
    of spilling out of the track and over the status column. */
 .plugin-table__head,
 .plugin-table__row {
-  display: grid;
   grid-template-columns:
     minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 1fr)
     minmax(min-content, 200px);
-  align-items: center;
-  gap: 12px;
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--border);
 }
 
 .plugin-table__head > :last-child {
   text-align: right;
 }
 
+/* Small caps here too — same note as .rows__head. */
 .plugin-table__head {
   padding-top: 6px;
   padding-bottom: 6px;
-  background: var(--surface-2);
-  color: var(--text-faint);
-  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-.plugin-table__row:last-child {
-  border-bottom: none;
-}
-
-.plugin-table__row:hover {
-  background: var(--surface-2);
+/* Rows here wrap: a plugin description runs to two lines and the row grows.
+   So they keep vertical padding instead of leaning on min-height. */
+.plugin-table__row {
+  padding-top: 8px;
+  padding-bottom: 8px;
 }
 
 /* Two jars declaring the same plugin name. The server has already picked one
@@ -12668,50 +12712,15 @@ button.rows__name:hover strong {
 
 /* ------------------------------------------------------------- the table */
 
-.ptable {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: var(--surface-1);
-}
-
 /* The header and the rows are separate grid containers, so every track has to
    be sized the same way in both or the labels drift off their columns. That
    rules out `auto` on the action column: empty in the header, 90-odd pixels in
    a row, and the whole header slides right by the difference. */
 .ptable__head,
 .ptable__row {
-  display: grid;
   grid-template-columns:
     28px minmax(180px, 1.6fr) 156px 156px
     minmax(160px, 1.4fr) 108px 116px;
-  gap: 12px;
-  align-items: center;
-  padding: 0 14px;
-}
-
-.ptable__head {
-  min-height: 34px;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
-  color: var(--text-faint);
-  font-size: 11px;
-}
-
-.ptable__row {
-  min-height: 50px;
-  border-bottom: 1px solid var(--border);
-  transition: background var(--dur-1) var(--ease);
-}
-
-.ptable__row:last-child {
-  border-bottom: none;
-}
-
-.ptable__row:hover {
-  background: var(--surface-2);
 }
 
 /* The ledger disagreeing with the disk, on the edge. A tinted row would read

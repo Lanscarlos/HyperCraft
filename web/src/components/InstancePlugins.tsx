@@ -13,6 +13,7 @@ import type {
 } from '../types'
 import type { PluginController } from '../usePlugins'
 import { Button } from './Button'
+import { DataTable, DataTableHead, DataTableRow } from './DataTable'
 import { InstancePluginDrawer } from './InstancePluginDrawer'
 import { Menu } from './Menu'
 import type { MenuItem } from './Menu'
@@ -375,16 +376,16 @@ export function InstancePlugins({
           </p>
         </div>
       ) : (
-        <div className="plugin-table" role="table" aria-label="已装插件">
+        <DataTable className="plugin-table" role="table" aria-label="已装插件">
           {/* 版本 sits next to 插件 because they are one fact — which build of
               what is in this directory — and the status column used to be
               wedged between the two halves of it. */}
-          <div className="plugin-table__head" role="row">
+          <DataTableHead className="plugin-table__head" role="row">
             <span role="columnheader">插件</span>
             <span role="columnheader">版本</span>
             <span role="columnheader">状态</span>
             <span role="columnheader">操作</span>
-          </div>
+          </DataTableHead>
           {shown.map((entry) => (
             <PluginRow
               key={entry.key}
@@ -510,7 +511,7 @@ export function InstancePlugins({
           {shown.length === 0 && (
             <p className="plugin-table__empty muted">这个筛选下没有插件。</p>
           )}
-        </div>
+        </DataTable>
       )}
 
       {listing && !listing.logAvailable && entries.length > 0 && (
@@ -759,7 +760,7 @@ function PluginRow({
   const clashes = entry.conflicts ?? []
 
   return (
-    <div
+    <DataTableRow
       className={`plugin-table__row${entry.failure ? ' plugin-table__row--broken' : ''}${
         clashes.length > 0 ? ' plugin-table__row--clash' : ''
       }`}
@@ -908,7 +909,7 @@ function PluginRow({
           ⋯
         </Menu>
       </div>
-    </div>
+    </DataTableRow>
   )
 }
 

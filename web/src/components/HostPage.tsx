@@ -7,6 +7,7 @@ import type { InstanceStatus, SystemInfo } from '../types'
 import { STATE_LABELS, byUrgency, isLive } from '../types'
 import type { SystemController } from '../useSystem'
 import type { TerminalController } from '../useTerminal'
+import { DataTable, DataTableHead, DataTableRow } from './DataTable'
 import { Meter } from './Meter'
 import { Page } from './Page'
 import { TerminalSettings } from './TerminalSettings'
@@ -374,14 +375,14 @@ function HostInstances({
       title="实例分布"
       lead="这台机器上的服务器各自占了多少额度。「已分配」是 -Xmx，也就是它有权拿走的上限；用自己的脚本启动、又没写在 user_jvm_args.txt 里的，面板看不到这个数，记作「未知」。"
     >
-      <div className="rows" role="table" aria-label="实例内存分布">
-        <div className="rows__head" role="row">
+      <DataTable className="rows" role="table" aria-label="实例内存分布">
+        <DataTableHead className="rows__head" role="row">
           <span role="columnheader">实例</span>
           <span role="columnheader">状态</span>
           <span role="columnheader">已分配 -Xmx</span>
           <span role="columnheader">占本机</span>
           <span role="columnheader"></span>
-        </div>
+        </DataTableHead>
         {ordered.map((item) => {
           // The effective ceiling, not the configured one: a server launched
           // by its own script never sees the panel's -Xmx, so summing that
@@ -389,7 +390,7 @@ function HostInstances({
           const xmx = Math.max(0, item.effectiveMaxMemoryMB) * 1024 * 1024
           const share = memory.total > 0 ? (xmx / memory.total) * 100 : 0
           return (
-            <div className="rows__row" role="row" key={item.id}>
+            <DataTableRow className="rows__row" role="row" key={item.id}>
               <button
                 className="rows__name"
                 role="cell"
@@ -424,11 +425,11 @@ function HostInstances({
                   改内存
                 </button>
               </span>
-            </div>
+            </DataTableRow>
           )
         })}
         {instances.length === 0 && <p className="rows__empty">这台机器上还没有实例。</p>}
-      </div>
+      </DataTable>
 
       <p className="chart-note">
         运行中合计已分配 {formatBytes(memory.committedLive)}，全部实例合计{' '}
@@ -490,9 +491,9 @@ function HostDisk({
         <p className="chart-note">
           按经验，占地方的顺序通常是：世界备份 &gt; 旧日志 &gt; 下载过的核心 jar &gt; 插件历史版本。
         </p>
-        <div className="rows" role="table" aria-label="清理入口">
+        <DataTable className="rows" role="table" aria-label="清理入口">
           {instances.map((item) => (
-            <div className="rows__row" role="row" key={item.id}>
+            <DataTableRow className="rows__row" role="row" key={item.id}>
               <button
                 className="rows__name"
                 role="cell"
@@ -509,9 +510,9 @@ function HostDisk({
                   打开文件管理器
                 </button>
               </span>
-            </div>
+            </DataTableRow>
           ))}
-          <div className="rows__row" role="row">
+          <DataTableRow className="rows__row" role="row">
             <div className="rows__name" role="cell">
               <strong>服务端核心库</strong>
               <small>下载过但没人再用的 jar</small>
@@ -524,8 +525,8 @@ function HostDisk({
                 去清理
               </button>
             </span>
-          </div>
-          <div className="rows__row" role="row">
+          </DataTableRow>
+          <DataTableRow className="rows__row" role="row">
             <div className="rows__name" role="cell">
               <strong>插件库</strong>
               <small>每个插件保留的历史版本</small>
@@ -538,8 +539,8 @@ function HostDisk({
                 去清理
               </button>
             </span>
-          </div>
-          <div className="rows__row" role="row">
+          </DataTableRow>
+          <DataTableRow className="rows__row" role="row">
             <div className="rows__name" role="cell">
               <strong>Java 环境</strong>
               <small>没有实例在用的运行时，一份大约 180 MB</small>
@@ -552,8 +553,8 @@ function HostDisk({
                 去清理
               </button>
             </span>
-          </div>
-        </div>
+          </DataTableRow>
+        </DataTable>
       </section>
     </Page>
   )

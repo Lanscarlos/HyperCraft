@@ -21,6 +21,7 @@ import { hasPluginUpdate, isLive, isReconStatus, statusLabel } from '../types'
 import type { PluginController } from '../usePlugins'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { DataTable, DataTableHead, DataTableRow } from './DataTable'
 import { Menu } from './Menu'
 import { Modal } from './Modal'
 import { Page } from './Page'
@@ -292,8 +293,8 @@ export function PluginLibraryPage({
             />
           )}
 
-          <div className="ptable" role="table" aria-label="插件库">
-            <div className="ptable__head" role="row">
+          <DataTable className="ptable" role="table" aria-label="插件库">
+            <DataTableHead className="ptable__head" role="row">
               <span className="ptable__cell ptable__cell--pick" />
               <span className="ptable__cell" role="columnheader">
                 插件
@@ -311,7 +312,7 @@ export function PluginLibraryPage({
                 状态
               </span>
               <span className="ptable__cell ptable__cell--act" />
-            </div>
+            </DataTableHead>
 
             {shown.map((row) => (
               <PluginRow
@@ -363,7 +364,7 @@ export function PluginLibraryPage({
                 </button>
               </p>
             )}
-          </div>
+          </DataTable>
 
           {(filter === 'all' || filter === 'foreign') && foreign.length > 0 && (
             <ForeignSection
@@ -630,7 +631,7 @@ function PluginRow({
   const bad = isReconStatus(row.status)
 
   return (
-    <div
+    <DataTableRow
       className={`ptable__row${bad ? ' ptable__row--bad' : ''}${picked ? ' ptable__row--picked' : ''}${
         open ? ' ptable__row--open' : ''
       }`}
@@ -742,7 +743,7 @@ function PluginRow({
           ⋯
         </Menu>
       </span>
-    </div>
+    </DataTableRow>
   )
 }
 

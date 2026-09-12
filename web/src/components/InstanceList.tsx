@@ -9,6 +9,7 @@ import { useLiveMetrics } from '../useLiveMetrics'
 import { useUptime } from '../useUptime'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { DataTable, DataTableHead, DataTableRow } from './DataTable'
 import { Page } from './Page'
 import { PowerControls } from './PowerControls'
 import { StatusDot } from './StatusDot'
@@ -115,14 +116,14 @@ export function InstanceList({
         </span>
       </div>
 
-      <div className="rows" role="table" aria-label="实例列表">
-        <div className="rows__head" role="row">
+      <DataTable className="rows" role="table" aria-label="实例列表">
+        <DataTableHead className="rows__head" role="row">
           <span role="columnheader">实例</span>
           <span role="columnheader">状态</span>
           <span role="columnheader">内存</span>
           <span role="columnheader">核心 / Java</span>
           <span role="columnheader">操作</span>
-        </div>
+        </DataTableHead>
         {shown.length === 0 && (
           <p className="rows__empty">
             {instances.length === 0 ? (
@@ -147,7 +148,7 @@ export function InstanceList({
             onChanged={onChanged}
           />
         ))}
-      </div>
+      </DataTable>
     </Page>
   )
 }
@@ -183,7 +184,7 @@ function Row({
   const uptime = useUptime(instance.startedAt, isLive(instance.state))
 
   return (
-    <div className="rows__row" role="row">
+    <DataTableRow className="rows__row" role="row">
       <button className="rows__name" onClick={onOpen} role="cell">
         <strong>{instance.name}</strong>
         <small className="rows__path">{instance.directory}</small>
@@ -212,6 +213,6 @@ function Row({
         />
       </span>
       {error && <div className="rows__error">{error}</div>}
-    </div>
+    </DataTableRow>
   )
 }
