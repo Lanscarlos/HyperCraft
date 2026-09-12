@@ -2531,6 +2531,7 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  max-width: var(--field-w, 100%);
 }
 
 .field > span {
@@ -2615,21 +2616,42 @@ a:hover {
    vocabulary; a field with no modifier takes the full measure, which is right
    for paths, argument lists and text areas. */
 .field--num {
-  max-width: 120px;
+  --field-w: 120px;
 }
 
 .field--sm {
-  max-width: 200px;
+  --field-w: 200px;
 }
 
 .field--md {
-  max-width: 380px;
+  --field-w: 380px;
 }
 
+/* Two fields that belong together on one line — a heap floor and its ceiling,
+   a stop command and its timeout. It used to be a 1fr 1fr grid, which made both
+   halves as wide as half the container no matter what went in them: the
+   megabyte box came out the width of a filesystem path. Now each field brings
+   its own width from the scale above and the row only decides they sit side by
+   side, wrapping to a line each when there is no room. */
 .field-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 16px;
+  align-items: start;
+}
+
+/* The basis has to come from the scale, not from the content. flex-basis: auto
+   measures the item, and neither thing it would measure is the field's width: a
+   control set to width: 100% contributes nothing to intrinsic size, so the field
+   collapses to its own label (服务端类型 came out 94px wide), while a field
+   carrying a sentence of <small> measures that sentence instead and pushes the
+   row to wrap when it had room to spare.
+   200px is the fallback for a field with no width class — the narrowest a
+   labelled text input stays usable at, and what makes such a pair split at one
+   per line instead of squeezing. */
+.field-row > * {
+  flex: 1 1 var(--field-w, 200px);
+  min-width: 0;
 }
 
 .field--inline {
@@ -11045,10 +11067,6 @@ button.rows__name:hover strong {
     padding: 12px 14px 16px;
     padding-right: max(14px, env(safe-area-inset-right));
     padding-bottom: max(16px, env(safe-area-inset-bottom));
-  }
-
-  .field-row {
-    grid-template-columns: 1fr;
   }
 
   .actions__danger {
