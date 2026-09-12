@@ -418,7 +418,7 @@ export function LaunchSettings({
 
         <div className="panel__body">
 
-        <label className="field">
+        <label className="field field--md">
           <span>实例名称</span>
           <input
             value={form.name}
@@ -442,7 +442,7 @@ export function LaunchSettings({
         />
 
         <div className="field-row">
-          <label className="field">
+          <label className="field field--md">
             <span>服务端类型</span>
             <Select
               ariaLabel="服务端类型"
@@ -455,7 +455,7 @@ export function LaunchSettings({
               onChange={(next) => update('loader', next)}
             />
           </label>
-          <label className="field">
+          <label className="field field--sm">
             <span>游戏版本</span>
             <input
               value={form.gameVersion}
@@ -528,7 +528,7 @@ export function LaunchSettings({
         {/* The Java choice is argv[0] in both modes. It is also exported into
             the environment, which is what a server that shells out to a java
             of its own picks up. */}
-        <label className="field">
+        <label className="field field--md">
           <span>Java 环境</span>
           <Select
             ariaLabel="Java 环境"
@@ -609,7 +609,7 @@ export function LaunchSettings({
           </>
         ) : (
           <>
-            <label className="field">
+            <label className="field field--md">
               <span>服务端 jar</span>
               <input
                 value={form.jar}
@@ -630,7 +630,7 @@ export function LaunchSettings({
             </label>
 
             <div className="field-row">
-              <label className="field">
+              <label className="field field--num">
                 <span>最小内存 (MB)</span>
                 <input
                   type="number"
@@ -640,7 +640,7 @@ export function LaunchSettings({
                   onChange={(e) => update('minMemoryMB', Number(e.target.value))}
                 />
               </label>
-              <label className="field">
+              <label className="field field--num">
                 <span>最大内存 (MB)</span>
                 <input
                   type="number"
@@ -732,7 +732,7 @@ export function LaunchSettings({
 
         <div className="panel__body">
 
-        <label className="field">
+        <label className="field field--md">
           <span>输出编码</span>
           <Select
             ariaLabel="输出编码"
@@ -820,7 +820,7 @@ export function LaunchSettings({
         </label>
 
         <div className="field-row">
-          <label className="field">
+          <label className="field field--md">
             <span>停服命令</span>
             <input
               value={form.stopCommand}
@@ -828,7 +828,7 @@ export function LaunchSettings({
               placeholder={proxy ? 'end' : 'stop'}
             />
           </label>
-          <label className="field">
+          <label className="field field--num">
             <span>停服超时 (秒)</span>
             <input
               type="number"
@@ -1063,7 +1063,7 @@ function ArgFileMemory({
   return (
     <>
       <div className="field-row">
-        <label className="field">
+        <label className="field field--num">
           <span>最小内存 (MB)</span>
           <input
             type="number"
@@ -1073,7 +1073,7 @@ function ArgFileMemory({
             onChange={(e) => onMin(Number(e.target.value))}
           />
         </label>
-        <label className="field">
+        <label className="field field--num">
           <span>最大内存 (MB)</span>
           <input
             type="number"

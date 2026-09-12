@@ -2608,6 +2608,24 @@ a:hover {
   cursor: not-allowed;
 }
 
+/* How wide a field is says how much is expected in it. A four-digit megabyte
+   count and a sixty-character filesystem path had the same instruction here —
+   width: 100% on the input, and whatever the grid handed the cell — so the two
+   came out the same size and the form read as noise. Four steps is the whole
+   vocabulary; a field with no modifier takes the full measure, which is right
+   for paths, argument lists and text areas. */
+.field--num {
+  max-width: 120px;
+}
+
+.field--sm {
+  max-width: 200px;
+}
+
+.field--md {
+  max-width: 380px;
+}
+
 .field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
