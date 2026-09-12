@@ -362,6 +362,350 @@
   color-scheme: dark;
 }
 
+/* ----------------------------------------------------------- palettes
+
+   Three more schemes, and nothing about them is a second mechanism: each is
+   the same table of values the two blocks above are, so every rule after this
+   still works in named roles and has no idea which scheme is on.
+
+   `data-palette` on <html> picks one, resolved before first paint alongside
+   the mode (see palette.ts and the inline script in index.html). The default
+   terracotta is the absence of the attribute rather than a value of its own —
+   the same trick the mode uses for 跟随系统 — so the base blocks stay the
+   scheme the panel ships with and these only ever override.
+
+   The selectors deliberately do not start at :root. Any element carrying both
+   attributes gets the scheme, which is what lets the picker in 外观 paint a
+   real swatch of each one rather than a hardcoded approximation of it; a
+   swatch has to read the M3 roles directly (--surface, --primary) because the
+   working names above are substituted where they are declared, on :root, and
+   an element redefining --surface cannot reach the --bg that was already
+   resolved from it.
+
+   The M3 roles come from the Material Theme Builder export of each seed. What
+   is under them is the same set of relationships the terracotta blocks
+   encode — a shadow is the scheme's own ink at 11%, a button face is the
+   primary lifted 4.5 points of lightness, the ANSI greys are the neutral
+   variant — re-derived at the new hue rather than eyeballed, which is why
+   these read as one panel in four colours instead of four panels.
+
+   Three things deliberately do not move:
+
+     - --ok / --caution / --state-*. A running server is green and a starting
+       one is amber in every scheme, because the thing those colours have to
+       survive is being read at a glance in a hurry, not being coordinated.
+     - the error family. It is the same red in all four M3 exports.
+     - the shell canvas, except under 碧蓝. The console and the host shell are
+       told apart by colour before they are read, and 碧蓝 is the one scheme
+       whose own dark surfaces land on the slate the shell had been using —
+       #0c0e13 against #0b1219 is not a difference anyone should have to spot
+       before typing rm -rf. So under that scheme the shell moves to a deep
+       green that nothing else in the panel is. The other two schemes keep the
+       slate, which is already nowhere near their surfaces. */
+
+/* 松绿 — seed #63A002 */
+[data-theme='light'][data-palette='green'] {
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%2344483d' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+  --primary: #4c662b;
+  --primary-container: #cdeda3;
+  --on-primary-container: #354e16;
+  --surface: #f9faef;
+  --on-surface: #1a1c16;
+  --on-surface-variant: #44483d;
+  --outline: #75796c;
+  --outline-variant: #c5c8ba;
+  --surface-lowest: #ffffff;
+  --surface-low: #f3f4e9;
+  --surface-container: #eeefe3;
+  --surface-high: #e8e9de;
+  --surface-highest: #e2e3d8;
+  --inverse-surface: #2f312a;
+  --inverse-on-surface: #f1f2e6;
+  --inverse-primary: #b1d18a;
+
+  --wash-1: rgba(76, 102, 43, 0.05);
+  --wash-2: rgba(4, 106, 102, 0.045);
+
+  --border-strong: #b6c3a6;
+  --border-accent: #c3df9f;
+
+  --accent-soft: rgba(76, 102, 43, 0.1);
+  --accent-glow: rgba(76, 102, 43, 0.22);
+  --accent-face: linear-gradient(180deg, #587434, #486128);
+  --accent-face-hover: linear-gradient(180deg, #64833c, #526d2f);
+  --accent-face-off: #dfead0;
+  --accent-ink-off: #9dab8c;
+
+  --sunken: rgba(72, 87, 52, 0.035);
+  --inset: inset 0 1px 2px rgba(72, 87, 52, 0.09);
+  --scrim: rgba(37, 43, 29, 0.44);
+  --brand-face: linear-gradient(150deg, #607f38, #3d5421);
+
+  --term-selection: #596b42;
+  --term-black: #7f8a71;
+  --term-bright-black: #9ea891;
+  --term-edge: #424a38;
+
+  --shadow-sm: 0 1px 2px rgba(72, 87, 52, 0.11);
+  --shadow: 0 1px 3px rgba(72, 87, 52, 0.1), 0 8px 22px -12px rgba(72, 87, 52, 0.3);
+  --shadow-lg: 0 4px 10px rgba(72, 87, 52, 0.12), 0 26px 52px -20px rgba(72, 87, 52, 0.36);
+
+  --ring: 0 0 0 3px rgba(76, 102, 43, 0.2);
+}
+
+[data-theme='dark'][data-palette='green'] {
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%2344483d' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+  --primary: #b1d18a;
+  --on-primary: #1f3701;
+  --primary-container: #354e16;
+  --on-primary-container: #cdeda3;
+  --surface: #12140e;
+  --on-surface: #e2e3d8;
+  --on-surface-variant: #c5c8ba;
+  --outline: #8f9285;
+  --outline-variant: #44483d;
+  --surface-lowest: #0c0f09;
+  --surface-low: #1a1c16;
+  --surface-container: #1e201a;
+  --surface-high: #282b24;
+  --surface-highest: #33362e;
+  --inverse-surface: #e2e3d8;
+  --inverse-on-surface: #2f312a;
+  --inverse-primary: #4c662b;
+
+  --wash-1: rgba(177, 209, 138, 0.07);
+  --wash-2: rgba(133, 212, 207, 0.05);
+
+  --border-strong: #58624b;
+  --border-accent: #647d45;
+
+  --accent-soft: rgba(177, 209, 138, 0.12);
+  --accent-glow: rgba(177, 209, 138, 0.26);
+  --accent-face: linear-gradient(180deg, #b1d18a, #9ab678);
+  --accent-face-hover: linear-gradient(180deg, #bbd798, #a6c681);
+  --accent-face-off: #3c4a2c;
+  --accent-ink-off: #8a977a;
+
+  --scrim: rgba(8, 10, 5, 0.7);
+  --brand-face: linear-gradient(150deg, #b1d18a, #768d59);
+  --selection: rgba(177, 209, 138, 0.28);
+  --on-selection: #f5ffe8;
+
+  --term-selection: #4c5d37;
+  --term-black: #727c65;
+  --term-bright-black: #8f9285;
+
+  --ring: 0 0 0 3px rgba(177, 209, 138, 0.24);
+}
+
+/* 杏黄 — seed #FFDE3F */
+[data-theme='light'][data-palette='yellow'] {
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%234b4739' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+  --primary: #6d5e0f;
+  --primary-container: #f8e287;
+  --on-primary-container: #534600;
+  --surface: #fff9ee;
+  --on-surface: #1e1b13;
+  --on-surface-variant: #4b4739;
+  --outline: #7c7767;
+  --outline-variant: #cdc6b4;
+  --surface-lowest: #ffffff;
+  --surface-low: #faf3e5;
+  --surface-container: #f4eddf;
+  --surface-high: #eee8da;
+  --surface-highest: #e8e2d4;
+  --inverse-surface: #333027;
+  --inverse-on-surface: #f7f0e2;
+  --inverse-primary: #dbc66e;
+
+  --wash-1: rgba(109, 94, 15, 0.05);
+  --wash-2: rgba(59, 104, 75, 0.045);
+
+  --border-strong: #c3bea6;
+  --border-accent: #dfd59f;
+
+  --accent-soft: rgba(109, 94, 15, 0.1);
+  --accent-glow: rgba(109, 94, 15, 0.22);
+  --accent-face: linear-gradient(180deg, #7e6d15, #67590d);
+  --accent-face-hover: linear-gradient(180deg, #907d19, #766611);
+  --accent-face-off: #eae6d0;
+  --accent-ink-off: #aba68c;
+
+  --sunken: rgba(87, 81, 52, 0.035);
+  --inset: inset 0 1px 2px rgba(87, 81, 52, 0.09);
+  --scrim: rgba(43, 41, 29, 0.44);
+  --brand-face: linear-gradient(150deg, #8c7916, #564a0a);
+
+  --term-selection: #6b6442;
+  --term-black: #8a8671;
+  --term-bright-black: #a8a491;
+  --term-edge: #4a4738;
+
+  --shadow-sm: 0 1px 2px rgba(87, 81, 52, 0.11);
+  --shadow: 0 1px 3px rgba(87, 81, 52, 0.1), 0 8px 22px -12px rgba(87, 81, 52, 0.3);
+  --shadow-lg: 0 4px 10px rgba(87, 81, 52, 0.12), 0 26px 52px -20px rgba(87, 81, 52, 0.36);
+
+  --ring: 0 0 0 3px rgba(109, 94, 15, 0.2);
+}
+
+[data-theme='dark'][data-palette='yellow'] {
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%234b4739' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+  --primary: #dbc66e;
+  --on-primary: #3a3000;
+  --primary-container: #534600;
+  --on-primary-container: #f8e287;
+  --surface: #15130b;
+  --on-surface: #e8e2d4;
+  --on-surface-variant: #cdc6b4;
+  --outline: #969080;
+  --outline-variant: #4b4739;
+  --surface-lowest: #100e07;
+  --surface-low: #1e1b13;
+  --surface-container: #222017;
+  --surface-high: #2d2a21;
+  --surface-highest: #38352b;
+  --inverse-surface: #e8e2d4;
+  --inverse-on-surface: #333027;
+  --inverse-primary: #6d5e0f;
+
+  --wash-1: rgba(219, 198, 110, 0.07);
+  --wash-2: rgba(161, 210, 175, 0.05);
+
+  --border-strong: #625e4b;
+  --border-accent: #7d7245;
+
+  --accent-soft: rgba(219, 198, 110, 0.12);
+  --accent-glow: rgba(219, 198, 110, 0.26);
+  --accent-face: linear-gradient(180deg, #dbc66e, #bcaa5f);
+  --accent-face-hover: linear-gradient(180deg, #dfcc7e, #ceba66);
+  --accent-face-off: #4a442c;
+  --accent-ink-off: #97917a;
+
+  --scrim: rgba(10, 9, 5, 0.7);
+  --brand-face: linear-gradient(150deg, #dbc66e, #8b7f49);
+  --selection: rgba(219, 198, 110, 0.28);
+  --on-selection: #fffbe8;
+
+  --term-selection: #5d5637;
+  --term-black: #7c7865;
+  --term-bright-black: #969080;
+
+  --ring: 0 0 0 3px rgba(219, 198, 110, 0.24);
+}
+
+/* 碧蓝 — seed #769CDF */
+[data-theme='light'][data-palette='blue'] {
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%2344474e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+  --primary: #415f91;
+  --primary-container: #d6e3ff;
+  --on-primary-container: #284777;
+  --surface: #f9f9ff;
+  --on-surface: #191c20;
+  --on-surface-variant: #44474e;
+  --outline: #74777f;
+  --outline-variant: #c4c6d0;
+  --surface-lowest: #ffffff;
+  --surface-low: #f3f3fa;
+  --surface-container: #ededf4;
+  --surface-high: #e7e8ee;
+  --surface-highest: #e2e2e9;
+  --inverse-surface: #2e3036;
+  --inverse-on-surface: #f0f0f7;
+  --inverse-primary: #aac7ff;
+
+  --wash-1: rgba(65, 95, 145, 0.05);
+  --wash-2: rgba(110, 87, 114, 0.045);
+
+  --border-strong: #a6b1c3;
+  --border-accent: #9fb7df;
+
+  --accent-soft: rgba(65, 95, 145, 0.1);
+  --accent-glow: rgba(65, 95, 145, 0.22);
+  --accent-face: linear-gradient(180deg, #4a6a9e, #3e5b8c);
+  --accent-face-hover: linear-gradient(180deg, #5375ad, #456498);
+  --accent-face-off: #d0daea;
+  --accent-ink-off: #8c98ab;
+
+  --sunken: rgba(52, 65, 87, 0.035);
+  --inset: inset 0 1px 2px rgba(52, 65, 87, 0.09);
+  --scrim: rgba(29, 34, 43, 0.44);
+  --brand-face: linear-gradient(150deg, #4f71a9, #365280);
+
+  --term-selection: #42516b;
+  --term-black: #717a8a;
+  --term-bright-black: #919aa8;
+  --term-edge: #383f4a;
+
+  --shadow-sm: 0 1px 2px rgba(52, 65, 87, 0.11);
+  --shadow: 0 1px 3px rgba(52, 65, 87, 0.1), 0 8px 22px -12px rgba(52, 65, 87, 0.3);
+  --shadow-lg: 0 4px 10px rgba(52, 65, 87, 0.12), 0 26px 52px -20px rgba(52, 65, 87, 0.36);
+
+  --ring: 0 0 0 3px rgba(65, 95, 145, 0.2);
+
+  /* 碧蓝's own surfaces are the cool slate the shell normally owns, so the
+     shell takes a canvas nothing else here is: deep green, different from the
+     console on both axes rather than a shade darker than it. */
+  --shell-bg: #0d1a14;
+  --shell-fg: #c6dbcd;
+  --shell-cursor: #57c896;
+  --shell-selection: #1f4536;
+  --shell-edge: #21382c;
+  --shell-accent: #57c896;
+}
+
+[data-theme='dark'][data-palette='blue'] {
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%2344474e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+  --primary: #aac7ff;
+  --on-primary: #0a305f;
+  --primary-container: #284777;
+  --on-primary-container: #d6e3ff;
+  --surface: #111318;
+  --on-surface: #e2e2e9;
+  --on-surface-variant: #c4c6d0;
+  --outline: #8e9099;
+  --outline-variant: #44474e;
+  --surface-lowest: #0c0e13;
+  --surface-low: #191c20;
+  --surface-container: #1d2024;
+  --surface-high: #282a2f;
+  --surface-highest: #33353a;
+  --inverse-surface: #e2e2e9;
+  --inverse-on-surface: #2e3036;
+  --inverse-primary: #415f91;
+
+  --wash-1: rgba(170, 199, 255, 0.07);
+  --wash-2: rgba(218, 189, 221, 0.05);
+
+  --border-strong: #4b5362;
+  --border-accent: #45587d;
+
+  --accent-soft: rgba(170, 199, 255, 0.12);
+  --accent-glow: rgba(170, 199, 255, 0.26);
+  --accent-face: linear-gradient(180deg, #aac7ff, #91afea);
+  --accent-face-hover: linear-gradient(180deg, #bed4ff, #9cbcf8);
+  --accent-face-off: #2c364a;
+  --accent-ink-off: #7a8497;
+
+  --scrim: rgba(5, 7, 10, 0.7);
+  --brand-face: linear-gradient(150deg, #aac7ff, #668ace);
+  --selection: rgba(170, 199, 255, 0.28);
+  --on-selection: #e8f0ff;
+
+  --term-selection: #37445d;
+  --term-black: #656d7c;
+  --term-bright-black: #8e9099;
+
+  --ring: 0 0 0 3px rgba(170, 199, 255, 0.24);
+
+  /* Same reason as light: #0c0e13 and #0b1219 are not a difference. */
+  --shell-bg: #091410;
+  --shell-fg: #bcd2c4;
+  --shell-cursor: #62d3a1;
+  --shell-selection: #1a3b2e;
+  --shell-edge: #1b3026;
+  --shell-accent: #62d3a1;
+}
+
 /* --------------------------------------------------------- pixel font
 
    `data-pixel-font` on <html> is resolved before the first paint by the inline
@@ -4370,6 +4714,46 @@ details[open]::details-content {
   --series-memory: #199e70;
   --series-net-down: #c95fae;
   --series-net-up: #cf7a24;
+}
+
+/* The grid and the reference line are the scheme's own neutrals, so they follow
+   the 配色 the way every other border does — a terracotta grid under 碧蓝 is
+   the one thing on the page that would still be pink. The series colours above
+   do not follow it and must not: they are picked to stay apart from *each
+   other* under colour vision deficiency, and that is a validation of the four
+   against a surface, not a decoration of the brand.
+
+   Here rather than up in the palettes section because the two blocks these
+   override are :root blocks in this section, which match at the same weight —
+   so order is what decides it. */
+[data-theme='light'][data-palette='green'] {
+  --chart-grid: #dfead0;
+  --chart-reference: #b6c3a6;
+}
+
+[data-theme='dark'][data-palette='green'] {
+  --chart-grid: #373d30;
+  --chart-reference: #626b57;
+}
+
+[data-theme='light'][data-palette='yellow'] {
+  --chart-grid: #eae6d0;
+  --chart-reference: #c3bea6;
+}
+
+[data-theme='dark'][data-palette='yellow'] {
+  --chart-grid: #3d3a30;
+  --chart-reference: #6b6757;
+}
+
+[data-theme='light'][data-palette='blue'] {
+  --chart-grid: #d0daea;
+  --chart-reference: #a6b1c3;
+}
+
+[data-theme='dark'][data-palette='blue'] {
+  --chart-grid: #30343d;
+  --chart-reference: #575e6b;
 }
 
 .chart {
@@ -9172,6 +9556,75 @@ button.rows__name:hover strong {
      外观 page's paragraph ran off the right edge of its card. */
   flex: 1 0 100%;
   padding-left: 24px;
+}
+
+/* The 配色 picker on the 外观 page.
+
+   Each swatch is the scheme itself rather than a picture of one: the tile
+   carries data-theme and data-palette, so the blocks in the palettes section
+   at the top of this sheet paint it, and a scheme can never be listed in a
+   colour it no longer is. That is also why it reads the M3 roles directly
+   instead of the working names — --surface and --primary are what those blocks
+   declare, while --bg and --accent were resolved from them up on :root and
+   cannot follow an element that redefines their source.
+
+   auto-fill rather than four across: this page is prose-width, so the row is
+   four on a desktop and two on a phone without a breakpoint deciding it. */
+.palettes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+.palettes__card {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.palettes__card:hover {
+  background: var(--surface-2);
+}
+
+.palettes__card--on {
+  background: var(--accent-soft);
+  border-color: var(--border-accent);
+}
+
+/* The page, a container and the accent, in roughly the proportions they appear
+   in — most of a panel is surface, and a swatch that is a third accent would
+   advertise a scheme nobody is going to get. */
+.palettes__swatch {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    135deg,
+    var(--surface) 0 54%,
+    var(--primary-container) 54% 76%,
+    var(--primary) 76% 100%
+  );
+}
+
+.palettes__body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 13px;
+}
+
+.palettes__body small {
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 /* ================================================================= plugins

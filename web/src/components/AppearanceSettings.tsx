@@ -1,10 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
+import {
+  PALETTES,
+  applyPref as applyPalette,
+  current as currentPalette,
+  type Palette,
+} from '../palette'
 import { applyPref, current, type PixelFontPref } from '../pixelfont'
+import { current as currentTheme, onThemeChange } from '../theme'
 import { Page } from './Page'
 
 /**
- * 外观 — one switch, and the place the next one goes.
+ * 外观 — the switches that decide what the panel looks like.
  *
  * It is a settings page rather than a glyph next to the mode toggle in the
  * sidebar footer, and the reason is who needs it: the person reaching for this
@@ -12,6 +19,11 @@ import { Page } from './Page'
  * recognise an unlabelled 18px icon would be a joke at their expense. 面板设置
  * is where this panel keeps the switches you flip once and forget, which is
  * exactly what this is.
+ *
+ * 配色 is here for the same test and one more. It is picked once; it needs four
+ * labels a cycling glyph has no room for; and a colour is the one setting that
+ * can show itself, which the swatches do — each one is painted by the scheme's
+ * own tokens rather than by a copy of them.
  *
  * The mode toggle stays in the footer. It is not a flip-once setting — people
  * move between light and dark through a day — and moving it here would put a
@@ -22,10 +34,22 @@ export function AppearanceSettings() {
   // when storage is unreadable, and what the switch has to agree with is the
   // page in front of the reader.
   const [pref, setPref] = useState<PixelFontPref>(current)
+  const [palette, setPalette] = useState<Palette>(currentPalette)
+  // The swatches are painted by the scheme blocks, which are written per mode,
+  // so each tile has to be told which mode to show — and told again when the
+  // sidebar toggle, or the system under 跟随系统, changes it out from under it.
+  const [mode, setMode] = useState(currentTheme)
+
+  useEffect(() => onThemeChange(setMode), [])
 
   const set = (next: PixelFontPref) => {
     setPref(next)
     applyPref(next)
+  }
+
+  const pick = (next: Palette) => {
+    setPalette(next)
+    applyPalette(next)
   }
 
   return (
@@ -33,6 +57,49 @@ export function AppearanceSettings() {
       title="外观"
       lead="面板长什么样。改了立刻生效，只存在这台设备的浏览器里，不跟着账号走，也不影响别人看到的面板。"
     >
+      <section className="panel">
+        <h2 className="panel__title">配色</h2>
+        {/* JSX turns every newline into a space, so the breaks fall after 。
+            and nowhere else — one after a ，shows up as a gap in the sentence. */}
+        <p className="panel__lead">
+          四套配色，每套都有浅色和深色两份。
+          换配色不动明暗，侧栏那个开关照旧管深浅，跟随系统也照旧。
+        </p>
+        <div className="palettes">
+          {PALETTES.map((item) => (
+            <label
+              key={item.id}
+              className={`palettes__card${item.id === palette ? ' palettes__card--on' : ''}`}
+            >
+              <input
+                type="radio"
+                name="palette"
+                checked={item.id === palette}
+                onChange={() => pick(item.id)}
+              />
+              {/* Carries both attributes so the scheme's own token block paints
+                  it; decorative, because the name beside it says the same thing
+                  to anyone who cannot see the colours. */}
+              <span
+                className="palettes__swatch"
+                data-theme={mode}
+                data-palette={item.id}
+                aria-hidden="true"
+              />
+              <span className="palettes__body">
+                <span>{item.name}</span>
+                <small>{item.note}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+        <p className="muted">
+          服务器控制台和主机 shell 不跟着变。
+          两块终端在任何配色下都保持深色、而且互相不同色，这是防止把危险命令敲进另一块终端的那道屏障。
+          「运行中」「启动中」这类状态色同理 —— 它们要在扫一眼的时候还认得出来。
+        </p>
+      </section>
+
       <section className="panel">
         <h2 className="panel__title">像素字体</h2>
         <label className="checkbox checkbox--stacked">

@@ -125,7 +125,7 @@ sudo journalctl -u hypercraft -f     # 首次启动的随机管理员密码打�
 <br>
 
 ![深色主题](docs/images/dashboard-dark.png)
-<sub>**深色主题** —— 明暗跟随系统，也可以在顶栏手动切换</sub>
+<sub>**深色主题** —— 明暗跟随系统，也可以在顶栏手动切换；另有四套配色（赤陶／松绿／杏黄／碧蓝）可在「面板设置 → 外观」里换</sub>
 
 <br>
 

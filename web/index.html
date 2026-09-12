@@ -4,9 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
-    <!-- One per mode, so the browser chrome matches the page it frames. -->
-    <meta name="theme-color" content="#fff8f6" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#1a1110" media="(prefers-color-scheme: dark)" />
+    <!-- The browser chrome, painted the colour of the page it frames. One tag
+         rather than one per mode: the page colour is a mode *and* a 配色 now,
+         and a media query only knows about the first half. The script below
+         sets it before first paint and theme.ts keeps it in step after. -->
+    <meta name="theme-color" content="#fff8f6" />
     <meta name="description" content="HyperCraft —— 自托管的 Minecraft 服务器面板" />
     <!-- The same cube as components/Logo.tsx and docs/images/logo.svg. Inline so
          it travels inside the single binary with everything else, and with the
@@ -33,7 +35,38 @@
           pref === 'dark' ||
           (pref !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.dataset.theme = dark ? 'dark' : 'light'
-        document.documentElement.style.background = dark ? '#1a1110' : '#fff8f6'
+
+        // The 配色, resolved here for the same reason and stored the same way:
+        // the default is no key at all, anything unrecognised falls back to it,
+        // and the keys match palette.ts.
+        //
+        // The page colour of each scheme is duplicated here as the one thing
+        // that has to be known before the stylesheet exists — it paints the
+        // document behind the app and the browser's own chrome, and both are
+        // visible in the frame before the CSS arrives. Eight values, kept in
+        // step with the token blocks in styles.css by hand.
+        var page = {
+          terracotta: ['#fff8f6', '#1a1110'],
+          green: ['#f9faef', '#12140e'],
+          yellow: ['#fff9ee', '#15130b'],
+          blue: ['#f9f9ff', '#111318'],
+        }
+        var palette = null
+        try {
+          palette = localStorage.getItem('hypercraft.palette')
+        } catch (e) {
+          /* storage disabled; the default stands */
+        }
+        // hasOwnProperty rather than a truthiness test: a hand-edited key of
+        // "constructor" is a real value on every object literal, and it would
+        // get written onto <html> as a scheme no stylesheet answers to.
+        if (!Object.prototype.hasOwnProperty.call(page, palette)) palette = 'terracotta'
+        if (palette !== 'terracotta') document.documentElement.dataset.palette = palette
+
+        var bg = page[palette][dark ? 1 : 0]
+        document.documentElement.style.background = bg
+        var chrome = document.querySelector('meta[name="theme-color"]')
+        if (chrome) chrome.content = bg
 
         // The pixel face, resolved here for the same reason: it changes the
         // metrics of every line on the page, so deciding it after the bundle
