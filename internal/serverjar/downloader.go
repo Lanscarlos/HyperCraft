@@ -246,9 +246,23 @@ func (d *Downloader) transfer(ctx context.Context, job *Job, temp string, build 
 		return err
 	}
 
-	limit := build.Size
-	if limit <= 0 {
-		limit = maxUnknownSize
+	// sized marks the case where the declared size is the only check there
+	// is, and so has to be exact.
+	//
+	// With a published checksum it is neither the stronger check nor a
+	// reliable one — Azul's metadata under-reports a Zulu package by 9 bytes
+	// and still publishes the right SHA-256 for it, which turned a perfectly
+	// good Java install into "exceeds the declared size" until the gate moved
+	// (see javaruntime.Installer.download). No core API has been caught doing
+	// it, but nothing here would survive it either, and a jar that hashes
+	// right is the jar upstream published whatever it said it would weigh.
+	// So the size drives the progress bar, and the cap falls back to the same
+	// ceiling an undeclared size gets — there to bound the disk a runaway
+	// redirect can eat, not to verify anything.
+	sized := build.Size > 0 && build.SHA256 == ""
+	limit := int64(maxUnknownSize)
+	if sized {
+		limit = build.Size
 	}
 	digest := sha256.New()
 	progress := &progressWriter{
@@ -272,15 +286,23 @@ func (d *Downloader) transfer(ctx context.Context, job *Job, temp string, build 
 	if closeErr != nil {
 		return closeErr
 	}
-	if written > limit {
-		return fmt.Errorf("%w: download exceeds the declared %d bytes", ErrUpstream, limit)
-	}
-	if build.Size > 0 && written != build.Size {
-		return fmt.Errorf("%w: got %d bytes, expected %d", ErrUpstream, written, build.Size)
+	switch {
+	case sized && written > limit:
+		return fmt.Errorf("%w: 下载的内容比声明的 %d 字节还多", ErrUpstream, limit)
+	case sized && written != build.Size:
+		return fmt.Errorf("%w: 收到 %d 字节，应为 %d", ErrUpstream, written, build.Size)
+	case written > limit:
+		return fmt.Errorf("%w: 下载超过 %d 字节的上限，已中止", ErrUpstream, limit)
 	}
 	if build.SHA256 != "" {
 		if sum := hex.EncodeToString(digest.Sum(nil)); sum != build.SHA256 {
-			return fmt.Errorf("%w: got %s, expected %s", ErrChecksum, sum, build.SHA256)
+			// A short body is the one checksum failure with an obvious cause,
+			// and "the connection dropped, run it again" is very different
+			// advice from "upstream is serving the wrong jar".
+			if build.Size > 0 && written < build.Size {
+				return fmt.Errorf("%w: 下载中断，只收到 %d 字节，应为 %d", ErrChecksum, written, build.Size)
+			}
+			return fmt.Errorf("%w: 校验和不符，算出 %s，应为 %s", ErrChecksum, sum, build.SHA256)
 		}
 	}
 	return nil
