@@ -2740,6 +2740,56 @@ a:hover {
   line-height: 1.6;
 }
 
+/* Installing a core is a one-off action, and it lives inside the section whose
+   field it writes — 服务端 jar, directly above it. It used to be a card of its
+   own between 基本信息 and 开服前检查, at the same weight as the settings it is
+   not. Shut by default. */
+.corepicker {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+.corepicker > summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--text-dim);
+  font-size: 12px;
+  list-style: none;
+}
+
+.corepicker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.corepicker > summary::before {
+  content: '+';
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.corepicker[open] > summary::before {
+  content: '−';
+}
+
+.corepicker > summary:hover {
+  color: var(--text);
+}
+
+.corepicker > summary:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--ring);
+}
+
+.corepicker__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 12px;
+}
+
 /* --------------------------------------------------------------- feedback */
 
 /* Off screen but still read out. Used to hand a screen reader the one sentence

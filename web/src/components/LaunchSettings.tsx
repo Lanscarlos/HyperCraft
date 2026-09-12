@@ -484,14 +484,6 @@ export function LaunchSettings({
         </div>
       </section>
 
-      <InstanceCorePicker
-        instance={instance}
-        cores={cores}
-        onApplied={onCoreApplied}
-        onOpenLibrary={onOpenLibrary}
-        jarIgnored={argFileMode}
-      />
-
       <section className="panel panel--form">
         <div className="panel__aside">
           <h3 className="panel__title">启动方式</h3>
@@ -719,6 +711,14 @@ export function LaunchSettings({
             </div>
           </>
         )}
+
+        <InstanceCorePicker
+          instance={instance}
+          cores={cores}
+          onApplied={onCoreApplied}
+          onOpenLibrary={onOpenLibrary}
+          jarIgnored={argFileMode}
+        />
 
         {importing && (
           <ScriptImportDialog
