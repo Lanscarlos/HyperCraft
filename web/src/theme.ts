@@ -2,8 +2,10 @@
  * Light/dark mode.
  *
  * Everything visual lives in CSS custom properties; this module only decides
- * which of the two token blocks in styles.css is active, by writing a resolved
- * `data-theme` of exactly "light" or "dark" onto <html>. Resolving here rather
+ * which mode's token block in styles.css is active, by writing a resolved
+ * `data-theme` of exactly "light" or "dark" onto <html>. Which colours that
+ * block holds is the other axis and belongs to palette.ts — the two multiply,
+ * and neither module has to know what the other picked. Resolving here rather
  * than in a media query means one dark block in the stylesheet instead of two,
  * and it is also what lets "跟随系统" be a real third choice: the preference
  * that is stored is one of three, the attribute that is applied is one of two.
@@ -66,24 +68,54 @@ export function applyPref(pref: ThemePref): Theme {
   // unwanted, it just runs the callback and the switch is instant as before.
   crossFade(() => {
     document.documentElement.dataset.theme = theme
+    syncChrome()
     // Inside the callback rather than after it: the terminals repaint their
     // canvases from these tokens, and a canvas that repaints a frame late is a
     // dark rectangle sitting in the middle of the dissolve.
-    for (const listener of listeners) listener(theme)
+    notifyColours()
   })
   return theme
+}
+
+/**
+ * The browser's own chrome — the address bar on a phone, the title bar of an
+ * installed window — painted the colour of the page under it.
+ *
+ * It has to be read back off the page rather than kept as a table here: the
+ * page colour is now a mode *and* a 配色 (see palette.ts), which is eight
+ * answers, and eight literals in a module that owns two of them is how they
+ * drift. `--bg` is substituted where it is declared, so what comes back is the
+ * scheme's own surface hex rather than the var() that produced it.
+ *
+ * index.html sets the same meta before first paint, from the one table that
+ * cannot be read off the stylesheet because the stylesheet has not arrived yet.
+ */
+export function syncChrome(): void {
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+  if (!meta) return
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
+  if (bg) meta.content = bg
 }
 
 type Listener = (theme: Theme) => void
 
 const listeners = new Set<Listener>()
 
-/** Notified after every switch, whether it came from the toggle or from the
- *  system changing under a "跟随系统" preference. Anything painting outside
- *  CSS — the xterm canvases — subscribes to repaint itself. */
+/** Notified after every change to the panel's colours: the toggle, the system
+ *  changing under a "跟随系统" preference, and a 配色 switch, which moves the
+ *  same tokens on the other axis. Anything painting outside CSS — the xterm
+ *  canvases — subscribes to repaint itself. */
 export function onThemeChange(listener: Listener): () => void {
   listeners.add(listener)
   return () => listeners.delete(listener)
+}
+
+/** Fire the listeners at whatever is on screen now. Exported for palette.ts,
+ *  which changes the same terminal tokens from inside its own cross-fade and
+ *  has the same one-frame problem if the canvases are told afterwards. */
+export function notifyColours(): void {
+  const theme = current()
+  for (const listener of listeners) listener(theme)
 }
 
 /** Called once at startup: re-resolves when the OS flips, but only while the
