@@ -6,6 +6,7 @@ import type { InstanceStatus } from '../types'
 import { isLive } from '../types'
 import { CAP, useCan } from '../useCan'
 import { useUptime } from '../useUptime'
+import { Button } from './Button'
 import { Menu } from './Menu'
 
 type PowerAction = 'start' | 'stop' | 'restart' | 'kill'
@@ -91,38 +92,36 @@ export function PowerControls({ instance, onChanged, variant = 'full', onError }
   return (
     <div className={`power power--${variant}`}>
       {transitioning ? (
-        <button className="btn" disabled aria-busy="true">
+        <Button disabled aria-busy="true">
           <Label text={instance.state === 'starting' ? '启动中…' : '停止中…'} />
-        </button>
+        </Button>
       ) : down ? (
-        <button
-          className="btn btn--primary"
+        <Button
+          variant="primary"
           onClick={() => void power('start')}
           disabled={busy}
           aria-busy={pending === 'start' || undefined}
         >
           <Label text="启动" />
-        </button>
+        </Button>
       ) : (
         <>
           {variant === 'full' && (
-            <button
-              className="btn"
+            <Button
               onClick={() => void power('restart')}
               disabled={busy}
               aria-busy={pending === 'restart' || undefined}
             >
               <Label text="重启" />
-            </button>
+            </Button>
           )}
-          <button
-            className="btn"
+          <Button
             onClick={() => void power('stop')}
             disabled={busy}
             aria-busy={pending === 'stop' || undefined}
           >
             <Label text="停止" />
-          </button>
+          </Button>
         </>
       )}
       {(running || transitioning) && more}

@@ -11,6 +11,7 @@ import type {
   DatabaseService,
 } from '../types'
 import type { DatabaseController } from '../useDatabases'
+import { Button } from './Button'
 import { Page } from './Page'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
@@ -231,14 +232,14 @@ function ServiceList({
 
         {usable.length > 0 && (
           <div className="actions">
-            <button
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               type="button"
               disabled={databases.busy || creating}
               onClick={() => setCreating(true)}
             >
               新建数据库
-            </button>
+            </Button>
             <span className="muted">
               一个引擎可以建多个数据库，端口面板会自动错开。
             </span>
@@ -538,17 +539,17 @@ function CreateForm({
       </div>
 
       <div className="actions">
-        <button
-          className="btn btn--primary"
+        <Button
+          variant="primary"
           type="button"
           disabled={databases.busy || installId === '' || database.trim() === ''}
           onClick={() => void submit()}
         >
           {databases.busy ? '正在初始化…' : '创建'}
-        </button>
-        <button className="btn" type="button" disabled={databases.busy} onClick={onDone}>
+        </Button>
+        <Button type="button" disabled={databases.busy} onClick={onDone}>
           取消
-        </button>
+        </Button>
         <span className="muted">初始化要几秒到几十秒，建好后不会自动启动。</span>
       </div>
     </section>
@@ -816,17 +817,17 @@ function InstallEngine({
 
       <div className="actions">
         {installing ? (
-          <button className="btn btn--danger" onClick={() => void databases.cancelInstall()}>
+          <Button variant="danger" onClick={() => void databases.cancelInstall()}>
             取消安装
-          </button>
+          </Button>
         ) : (
-          <button
-            className="btn btn--primary"
+          <Button
+            variant="primary"
             disabled={busy || !chosen}
             onClick={() => chosen && void databases.install(engine, chosen)}
           >
             安装 {engineInfo?.name ?? ''} {chosen ?? ''}
-          </button>
+          </Button>
         )}
         <span className="muted">装完还要建一个数据库才能用。</span>
       </div>

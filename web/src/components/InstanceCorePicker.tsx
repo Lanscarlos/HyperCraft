@@ -5,6 +5,7 @@ import { ask } from '../confirm'
 import { formatBytes } from '../format'
 import type { InstanceStatus, ServerCore } from '../types'
 import type { CoreController } from '../useCores'
+import { Button } from './Button'
 import { Select } from './Select'
 
 interface Props {
@@ -156,14 +157,14 @@ export function InstanceCorePicker({
           {status && <div className="alert alert--ok">{status}</div>}
 
           <div className="actions">
-            <button
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               type="button"
               onClick={() => void apply(false)}
               disabled={busy || !coreId}
             >
               {busy ? '复制中…' : '复制到实例'}
-            </button>
+            </Button>
             {selected?.kind !== 'proxy' && (
               <span className="file-toolbar__hint">
                 别忘了去「服务器配置」同意 EULA，否则服务端启动后会立刻退出。

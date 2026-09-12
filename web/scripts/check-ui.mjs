@@ -71,7 +71,66 @@ function ruleNoUndefinedClasses() {
   }
 }
 
-const RULES = [ruleNoUndefinedClasses]
+/** The `>` that closes the JSX tag opening at `start`, or -1.
+ *
+ *  Scanning for the next `>` does not work: `onClick={() => …}` contains one,
+ *  and half the icon buttons in this codebase are written that way. So skip
+ *  over strings and brace expressions and only accept a `>` at depth zero.
+ *
+ *  Comments have to be skipped before quotes, not after. This codebase writes
+ *  prose comments between a tag's attributes, and one of them says "snapshot's
+ *  copy" — treat that apostrophe as a string opener and the scan swallows the
+ *  rest of the file. */
+function endOfTag(src, start) {
+  let depth = 0
+  for (let i = start; i < src.length; i++) {
+    const c = src[i]
+    if (c === '/' && src[i + 1] === '/') {
+      i = src.indexOf('\n', i)
+      if (i === -1) return -1
+      continue
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      const end = src.indexOf('*/', i + 2)
+      if (end === -1) return -1
+      i = end + 1
+      continue
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      const quote = c
+      i++
+      while (i < src.length && src[i] !== quote) {
+        if (src[i] === '\\') i++
+        i++
+      }
+      continue
+    }
+    if (c === '{') depth++
+    else if (c === '}') depth--
+    else if (c === '>' && depth === 0) return i
+  }
+  return -1
+}
+
+/** Rule: an icon-only button carries no text, so it needs a label.
+ *
+ *  Without one a screen reader reads out "button" and nothing else, which is
+ *  the same as reading out nothing. */
+function ruleIconButtonsAreLabelled() {
+  for (const file of tsxFiles(SRC)) {
+    const src = fs.readFileSync(file, 'utf8')
+    for (let at = src.indexOf('<Button'); at !== -1; at = src.indexOf('<Button', at + 7)) {
+      const end = endOfTag(src, at)
+      if (end === -1) break
+      const tag = src.slice(at, end + 1)
+      if (!/(^|\s)icon(\s|=|\/|>)/.test(tag)) continue
+      if (tag.includes('aria-label')) continue
+      problems.push(`图标按钮缺 aria-label  ←  ${path.relative(SRC, file)}`)
+    }
+  }
+}
+
+const RULES = [ruleNoUndefinedClasses, ruleIconButtonsAreLabelled]
 
 for (const rule of RULES) rule()
 

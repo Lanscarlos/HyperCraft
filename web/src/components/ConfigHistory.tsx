@@ -14,6 +14,7 @@ import type {
   RestorePlan,
   SnapshotTrigger,
 } from '../types'
+import { Button } from './Button'
 import { Modal } from './Modal'
 import { PageHead } from './Page'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
@@ -377,33 +378,31 @@ export function ConfigHistory({
         lead={lead}
         aside={
         <div className="page__actions">
-          <button
-            className="btn"
+          <Button
             onClick={() => void refresh()}
             disabled={busy}
             title="重新读取时间线、变更列表和当前打开的 diff"
           >
             刷新
-          </button>
-          <button className="btn btn--primary" onClick={() => setSnapshotting(true)} disabled={busy}>
+          </Button>
+          <Button variant="primary" onClick={() => setSnapshotting(true)} disabled={busy}>
             打快照
-          </button>
-          <button
-            className="btn"
+          </Button>
+          <Button
             onClick={compareWithFactory}
             disabled={busy || !initial}
             title="与最早记录的出厂状态比较"
           >
             与出厂对比
-          </button>
-          <button
-            className="btn btn--danger"
+          </Button>
+          <Button
+            variant="danger"
             onClick={() => current && void previewRestore(current.ref)}
             disabled={busy || !current || data.running}
             title={data.running ? '整树还原要求服务器处于停止状态' : '把整棵配置树切回这个快照'}
           >
             整树还原（高级）
-          </button>
+          </Button>
         </div>
         }
       />
@@ -422,16 +421,16 @@ export function ConfigHistory({
               <li key={file.path}>
                 <code>{file.path}</code>
                 <span className="chist__gate-size">{formatBytes(file.size)}</span>
-                <button className="btn btn--row" onClick={() => void setPathRule(file.path, 'allow')} disabled={busy}>
+                <Button size="row" onClick={() => void setPathRule(file.path, 'allow')} disabled={busy}>
                   确认收录
-                </button>
-                <button
-                  className="btn btn--row"
+                </Button>
+                <Button
+                  size="row"
                   onClick={() => void setPathRule(file.path, 'exclude')}
                   disabled={busy}
                 >
                   永久排除
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -623,28 +622,28 @@ export function ConfigHistory({
                           </button>
                           <div className="chist__file-actions">
                             {!showingPending && (
-                              <button
-                                className="btn btn--row"
+                              <Button
+                                size="row"
                                 onClick={() =>
                                   setOpenFile({ path: change.path, againstCurrent: true })
                                 }
                                 disabled={change.status === 'deleted'}
                               >
                                 与当前对比
-                              </button>
+                              </Button>
                             )}
                             {onOpenInFiles && (
-                              <button
-                                className="btn btn--row"
+                              <Button
+                                size="row"
                                 onClick={() => onOpenInFiles(change.path)}
                                 disabled={change.status === 'deleted'}
                                 title="在文件管理里打开这个文件"
                               >
                                 在文件里打开
-                              </button>
+                              </Button>
                             )}
-                            <button
-                              className="btn btn--row"
+                            <Button
+                              size="row"
                               // Undoing an unrecorded change is a restore of the
                               // newest snapshot's copy — the same operation, and
                               // it goes through the same preview. What each side
@@ -663,7 +662,7 @@ export function ConfigHistory({
                               }
                             >
                               {showingPending ? '撤销这次改动' : '还原此版本'}
-                            </button>
+                            </Button>
                           </div>
                         </div>
 
@@ -689,9 +688,9 @@ export function ConfigHistory({
           {formatBytes(data.stats.repoBytes)}
           {data.stats.compactedAt ? ` · 上次整理 ${formatSince(data.stats.compactedAt)}` : ' · 从未整理'}
         </p>
-        <button className="btn" onClick={() => void compact()} disabled={busy || data.stats.commits === 0}>
+        <Button onClick={() => void compact()} disabled={busy || data.stats.commits === 0}>
           压缩历史
-        </button>
+        </Button>
         <p className="chist__disclaimer">
           配置历史不是备份，世界与玩家数据不在其中。全量备份策略要单独准备。
         </p>
@@ -909,12 +908,12 @@ function SnapshotDialog({
         )}
 
         <div className="modal__actions">
-          <button className="btn" type="button" onClick={onCancel} disabled={busy}>
+          <Button type="button" onClick={onCancel} disabled={busy}>
             取消
-          </button>
-          <button className="btn btn--primary" type="submit" disabled={busy}>
+          </Button>
+          <Button variant="primary" type="submit" disabled={busy}>
             {busy ? '记录中…' : '打快照'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
@@ -1009,16 +1008,16 @@ function RestoreDialog({
         </div>
 
         <div className="modal__actions">
-          <button className="btn" onClick={onCancel} disabled={busy}>
+          <Button onClick={onCancel} disabled={busy}>
             取消
-          </button>
-          <button
-            className="btn btn--danger"
+          </Button>
+          <Button
+            variant="danger"
             onClick={() => onConfirm(acknowledged)}
             disabled={busy || blocked || needsAck || changes.length + (plan.removals?.length ?? 0) === 0}
           >
             {busy ? '还原中…' : '还原'}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

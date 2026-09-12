@@ -26,6 +26,7 @@ import type { PluginController } from '../usePlugins'
 import type { SchematicController } from '../useSchematics'
 import { CAP, useCan } from '../useCan'
 import type { TerminalController } from '../useTerminal'
+import { Button } from './Button'
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
 import { Logo } from './Logo'
@@ -368,10 +369,10 @@ function GlobalScope(props: Props) {
       </div>
 
       {can(CAP.panelCreate) && (
-        <button className="btn btn--primary sidebar__new" onClick={onCreate} title="新建实例">
+        <Button variant="primary" className="sidebar__new" onClick={onCreate} title="新建实例">
           <span aria-hidden="true">+</span>
           <span className="sidebar__name">新建实例</span>
-        </button>
+        </Button>
       )}
     </>
   )

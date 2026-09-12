@@ -11,6 +11,7 @@ import type {
   SystemJava,
 } from '../types'
 import type { JavaController } from '../useJava'
+import { Button } from './Button'
 import { Page } from './Page'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
@@ -331,16 +332,16 @@ export function JavaPage({
 
             <div className="actions">
               {installing ? (
-                <button
-                  className="btn btn--danger"
+                <Button
+                  variant="danger"
                   onClick={() => void java.cancel()}
                   disabled={busy}
                 >
                   取消安装
-                </button>
+                </Button>
               ) : (
-                <button
-                  className="btn btn--primary"
+                <Button
+                  variant="primary"
                   onClick={() =>
                     major != null &&
                     void java.install(distribution ?? '', major, imageType, source ?? '')
@@ -349,7 +350,7 @@ export function JavaPage({
                 >
                   {selected?.installed ? '重新安装' : '安装'} Java {major ?? ''}{' '}
                   {imageType.toUpperCase()}
-                </button>
+                </Button>
               )}
               <span className="file-toolbar__hint">
                 装到 <code>{overview.root}</code>，不会碰系统里的 Java。
@@ -504,9 +505,9 @@ function SourcePicker({
       )}
 
       <div className="actions">
-        <button className="btn btn--primary" type="button" onClick={onDone}>
+        <Button variant="primary" type="button" onClick={onDone}>
           去安装
-        </button>
+        </Button>
       </div>
     </section>
   )

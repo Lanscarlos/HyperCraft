@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import { importPluginJars } from '../api'
 import { formatBytes } from '../format'
 import type { ImportedPlugin } from '../types'
+import { Button } from './Button'
 import { Modal } from './Modal'
 import { loaderNote } from './PluginInstallDialog'
 
@@ -108,9 +109,9 @@ export function PluginImportDialog({
             )}
 
             <div className="modal__actions">
-              <button className="btn btn--primary" onClick={finish}>
+              <Button variant="primary" onClick={finish}>
                 完成
-              </button>
+              </Button>
             </div>
           </>
         ) : (
@@ -159,16 +160,16 @@ export function PluginImportDialog({
             {error && <div className="alert alert--error">{error}</div>}
 
             <div className="modal__actions">
-              <button className="btn" disabled={busy} onClick={onCancel}>
+              <Button disabled={busy} onClick={onCancel}>
                 取消
-              </button>
-              <button
-                className="btn btn--primary"
+              </Button>
+              <Button
+                variant="primary"
                 disabled={busy || files.length === 0}
                 onClick={() => void upload()}
               >
                 {busy ? '上传中…' : files.length > 1 ? `导入 ${files.length} 个 jar` : '导入'}
-              </button>
+              </Button>
             </div>
           </>
         )}

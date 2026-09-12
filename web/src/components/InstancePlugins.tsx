@@ -12,6 +12,7 @@ import type {
   PendingPluginChange,
 } from '../types'
 import type { PluginController } from '../usePlugins'
+import { Button } from './Button'
 import { InstancePluginDrawer } from './InstancePluginDrawer'
 import { Menu } from './Menu'
 import type { MenuItem } from './Menu'
@@ -172,8 +173,7 @@ export function InstancePlugins({
             {/* Every version number on this page comes out of the panel's own
                 records. This is the button that checks the records still
                 describe the directory — see plugin/reconcile.go. */}
-            <button
-              className="btn"
+            <Button
               disabled={busy}
               title="把插件目录逐个文件算 SHA-256，跟面板的账本比一遍"
               onClick={() =>
@@ -187,21 +187,21 @@ export function InstancePlugins({
               }
             >
               对账
-            </button>
-            <button className="btn" onClick={() => onOpenSection('files', listing?.entries[0]?.dir)}>
+            </Button>
+            <Button onClick={() => onOpenSection('files', listing?.entries[0]?.dir)}>
               上传 jar
-            </button>
+            </Button>
             {/* Two different acts, and the panel keeps them apart. This one
                 copies something the library already holds; the link beside it
                 goes off to acquire one. */}
-            <button
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               disabled={available.length === 0}
               title={available.length === 0 ? '插件库里没有这台服还没装的插件' : undefined}
               onClick={() => setPicking(true)}
             >
               从插件库安装
-            </button>
+            </Button>
             {/* 市场 is a tab on this page now, so the link out is to the
                 shelf the downloads land on — which is the half of the trip
                 this page cannot do. */}
@@ -287,15 +287,15 @@ export function InstancePlugins({
               出来的。点开对应的行看具体是哪一个、为什么。
             </p>
           </div>
-          <button
-            className="btn btn--small"
+          <Button
+            size="small"
             onClick={() => {
               setTab('installed')
               setFilter('broken')
             }}
           >
             去看
-          </button>
+          </Button>
         </div>
       )}
 
@@ -628,9 +628,9 @@ function LibraryPicker({
         </div>
 
         <div className="modal__actions">
-          <button className="btn" onClick={onCancel}>
+          <Button onClick={onCancel}>
             取消
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>
@@ -668,9 +668,9 @@ function RestartBanner({
           {pending.length > 4 && ` 等 ${pending.length} 项`}
         </p>
       </div>
-      <button className="btn btn--primary" disabled={busy} onClick={onRestart}>
+      <Button variant="primary" disabled={busy} onClick={onRestart}>
         立即重启
-      </button>
+      </Button>
     </div>
   )
 }
@@ -867,26 +867,26 @@ function PluginRow({
             {/* A broken row offers what fixes this particular break. A generic
                 "详情" here would be a click that leads to another click. */}
             {entry.failure.kind === 'dependency' && (
-              <button className="btn btn--row" onClick={onFindDependency}>
+              <Button size="row" onClick={onFindDependency}>
                 安装依赖
-              </button>
+              </Button>
             )}
-            <button className="btn btn--row" onClick={onOpenConsole}>
+            <Button size="row" onClick={onOpenConsole}>
               查看日志
-            </button>
+            </Button>
           </>
         ) : (
           <>
-            <button className="btn btn--row" onClick={onOpenConfig} title={entry.configDir}>
+            <Button size="row" onClick={onOpenConfig} title={entry.configDir}>
               配置
-            </button>
-            <button
-              className="btn btn--row"
+            </Button>
+            <Button
+              size="row"
               disabled={busy || entry.missing}
               onClick={() => onSetEnabled(!entry.enabled)}
             >
               {entry.enabled ? '停用' : '启用'}
-            </button>
+            </Button>
           </>
         )}
 

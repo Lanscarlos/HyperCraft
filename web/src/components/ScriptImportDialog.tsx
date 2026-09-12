@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { api } from '../api'
 import type { LaunchDraft, ParsedScript } from '../types'
+import { Button } from './Button'
 import { Modal } from './Modal'
 import { PathPicker } from './PathPicker'
 import { ScriptDraft } from './ScriptDraft'
@@ -173,9 +174,9 @@ export function ScriptImportDialog({
                   placeholder="/opt/minecraft/survival/run.sh"
                   spellCheck={false}
                 />
-                <button className="btn" type="button" onClick={() => setPicking(true)}>
+                <Button type="button" onClick={() => setPicking(true)}>
                   浏览…
-                </button>
+                </Button>
               </div>
               <small>
                 浏览只能选到目录，文件名自己补上——面板读它，不动它。
@@ -205,12 +206,12 @@ export function ScriptImportDialog({
           <ScriptDraft parsed={parsed} parsing={parsing} mode="settings" />
 
           <div className="modal__actions">
-            <button className="btn" type="button" onClick={close} disabled={parsing}>
+            <Button type="button" onClick={close} disabled={parsing}>
               取消
-            </button>
+            </Button>
             {parsed?.ok ? (
-              <button
-                className="btn btn--primary"
+              <Button
+                variant="primary"
                 type="button"
                 onClick={() => {
                   onApply(parsed.draft)
@@ -218,16 +219,16 @@ export function ScriptImportDialog({
                 }}
               >
                 填进表单
-              </button>
+              </Button>
             ) : (
-              <button
-                className="btn btn--primary"
+              <Button
+                variant="primary"
                 type="button"
                 disabled={!ready || parsing}
                 onClick={read}
               >
                 {parsing ? '读取中…' : '读一下'}
-              </button>
+              </Button>
             )}
           </div>
 

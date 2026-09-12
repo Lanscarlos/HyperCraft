@@ -4,6 +4,7 @@ import type { FormEvent } from 'react'
 import { api } from '../api'
 import { toast } from '../toast'
 import type { Capability, CapabilityInfo, Role } from '../types'
+import { Button } from './Button'
 import { Modal } from './Modal'
 
 interface Props {
@@ -187,13 +188,13 @@ export function RoleDialog({ role, capabilities, onCancel, onSaved }: Props) {
         )}
 
         <div className="modal__actions">
-          <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+          <Button type="button" onClick={onCancel} disabled={busy}>
             {readOnly ? '关闭' : '取消'}
-          </button>
+          </Button>
           {!readOnly && (
-            <button type="submit" className="btn btn--primary" disabled={busy} aria-busy={busy}>
+            <Button type="submit" variant="primary" disabled={busy} aria-busy={busy}>
               {busy ? '保存中…' : '保存'}
-            </button>
+            </Button>
           )}
         </div>
       </form>

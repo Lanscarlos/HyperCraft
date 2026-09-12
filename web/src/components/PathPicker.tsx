@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { api } from '../api'
 import type { HostListing } from '../types'
+import { Button } from './Button'
 import { Modal } from './Modal'
 
 interface Props {
@@ -73,9 +74,9 @@ export function PathPicker({ initialPath, onPick, onCancel }: Props) {
             spellCheck={false}
             aria-label="路径"
           />
-          <button className="btn" type="submit">
+          <Button type="submit">
             前往
-          </button>
+          </Button>
         </form>
 
         {listing && listing.shortcuts.length > 0 && (
@@ -141,12 +142,12 @@ export function PathPicker({ initialPath, onPick, onCancel }: Props) {
         </p>
 
         <div className="modal__actions">
-          <button className="btn" type="button" onClick={onCancel}>
+          <Button type="button" onClick={onCancel}>
             取消
-          </button>
-          <button className="btn btn--primary" type="button" onClick={() => onPick(current)}>
+          </Button>
+          <Button variant="primary" type="button" onClick={() => onPick(current)}>
             选择这个目录
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>
@@ -189,14 +190,13 @@ export function DirectoryField({
           disabled={disabled}
           spellCheck={false}
         />
-        <button
-          className="btn"
+        <Button
           type="button"
           onClick={() => setPicking(true)}
           disabled={disabled}
         >
           浏览…
-        </button>
+        </Button>
       </div>
       {hint && <small>{hint}</small>}
 

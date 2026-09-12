@@ -20,6 +20,7 @@ import type {
 import { pluginArtifacts, statusLabel, versionSize } from '../types'
 import { useDismiss } from '../useDismiss'
 import type { PluginController } from '../usePlugins'
+import { Button } from './Button'
 import { loaderLabel, sourceLabel } from './PluginBrowse'
 import { PluginIcon } from './PluginIcon'
 
@@ -158,27 +159,27 @@ export function PluginLibraryDrawer({
             <span className="drawer__step-count">
               {position} / {rows.length}
             </span>
-            <button
-              className="btn btn--icon"
+            <Button
+              icon
               onClick={() => onStep(-1)}
               disabled={position <= 1}
               aria-label="上一个插件"
               title="上一个（↑）"
             >
               ↑
-            </button>
-            <button
-              className="btn btn--icon"
+            </Button>
+            <Button
+              icon
               onClick={() => onStep(1)}
               disabled={position >= rows.length}
               aria-label="下一个插件"
               title="下一个（↓）"
             >
               ↓
-            </button>
-            <button className="btn btn--icon" onClick={() => !busy && close()} aria-label="关闭（Esc）">
+            </Button>
+            <Button icon onClick={() => !busy && close()} aria-label="关闭（Esc）">
               ✕
-            </button>
+            </Button>
           </div>
         </header>
 
@@ -540,18 +541,18 @@ function MatrixRow({
           somebody wanted. */}
       <span className="matrix__act">
         {trouble === 'missing' && (
-          <button className="btn btn--small btn--primary" disabled={busy} onClick={onRepush}>
+          <Button size="small" variant="primary" disabled={busy} onClick={onRepush}>
             重新推送
-          </button>
+          </Button>
         )}
         {trouble === 'drift' && (
           <>
-            <button className="btn btn--small" disabled={busy} onClick={onAccept}>
+            <Button size="small" disabled={busy} onClick={onAccept}>
               以文件为准
-            </button>
-            <button className="btn btn--small btn--primary" disabled={busy} onClick={onRepush}>
+            </Button>
+            <Button size="small" variant="primary" disabled={busy} onClick={onRepush}>
               恢复库内版本
-            </button>
+            </Button>
           </>
         )}
         {/* Deliberately not a third button beside those two. Re-checking is
@@ -563,13 +564,13 @@ function MatrixRow({
           </button>
         )}
         {use.update && (
-          <button className="btn btn--small btn--primary" disabled={busy} onClick={onUpgrade}>
+          <Button size="small" variant="primary" disabled={busy} onClick={onUpgrade}>
             升到 {use.update.version}
-          </button>
+          </Button>
         )}
         {use.rollbackTo && (
-          <button
-            className="btn btn--small"
+          <Button
+            size="small"
             disabled={busy}
             title={
               use.configSaved
@@ -579,7 +580,7 @@ function MatrixRow({
             onClick={(event) => onRollback(event.shiftKey && (use.configSaved ?? false))}
           >
             回滚 {use.rollbackTo}
-          </button>
+          </Button>
         )}
       </span>
     </div>
@@ -682,8 +683,8 @@ function VersionsTab({
           </span>
         </h3>
         <div className="chart-head__actions">
-          <button
-            className="btn btn--icon"
+          <Button
+            icon
             disabled={busy || loading || item.source.kind === 'local'}
             title={
               item.source.kind === 'local'
@@ -696,7 +697,7 @@ function VersionsTab({
             onClick={() => void load()}
           >
             {loading ? '…' : '⟳'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -876,21 +877,21 @@ function VersionGroup({
                   {asset.size > 0 && (
                     <span className="offers__size">{formatBytes(asset.size)}</span>
                   )}
-                  <button
-                    className="btn btn--small"
+                  <Button
+                    size="small"
                     disabled={busy}
                     onClick={() => onDownload(asset.name)}
                   >
                     下载到库
-                  </button>
+                  </Button>
                 </div>
               ))}
             </div>
           ) : (
             !entry.held && (
-              <button className="btn btn--small" disabled={busy} onClick={() => onDownload()}>
+              <Button size="small" disabled={busy} onClick={() => onDownload()}>
                 下载到库
-              </button>
+              </Button>
             )
           )}
 
@@ -1233,8 +1234,7 @@ function SettingsTab({
 
       {(sourceDirty || policyDirty) && (
         <div className="drawer__save">
-          <button
-            className="btn"
+          <Button
             disabled={saving}
             onClick={() => {
               setTargetDir(item.targetDir)
@@ -1247,10 +1247,10 @@ function SettingsTab({
             }}
           >
             撤销
-          </button>
-          <button className="btn btn--primary" disabled={saving} onClick={() => void save()}>
+          </Button>
+          <Button variant="primary" disabled={saving} onClick={() => void save()}>
             {saving ? '保存中…' : '保存'}
-          </button>
+          </Button>
         </div>
       )}
     </>

@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { ask } from '../confirm'
 import type { PluginTokenInfo } from '../types'
 import type { PluginController } from '../usePlugins'
+import { Button } from './Button'
 import { Page } from './Page'
 
 /**
@@ -151,9 +152,9 @@ function GitHubTokenPanel({
           </label>
         </div>
         <div className="field__tools">
-          <button className="btn btn--primary" type="submit" disabled={busy || !token.trim()}>
+          <Button variant="primary" type="submit" disabled={busy || !token.trim()}>
             添加令牌
-          </button>
+          </Button>
         </div>
       </form>
     </section>
@@ -240,11 +241,11 @@ function TokenRow({
         <span className="tokenrow__used muted">
           {token.usedBy > 0 ? `${token.usedBy} 个插件在用` : '暂时没有插件在用'}
         </span>
-        <button className="btn btn--small" type="button" disabled={busy} onClick={() => setReplacing(!replacing)}>
+        <Button size="small" type="button" disabled={busy} onClick={() => setReplacing(!replacing)}>
           换令牌
-        </button>
-        <button
-          className="btn btn--small"
+        </Button>
+        <Button
+          size="small"
           type="button"
           disabled={busy}
           onClick={() => {
@@ -263,7 +264,7 @@ function TokenRow({
           }}
         >
           删除
-        </button>
+        </Button>
       </div>
 
       {replacing && (
@@ -277,14 +278,13 @@ function TokenRow({
             aria-label="新的访问令牌"
             onChange={(event) => setSecret(event.target.value)}
           />
-          <button
-            className="btn"
+          <Button
             type="button"
             disabled={busy || !secret.trim()}
             onClick={() => void replace()}
           >
             保存
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -368,14 +368,13 @@ function MirrorPanel({
             placeholder="https://example.com/"
             aria-label="自定义下载源"
           />
-          <button
-            className="btn"
+          <Button
             type="button"
             disabled={busy || !custom.trim()}
             onClick={() => void onChange(custom.trim())}
           >
             保存
-          </button>
+          </Button>
         </div>
       )}
 

@@ -2,6 +2,7 @@ import { useRef, useState, useSyncExternalStore } from 'react'
 
 import type { ConfirmAnswer, PendingConfirm } from '../confirm'
 import { peekConfirm, settleConfirm, subscribeConfirm } from '../confirm'
+import { Button } from './Button'
 import { Modal } from './Modal'
 
 /**
@@ -69,14 +70,13 @@ function ConfirmDialog({
                 dialog that deletes a world the reflex must not be the one that
                 does it — so a dangerous question opens with 取消 focused and
                 the red button a deliberate move away. */}
-            <button
-              className="btn"
+            <Button
               type="button"
               onClick={() => settle(false, close)}
               autoFocus={request.danger}
             >
               {request.cancelLabel ?? '取消'}
-            </button>
+            </Button>
             <button
               className={request.danger ? 'btn btn--danger' : 'btn btn--primary'}
               type="button"

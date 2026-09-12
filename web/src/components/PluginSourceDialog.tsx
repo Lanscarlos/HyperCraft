@@ -4,6 +4,7 @@ import { api } from '../api'
 import { formatBytes, formatDate } from '../format'
 import type { PluginTokenInfo, SourcePreview } from '../types'
 import type { PluginInput } from '../usePlugins'
+import { Button } from './Button'
 import { Modal } from './Modal'
 
 /**
@@ -97,14 +98,13 @@ export function PluginSourceDialog({
             />
             <small>填 owner/name 就行；从浏览器地址栏整条粘过来也能识别。</small>
           </label>
-          <button
-            className="btn"
+          <Button
             type="button"
             disabled={looking || repo.trim() === ''}
             onClick={() => void look()}
           >
             {looking ? '查看中…' : '查看'}
-          </button>
+          </Button>
         </div>
 
         {/* Only worth asking when there is a choice: with one token, or none,
@@ -202,17 +202,17 @@ export function PluginSourceDialog({
         )}
 
         <div className="modal__actions">
-          <button className="btn" type="button" onClick={onCancel} disabled={busy}>
+          <Button type="button" onClick={onCancel} disabled={busy}>
             取消
-          </button>
-          <button
-            className="btn btn--primary"
+          </Button>
+          <Button
+            variant="primary"
             type="submit"
             disabled={busy || repo.trim() === '' || looking}
             title={preview ? undefined : '先「查看」一下，确认面板真的能读到这个仓库'}
           >
             {usable ? `添加 ${repoName(preview.repo)}` : '添加'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>

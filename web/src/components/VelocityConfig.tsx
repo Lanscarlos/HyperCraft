@@ -9,6 +9,7 @@ import type {
   VelocityServer,
   VelocitySetting,
 } from '../types'
+import { Button } from './Button'
 import { PageHead } from './Page'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
@@ -267,32 +268,35 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
                   <span>登录顺序</span>
                 </label>
                 <div className="subserver__actions">
-                  <button
-                    className="btn btn--icon btn--row"
+                  <Button
+                    icon
+                    size="row"
                     type="button"
                     aria-label={`把 ${row.name || '这一行'} 上移`}
                     disabled={index === 0}
                     onClick={() => moveRow(index, -1)}
                   >
                     ↑
-                  </button>
-                  <button
-                    className="btn btn--icon btn--row"
+                  </Button>
+                  <Button
+                    icon
+                    size="row"
                     type="button"
                     aria-label={`把 ${row.name || '这一行'} 下移`}
                     disabled={index === rows.length - 1}
                     onClick={() => moveRow(index, 1)}
                   >
                     ↓
-                  </button>
-                  <button
-                    className="btn btn--icon btn--row"
+                  </Button>
+                  <Button
+                    icon
+                    size="row"
                     type="button"
                     aria-label={`删除 ${row.name || '这一行'}`}
                     onClick={() => setRows((prev) => prev.filter((entry) => entry.id !== row.id))}
                   >
                     ✕
-                  </button>
+                  </Button>
                 </div>
               </li>
             ))}
@@ -300,9 +304,9 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
         )}
 
         <div className="actions">
-          <button className="btn" type="button" onClick={() => addRow()}>
+          <Button type="button" onClick={() => addRow()}>
             + 添加子服
-          </button>
+          </Button>
         </div>
 
         {/* The addresses are already on this panel — every other instance wrote
@@ -385,14 +389,15 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
                   )}
                 </label>
                 <div className="subserver__actions">
-                  <button
-                    className="btn btn--icon btn--row"
+                  <Button
+                    icon
+                    size="row"
                     type="button"
                     aria-label={`删除 ${row.host || '这一行'}`}
                     onClick={() => setHosts((prev) => prev.filter((entry) => entry.id !== row.id))}
                   >
                     ✕
-                  </button>
+                  </Button>
                 </div>
               </li>
             ))}
@@ -400,8 +405,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
         )}
 
         <div className="actions">
-          <button
-            className="btn"
+          <Button
             type="button"
             disabled={serverNames.length === 0}
             onClick={() =>
@@ -412,7 +416,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
             }
           >
             + 添加域名
-          </button>
+          </Button>
         </div>
       </section>
 
@@ -467,8 +471,8 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
             a click on the label's input, which steals the focus ring away from
             the button that was actually pressed. */}
         <div className="actions">
-          <button
-            className="btn btn--row"
+          <Button
+            size="row"
             type="button"
             onClick={() => {
               setSecret(randomSecret())
@@ -476,15 +480,15 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
             }}
           >
             生成随机密钥
-          </button>
-          <button
-            className="btn btn--row"
+          </Button>
+          <Button
+            size="row"
             type="button"
             disabled={secret === ''}
             onClick={() => void copySecret()}
           >
             复制
-          </button>
+          </Button>
         </div>
 
         {needsSecret && secret.trim() === '' && (
@@ -526,12 +530,12 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
       {status && <div className="alert alert--ok">{status}</div>}
 
       <div className="actions">
-        <button className="btn btn--primary" type="submit" disabled={busy}>
+        <Button variant="primary" type="submit" disabled={busy}>
           保存配置
-        </button>
-        <button className="btn" type="button" onClick={() => void load()}>
+        </Button>
+        <Button type="button" onClick={() => void load()}>
           重新读取
-        </button>
+        </Button>
       </div>
     </form>
   )

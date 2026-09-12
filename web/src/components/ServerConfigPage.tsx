@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api'
 import type { InstanceStatus, ServerConfigFile } from '../types'
+import { Button } from './Button'
 import { ConfigLayout, ConfigRow, ConfigSaveBar, changedKeys } from './ConfigLayout'
 import { PageHead } from './Page'
 import { PropertiesEditor } from './PropertiesEditor'
@@ -293,9 +294,9 @@ function ServerConfigForm({
         {status && <div className="alert alert--ok">{status}</div>}
 
         <div className="actions">
-          <button className="btn" type="button" onClick={() => void reload()}>
+          <Button type="button" onClick={() => void reload()}>
             重新读取
-          </button>
+          </Button>
         </div>
       </ConfigLayout>
 

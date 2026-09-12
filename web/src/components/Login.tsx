@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { api } from '../api'
 import type { User } from '../types'
+import { Button } from './Button'
 import { Logo } from './Logo'
 
 export function Login({ onSignedIn }: { onSignedIn: (user: User) => void }) {
@@ -54,9 +55,9 @@ export function Login({ onSignedIn }: { onSignedIn: (user: User) => void }) {
 
         {error && <div className="alert alert--error">{error}</div>}
 
-        <button className="btn btn--primary" type="submit" disabled={busy}>
+        <Button variant="primary" type="submit" disabled={busy}>
           {busy ? '登录中…' : '登录'}
-        </button>
+        </Button>
 
         <p className="login__hint">
           首次启动时，初始密码会打印在面板的启动日志里。忘记密码可运行{' '}

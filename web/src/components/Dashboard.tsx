@@ -10,6 +10,7 @@ import { STATE_LABELS, byUrgency, isLive } from '../types'
 import { useLiveMetrics } from '../useLiveMetrics'
 import type { LiveMetric } from '../useLiveMetrics'
 import { useUptime } from '../useUptime'
+import { Button } from './Button'
 import { Page } from './Page'
 import { PowerControls } from './PowerControls'
 
@@ -61,9 +62,9 @@ export function Dashboard({
       aside={
         can(CAP.panelCreate) && (
           <div className="actions">
-            <button className="btn btn--primary" onClick={onCreate}>
+            <Button variant="primary" onClick={onCreate}>
               + 新建实例
-            </button>
+            </Button>
           </div>
         )
       }
@@ -156,9 +157,9 @@ export function Dashboard({
             {can(CAP.panelCreate) ? (
               <>
                 <p>还没有任何实例。</p>
-                <button className="btn btn--primary" onClick={onCreate}>
+                <Button variant="primary" onClick={onCreate}>
                   新建第一个服务器
-                </button>
+                </Button>
               </>
             ) : (
               // Not "create one" for somebody who cannot: the empty state has

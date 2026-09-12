@@ -7,6 +7,7 @@ import '@xterm/xterm/css/xterm.css'
 import { api, terminalSocketURL } from '../api'
 import { onThemeChange, terminalTheme } from '../theme'
 import type { TerminalController } from '../useTerminal'
+import { Button } from './Button'
 import { Icon } from './Icon'
 import { Page } from './Page'
 
@@ -217,9 +218,9 @@ export function HostTerminal({ terminal, onOpenSettings }: Props) {
       >
         {status.supported && (
           <div>
-            <button className="btn btn--primary" onClick={onOpenSettings}>
+            <Button variant="primary" onClick={onOpenSettings}>
               去「主机 → 节点配置」开启
-            </button>
+            </Button>
           </div>
         )}
       </Page>
@@ -248,9 +249,9 @@ export function HostTerminal({ terminal, onOpenSettings }: Props) {
           <span className="hostterm__phase">
             {phase === 'open' ? '已连接' : phase === 'connecting' ? '连接中…' : '已断开'}
           </span>
-          <button className="btn" onClick={restart}>
+          <Button onClick={restart}>
             {phase === 'closed' ? '重新连接' : '重开会话'}
-          </button>
+          </Button>
         </div>
       </div>
 

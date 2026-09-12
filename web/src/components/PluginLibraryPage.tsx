@@ -19,6 +19,7 @@ import type {
 } from '../types'
 import { hasPluginUpdate, isLive, isReconStatus, statusLabel } from '../types'
 import type { PluginController } from '../usePlugins'
+import { Button } from './Button'
 import { Menu } from './Menu'
 import { Modal } from './Modal'
 import { Page } from './Page'
@@ -194,8 +195,7 @@ export function PluginLibraryPage({
               check that found no new releases and a check that never ran look
               identical from in front of the screen — which is how it came to
               be pressed three times in a row. */}
-          <button
-            className="btn"
+          <Button
             disabled={plugins.busy || rows.length === 0}
             title="逐个问上游有没有新版本。要花 GitHub API 配额 —— 匿名一小时 60 次。"
             onClick={() =>
@@ -206,7 +206,7 @@ export function PluginLibraryPage({
             }
           >
             检查全部更新
-          </button>
+          </Button>
           {/* Every way a plugin gets into the library, in one place. They were
               scattered across three pages and a settings tab, which meant the
               answer to "how do I add this jar" depended on where the jar came
@@ -865,41 +865,43 @@ function PrimaryAction({
     case 'drift':
     case 'missing':
       return (
-        <button className="btn btn--primary btn--small" disabled={busy} onClick={onOpen}>
+        <Button variant="primary" size="small" disabled={busy} onClick={onOpen}>
           处理
-        </button>
+        </Button>
       )
     case 'update':
       return (
-        <button
-          className="btn btn--primary btn--small"
+        <Button
+          variant="primary"
+          size="small"
           disabled={busy}
           title={`把 ${row.upstream} 下载到库里。装到实例是下一步。`}
           onClick={onDownload}
         >
           更新入库
-        </button>
+        </Button>
       )
     case 'behind':
       return (
-        <button
-          className="btn btn--primary btn--small"
+        <Button
+          variant="primary"
+          size="small"
           disabled={busy}
           title={`把落后的实例升到库内最新的 ${row.newest}`}
           onClick={onAlign}
         >
           对齐
-        </button>
+        </Button>
       )
     case 'unused':
       return (
-        <button
-          className="btn btn--small"
+        <Button
+          size="small"
           disabled={busy || row.versions === 0}
           onClick={onInstall}
         >
           装到实例…
-        </button>
+        </Button>
       )
     default:
       return null
@@ -960,8 +962,8 @@ function ForeignSection({
             ) : (
               <span className="badge badge--muted">不在库中</span>
             )}
-            <button
-              className="btn btn--small"
+            <Button
+              size="small"
               disabled={busy}
               title={
                 jar.adoptable
@@ -971,7 +973,7 @@ function ForeignSection({
               onClick={() => onAdopt(jar)}
             >
               收编进库
-            </button>
+            </Button>
           </div>
         ))}
       </div>
@@ -1037,14 +1039,14 @@ function LibraryFooter({
           <span className="libfoot__warn"> · {overview.unchecked} 台从没对过</span>
         )}
       </span>
-      <button
-        className="btn btn--small"
+      <Button
+        size="small"
         disabled={busy || instances === 0}
         title="把每台实例的插件目录逐个文件算哈希，跟库里的账本比一遍"
         onClick={onReconcile}
       >
         {busy ? '对账中…' : '对账'}
-      </button>
+      </Button>
       <button className="link" onClick={onOpenSettings}>
         GitHub 集成
       </button>
@@ -1112,23 +1114,23 @@ function BulkBar({
     <div className="bulkbar">
       <span>已选 {picked.length} 项</span>
       <span className="device-row__spacer" />
-      <button
-        className="btn btn--primary"
+      <Button
+        variant="primary"
         disabled={busy || bulkable.length === 0}
         title={bulkable.length === 0 ? '选中的插件没有落后于库的实例，没有要对齐的' : undefined}
         onClick={onUpgrade}
       >
         批量对齐…
-      </button>
-      <button className="btn" disabled={busy} onClick={onInstall}>
+      </Button>
+      <Button disabled={busy} onClick={onInstall}>
         批量装到实例…
-      </button>
-      <button className="btn" disabled={busy} onClick={onCheck}>
+      </Button>
+      <Button disabled={busy} onClick={onCheck}>
         检查更新
-      </button>
-      <button className="btn" disabled={busy} onClick={onClean}>
+      </Button>
+      <Button disabled={busy} onClick={onClean}>
         清理缓存
-      </button>
+      </Button>
       <button className="link" onClick={onClear}>
         取消选择
       </button>
@@ -1397,16 +1399,16 @@ function BulkInstallDialog({
         {error && <div className="alert alert--error">{error}</div>}
 
         <div className="modal__actions">
-          <button className="btn" disabled={busy} onClick={onCancel}>
+          <Button disabled={busy} onClick={onCancel}>
             取消
-          </button>
-          <button
-            className="btn btn--primary"
+          </Button>
+          <Button
+            variant="primary"
             disabled={busy || targets.length === 0}
             onClick={() => void install()}
           >
             {busy ? '安装中…' : `装到 ${targets.length} 台`}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>
@@ -1472,16 +1474,16 @@ function BulkConfirm({
         )}
 
         <div className="modal__actions">
-          <button className="btn" disabled={busy} onClick={onCancel}>
+          <Button disabled={busy} onClick={onCancel}>
             取消
-          </button>
-          <button
-            className="btn btn--primary"
+          </Button>
+          <Button
+            variant="primary"
             disabled={busy || impact.plugins.length === 0}
             onClick={onConfirm}
           >
             {busy ? '升级中…' : '确认升级'}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

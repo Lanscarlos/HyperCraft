@@ -5,6 +5,7 @@ import { formatBytes, formatDate } from '../format'
 import type { LibraryView } from '../routes'
 import type { CoreDownloadJob, ServerCore } from '../types'
 import type { CoreController } from '../useCores'
+import { Button } from './Button'
 import { CoreCatalogue, isRecommended, useCoreCatalogue } from './CoreCatalogue'
 import { Page } from './Page'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
@@ -157,23 +158,23 @@ export function CoreLibraryPage({
 
           <div className="actions">
             {downloading ? (
-              <button
-                className="btn btn--danger"
+              <Button
+                variant="danger"
                 type="button"
                 onClick={() => void cores.cancel()}
                 disabled={busy}
               >
                 取消下载
-              </button>
+              </Button>
             ) : (
-              <button
-                className="btn btn--primary"
+              <Button
+                variant="primary"
                 type="button"
                 onClick={() => projectId && versionId && void cores.download(projectId, versionId)}
                 disabled={busy || !versionId}
               >
                 下载 {project?.name ?? ''} {versionId}
-              </button>
+              </Button>
             )}
           </div>
         </section>

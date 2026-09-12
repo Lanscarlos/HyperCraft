@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { api } from '../api'
+import { Button } from './Button'
 import { Modal } from './Modal'
 
 interface Props {
@@ -77,12 +78,12 @@ export function ChangePasswordDialog({ onChanged, onCancel }: Props) {
         {error && <div className="alert alert--error">{error}</div>}
 
         <div className="modal__actions">
-          <button className="btn" type="button" onClick={onCancel} disabled={busy}>
+          <Button type="button" onClick={onCancel} disabled={busy}>
             取消
-          </button>
-          <button className="btn btn--primary" type="submit" disabled={busy}>
+          </Button>
+          <Button variant="primary" type="submit" disabled={busy}>
             {busy ? '提交中…' : '修改密码'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>

@@ -11,6 +11,7 @@ import type {
   SchematicTarget,
 } from '../types'
 import type { SchematicController } from '../useSchematics'
+import { Button } from './Button'
 import { Modal } from './Modal'
 import { Page } from './Page'
 import { SchematicDialog } from './SchematicPreview'
@@ -143,16 +144,16 @@ export function SchematicLibraryPage({
             onChange={(event) => setQuery(event.target.value)}
           />
           <div className="schemlib__bar-actions">
-            <button
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               onClick={() => picker.current?.click()}
               disabled={progress !== null}
             >
               {progress === null ? '上传建筑' : `上传中 ${Math.round(progress * 100)}%`}
-            </button>
-            <button className="btn" onClick={() => void rescan()} disabled={busy}>
+            </Button>
+            <Button onClick={() => void rescan()} disabled={busy}>
               扫描目录
-            </button>
+            </Button>
           </div>
           <input
             ref={picker}
@@ -316,9 +317,9 @@ export function SchematicCard({
       </p>
 
       <footer className="schemcard__actions">
-        <button className="btn btn--row" onClick={onInstall} disabled={busy}>
+        <Button size="row" onClick={onInstall} disabled={busy}>
           安装到实例
-        </button>
+        </Button>
         <button className="link" onClick={onEdit} disabled={busy}>
           编辑
         </button>
@@ -500,12 +501,12 @@ function EditDialog({
         </label>
 
         <div className="modal__actions">
-          <button className="btn" onClick={onCancel} disabled={saving}>
+          <Button onClick={onCancel} disabled={saving}>
             取消
-          </button>
-          <button className="btn btn--primary" onClick={() => void submit()} disabled={saving}>
+          </Button>
+          <Button variant="primary" onClick={() => void submit()} disabled={saving}>
             {saving ? '保存中…' : '保存'}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>
@@ -630,16 +631,16 @@ function InstallDialog({
         )}
 
         <div className="modal__actions">
-          <button className="btn" onClick={onClose} disabled={busy}>
+          <Button onClick={onClose} disabled={busy}>
             {done ? '关闭' : '取消'}
-          </button>
-          <button
-            className="btn btn--primary"
+          </Button>
+          <Button
+            variant="primary"
             onClick={() => void install()}
             disabled={busy || targets.length === 0}
           >
             {busy ? '安装中…' : '安装'}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

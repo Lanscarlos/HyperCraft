@@ -7,6 +7,7 @@ import { CAP, useCan } from '../useCan'
 import { STATE_LABELS, byUrgency, isLive } from '../types'
 import { useLiveMetrics } from '../useLiveMetrics'
 import { useUptime } from '../useUptime'
+import { Button } from './Button'
 import { Page } from './Page'
 import { PowerControls } from './PowerControls'
 
@@ -75,12 +76,12 @@ export function InstanceList({
               realised the panel does not know about their server looks. */}
           {can(CAP.panelCreate) && (
             <>
-              <button className="btn" onClick={onImport}>
+              <Button onClick={onImport}>
                 导入现有目录
-              </button>
-              <button className="btn btn--primary" onClick={onCreate}>
+              </Button>
+              <Button variant="primary" onClick={onCreate}>
                 + 新建实例
-              </button>
+              </Button>
             </>
           )}
         </div>
