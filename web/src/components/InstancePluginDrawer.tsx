@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { formatBytes, formatDate } from '../format'
 import type { InstancePlugin } from '../types'
 import { useDismiss } from '../useDismiss'
+import { Button } from './Button'
 import { loaderLabel } from './PluginBrowse'
 import { CompatBadge } from './PluginCompat'
 
@@ -87,14 +88,14 @@ export function InstancePluginDrawer({
               </p>
             </div>
           </div>
-          <button
+          <Button
             ref={closer}
-            className="btn btn--icon"
+            icon
             onClick={close}
             aria-label="关闭（Esc）"
           >
             ✕
-          </button>
+          </Button>
         </header>
 
         <div className="drawer__body">
@@ -218,12 +219,12 @@ export function InstancePluginDrawer({
                   '面板没有装过它，所以没有版本记录可以切换或回滚 —— 表格那一行的 ⋯ 里可以把它导入插件库。'}
             </span>
           </div>
-          <button className="btn" onClick={onOpenConfig} title={entry.configDir}>
+          <Button onClick={onOpenConfig} title={entry.configDir}>
             打开配置目录
-          </button>
-          <button className="btn btn--primary" onClick={close}>
+          </Button>
+          <Button variant="primary" onClick={close}>
             关闭
-          </button>
+          </Button>
         </footer>
       </aside>
     </div>,

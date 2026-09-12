@@ -12,6 +12,7 @@ import {
   type Flag,
   type KnownFlag,
 } from '../jvmFlags'
+import { Card } from './Card'
 import { Select } from './Select'
 
 /**
@@ -167,7 +168,7 @@ function ArgCard({
   // the full width of the grid, because what goes in them is the long form.
   if (editing || flag.kind === 'raw') {
     return (
-      <div className="jvmcard jvmcard--full">
+      <Card pad="tight" tone="sunken" className="jvmcard jvmcard--full">
         <FreeText
           flag={flag}
           editing={editing}
@@ -179,12 +180,12 @@ function ArgCard({
         {!editing && (
           <div className="jvmcard__note">面板不认识这个参数的写法，按原文保存。</div>
         )}
-      </div>
+      </Card>
     )
   }
 
   return (
-    <div className="jvmcard">
+    <Card pad="tight" tone="sunken" className="jvmcard">
       <div className="jvmcard__head">
         <button type="button" className="jvmcard__name" onClick={onEdit} title="改这一行的原文">
           <span className="jvmcard__prefix">{flag.prefix}</span>
@@ -254,7 +255,7 @@ function ArgCard({
           />
         )}
       </div>
-    </div>
+    </Card>
   )
 }
 

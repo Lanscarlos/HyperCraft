@@ -62,6 +62,8 @@ CI（`.github/workflows/ci.yml`）跑的是 `make lint` → `make test` → `mak
 
 **只要任务涉及界面布局、栅格、间距、响应式、导航壳、组件排布、主题令牌或动效，先调用 `frontend-design` skill**（`.claude/skills/frontend-design/SKILL.md`），按它的规则做，不要凭直觉改样式。
 
+令牌、控件清单和「只有异常才上色」「一屏一个实心按钮」这类跨页面的约定写在 `docs/design-system.md`；其中能被机器检查的部分由 `npm --prefix web run check:ui` 执行（已接进 `build`）。
+
 skill 里是完整规则，这里只列最容易踩的几条：
 
 - **一个页面框**：所有面板级页面用 `components/Page.tsx`，只有三种形态——「散文」`--content-max`(880px)、「瓦片（`wide`）」`--content-max-wide`(1440px)、「全屏工作区（`full`）」不设上限。不要再造页面框，不要引第四种。`full` 严格限定于「一屏一件事的工具页」：里面装的是一块占满空间的画布（文件页的编辑模式），不是一段要读的内容。内容页一律在前两种里选。

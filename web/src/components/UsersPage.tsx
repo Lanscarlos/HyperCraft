@@ -11,6 +11,7 @@ import type {
   Role,
 } from '../types'
 import { AccountDialog } from './AccountDialog'
+import { Button } from './Button'
 import { Page } from './Page'
 import { RoleDialog } from './RoleDialog'
 
@@ -142,9 +143,9 @@ export function UsersPage({ instances, me }: Props) {
       <section className="panel">
         <div className="panel__head">
           <h3 className="panel__title">账号</h3>
-          <button className="btn btn--primary btn--row" onClick={() => setEditing('new')}>
+          <Button variant="primary" size="row" onClick={() => setEditing('new')}>
             新建账号
-          </button>
+          </Button>
         </div>
 
         {accounts === null ? (
@@ -207,9 +208,9 @@ export function UsersPage({ instances, me }: Props) {
       <section className="panel">
         <div className="panel__head">
           <h3 className="panel__title">角色</h3>
-          <button className="btn btn--row" onClick={() => setEditingRole('new')}>
+          <Button size="row" onClick={() => setEditingRole('new')}>
             新建角色
-          </button>
+          </Button>
         </div>
         <p className="panel__lead">
           管理员是内置角色，恒等于全部能力 —— 以后版本新增一条能力，管理员自动就有。它改不了也删不掉。

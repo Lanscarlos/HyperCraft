@@ -6,6 +6,7 @@ import type { InstanceStatus, JavaRuntime, ServerCore, SystemInfo } from '../typ
 import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
 import type { JavaController } from '../useJava'
+import { Button } from './Button'
 import { CoreCatalogue, useCoreCatalogue } from './CoreCatalogue'
 import { Page } from './Page'
 import { DirectoryField } from './PathPicker'
@@ -579,7 +580,7 @@ export function NewInstanceWizard({
                 <span className="wizard-step__index" aria-hidden="true">
                   {done ? '✓' : position + 1}
                 </span>
-                <span className="wizard-step__label">{entry.label}</span>
+                <span>{entry.label}</span>
               </button>
             </li>
           )
@@ -734,33 +735,32 @@ export function NewInstanceWizard({
           )}
 
           <div className="wizard__nav">
-            <button
-              className="btn"
+            <Button
               type="button"
               disabled={busy}
               onClick={() => (index === 0 ? onCancel() : setStep(steps[index - 1].id))}
             >
               {index === 0 ? '取消' : '上一步'}
-            </button>
+            </Button>
 
             {step === 'confirm' ? (
-              <button
-                className="btn btn--primary"
+              <Button
+                variant="primary"
                 type="button"
                 disabled={busy || !valid.basics}
                 onClick={() => void create()}
               >
                 {busy ? '创建中…' : '创建实例'}
-              </button>
+              </Button>
             ) : (
-              <button
-                className="btn btn--primary"
+              <Button
+                variant="primary"
                 type="button"
                 disabled={!valid[step]}
                 onClick={() => setStep(steps[index + 1].id)}
               >
                 下一步：{steps[index + 1]?.label}
-              </button>
+              </Button>
             )}
           </div>
 
@@ -899,23 +899,23 @@ function CoreStep({
               {awaiting && job && <DownloadStatus job={job} />}
               <div className="actions">
                 {downloading ? (
-                  <button
-                    className="btn btn--danger"
+                  <Button
+                    variant="danger"
                     type="button"
                     disabled={busy}
                     onClick={() => void cores.cancel()}
                   >
                     取消下载
-                  </button>
+                  </Button>
                 ) : (
-                  <button
-                    className="btn btn--primary"
+                  <Button
+                    variant="primary"
                     type="button"
                     disabled={busy || !catalogue.versionId}
                     onClick={onDownload}
                   >
                     下载 {catalogue.project?.name ?? ''} {catalogue.versionId}
-                  </button>
+                  </Button>
                 )}
                 <span className="file-toolbar__hint">
                   下载走服务器自己的网络，关掉网页也会继续。
@@ -1154,23 +1154,22 @@ function JavaStep({
 
             <div className="actions">
               {installing ? (
-                <button
-                  className="btn btn--danger"
+                <Button
+                  variant="danger"
                   type="button"
                   disabled={java.busy}
                   onClick={() => void java.cancel()}
                 >
                   取消安装
-                </button>
+                </Button>
               ) : (
-                <button
-                  className="btn"
+                <Button
                   type="button"
                   disabled={java.busy || installMajor == null}
                   onClick={() => installMajor != null && onInstall(installMajor)}
                 >
                   安装 Java {installMajor ?? ''} JRE
-                </button>
+                </Button>
               )}
               <span className="file-toolbar__hint">装好会自动选上，不用回头改。</span>
             </div>
@@ -1811,12 +1810,12 @@ function Finished({
       )}
 
       <div className="actions">
-        <button className="btn btn--primary" type="button" disabled={busy} onClick={onOpen}>
+        <Button variant="primary" type="button" disabled={busy} onClick={onOpen}>
           进入控制台
-        </button>
-        <button className="btn" type="button" disabled={busy || !ready} onClick={onStart}>
+        </Button>
+        <Button type="button" disabled={busy || !ready} onClick={onStart}>
           {busy ? '启动中…' : '立即开服'}
-        </button>
+        </Button>
       </div>
     </section>
   )

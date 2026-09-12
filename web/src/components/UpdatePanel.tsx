@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { UPDATE_CHANNELS, UPDATE_MIRRORS } from '../types'
 import type { UpdateChannel, UpdateShutdown, UpdateStatus, UpdateVersion } from '../types'
 import type { UpdateController } from '../useUpdate'
+import { Badge } from './Badge'
+import { Button } from './Button'
 import { Modal } from './Modal'
 
 interface Props {
@@ -46,9 +48,9 @@ export function UpdatePanel({ update, runningNames }: Props) {
     <section className="update">
       <div className="update__head">
         <h2 className="update__title">面板更新</h2>
-        <button className="btn" onClick={() => void update.check()} disabled={checking}>
+        <Button onClick={() => void update.check()} disabled={checking}>
           {checking ? '检查中…' : '检查更新'}
-        </button>
+        </Button>
       </div>
 
       <dl className="update__meta">
@@ -56,14 +58,14 @@ export function UpdatePanel({ update, runningNames }: Props) {
           <dt>当前版本</dt>
           <dd>
             {status.currentVersion}
-            {status.currentIsSnapshot && <span className="badge">快照</span>}
+            {status.currentIsSnapshot && <Badge>快照</Badge>}
           </dd>
         </div>
         <div>
           <dt>最新版本</dt>
           <dd>
             {status.latestVersion ?? '尚未检查'}
-            {status.latestIsPrerelease && <span className="badge">快照</span>}
+            {status.latestIsPrerelease && <Badge>快照</Badge>}
           </dd>
         </div>
         <div>
@@ -107,9 +109,9 @@ export function UpdatePanel({ update, runningNames }: Props) {
             </details>
           )}
           <div className="update__actions">
-            <button className="btn btn--primary" onClick={() => setConfirming(true)}>
+            <Button variant="primary" onClick={() => setConfirming(true)}>
               {status.downgrade ? '回到' : '立即更新到'} {status.latestVersion}
-            </button>
+            </Button>
             {status.releaseUrl && (
               <a className="link" href={status.releaseUrl} target="_blank" rel="noreferrer">
                 在 GitHub 上查看
@@ -301,9 +303,9 @@ function MirrorPicker({
               placeholder="https://example.com/"
               aria-label="自定义镜像源"
             />
-            <button className="btn" onClick={() => onChange(custom.trim())}>
+            <Button onClick={() => onChange(custom.trim())}>
               保存
-            </button>
+            </Button>
           </div>
         )}
 
@@ -383,9 +385,9 @@ function RollbackSection({
             可以直接换回去——不用下载，也不受 GitHub 上旧版本被清理的影响。
           </p>
           <div className="update__actions">
-            <button className="btn btn--danger" type="button" onClick={onRollback}>
+            <Button variant="danger" type="button" onClick={onRollback}>
               退回 {status.previousVersion}
-            </button>
+            </Button>
           </div>
         </>
       ) : (
@@ -432,8 +434,8 @@ function VersionList({
           <div className="update__version" key={entry.tag}>
             <div className="update__version-name">
               <strong>{entry.version}</strong>
-              {entry.current && <span className="badge">当前</span>}
-              {entry.prerelease && <span className="badge">快照</span>}
+              {entry.current && <Badge>当前</Badge>}
+              {entry.prerelease && <Badge>快照</Badge>}
               {entry.publishedAt && (
                 <small>{new Date(entry.publishedAt).toLocaleDateString()}</small>
               )}
@@ -441,9 +443,9 @@ function VersionList({
             {entry.current ? (
               <span className="update__version-note">正在运行</span>
             ) : entry.installable ? (
-              <button className="btn" type="button" onClick={() => onPick(entry)}>
+              <Button type="button" onClick={() => onPick(entry)}>
                 {entry.downgrade ? '装回这一版' : '装这一版'}
-              </button>
+              </Button>
             ) : (
               <span className="update__version-note">没有适用于这台机器的构建</span>
             )}
@@ -510,12 +512,12 @@ function ConfirmRollbackDialog({
         )}
 
         <div className="modal__actions">
-          <button className="btn" type="button" onClick={onCancel}>
+          <Button type="button" onClick={onCancel}>
             取消
-          </button>
-          <button className="btn btn--danger" type="button" onClick={onConfirm}>
+          </Button>
+          <Button variant="danger" type="button" onClick={onConfirm}>
             确认退回
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>
@@ -584,12 +586,12 @@ function ConfirmUpdateDialog({
         )}
 
         <div className="modal__actions">
-          <button className="btn" type="button" onClick={onCancel}>
+          <Button type="button" onClick={onCancel}>
             取消
-          </button>
-          <button className="btn btn--primary" type="button" onClick={onConfirm}>
+          </Button>
+          <Button variant="primary" type="button" onClick={onConfirm}>
             确认更新
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

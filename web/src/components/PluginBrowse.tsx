@@ -9,6 +9,8 @@ import type {
   PluginListing,
   PluginSourceKind,
 } from '../types'
+import { Button } from './Button'
+import { Card } from './Card'
 import { CompatBadge } from './PluginCompat'
 import { PluginDrawer } from './PluginDrawer'
 import { PluginIcon } from './PluginIcon'
@@ -282,9 +284,9 @@ export function PluginBrowse({
           onChange={(event) => edit({ q: event.target.value })}
           aria-label="搜索插件"
         />
-        <button className="btn btn--primary" type="submit" disabled={loading || !dirty}>
+        <Button variant="primary" type="submit" disabled={loading || !dirty}>
           {loading ? '搜索中…' : '搜索'}
-        </button>
+        </Button>
       </form>
 
       <div className="browse__body">
@@ -375,9 +377,9 @@ export function PluginBrowse({
 
               {listings.length > shown && (
                 <div className="browse__more">
-                  <button className="btn" onClick={() => setShown((count) => count + PAGE)}>
+                  <Button onClick={() => setShown((count) => count + PAGE)}>
                     再显示 {Math.min(PAGE, listings.length - shown)} 个（共 {listings.length}）
-                  </button>
+                  </Button>
                 </div>
               )}
 
@@ -487,14 +489,14 @@ function FilterRail({
   return (
     <aside className="browse__rail" aria-label="筛选">
       {folded && (
-        <button
-          className="btn browse__rail-toggle"
+        <Button
+          className="browse__rail-toggle"
           aria-expanded={open}
           onClick={() => setShown(!shown)}
         >
           {open ? '收起筛选' : '筛选'}
           {filtered && !open && <span className="browse__rail-dot" aria-hidden="true" />}
-        </button>
+        </Button>
       )}
 
       {open && (
@@ -818,7 +820,9 @@ function BrowseCard({
   const unjudgeable = judged && listing.compat?.state === 'unknown'
 
   return (
-    <article
+    <Card
+      as="article"
+      pad="none"
       className={`browse-card${bad ? ' browse-card--dim' : ''}${focused ? ' browse-card--focused' : ''}`}
       role="listitem"
     >
@@ -867,7 +871,7 @@ function BrowseCard({
         )}
         <span className="badge browse-card__source">{sourceLabel(listing.source)}</span>
       </div>
-    </article>
+    </Card>
   )
 }
 

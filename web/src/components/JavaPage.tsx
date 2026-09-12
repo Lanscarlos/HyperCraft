@@ -4,6 +4,8 @@ import { ask } from '../confirm'
 import { formatBytes, formatDate } from '../format'
 import type { JavaDistribution, JavaInstallJob, JavaRuntime, SystemJava } from '../types'
 import type { JavaController } from '../useJava'
+import { Badge } from './Badge'
+import { Button } from './Button'
 import { Page } from './Page'
 import { Select } from './Select'
 import { Shelf } from './Shelf'
@@ -310,25 +312,26 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
                     <div className="pick__body">
                       <span className="pick__name">
                         <strong>Java {entry.major}</strong>
-                        {entry.lts && <span className="badge">LTS</span>}
-                        {entry.installed && <span className="badge badge--ok">已安装</span>}
+                        {entry.lts && <Badge>LTS</Badge>}
+                        {entry.installed && <Badge tone="ok">已安装</Badge>}
                       </span>
                       <span className="pick__meta">
                         {majorNote(entry.major, entry.lts)} · {imageType.toUpperCase()}
                       </span>
                     </div>
                     {running ? (
-                      <button
-                        className="btn btn--small btn--danger"
+                      <Button
+                        size="small"
+                        variant="danger"
                         type="button"
                         disabled={busy}
                         onClick={() => void java.cancel()}
                       >
                         取消
-                      </button>
+                      </Button>
                     ) : (
-                      <button
-                        className="btn btn--small"
+                      <Button
+                        size="small"
                         type="button"
                         disabled={busy || installing}
                         onClick={() => {
@@ -342,7 +345,7 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
                         }}
                       >
                         {entry.installed ? '重装' : '安装'}
-                      </button>
+                      </Button>
                     )}
                   </div>
                 )
@@ -399,7 +402,7 @@ function SystemRow({ system }: { system: SystemJava }) {
         <div className="asset__title">
           <span className="asset__label">
             <strong>系统 Java {system.major || '?'}</strong>
-            <span className="badge">来自 {system.source}</span>
+            <Badge>来自 {system.source}</Badge>
           </span>
           <span className="asset__sub">
             <span>{system.vendor || '未知发行方'}</span>
@@ -443,8 +446,8 @@ function RuntimeRow({
         <div className="asset__title">
           <span className="asset__label">
             <strong>Java {runtime.major}</strong>
-            <span className="badge">{runtime.imageType.toUpperCase()}</span>
-            {runtime.live && <span className="badge badge--live">运行中</span>}
+            <Badge>{runtime.imageType.toUpperCase()}</Badge>
+            {runtime.live && <Badge tone="live">运行中</Badge>}
           </span>
           <span className="asset__sub">
             <span>{runtime.vendor || '未知发行方'}</span>
@@ -473,9 +476,9 @@ function RuntimeRow({
           <span className="asset__users">
             使用中：
             {runtime.usedBy.map((name) => (
-              <span className="badge" key={name}>
+              <Badge key={name}>
                 {name}
-              </span>
+              </Badge>
             ))}
           </span>
         ) : (

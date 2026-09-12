@@ -14,6 +14,7 @@ import type {
 } from '../types'
 import { ENCODING_OPTIONS, isLive, LOADER_OPTIONS } from '../types'
 import { JVM_PRESETS } from '../jvmPresets'
+import { Button } from './Button'
 import { JVMArgsEditor } from './JVMArgsEditor'
 import { ScriptImportDialog } from './ScriptImportDialog'
 import type { CoreController } from '../useCores'
@@ -580,9 +581,9 @@ export function LaunchSettings({
             </label>
 
             <div className="actions">
-              <button className="btn" type="button" onClick={() => setImporting(true)}>
+              <Button type="button" onClick={() => setImporting(true)}>
                 从启动脚本读参数…
-              </button>
+              </Button>
             </div>
 
             <ArgFileMemory
@@ -822,26 +823,25 @@ export function LaunchSettings({
       {status && <div className="alert alert--ok">{status}</div>}
 
       <div className="actions">
-        <button className="btn btn--primary" type="submit" disabled={busy}>
+        <Button variant="primary" type="submit" disabled={busy}>
           保存设置
-        </button>
+        </Button>
         <div className="actions__danger">
-          <button
-            className="btn"
+          <Button
             type="button"
             onClick={() => remove(false)}
             disabled={busy || isLive(instance.state)}
           >
             从面板移除
-          </button>
-          <button
-            className="btn btn--danger"
+          </Button>
+          <Button
+            variant="danger"
             type="button"
             onClick={() => remove(true)}
             disabled={busy || isLive(instance.state)}
           >
             删除实例及所有文件
-          </button>
+          </Button>
         </div>
       </div>
     </form>
@@ -913,9 +913,9 @@ function LaunchCheckPanel({
       )}
 
       <div className="actions">
-        <button className="btn btn--row" type="button" onClick={onRecheck}>
+        <Button size="row" type="button" onClick={onRecheck}>
           重新检查
-        </button>
+        </Button>
       </div>
     </section>
   )
@@ -1071,9 +1071,9 @@ function ArgFileMemory({
       </p>
 
       <div className="actions">
-        <button className="btn btn--row" type="button" disabled={busy} onClick={onSave}>
+        <Button size="row" type="button" disabled={busy} onClick={onSave}>
           写入 {jvm.fileName}
-        </button>
+        </Button>
         {status && <span className="muted">{status}</span>}
       </div>
     </>

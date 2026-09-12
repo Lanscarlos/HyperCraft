@@ -7,6 +7,7 @@ import { highlight, langOf } from '../highlight'
 import { toast } from '../toast'
 import { useMediaQuery } from '../useMediaQuery'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
+import { Button } from './Button'
 import { FileIcon, extensionOf } from './FileIcon'
 import { FileTree } from './FileTree'
 import type { TreeNode } from './FileTree'
@@ -839,60 +840,61 @@ export function FileManager({
           {editing && (
             <>
               <div className="ftree__bar">
-                <button
-                  className="btn btn--icon"
+                <Button
+                  icon
                   onClick={() => fileInput.current?.click()}
                   disabled={busy || !listing.writable}
                   title={listing.writable ? '上传到当前目录' : readOnlyHere}
                   aria-label="上传文件"
                 >
                   <Glyph name="upload" />
-                </button>
-                <button
-                  className="btn btn--icon"
+                </Button>
+                <Button
+                  icon
                   onClick={() => void createFile()}
                   disabled={busy || !listing.writable}
                   title={listing.writable ? '新建文件' : readOnlyHere}
                   aria-label="新建文件"
                 >
                   <Glyph name="new-file" />
-                </button>
-                <button
-                  className="btn btn--icon"
+                </Button>
+                <Button
+                  icon
                   onClick={() => void createFolder()}
                   disabled={busy || !listing.writable}
                   title={listing.writable ? '新建文件夹' : readOnlyHere}
                   aria-label="新建文件夹"
                 >
                   <Glyph name="new-folder" />
-                </button>
-                <button
-                  className="btn btn--icon"
+                </Button>
+                <Button
+                  icon
                   onClick={refresh}
                   disabled={busy || pending}
                   title="刷新"
                   aria-label="刷新"
                 >
                   <Glyph name="refresh" className={pending ? 'spin' : undefined} />
-                </button>
+                </Button>
                 {editor !== null && (
-                  <button
-                    className="btn btn--icon"
+                  <Button
+                    icon
                     onClick={() => setTreeOpen(false)}
                     title="收起目录树"
                     aria-label="收起目录树"
                   >
                     <Glyph name="folder" />
-                  </button>
+                  </Button>
                 )}
-                <button
-                  className="btn btn--icon ftree__leave"
+                <Button
+                  icon
+                  className="ftree__leave"
                   onClick={() => setEditing(false)}
                   title="退出编辑模式（Esc）"
                   aria-label="退出编辑模式"
                 >
                   <Glyph name="up" />
-                </button>
+                </Button>
               </div>
               <p className="ftree__where" title={dir || '实例根目录'}>
                 {dir === '' ? '实例根目录' : dir}
@@ -953,15 +955,15 @@ export function FileManager({
             {/* A confined role can walk through the folders on the way to the one
                 it may edit, but not write in them. Offering the buttons there
                 would be offering a request the panel refuses. */}
-            <button
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               onClick={() => fileInput.current?.click()}
               disabled={busy || !listing.writable}
               title={listing.writable ? undefined : readOnlyHere}
             >
               <Glyph name="upload" />
               上传文件
-            </button>
+            </Button>
             <input
               ref={fileInput}
               type="file"
@@ -972,43 +974,40 @@ export function FileManager({
                 event.target.value = ''
               }}
             />
-            <button
-              className="btn"
+            <Button
               disabled={busy || !listing.writable}
               title={listing.writable ? undefined : readOnlyHere}
               onClick={() => void createFolder()}
             >
               <Glyph name="new-folder" />
               新建文件夹
-            </button>
-            <button
-              className="btn"
+            </Button>
+            <Button
               disabled={busy || !listing.writable}
               title={listing.writable ? undefined : readOnlyHere}
               onClick={() => void createFile()}
             >
               <Glyph name="new-file" />
               新建文件
-            </button>
-            <button
-              className="btn btn--icon"
+            </Button>
+            <Button
+              icon
               onClick={refresh}
               disabled={busy || pending}
               title="刷新"
               aria-label="刷新"
             >
               <Glyph name="refresh" className={pending ? 'spin' : undefined} />
-            </button>
+            </Button>
 
             {roomy && (
-              <button
-                className="btn"
+              <Button
                 onClick={() => setEditing(true)}
                 title="把这一屏交给编辑器：列表让位，目录树带上文件"
               >
                 <Glyph name="doc" />
                 编辑模式
-              </button>
+              </Button>
             )}
 
             <div className="file-toolbar__find">
@@ -1030,22 +1029,21 @@ export function FileManager({
           {selectedEntries.length > 0 && (
             <div className="file-bulk">
               <span className="file-bulk__count">已选择 {selectedEntries.length} 项</span>
-              <button
-                className="btn"
+              <Button
                 disabled={busy}
                 onClick={() => void downloadMany(selectedEntries)}
               >
                 <Glyph name="download" />
                 下载
-              </button>
-              <button
-                className="btn btn--danger"
+              </Button>
+              <Button
+                variant="danger"
                 disabled={busy}
                 onClick={() => void removeMany(selectedEntries)}
               >
                 <Glyph name="trash" />
                 删除
-              </button>
+              </Button>
               <button className="link file-bulk__clear" onClick={() => setSelected(new Set())}>
                 取消选择
               </button>
@@ -1107,17 +1105,17 @@ export function FileManager({
                       {query ? (
                         <div className="file-empty">
                           <p>没有匹配「{query}」的文件。</p>
-                          <button className="btn" onClick={() => setQuery('')}>
+                          <Button onClick={() => setQuery('')}>
                             清除筛选
-                          </button>
+                          </Button>
                         </div>
                       ) : (
                         <div className="file-empty">
                           <Glyph name="folder-open" className="file-empty__glyph" />
                           <p>这个目录是空的。把服务端 jar 或插件拖进来就能开始。</p>
-                          <button className="btn" onClick={() => fileInput.current?.click()}>
+                          <Button onClick={() => fileInput.current?.click()}>
                             上传文件
-                          </button>
+                          </Button>
                         </div>
                       )}
                     </td>
@@ -1486,15 +1484,16 @@ function FileEditor({
         </button>
 
         {onShowTree && (
-          <button
+          <Button
             type="button"
-            className="btn btn--icon editor__tree"
+            icon
+            className="editor__tree"
             onClick={onShowTree}
             title="显示目录树"
             aria-label="显示目录树"
           >
             <Glyph name="folder" />
-          </button>
+          </Button>
         )}
 
         <div className="etabs" role="tablist" aria-label="打开的文件">
@@ -1610,23 +1609,23 @@ function FileEditor({
         {error && <div className="alert alert--error">{error}</div>}
 
         <div className="actions">
-          <button className="btn btn--primary" onClick={onSave} disabled={busy || !dirty}>
+          <Button variant="primary" onClick={onSave} disabled={busy || !dirty}>
             保存
-          </button>
-          <button className="btn" onClick={onRevert} disabled={busy || !dirty}>
+          </Button>
+          <Button onClick={onRevert} disabled={busy || !dirty}>
             撤销修改
-          </button>
+          </Button>
           {/* The question you ask right before editing a config you did not
               write: what did this look like before, and who moved it. */}
           {onOpenHistory && (
-            <button className="btn" onClick={onOpenHistory} title="在配置历史里比较这个文件">
+            <Button onClick={onOpenHistory} title="在配置历史里比较这个文件">
               配置历史
-            </button>
+            </Button>
           )}
           <span className="editor__hint">Ctrl / ⌘ + S 也能保存</span>
-          <button className="btn" onClick={onClose}>
+          <Button onClick={onClose}>
             关闭
-          </button>
+          </Button>
         </div>
       </section>
     </div>
@@ -1683,12 +1682,12 @@ function NameDialog({
         </label>
 
         <div className="modal__actions">
-          <button className="btn" type="button" onClick={() => onAnswer(null)}>
+          <Button type="button" onClick={() => onAnswer(null)}>
             取消
-          </button>
-          <button className="btn btn--primary" type="submit" disabled={problem != null}>
+          </Button>
+          <Button variant="primary" type="submit" disabled={problem != null}>
             {request.confirmLabel}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
@@ -1713,7 +1712,7 @@ function ImagePreview({
         <p className="modal__lead">
           {formatBytes(entry.size)} · {formatDate(entry.modified)}
         </p>
-        <div className="preview">
+        <div className="file-preview">
           {broken ? (
             <p className="muted">这张图片无法显示，可能已经损坏或格式不受支持。</p>
           ) : (
@@ -1728,9 +1727,9 @@ function ImagePreview({
           <a className="btn" href={downloadURL(instanceId, entry.path)} download>
             下载
           </a>
-          <button className="btn btn--primary" onClick={onClose}>
+          <Button variant="primary" onClick={onClose}>
             关闭
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

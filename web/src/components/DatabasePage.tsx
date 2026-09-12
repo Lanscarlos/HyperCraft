@@ -10,6 +10,8 @@ import type {
   DatabaseService,
 } from '../types'
 import type { DatabaseController } from '../useDatabases'
+import { Badge } from './Badge'
+import { Button } from './Button'
 import { Page } from './Page'
 import { Select } from './Select'
 import { Shelf } from './Shelf'
@@ -232,14 +234,14 @@ function ServiceList({
 
           {usable.length > 0 && (
             <div className="actions">
-              <button
-                className="btn btn--primary"
+              <Button
+                variant="primary"
                 type="button"
                 disabled={databases.busy || creating}
                 onClick={() => setCreating(true)}
               >
                 新建数据库
-              </button>
+              </Button>
               <span className="muted">
                 一个引擎可以建多个数据库，端口面板会自动错开。
               </span>
@@ -303,8 +305,8 @@ function ServiceRow({
         <span className="asset__title">
           <span className="asset__label">
             <strong>{service.name}</strong>
-            <span className="badge">{service.version}</span>
-            {service.missing && <span className="badge badge--update">引擎已删除</span>}
+            <Badge>{service.version}</Badge>
+            {service.missing && <Badge tone="update">引擎已删除</Badge>}
           </span>
           <span className="asset__sub">
             <span>{service.autoStart ? '跟随面板启动' : '手动启动'}</span>
@@ -391,7 +393,7 @@ function ServiceDetail({
           {service.engine.slice(0, 2).toUpperCase()}
         </span>
         <strong>{service.name}</strong>
-        <span className="badge">{STATE_LABELS[service.state]}</span>
+        <Badge>{STATE_LABELS[service.state]}</Badge>
       </div>
 
       {service.error && (
@@ -452,28 +454,29 @@ function ServiceDetail({
         <span className="dbdetail__label">操作</span>
         <div className="dbdetail__actions">
           {running || moving ? (
-            <button className="btn btn--small" type="button" disabled={busy || moving} onClick={onStop}>
+            <Button size="small" type="button" disabled={busy || moving} onClick={onStop}>
               停止
-            </button>
+            </Button>
           ) : (
-            <button
-              className="btn btn--small"
+            <Button
+              size="small"
               type="button"
               disabled={busy || service.missing}
               onClick={onStart}
             >
               启动
-            </button>
+            </Button>
           )}
-          <button
-            className="btn btn--small btn--danger"
+          <Button
+            size="small"
+            variant="danger"
             type="button"
             disabled={busy || running || moving}
             title={running || moving ? '先停下来再删' : undefined}
             onClick={onRemove}
           >
             删除
-          </button>
+          </Button>
         </div>
       </div>
     </aside>
@@ -669,17 +672,17 @@ function CreateForm({
       </div>
 
       <div className="actions">
-        <button
-          className="btn btn--primary"
+        <Button
+          variant="primary"
           type="button"
           disabled={databases.busy || installId === '' || database.trim() === ''}
           onClick={() => void submit()}
         >
           {databases.busy ? '正在初始化…' : '创建'}
-        </button>
-        <button className="btn" type="button" disabled={databases.busy} onClick={onDone}>
+        </Button>
+        <Button type="button" disabled={databases.busy} onClick={onDone}>
           取消
-        </button>
+        </Button>
         <span className="muted">初始化要几秒到几十秒，建好后不会自动启动。</span>
       </div>
     </section>
@@ -749,8 +752,8 @@ function EngineList({
                     {engines.find((entry) => entry.id === install.engine)?.name ?? install.engine}{' '}
                     {install.version}
                   </strong>
-                  {install.live && <span className="badge badge--live">运行中</span>}
-                  {install.problem && <span className="badge badge--update">跑不起来</span>}
+                  {install.live && <Badge tone="live">运行中</Badge>}
+                  {install.problem && <Badge tone="update">跑不起来</Badge>}
                 </span>
                 <span className="asset__sub">
                   <span>
@@ -799,9 +802,9 @@ function EngineList({
                 <span className="asset__users">
                   使用中：
                   {install.usedBy.map((name) => (
-                    <span className="badge" key={name}>
+                    <Badge key={name}>
                       {name}
-                    </span>
+                    </Badge>
                   ))}
                 </span>
               ) : (
@@ -920,23 +923,24 @@ function InstallEngine({
                   <div className="pick__body">
                     <span className="pick__name">
                       <strong>{entry.version}</strong>
-                      {entry.lts && <span className="badge">长期支持</span>}
-                      {entry.installed && <span className="badge badge--ok">已安装</span>}
+                      {entry.lts && <Badge>长期支持</Badge>}
+                      {entry.installed && <Badge tone="ok">已安装</Badge>}
                     </span>
                     <span className="pick__meta">{entry.note}</span>
                   </div>
                   {running ? (
-                    <button
-                      className="btn btn--small btn--danger"
+                    <Button
+                      size="small"
+                      variant="danger"
                       type="button"
                       disabled={busy}
                       onClick={() => void databases.cancelInstall()}
                     >
                       取消
-                    </button>
+                    </Button>
                   ) : (
-                    <button
-                      className="btn btn--small"
+                    <Button
+                      size="small"
                       type="button"
                       disabled={busy || installing}
                       onClick={() => {
@@ -946,7 +950,7 @@ function InstallEngine({
                       }}
                     >
                       {entry.installed ? '重装' : '安装'}
-                    </button>
+                    </Button>
                   )}
                 </div>
               )
@@ -974,17 +978,17 @@ function InstallEngine({
 
       <div className="actions">
         {installing ? (
-          <button className="btn btn--danger" onClick={() => void databases.cancelInstall()}>
+          <Button variant="danger" onClick={() => void databases.cancelInstall()}>
             取消安装
-          </button>
+          </Button>
         ) : (
-          <button
-            className="btn btn--primary"
+          <Button
+            variant="primary"
             disabled={busy || custom.trim() === ''}
             onClick={() => void databases.install(engine, custom.trim())}
           >
             安装填写的版本
-          </button>
+          </Button>
         )}
         <span className="muted">装完还要建一个数据库才能用。</span>
       </div>

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { formatBytes } from '../format'
 import type { HostInspection, InstanceStatus, ParsedScript } from '../types'
+import { Button } from './Button'
 import { Modal } from './Modal'
 import { DirectoryField } from './PathPicker'
 import { ScriptDraft } from './ScriptDraft'
@@ -271,12 +272,12 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
         {error && <div className="alert alert--error">{error}</div>}
 
         <div className="modal__actions">
-          <button className="btn" type="button" onClick={onCancel} disabled={busy}>
+          <Button type="button" onClick={onCancel} disabled={busy}>
             取消
-          </button>
-          <button className="btn btn--primary" type="submit" disabled={busy || blocked}>
+          </Button>
+          <Button variant="primary" type="submit" disabled={busy || blocked}>
             {busy ? '导入中…' : '导入'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>

@@ -7,8 +7,12 @@ import { CAP, useCan } from '../useCan'
 import { STATE_LABELS, byUrgency, isLive } from '../types'
 import { useLiveMetrics } from '../useLiveMetrics'
 import { useUptime } from '../useUptime'
+import { Badge } from './Badge'
+import { Button } from './Button'
+import { DataTable, DataTableHead, DataTableRow } from './DataTable'
 import { Page } from './Page'
 import { PowerControls } from './PowerControls'
+import { StatusDot } from './StatusDot'
 
 const FILTERS: { id: StateFilter; label: string }[] = [
   { id: 'all', label: '全部' },
@@ -75,12 +79,12 @@ export function InstanceList({
               realised the panel does not know about their server looks. */}
           {can(CAP.panelCreate) && (
             <>
-              <button className="btn" onClick={onImport}>
+              <Button onClick={onImport}>
                 导入现有目录
-              </button>
-              <button className="btn btn--primary" onClick={onCreate}>
+              </Button>
+              <Button variant="primary" onClick={onCreate}>
                 + 新建实例
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -112,14 +116,14 @@ export function InstanceList({
         </span>
       </div>
 
-      <div className="rows" role="table" aria-label="实例列表">
-        <div className="rows__head" role="row">
+      <DataTable className="rows" role="table" aria-label="实例列表">
+        <DataTableHead className="rows__head" role="row">
           <span role="columnheader">实例</span>
           <span role="columnheader">状态</span>
           <span role="columnheader">内存</span>
           <span role="columnheader">核心 / Java</span>
           <span role="columnheader">操作</span>
-        </div>
+        </DataTableHead>
         {shown.length === 0 && (
           <p className="rows__empty">
             {instances.length === 0 ? (
@@ -144,7 +148,7 @@ export function InstanceList({
             onChanged={onChanged}
           />
         ))}
-      </div>
+      </DataTable>
     </Page>
   )
 }
@@ -180,13 +184,13 @@ function Row({
   const uptime = useUptime(instance.startedAt, isLive(instance.state))
 
   return (
-    <div className="rows__row" role="row">
+    <DataTableRow className="rows__row" role="row">
       <button className="rows__name" onClick={onOpen} role="cell">
         <strong>{instance.name}</strong>
         <small className="rows__path">{instance.directory}</small>
       </button>
       <span className="rows__cell" role="cell">
-        <span className={`status__dot status__dot--${instance.state}`} />
+        <StatusDot state={instance.state} />
         {STATE_LABELS[instance.state]}
         {uptime && <small> · {uptime}</small>}
       </span>
@@ -198,7 +202,7 @@ function Row({
         {/* A proxy and a server are told apart by their jar name at best, and
             not at all once it has been renamed. The list is where you pick
             which one to open, so it says which is which. */}
-        {instance.kind === 'proxy' && <span className="badge">代理端</span>}
+        {instance.kind === 'proxy' && <Badge>代理端</Badge>}
       </span>
       <span className="rows__cell rows__cell--end" role="cell">
         <PowerControls
@@ -209,6 +213,6 @@ function Row({
         />
       </span>
       {error && <div className="rows__error">{error}</div>}
-    </div>
+    </DataTableRow>
   )
 }

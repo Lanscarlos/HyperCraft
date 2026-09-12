@@ -6,6 +6,7 @@ import { bareName, blockColor, isAirBlock, isTranslucentBlock } from '../blockco
 import { formatBytes, formatDate } from '../format'
 import { toast } from '../toast'
 import type { FileEntry, SchematicPreview as Schematic } from '../types'
+import { Button } from './Button'
 import { Modal } from './Modal'
 import { Skeleton } from './Skeleton'
 
@@ -89,9 +90,9 @@ export function SchematicDialog({
 
         <div className="modal__actions">
           {actions}
-          <button className="btn btn--primary" onClick={onClose}>
+          <Button variant="primary" onClick={onClose}>
             关闭
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>
@@ -150,9 +151,9 @@ export function SchematicPreview({
           <a className="btn" href={downloadURL(instanceId, entry.path)} download>
             下载
           </a>
-          <button className="btn" onClick={() => void keep()} disabled={importing || imported}>
+          <Button onClick={() => void keep()} disabled={importing || imported}>
             {imported ? '已在建筑库' : importing ? '入库中…' : '加入建筑库'}
-          </button>
+          </Button>
         </>
       }
     />
@@ -220,24 +221,26 @@ function SchematicBody({ data }: { data: Schematic }) {
             俯视
           </button>
         </div>
-        <button
-          className="btn btn--icon btn--row"
+        <Button
+          icon
+          size="row"
           onClick={() => setRotation((r) => (r + 3) % 4)}
           disabled={!region}
           aria-label="逆时针旋转 90 度"
           title="逆时针旋转 90°"
         >
           ⟲
-        </button>
-        <button
-          className="btn btn--icon btn--row"
+        </Button>
+        <Button
+          icon
+          size="row"
           onClick={() => setRotation((r) => (r + 1) % 4)}
           disabled={!region}
           aria-label="顺时针旋转 90 度"
           title="顺时针旋转 90°"
         >
           ⟳
-        </button>
+        </Button>
         {/* The cut is the feature that makes a solid view useful: a roof hides
             everything under it, and this is how you look inside. */}
         <label className="schem__cut">
@@ -374,9 +377,9 @@ function BlockLegend({ legend, total }: { legend: LegendRow[]; total: number }) 
         ))}
       </ul>
       {hidden > 0 && (
-        <button className="btn btn--row" onClick={() => setExpanded(true)}>
+        <Button size="row" onClick={() => setExpanded(true)}>
           还有 {hidden} 种
-        </button>
+        </Button>
       )}
     </div>
   )

@@ -2489,6 +2489,14 @@ a:hover {
   font-size: 14px;
 }
 
+/* The second and only other control height. Fifteen call sites asked for this
+   class for months while it did not exist, so every one of them silently
+   rendered full size and pushed its row open. */
+.btn--small {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
 .link {
   background: none;
   border: none;
@@ -2912,19 +2920,6 @@ a:hover {
   gap: 10px;
   font-size: 12px;
   color: var(--text-dim);
-}
-
-/* Facts that ride along with the state — pid, uptime, exit code. Boxed so a
-   row of them reads as data rather than as a sentence. */
-.status__meta {
-  padding: 1px 8px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  color: var(--text-dim);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 /* State is the one thing on screen that changes without anyone touching it,
@@ -4282,6 +4277,14 @@ a:hover {
   background: var(--danger);
 }
 
+/* A hollow ring, the same treatment .pdot--foreign gets: this is the one state
+   that is not about a link the panel made, and the ring says "we did not write
+   this" without needing a fourth colour nobody could tell from the third. */
+.netlink__dot--foreign {
+  background: none;
+  box-shadow: inset 0 0 0 2px var(--danger);
+}
+
 .netlink__to {
   min-width: 0;
   overflow: hidden;
@@ -4401,17 +4404,6 @@ a:hover {
 /* Cards in one grid row stretch to the tallest of them, and the control is
    pushed to the bottom of the card — so controls line up across a row however
    long the notes above them ran. */
-.jvmcard {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  padding: 10px 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-
 /* An argument that does not fit a control takes the whole row: what lives
    there is the long form — a -javaagent with its options, an --add-opens
    naming two modules — and there is nothing to put beside it anyway. */
@@ -5175,20 +5167,28 @@ details[open]::details-content {
   gap: 12px;
 }
 
+/* The surface every panel of content sits on — five of these once, with five
+   paddings, two radii, two surfaces, and shadow on an arbitrary two. Callers
+   keep their own block class alongside it, so the rules for what goes *inside*
+   a card stay where they were written; only the container is shared.
+
+   It used to be a <button>: hence the cursor, the font-family and the hover
+   lift it carried. Every single caller then cancelled all of that with
+   .card--static, because a card with its own buttons cannot itself be one. So
+   the base is the plain container now, and the lift lives on :has() below,
+   where it was already doing the real work. */
 .card {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
   padding: 16px;
   background: var(--surface-1);
-  background-image: linear-gradient(180deg, var(--sheen), transparent 80px);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
   color: var(--text);
-  cursor: pointer;
   text-align: left;
-  font-family: inherit;
   font-size: 14px;
   transition:
     border-color var(--dur) var(--ease),
@@ -5196,18 +5196,19 @@ details[open]::details-content {
     box-shadow var(--dur) var(--ease);
 }
 
-.card:hover {
-  border-color: var(--border-strong);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow);
+.card--tight {
+  padding: 12px 14px;
 }
 
-/* All the way back down and a shade under, so the lift the hover gave it is
-   visibly spent rather than merely paused. */
-.card:active {
-  transform: translateY(0) scale(var(--press));
-  box-shadow: var(--shadow-sm);
-  transition-duration: var(--dur-1);
+/* The card's own padding is zero because its children each bring their own —
+   a cover image that has to reach the border, then a body that must not. */
+.card--flush {
+  padding: 0;
+}
+
+/* A card inside a card. */
+.card--sunken {
+  background: var(--surface-2);
 }
 
 .card__head {
@@ -5904,6 +5905,14 @@ details[open]::details-content {
   outline: none;
 }
 
+/* A sentence sitting in a row of buttons. .file-toolbar sets no type of its
+   own, so without this the hint came out at body size in body ink and read as
+   loud as the button beside it. */
+.file-toolbar__hint {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
 /* The bar that appears once something is ticked. Tinted rather than plain, so
    it reads as a mode the list is in and not as another row of tools. */
 .file-bulk {
@@ -6478,12 +6487,18 @@ details[open]::details-content {
 
 /* ---- dialogs ---------------------------------------------------------- */
 
-/* Wide enough for a 512px server icon to be shown at its own size. */
-.modal__card--wide {
-  width: min(680px, 100%);
-}
+/* The width of a 展示 dialog is set below, next to the listing dialogs it was
+   written for. There used to be a second .modal__card--wide here asking for
+   680px so a 512px server icon could be shown at its own size; the later rule
+   overrode it, so that has not been what any dialog did for some time. Widening
+   the icon dialog again is a decision on its own, not a side effect of this
+   one. */
 
-.preview {
+/* Renamed off `.preview`, which the plugin-source dialog also called its
+   release-asset box. Same name, two components, one stylesheet: the later rule
+   took the padding, background and radius, and this one handed that text box a
+   chequerboard and `place-items: center` in exchange. */
+.file-preview {
   display: grid;
   place-items: center;
   padding: 16px;
@@ -6866,14 +6881,6 @@ details[open]::details-content {
 }
 
 .schemcard {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  padding: 12px 14px 10px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
   transition: border-color var(--dur) var(--ease);
 }
 
@@ -7651,19 +7658,6 @@ small.field__bad {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px;
-}
-
-.kpi {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  padding: 12px 14px;
-  background: var(--surface-1);
-  background-image: linear-gradient(180deg, var(--sheen), transparent 64px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
 }
 
 .kpi__head {
@@ -9932,11 +9926,6 @@ input.input-slim:disabled {
   color: var(--danger-ink);
 }
 
-.badge--warn {
-  background: var(--caution-soft);
-  color: var(--caution-ink);
-}
-
 .chart-head__actions {
   display: flex;
   align-items: center;
@@ -10074,38 +10063,99 @@ input.input-slim:disabled {
    air — and stack into a card below the drawer breakpoint, where five columns
    would each be forty pixels wide. */
 
-.rows {
+/* ------------------------------------------------------------------ 表格
+
+   Every list of rows in the panel. There were four of these — ptable,
+   plugin-table, rows, asset — and the first three's container rules were
+   byte-identical apart from the radius. Four header heights, four row
+   heights, three paddings, and nothing anywhere saying which to pick, so a
+   new page used whichever one it was copied from.
+
+   The columns are the only part that is genuinely per-table, so that is the
+   only thing each caller still declares. Everything else — the border, the
+   radius, the header, the row height, the hover, the separators — is here.
+
+   `.data-table` is deliberately NOT one of these. It is a real <table> with
+   <th>/<td>, and folding it into a div grid would take row-and-column
+   navigation away from screen readers in exchange for tidiness. */
+.dtable {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   overflow: hidden;
   background: var(--surface-1);
 }
 
-.rows__head,
-.rows__row {
+.dtable__head,
+.dtable__row {
   display: grid;
-  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 1.2fr) auto;
-  align-items: center;
   gap: 12px;
+  align-items: center;
   padding: 0 14px;
-  min-height: 48px;
-  border-bottom: 1px solid var(--border);
+  /* Instance names, six-deep paths, plugin descriptions: every column here
+     can hold text that would otherwise blow the grid open. */
+  min-width: 0;
 }
 
-.rows__head {
-  min-height: 36px;
+.dtable__head {
+  min-height: 34px;
   background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
   color: var(--text-faint);
   font-size: 11px;
+}
+
+.dtable__row {
+  min-height: 48px;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--dur-1) var(--ease);
+}
+
+.dtable__row:last-child {
+  border-bottom: none;
+}
+
+.dtable__row:hover {
+  background: var(--surface-2);
+}
+
+/* Two other densities, for the tables that already had them. The design doc
+   asks for 40 as the default; that number belongs to its 4px grid and its
+   28/32 control heights, and importing one number out of a system we have not
+   adopted would make the tables disagree with everything around them. So the
+   default is what these tables already are, and this is here for when the
+   rest of it lands. */
+.dtable--compact .dtable__row {
+  min-height: 40px;
+}
+
+.dtable--roomy .dtable__row {
+  min-height: 58px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.dtable__empty {
+  padding: 22px 14px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+.rows__head,
+.rows__row {
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 1.2fr) auto;
+}
+
+/* This header is set in small caps and the others are not. Converging it is a
+   visible change to two pages rather than a structural one, so it waits for
+   the appearance pass along with the radii — see docs/design-system.md. */
+.rows__head {
+  min-height: 36px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-}
-
-.rows__row:last-child {
-  border-bottom: none;
 }
 
 /* A row is too wide to move without the whole table looking loose, so its
@@ -10525,29 +10575,19 @@ button.rows__name:hover strong {
   gap: 12px;
 }
 
-/* A card with its own buttons cannot itself be a button, so the clickable part
-   is a child and the card is a plain container. */
-.card--static {
-  cursor: default;
-}
-
-.card--static:hover {
-  border-color: var(--border);
-  transform: none;
-  box-shadow: var(--shadow-sm);
-}
-
-/* …and the card still lifts when the pointer is over that child, so the
-   hover target does not feel smaller than the card. */
-.card--static:has(.card__open:hover) {
+/* The clickable part of a card is a child, not the card — a card with its own
+   buttons cannot itself be a button. The card still lifts when the pointer is
+   over that child, so the hover target does not feel smaller than the card. */
+.card:has(.card__open:hover) {
   border-color: var(--border-strong);
   transform: translateY(-2px);
   box-shadow: var(--shadow);
 }
 
 /* Same for the press: it is the child that is being clicked, but it is the
-   card that has to answer. */
-.card--static:has(.card__open:active) {
+   card that has to answer. All the way back down and a shade under, so the
+   lift the hover gave it is visibly spent rather than merely paused. */
+.card:has(.card__open:active) {
   transform: translateY(0) scale(var(--press));
   box-shadow: var(--shadow-sm);
   transition-duration: var(--dur-1);
@@ -11463,6 +11503,7 @@ button.rows__name:hover strong {
 
 .matrix__inst,
 .matrix__ver,
+.matrix__recon,
 .matrix__act {
   display: flex;
   align-items: center;
@@ -12259,12 +12300,6 @@ button.rows__name:hover strong {
 }
 
 .browse-card {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
   transition:
     border-color var(--dur) var(--ease),
     box-shadow var(--dur) var(--ease);
@@ -12743,15 +12778,6 @@ button.rows__name:hover strong {
    A dense table whose job is to expose problems. Failures are pinned to the
    top by the API and painted red here, with the reason under the name — the
    reason is the content of the row, not a detail behind a tooltip. */
-.plugin-table {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--surface-1);
-}
-
 /* 插件 · 版本 · 状态 · 操作, in that order. Name and version are one fact —
    which build of what is sitting in this directory — and the status column used
    to run down the middle of it, so the two halves of every row's identity were
@@ -12765,37 +12791,29 @@ button.rows__name:hover strong {
    of spilling out of the track and over the status column. */
 .plugin-table__head,
 .plugin-table__row {
-  display: grid;
   grid-template-columns:
     minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 1fr)
     minmax(min-content, 200px);
-  align-items: center;
-  gap: 12px;
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--border);
 }
 
 .plugin-table__head > :last-child {
   text-align: right;
 }
 
+/* Small caps here too — same note as .rows__head. */
 .plugin-table__head {
   padding-top: 6px;
   padding-bottom: 6px;
-  background: var(--surface-2);
-  color: var(--text-faint);
-  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-.plugin-table__row:last-child {
-  border-bottom: none;
-}
-
-.plugin-table__row:hover {
-  background: var(--surface-2);
+/* Rows here wrap: a plugin description runs to two lines and the row grows.
+   So they keep vertical padding instead of leaning on min-height. */
+.plugin-table__row {
+  padding-top: 8px;
+  padding-bottom: 8px;
 }
 
 /* Two jars declaring the same plugin name. The server has already picked one
@@ -13162,50 +13180,15 @@ button.rows__name:hover strong {
 
 /* ------------------------------------------------------------- the table */
 
-.ptable {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: var(--surface-1);
-}
-
 /* The header and the rows are separate grid containers, so every track has to
    be sized the same way in both or the labels drift off their columns. That
    rules out `auto` on the action column: empty in the header, 90-odd pixels in
    a row, and the whole header slides right by the difference. */
 .ptable__head,
 .ptable__row {
-  display: grid;
   grid-template-columns:
     28px minmax(180px, 1.6fr) 156px 156px
     minmax(160px, 1.4fr) 108px 116px;
-  gap: 12px;
-  align-items: center;
-  padding: 0 14px;
-}
-
-.ptable__head {
-  min-height: 34px;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
-  color: var(--text-faint);
-  font-size: 11px;
-}
-
-.ptable__row {
-  min-height: 50px;
-  border-bottom: 1px solid var(--border);
-  transition: background var(--dur-1) var(--ease);
-}
-
-.ptable__row:last-child {
-  border-bottom: none;
-}
-
-.ptable__row:hover {
-  background: var(--surface-2);
 }
 
 /* The ledger disagreeing with the disk, on the edge. A tinted row would read

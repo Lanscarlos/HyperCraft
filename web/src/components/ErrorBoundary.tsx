@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Button } from './Button'
 
 /**
  * The last thing between one broken page and a blank panel.
@@ -57,9 +58,9 @@ export class ErrorBoundary extends Component<Props, State> {
         </p>
         <div className="alert alert--error">{error.message || String(error)}</div>
         <div className="actions">
-          <button className="btn" onClick={() => window.location.reload()}>
+          <Button onClick={() => window.location.reload()}>
             刷新页面
-          </button>
+          </Button>
         </div>
       </div>
     )

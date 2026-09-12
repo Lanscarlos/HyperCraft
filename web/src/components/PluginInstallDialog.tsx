@@ -10,6 +10,7 @@ import type {
   PluginInstallTargets,
 } from '../types'
 import { artifactKey, isLive, pluginArtifacts } from '../types'
+import { Button } from './Button'
 import { Modal } from './Modal'
 import { CompatBadge } from './PluginCompat'
 import { loaderLabel } from './PluginBrowse'
@@ -276,16 +277,16 @@ export function PluginInstallDialog({
         )}
 
         <div className="modal__actions">
-          <button className="btn" disabled={busy} onClick={onCancel}>
+          <Button disabled={busy} onClick={onCancel}>
             取消
-          </button>
-          <button
-            className="btn btn--primary"
+          </Button>
+          <Button
+            variant="primary"
             disabled={busy || !tag || targets.length === 0}
             onClick={() => void install()}
           >
             {busy ? '安装中…' : targets.length > 1 ? `装到 ${targets.length} 台` : '安装'}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

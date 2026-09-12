@@ -4,6 +4,7 @@ import { formatBytes, formatDate } from '../format'
 import { toast } from '../toast'
 import type { PluginDownloadJob } from '../types'
 import { isJobActive } from '../types'
+import { Button } from './Button'
 import { Page } from './Page'
 import type { PluginController } from '../usePlugins'
 
@@ -51,15 +52,14 @@ export function PluginQueuePage({ plugins }: { plugins: PluginController }) {
       lead={`插件库最多同时下 ${MAX_CONCURRENT} 个 jar，多出来的排队等。下载归守护进程管，关掉标签页也会下完。这里下到的都是面板插件库，装到哪台服是「插件列表」和实例自己的「插件」页上的事。`}
       aside={
         <div className="page__actions">
-          <button
-            className="btn"
+          <Button
             disabled={plugins.busy || history.length === 0}
             onClick={() => void plugins.clearFinished().then(() => toast('已清空下载记录'))}
           >
             清空记录
-          </button>
-          <button
-            className="btn btn--danger"
+          </Button>
+          <Button
+            variant="danger"
             disabled={plugins.busy || live.length === 0}
             title="停掉正在下和排队中的全部任务"
             onClick={() =>
@@ -67,7 +67,7 @@ export function PluginQueuePage({ plugins }: { plugins: PluginController }) {
             }
           >
             全部取消
-          </button>
+          </Button>
         </div>
       }
     >

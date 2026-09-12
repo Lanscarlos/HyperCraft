@@ -12,6 +12,7 @@ import type {
   NetworkServer,
 } from '../types'
 import { useMediaQuery } from '../useMediaQuery'
+import { Button } from './Button'
 import { Page, PageHead } from './Page'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
@@ -126,9 +127,9 @@ export function NetworkPage({ instances, onOpenInstance, onCreate, focus, embed 
   const side = sideOf(data, focus)
   const reload = (
     <div className="actions">
-      <button className="btn" type="button" onClick={() => void load()} disabled={busy}>
+      <Button type="button" onClick={() => void load()} disabled={busy}>
         重新读取
-      </button>
+      </Button>
     </div>
   )
 
@@ -180,9 +181,9 @@ export function NetworkPage({ instances, onOpenInstance, onCreate, focus, embed 
             新建实例时选一个 Velocity 核心就有了。
           </p>
           <div className="actions">
-            <button className="btn btn--primary" type="button" onClick={onCreate}>
+            <Button variant="primary" type="button" onClick={onCreate}>
               新建代理端
-            </button>
+            </Button>
           </div>
         </section>
       ) : canvas ? (
@@ -749,23 +750,24 @@ function ProxyCard({
                 {mine && (
                   <div className="netlink__actions">
                     {link.status !== 'ok' && (
-                      <button
-                        className="btn btn--row"
+                      <Button
+                        size="row"
                         type="button"
                         disabled={busy}
                         onClick={() => onRepair(proxy.id, link.serverId)}
                       >
                         修复
-                      </button>
+                      </Button>
                     )}
-                    <button
-                      className="btn btn--row btn--danger"
+                    <Button
+                      size="row"
+                      variant="danger"
                       type="button"
                       disabled={busy || !server}
                       onClick={() => server && onUnlink(proxy, server)}
                     >
                       断开
-                    </button>
+                    </Button>
                   </div>
                 )}
               </li>
@@ -933,23 +935,24 @@ function NetworkList({
                       {mine && (
                         <div className="netlink__actions">
                           {link.status !== 'ok' && (
-                            <button
-                              className="btn btn--row"
+                            <Button
+                              size="row"
                               type="button"
                               disabled={busy}
                               onClick={() => onRepair(proxy.id, link.serverId)}
                             >
                               修复
-                            </button>
+                            </Button>
                           )}
-                          <button
-                            className="btn btn--row btn--danger"
+                          <Button
+                            size="row"
+                            variant="danger"
                             type="button"
                             disabled={busy || !server}
                             onClick={() => server && onUnlink(proxy, server)}
                           >
                             断开
-                          </button>
+                          </Button>
                         </div>
                       )}
                     </li>
@@ -1008,14 +1011,14 @@ function AddServer({
           onChange={setPicked}
         />
       </label>
-      <button
-        className="btn btn--primary"
+      <Button
+        variant="primary"
         type="button"
         disabled={busy || picked === ''}
         onClick={() => onLink(proxy.id, picked)}
       >
         连接
-      </button>
+      </Button>
     </div>
   )
 }

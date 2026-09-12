@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import type { ReactNode } from 'react'
 
 import { reducedMotion } from '../motion'
+import { Button } from './Button'
 import { Select } from './Select'
 
 /**
@@ -143,12 +144,12 @@ export function ConfigSaveBar({
       </span>
       <span className="cfg__savenote">重启服务器后生效</span>
       <div className="cfg__saveactions">
-        <button className="btn" type="button" onClick={onDiscard} disabled={busy}>
+        <Button type="button" onClick={onDiscard} disabled={busy}>
           放弃更改
-        </button>
-        <button className="btn btn--primary" type="submit" disabled={busy}>
+        </Button>
+        <Button variant="primary" type="submit" disabled={busy}>
           保存
-        </button>
+        </Button>
       </div>
     </div>
   )

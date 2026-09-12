@@ -6,6 +6,8 @@ import { formatBytes, formatSince } from '../format'
 import { toast } from '../toast'
 import type { SchematicItem, SchematicMarketResult, SchematicSource } from '../types'
 import type { SchematicController } from '../useSchematics'
+import { Button } from './Button'
+import { Card } from './Card'
 import { Page } from './Page'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
@@ -153,12 +155,12 @@ export function SchematicMarket({
                 ...enabled.map((entry) => ({ value: entry.id, label: entry.name })),
               ]}
             />
-            <button className="btn" onClick={() => void read(true)} disabled={loading}>
+            <Button onClick={() => void read(true)} disabled={loading}>
               {loading ? '刷新中…' : '刷新'}
-            </button>
-            <button className="btn" onClick={() => onOpenView('source')}>
+            </Button>
+            <Button onClick={() => onOpenView('source')}>
               管理索引源
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -217,7 +219,7 @@ function MarketCard({
       : null
 
   return (
-    <article className="schemcard" role="listitem">
+    <Card as="article" pad="tight" className="schemcard" role="listitem">
       <div className="schemcard__open schemcard__open--static">
         <span className="schemcard__title">
           <strong title={item.name}>{item.name}</strong>
@@ -268,16 +270,16 @@ function MarketCard({
       {item.author && <p className="schemcard__meta">{item.author}</p>}
 
       <footer className="schemcard__actions">
-        <button className="btn btn--row" onClick={onTake} disabled={busy || held}>
+        <Button size="row" onClick={onTake} disabled={busy || held}>
           {held ? '已在库里' : busy ? '下载中…' : '下载入库'}
-        </button>
+        </Button>
         {item.page && (
           <a className="link" href={item.page} target="_blank" rel="noreferrer">
             源页面
           </a>
         )}
       </footer>
-    </article>
+    </Card>
   )
 }
 
@@ -402,12 +404,12 @@ function SourcesPage({
         {error && <div className="alert alert--error">{error}</div>}
 
         <div className="actions">
-          <button className="btn btn--primary" onClick={() => void add()} disabled={busy}>
+          <Button variant="primary" onClick={() => void add()} disabled={busy}>
             {busy ? '添加中…' : '添加'}
-          </button>
-          <button className="btn" onClick={onOpenMarket}>
+          </Button>
+          <Button onClick={onOpenMarket}>
             回到建筑市场
-          </button>
+          </Button>
         </div>
       </section>
 

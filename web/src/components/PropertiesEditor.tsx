@@ -7,6 +7,7 @@ import type {
   KnownProperty,
   PropertiesResponse,
 } from '../types'
+import { Button } from './Button'
 import { ConfigLayout, ConfigRow, ConfigSaveBar, changedKeys } from './ConfigLayout'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
@@ -185,9 +186,9 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
             </a>
             ，同意后点击下面的按钮。
           </p>
-          <button className="btn btn--primary" type="button" onClick={acceptEula}>
+          <Button variant="primary" type="button" onClick={acceptEula}>
             我已阅读并同意 EULA
-          </button>
+          </Button>
         </section>
       )}
 
@@ -264,9 +265,9 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
         {status && <div className="alert alert--ok">{status}</div>}
 
         <div className="actions">
-          <button className="btn" type="button" onClick={() => void load()}>
+          <Button type="button" onClick={() => void load()}>
             重新读取
-          </button>
+          </Button>
         </div>
       </ConfigLayout>
 

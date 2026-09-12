@@ -12,6 +12,7 @@ import type {
 } from '../types'
 import { isLive } from '../types'
 import { useDismiss } from '../useDismiss'
+import { Button } from './Button'
 import { CompatBadge } from './PluginCompat'
 import { PluginIcon } from './PluginIcon'
 import { formatDownloads, loaderLabel, sourceLabel } from './PluginBrowse'
@@ -375,16 +376,15 @@ export function PluginDrawer({
               stays beside it — the cache still happens either way, this only
               collapses the trip. */}
           {reference && !incompatible && listing.downloadable && (
-            <button
-              className="btn"
+            <Button
               disabled={downloading || !version}
               onClick={() => void download()}
             >
               仅下载到库
-            </button>
+            </Button>
           )}
-          <button
-            className="btn btn--primary"
+          <Button
+            variant="primary"
             disabled={downloading || !version || !listing.downloadable || incompatible}
             onClick={() => void download(reference ?? undefined)}
           >
@@ -397,7 +397,7 @@ export function PluginDrawer({
                   : version?.held
                     ? '库里已有'
                     : `下载 ${version?.version ?? ''}`}
-          </button>
+          </Button>
         </footer>
       </aside>
     </div>,
