@@ -173,6 +173,15 @@
   --scrim: rgba(43, 32, 29, 0.44);
   --stripe: rgba(255, 255, 255, 0.24);
   --brand-face: linear-gradient(150deg, #a85c45, #7d402e);
+
+  /* The two stops of the tab icon. It is drawn once in index.html and its
+     stops are repainted from these (syncFavicon in theme.ts), because a
+     favicon is an attribute rather than a painted surface and no stylesheet
+     can reach it. Not folded into --brand-face: a tab strip has no theme to
+     follow, so the mark keeps the light gradient in both modes — which is why
+     this is the same pair here and in the dark block. */
+  --mark-1: #c97b62;
+  --mark-2: #7d402e;
   --selection: var(--primary-container);
   --on-selection: var(--on-primary-container);
 
@@ -342,6 +351,8 @@
   --scrim: rgba(10, 6, 5, 0.7);
   --stripe: rgba(255, 255, 255, 0.16);
   --brand-face: linear-gradient(150deg, #ffb5a0, #c97b62);
+  --mark-1: #c97b62;
+  --mark-2: #7d402e;
   --selection: rgba(255, 181, 160, 0.28);
   --on-selection: #ffede8;
 
@@ -452,6 +463,8 @@
   --inset: inset 0 1px 2px rgba(72, 87, 52, 0.09);
   --scrim: rgba(37, 43, 29, 0.44);
   --brand-face: linear-gradient(150deg, #607f38, #3d5421);
+  --mark-1: #81b243;
+  --mark-2: #3d5421;
 
   --term-selection: #596b42;
   --term-black: #7f8a71;
@@ -500,6 +513,8 @@
 
   --scrim: rgba(8, 10, 5, 0.7);
   --brand-face: linear-gradient(150deg, #b1d18a, #768d59);
+  --mark-1: #81b243;
+  --mark-2: #3d5421;
   --selection: rgba(177, 209, 138, 0.28);
   --on-selection: #f5ffe8;
 
@@ -547,6 +562,8 @@
   --inset: inset 0 1px 2px rgba(87, 81, 52, 0.09);
   --scrim: rgba(43, 41, 29, 0.44);
   --brand-face: linear-gradient(150deg, #8c7916, #564a0a);
+  --mark-1: #cfb111;
+  --mark-2: #564a09;
 
   --term-selection: #6b6442;
   --term-black: #8a8671;
@@ -595,6 +612,8 @@
 
   --scrim: rgba(10, 9, 5, 0.7);
   --brand-face: linear-gradient(150deg, #dbc66e, #8b7f49);
+  --mark-1: #cfb111;
+  --mark-2: #564a09;
   --selection: rgba(219, 198, 110, 0.28);
   --on-selection: #fffbe8;
 
@@ -642,6 +661,8 @@
   --inset: inset 0 1px 2px rgba(52, 65, 87, 0.09);
   --scrim: rgba(29, 34, 43, 0.44);
   --brand-face: linear-gradient(150deg, #4f71a9, #365280);
+  --mark-1: #7090c6;
+  --mark-2: #365280;
 
   --term-selection: #42516b;
   --term-black: #717a8a;
@@ -700,6 +721,8 @@
 
   --scrim: rgba(5, 7, 10, 0.7);
   --brand-face: linear-gradient(150deg, #aac7ff, #668ace);
+  --mark-1: #7090c6;
+  --mark-2: #365280;
   --selection: rgba(170, 199, 255, 0.28);
   --on-selection: #e8f0ff;
 
@@ -7782,9 +7805,21 @@ input.input-slim:disabled {
   opacity: 0.9;
 }
 
+/* 概览's pending-alert count, in the worst level it contains — the same three
+   answers .alert--* gives the rows themselves, because the badge is a summary
+   of exactly those rows. Info gets no modifier at all: it is a count of things
+   worth knowing, and the plain badge is what the panel already uses for one.
+
+   Red for all three is what this used to do, and it read as a crashed server
+   every time a plugin had an update. Red only ever means the first kind. */
 .badge--alert {
   background: var(--danger-soft);
   color: var(--danger-ink);
+}
+
+.badge--warn {
+  background: var(--caution-soft);
+  color: var(--caution-ink);
 }
 
 .chart-head__actions {

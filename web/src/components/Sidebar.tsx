@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from 'react'
 import type { MouseEvent, ReactNode, Ref } from 'react'
 
+import type { AlertLevel } from '../alerts'
 import { DUR } from '../motion'
 import type { LibrarySection, Route, Scope } from '../routes'
 import {
@@ -47,6 +48,10 @@ interface Props {
   system: SystemInfo | null
   updateNotice: string | null
   alertCount: number
+  /** The worst of them, which is what the badge is painted as — collectAlerts
+   *  sorts worst first, so this is the head of the list alertCount counts. Null
+   *  when there are none. */
+  alertLevel: AlertLevel | null
   java: JavaController
   databases: DatabaseController
   cores: CoreController
@@ -161,6 +166,15 @@ export function Sidebar(props: Props) {
   )
 }
 
+/** What 概览's count is painted as, by the worst level in it. Info is the empty
+ *  string on purpose: a count of things worth knowing is a plain badge, the
+ *  same one 插件库 carries two rows down. */
+const ALERT_BADGE: Record<AlertLevel, string> = {
+  error: ' badge--alert',
+  warn: ' badge--warn',
+  info: '',
+}
+
 // ------------------------------------------------------------------ global
 
 function GlobalScope(props: Props) {
@@ -173,6 +187,7 @@ function GlobalScope(props: Props) {
     user,
     updateNotice,
     alertCount,
+    alertLevel,
     onCreate,
   } = props
 
@@ -217,7 +232,17 @@ function GlobalScope(props: Props) {
             icon="dashboard"
             label="概览"
             target={{ kind: 'overview' }}
-            badge={alertCount > 0 ? <span className="badge badge--alert">{alertCount}</span> : null}
+            badge={
+              alertCount > 0 ? (
+                // Painted by the worst of them, the same three ways the alert
+                // block on 概览 paints its rows: error red, warn amber, and
+                // info left as a plain count. It used to be red whatever the
+                // level, which made "有个插件能更新" look like a server that
+                // had fallen over — and red is the one colour in the panel that
+                // has to keep meaning that.
+                <span className={`badge${ALERT_BADGE[alertLevel ?? 'info']}`}>{alertCount}</span>
+              ) : null
+            }
           />
         </nav>
 

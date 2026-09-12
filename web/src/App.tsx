@@ -531,6 +531,7 @@ export default function App() {
           system={system.info}
           updateNotice={updateNotice}
           alertCount={alerts.length}
+          alertLevel={alerts[0]?.level ?? null}
           java={java}
           databases={databases}
           cores={cores}

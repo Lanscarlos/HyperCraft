@@ -20,7 +20,7 @@
  */
 
 import { crossFade } from './motion'
-import { notifyColours, syncChrome } from './theme'
+import { notifyColours, syncChrome, syncFavicon } from './theme'
 
 export type Palette = 'sakura' | 'green' | 'yellow' | 'blue'
 
@@ -85,6 +85,9 @@ export function applyPref(palette: Palette): void {
     if (palette === DEFAULT) delete document.documentElement.dataset.palette
     else document.documentElement.dataset.palette = palette
     syncChrome()
+    // The tab icon is an href rather than a painted surface, so it is the one
+    // mark in the panel a stylesheet cannot reach.
+    syncFavicon()
     // A scheme moves --term-* and --shell-* as well, and the two canvases paint
     // outside CSS: telling them after the cross-fade would leave the previous
     // scheme's rectangle sitting in the middle of the dissolve.
