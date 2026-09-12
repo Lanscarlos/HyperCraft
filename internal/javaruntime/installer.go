@@ -254,9 +254,23 @@ func (i *Installer) download(ctx context.Context, job *Job, release Release, sou
 	job.Source = served
 	i.mu.Unlock()
 
-	limit := release.Size
-	if limit <= 0 {
-		limit = maxArchiveBytes
+	// sized marks the case where the declared size is the only check there
+	// is, and so has to be exact.
+	//
+	// With a checksum it is neither the stronger check nor a reliable one:
+	// Azul's metadata says Zulu 25.0.4.1's linux/x64 JRE is 61117500 bytes,
+	// cdn.azul.com serves 61117509, and those 61117509 bytes hash to exactly
+	// the SHA-256 Azul published for the package. Gating on the size turned a
+	// perfectly good archive into "exceeds the declared 61117500 bytes" with
+	// no way round it, on the one distribution that has no second source to
+	// try. So the size drives the progress bar and nothing else, and the cap
+	// falls back to the blanket ceiling: the checksum catches a truncated,
+	// stale or substituted archive either way, and the ceiling is only there
+	// to bound the disk a runaway source can eat.
+	sized := release.Size > 0 && release.SHA256 == ""
+	limit := int64(maxArchiveBytes)
+	if sized {
+		limit = release.Size
 	}
 	digest := sha256.New()
 	progress := &progressWriter{
@@ -279,17 +293,28 @@ func (i *Installer) download(ctx context.Context, job *Job, release Release, sou
 	// exactly here, and the fix is to install from somewhere else.
 	from := SourceName(release.Distribution, served)
 	switch {
+	case sized && written > limit:
+		cleanup()
+		return nil, fmt.Errorf("%w: %s: 下载的内容比声明的 %d 字节还多", ErrUpstream, from, limit)
+	case sized && written != release.Size:
+		cleanup()
+		return nil, fmt.Errorf("%w: %s: 收到 %d 字节，应为 %d", ErrUpstream, from, written, release.Size)
 	case written > limit:
 		cleanup()
-		return nil, fmt.Errorf("%w: %s: download exceeds the declared %d bytes", ErrUpstream, from, limit)
-	case release.Size > 0 && written != release.Size:
-		cleanup()
-		return nil, fmt.Errorf("%w: %s: got %d bytes, expected %d", ErrUpstream, from, written, release.Size)
+		return nil, fmt.Errorf("%w: %s: 下载超过 %d 字节的上限，已中止", ErrUpstream, from, limit)
 	}
 	if release.SHA256 != "" {
 		if sum := hex.EncodeToString(digest.Sum(nil)); sum != release.SHA256 {
 			cleanup()
-			return nil, fmt.Errorf("%w: %s: got %s, expected %s", ErrChecksum, from, sum, release.SHA256)
+			// A short body is the one checksum failure with an obvious cause,
+			// and "the connection dropped, run it again" is very different
+			// advice from "this source is serving the wrong file" — so say
+			// which one it was while the byte count is still to hand.
+			if release.Size > 0 && written < release.Size {
+				return nil, fmt.Errorf("%w: %s: 下载中断，只收到 %d 字节，应为 %d",
+					ErrChecksum, from, written, release.Size)
+			}
+			return nil, fmt.Errorf("%w: %s: 校验和不符，算出 %s，应为 %s", ErrChecksum, from, sum, release.SHA256)
 		}
 	}
 	return temp, nil
