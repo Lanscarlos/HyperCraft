@@ -211,3 +211,33 @@ func TestHangarRenamesCollidingBuilds(t *testing.T) {
 		t.Fatalf("both jars are called %s", releases[0].Assets[0].Name)
 	}
 }
+
+// Modrinth publishes sha1 and sha512 for every file and no sha256, which is why
+// the asset carries a second digest field rather than reusing the first.
+func TestModrinthVersionsCarryTheSHA512(t *testing.T) {
+	server := serveJSON(t, `[
+		{"id":"Ab12Cd34","name":"5.5.71","version_number":"5.5.71","version_type":"release",
+		 "game_versions":["1.20.4"],"loaders":["paper"],"date_published":"2026-02-01T10:00:00Z","downloads":5,
+		 "files":[{"url":"https://example.invalid/bukkit.jar","filename":"LuckPerms-Bukkit-5.5.71.jar",
+		           "primary":true,"size":100,
+		           "hashes":{"sha1":"0bee...","sha512":"AABBCC"}}]}
+	]`)
+
+	registry := NewRegistry("test")
+	registry.modrinthBase = server.URL
+
+	releases, err := registry.modrinthVersions(context.Background(), "luckperms")
+	if err != nil {
+		t.Fatalf("modrinthVersions: %v", err)
+	}
+	if len(releases) != 1 || len(releases[0].Assets) != 1 {
+		t.Fatalf("read %+v", releases)
+	}
+	asset := releases[0].Assets[0]
+	if asset.SHA512 != "aabbcc" {
+		t.Errorf("sha512 is %q, want it read and lowercased", asset.SHA512)
+	}
+	if asset.SHA256 != "" {
+		t.Errorf("Modrinth publishes no sha256, got %q", asset.SHA256)
+	}
+}

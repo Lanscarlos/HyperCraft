@@ -7,13 +7,15 @@
 // every version it has downloaded rather than a single current file.
 //
 // What this trusts depends on who published the jar. A source that publishes a
-// digest — Hangar does — has its jars checked against it on the way in, the
-// same as a Java runtime or a Paper core, and a mismatch is refused. A GitHub
-// release publishes no checksum, and neither does Modrinth in the shape this
-// panel reads, so for those the trust anchor is HTTPS and whoever can publish
-// to the source the operator named; the SHA-256 recorded for them is computed
-// from the bytes that arrived, and is there so the same file can be recognised
-// later rather than so a tampered one can be rejected.
+// digest has its jars checked against it on the way in, the same as a Java
+// runtime or a Paper core, and a mismatch is refused: Hangar publishes a
+// SHA-256 and Modrinth a SHA-512, and either one is read and compared. A
+// GitHub release publishes no checksum at all, and neither does SpigotMC, so
+// for those the trust anchor is HTTPS and whoever can publish to the source
+// the operator named. The SHA-256 the library records is always computed from
+// the bytes that arrived — it is the identity the fleet is reconciled against,
+// not the proof — which is why it is recorded even for a jar that was checked
+// against a SHA-512.
 //
 // A repository does not have to be public. An operator who publishes their own
 // plugin to a private repository can give the panel a GitHub access token, and
@@ -286,7 +288,17 @@ type Asset struct {
 	// published one. Never what the library records — that is computed from
 	// the bytes that arrived — but something to compare against.
 	SHA256 string `json:"sha256,omitempty"`
+	// SHA512 is the same thing in the other algorithm, and exists because
+	// Modrinth publishes sha1 and sha512 and no sha256. A source publishes one
+	// or the other, never both, and either is enough to refuse a jar that does
+	// not match. sha1 is deliberately not read: it is the weakest of the three
+	// and would be the one an attacker picks if the panel accepted it.
+	SHA512 string `json:"sha512,omitempty"`
 }
+
+// verifiable reports whether the source published a digest to check the bytes
+// against. When it did not, the declared size is the only check there is.
+func (a Asset) verifiable() bool { return a.SHA256 != "" || a.SHA512 != "" }
 
 // Release is one version a plugin could be updated to.
 type Release struct {
