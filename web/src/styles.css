@@ -3597,8 +3597,10 @@ a:hover {
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px 20px;
+  gap: 12px;
+  /* Vertical only. Pulling the horizontal 20px in too puts a card's table
+     hard against its edge, which reads as broken rather than dense. */
+  padding: 16px 20px;
   background: var(--surface-1);
   /* A single hairline of light along the top edge; it is what makes a card
      sit on the page instead of being a hole cut into it. */
@@ -4525,8 +4527,20 @@ details[open]::details-content {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* The basis is the shortest measure the lead is still comfortable at, and
+     that is what it is for: with a plain flex:1 this column shared its row
+     with the page's facts, so one deep data directory over there pulled the
+     prose down to about 540px and broke a sentence mid-clause. At this basis
+     the head's existing wrap drops the facts to their own row rather than
+     taking the sentence below a readable width — and a head whose facts are
+     narrow behaves exactly as it did, which is most of them. It is not the
+     lead's 660px cap: wrapping to win the last 50px of measure costs a whole
+     row of height and is not worth it.
+
+     min-width stays the floor: 560 would overflow a 390px phone, where the
+     column has to be allowed to collapse. */
+  flex: 1 1 560px;
   min-width: 280px;
-  flex: 1;
 }
 
 .page__head .page__lead {
@@ -11151,7 +11165,7 @@ button.rows__name:hover strong {
 }
 
 .ptable__row {
-  min-height: 52px;
+  min-height: 50px;
   border-bottom: 1px solid var(--border);
   transition: background var(--dur-1) var(--ease);
 }
