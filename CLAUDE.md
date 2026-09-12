@@ -64,7 +64,7 @@ CI（`.github/workflows/ci.yml`）跑的是 `make lint` → `make test` → `mak
 
 skill 里是完整规则，这里只列最容易踩的几条：
 
-- **一个页面框**：所有面板级页面用 `components/Page.tsx`，只有「散文」和「瓦片（`wide`）」两种形态，对应 `--content-max`(880px) 和 `--content-max-wide`(1440px)。不要再造页面框，不要引第三种宽度。
+- **一个页面框**：所有面板级页面用 `components/Page.tsx`，只有三种形态——「散文」`--content-max`(880px)、「瓦片（`wide`）」`--content-max-wide`(1440px)、「全屏工作区（`full`）」不设上限。不要再造页面框，不要引第四种。`full` 严格限定于「一屏一件事的工具页」：里面装的是一块占满空间的画布（文件页的编辑模式），不是一段要读的内容。内容页一律在前两种里选。
 - **一个样式文件**：所有样式在 `web/src/styles.css`。不引 CSS 框架、组件库、CSS-in-JS，不拆分文件。
 - **只用令牌**：颜色、圆角、阴影、时长、缓动都从 `styles.css` 开头的令牌区取，不写裸 hex。新增令牌必须 light / dark 两个块都加。
 - **栅格优先内在响应**：`repeat(auto-fill, minmax(<下限>, 1fr))`，能不加断点就不加断点。

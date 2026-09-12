@@ -18,9 +18,11 @@ description: HyperCraft 面板（web/）的界面布局与视觉改动指南。�
 ### 页面骨架
 
 - 每个面板级页面都套 `web/src/components/Page.tsx`，**不要再造一个页面框**。历史上有过三个页面框、三种最大宽度、两套滚动条归属，改错一个看起来「差不多对」——这是最糟的错误形态。
-- 页面只有两种形态，由 `Page` 的 `wide` 属性决定：
+- 页面只有三种形态，由 `Page` 的 `wide` / `full` 属性决定：
   - 默认（散文/表单）：子元素 `max-width: var(--content-max)`（880px）。
   - `wide`（卡片、图表、瓦片）：子元素 `max-width: var(--content-max-wide)`（1440px）。
+  - `full`（全屏工作区）：子元素不设上限，`.page--full` 自己 `flex: 1; min-height: 0; overflow: hidden`，滚动归它内部的画布。**只给「一屏一件事的工具页」用**——目前只有文件页的编辑模式，以后可能的全屏终端是同一类。内容页一律在前两种里选；拿 `full` 装一段要读的东西，等于把行长交给显示器宽度。
+  - 不在 `Page` 里的全屏工作区（实例 section 走的是 `InstanceView` 的 pane）用 `.stack--full`，语义与 `full` 相同。它必须配 `.instance__pane--scroll:has(.stack--full) { overflow: hidden }`，否则页面和画布两层滚动条叠在一起。
 - 宽度限制加在 `.page > *` 上而不是滚动容器上，这样滚动条贴着窗口边缘而不是浮在屏幕中间。新增页面级容器时保持这一点。
 - 壳层结构固定：`.app`（grid：侧栏 + 内容）→ `.shell`（flex 列：TopBar + 主区）→ `.main`（唯一带 padding 的内容区，`overflow: hidden`，滚动交给 `.page`）。
 
