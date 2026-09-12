@@ -421,8 +421,13 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
       </section>
 
       <section className="panel panel--form">
-        <h3 className="panel__title">基本设置</h3>
-        <p className="panel__path">{data.path}</p>
+        <div className="panel__aside">
+          <h3 className="panel__title">基本设置</h3>
+          <p className="panel__note">代理端监听在哪、对外显示什么。</p>
+          <p className="panel__path">{data.path}</p>
+        </div>
+
+        <div className="panel__body">
         {grouped.basic.map((setting) => (
           <SettingField
             key={setting.key}
@@ -432,12 +437,18 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
             onChange={(value) => set(setting.key, value)}
           />
         ))}
+        </div>
       </section>
 
       <section className="panel panel--form">
-        <h3 className="panel__title">玩家信息转发</h3>
+        <div className="panel__aside">
+          <h3 className="panel__title">玩家信息转发</h3>
+          <p className="panel__note">子服看到的 IP 和 UUID 从哪来。</p>
+        </div>
+
+        <div className="panel__body">
         <p className="muted">
-          子服看到的 IP 和 UUID 从哪来。用 <code>modern</code> 的话，每个子服的{' '}
+          用 <code>modern</code> 的话，每个子服的{' '}
           <code>paper-global.yml</code> 里要打开 <code>velocity.enabled</code>{' '}
           并填上同一个密钥，同时关掉子服自己的正版验证。
         </p>
@@ -451,7 +462,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
           />
         ))}
 
-        <label className="field field--full">
+        <label className="field">
           <span>转发密钥</span>
           <input
             value={secret}
@@ -497,11 +508,17 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
             密钥为空时 Velocity 会拒绝启动。
           </div>
         )}
+        </div>
       </section>
 
       <section className="panel panel--form">
-        <h3 className="panel__title">高级设置</h3>
-        <p className="muted">默认值适用于绝大多数服。不清楚作用的就别动。</p>
+        <div className="panel__aside">
+          <h3 className="panel__title">高级设置</h3>
+          <p className="panel__note">默认值适用于绝大多数服。</p>
+        </div>
+
+        <div className="panel__body">
+        <p className="muted">不清楚作用的就别动。</p>
         {grouped.advanced.map((setting) => (
           <SettingField
             key={setting.key}
@@ -511,10 +528,16 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
             onChange={(value) => set(setting.key, value)}
           />
         ))}
+        </div>
       </section>
 
       <section className="panel panel--form">
-        <h3 className="panel__title">Query</h3>
+        <div className="panel__aside">
+          <h3 className="panel__title">Query</h3>
+          <p className="panel__note">给服务器列表查询用的那个端口。</p>
+        </div>
+
+        <div className="panel__body">
         {grouped.query.map((setting) => (
           <SettingField
             key={setting.key}
@@ -524,6 +547,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
             onChange={(value) => set(setting.key, value)}
           />
         ))}
+        </div>
       </section>
 
       {error && <div className="alert alert--error">{error}</div>}

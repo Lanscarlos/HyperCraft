@@ -1395,7 +1395,12 @@ function ServerStep({
   return (
     <>
       <section className="panel panel--form">
-        <h2 className="panel__title">服务器设置</h2>
+        <div className="panel__aside">
+          <h2 className="panel__title">服务器设置</h2>
+          <p className="panel__note">开服前要先定下来的几项。</p>
+        </div>
+
+        <div className="panel__body">
         <p className="chart-note">
           这些写进 <code>server.properties</code>，之后在「服务器配置」页随时能改 ——
           除了存档名和种子：世界一旦生成，改它们等于换一个世界。
@@ -1423,7 +1428,7 @@ function ServerStep({
           />
         </label>
 
-        <label className="field field--full">
+        <label className="field">
           <span>服务器标语 (MOTD)</span>
           <input value={props.motd} onChange={(e) => onChange('motd', e.target.value)} />
           <small>多人游戏列表里显示的那行字。中文会自动转义，游戏内显示正常。</small>
@@ -1479,6 +1484,7 @@ function ServerStep({
           <span>正版验证</span>
           <small>关掉才能让离线账号进服，同时也意味着任何人都能顶着别人的名字进来。</small>
         </label>
+        </div>
       </section>
 
       <section className={eula ? 'panel' : 'panel panel--warn'}>
@@ -1530,7 +1536,12 @@ function ProxyStep({
   return (
     <>
       <section className="panel panel--form">
-        <h2 className="panel__title">代理端设置</h2>
+        <div className="panel__aside">
+          <h2 className="panel__title">代理端设置</h2>
+          <p className="panel__note">代理端和普通服务端要填的不是一套。</p>
+        </div>
+
+        <div className="panel__body">
         <p className="chart-note">
           这些写进 <code>velocity.toml</code>，之后在「代理配置」页随时能改。
           子服务器留到那一页添加 —— 那时候它们才存在。
@@ -1559,7 +1570,7 @@ function ProxyStep({
           <small>决定子服看到的是真实玩家还是代理端自己。</small>
         </label>
 
-        <label className="field field--full">
+        <label className="field">
           <span>服务器标语 (MOTD)</span>
           <input value={motd} onChange={(e) => onMotd(e.target.value)} />
           <small>
@@ -1567,6 +1578,7 @@ function ProxyStep({
             这类标签会生效，和服务端的 <code>§</code> 颜色码不是一套。
           </small>
         </label>
+        </div>
       </section>
 
       <section className="panel">

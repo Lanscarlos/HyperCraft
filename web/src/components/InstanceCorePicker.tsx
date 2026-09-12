@@ -48,6 +48,9 @@ export function InstanceCorePicker({
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Shut by default: copying a core is a thing you do once, and this page is
+  // mostly opened to change something else.
+  const [open, setOpen] = useState(false)
 
   const available = cores.cores
 
@@ -56,6 +59,14 @@ export function InstanceCorePicker({
       current && available.some((core) => core.id === current) ? current : (available[0]?.id ?? ''),
     )
   }, [available])
+
+  // An error raised while the drawer is shut would be reported into something
+  // nobody can see, so surface it. An effect rather than folding error into the
+  // open prop: `open={open || Boolean(error)}` also refuses to let the reader
+  // shut the drawer again once they have read the thing.
+  useEffect(() => {
+    if (error) setOpen(true)
+  }, [error])
 
   const apply = async (overwrite: boolean) => {
     if (!coreId) return
@@ -99,80 +110,90 @@ export function InstanceCorePicker({
   const selected = available.find((core) => core.id === coreId)
 
   return (
-    <section className="panel">
-      <div className="chart-head">
-        <h3 className="panel__title">从核心库安装</h3>
-        <button className="link" type="button" onClick={onOpenLibrary}>
-          管理核心库
-        </button>
-      </div>
+    // Controlled rather than a bare <details>, so the effect above can open it
+    // when a copy fails.
+    <details
+      className="corepicker"
+      open={open}
+      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary>从核心库安装一个核心…</summary>
 
-      {available.length === 0 ? (
-        <p className="chart-note">
-          核心库还是空的。去「资源库 → 服务端核心」下载一个 Paper 或 Velocity，下载后在这里就能选；
-          也可以自己把 jar 传到实例目录，在下面的「服务端 jar」里填文件名。
-        </p>
-      ) : (
-        <>
+      <div className="corepicker__body">
+        <div className="actions">
+          <button className="link" type="button" onClick={onOpenLibrary}>
+            管理核心库
+          </button>
+        </div>
+
+        {available.length === 0 ? (
           <p className="chart-note">
-            从核心库挑一个复制到本实例目录 —— 新服装核心、老服换版本或者修一个坏掉的 jar，都走这里。
-            核心只在核心库下载一次，开多少个服就复制多少份。
+            核心库还是空的。去「资源库 → 服务端核心」下载一个 Paper 或 Velocity，下载后在这里就能选；
+            也可以自己把 jar 传到实例目录，在下面的「服务端 jar」里填文件名。
           </p>
+        ) : (
+          <>
+            <p className="chart-note">
+              从核心库挑一个复制到本实例目录 —— 新服装核心、老服换版本或者修一个坏掉的 jar，都走这里。
+              核心只在核心库下载一次，开多少个服就复制多少份。
+            </p>
 
-          <label className="field">
-            <span>选择核心</span>
-            <Select
-              ariaLabel="选择核心"
-              value={coreId}
-              disabled={busy}
-              options={available.map((core) => ({
-                value: core.id,
-                label: coreLabel(core),
-              }))}
-              onChange={setCoreId}
-            />
-            {selected && <small>将写入 <code>{selected.fileName}</code></small>}
-          </label>
+            <label className="field field--md">
+              <span>选择核心</span>
+              <Select
+                ariaLabel="选择核心"
+                value={coreId}
+                disabled={busy}
+                options={available.map((core) => ({
+                  value: core.id,
+                  label: coreLabel(core),
+                }))}
+                onChange={setCoreId}
+              />
+              {selected && <small>将写入 <code>{selected.fileName}</code></small>}
+            </label>
 
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              checked={setAsJar}
-              onChange={(e) => setSetAsJar(e.target.checked)}
-              disabled={busy}
-            />
-            <span>
-              复制后设为启动 jar
-              {selected?.kind === 'proxy' && '（代理端不吃 --nogui，会一并清空服务端参数）'}
-            </span>
-            {jarIgnored && (
-              <small>
-                这个实例用自己的脚本启动，「启动 jar」没人读 —— 勾了也只是记下来，
-                真正启动什么由脚本决定。
-              </small>
-            )}
-          </label>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={setAsJar}
+                onChange={(e) => setSetAsJar(e.target.checked)}
+                disabled={busy}
+              />
+              <div className="checkbox__text">
+                <span>
+                  复制后设为启动 jar
+                  {selected?.kind === 'proxy' && '（代理端不吃 --nogui，会一并清空服务端参数）'}
+                </span>
+                {jarIgnored && (
+                  <small>
+                    这个实例用自己的脚本启动，「启动 jar」没人读 —— 勾了也只是记下来，
+                    真正启动什么由脚本决定。
+                  </small>
+                )}
+              </div>
+            </label>
 
-          {error && <div className="alert alert--error">{error}</div>}
-          {status && <div className="alert alert--ok">{status}</div>}
+            {error && <div className="alert alert--error">{error}</div>}
+            {status && <div className="alert alert--ok">{status}</div>}
 
-          <div className="actions">
-            <Button
-              variant="primary"
-              type="button"
-              onClick={() => void apply(false)}
-              disabled={busy || !coreId}
-            >
-              {busy ? '复制中…' : '复制到实例'}
-            </Button>
-            {selected?.kind !== 'proxy' && (
-              <span className="file-toolbar__hint">
-                别忘了去「服务器配置」同意 EULA，否则服务端启动后会立刻退出。
-              </span>
-            )}
-          </div>
-        </>
-      )}
-    </section>
+            <div className="actions">
+              <Button
+                type="button"
+                onClick={() => void apply(false)}
+                disabled={busy || !coreId}
+              >
+                {busy ? '复制中…' : '复制到实例'}
+              </Button>
+              {selected?.kind !== 'proxy' && (
+                <span className="file-toolbar__hint">
+                  别忘了去「服务器配置」同意 EULA，否则服务端启动后会立刻退出。
+                </span>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </details>
   )
 }

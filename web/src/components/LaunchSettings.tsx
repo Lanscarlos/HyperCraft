@@ -16,6 +16,7 @@ import { ENCODING_OPTIONS, isLive, LOADER_OPTIONS } from '../types'
 import { JVM_PRESETS } from '../jvmPresets'
 import { Button } from './Button'
 import { JVMArgsEditor } from './JVMArgsEditor'
+import { FieldHelp } from './FieldHelp'
 import { ScriptImportDialog } from './ScriptImportDialog'
 import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
@@ -293,6 +294,42 @@ export function LaunchSettings({
   const aikarNeedsEqualHeap =
     jvmText.includes('using.aikars.flags') && form.minMemoryMB !== form.maxMemoryMB
 
+  // What 保存 would send, against what is stored. Built exactly the way save()
+  // builds its payload, so the bar cannot claim there is nothing to save while
+  // the button would still write something.
+  //
+  // Field by field rather than JSON.stringify on the two objects: the payload is
+  // a spread with three keys reassigned, and leaning on a spread to preserve key
+  // order for a string comparison is a bug waiting for someone to reorder
+  // toInput().
+  const stored = toInput(instance)
+  const pending: InstanceInput = {
+    ...form,
+    jvmArgs: fromLines(jvmText),
+    serverArgs: fromLines(serverText),
+    argFiles: argFileMode ? fromLines(argFileText) : [],
+  }
+  const dirty = (Object.keys(stored) as (keyof InstanceInput)[]).some((key) => {
+    const a = stored[key]
+    const b = pending[key]
+    if (Array.isArray(a) && Array.isArray(b)) {
+      return a.length !== b.length || a.some((item, at) => item !== b[at])
+    }
+    return a !== b
+  })
+
+  // Back to what is stored. The same setters the instance-change effect uses, so
+  // 放弃 and switching instances land in exactly the same state.
+  const revert = () => {
+    setForm(toInput(instance))
+    setJvmText(toLines(instance.jvmArgs ?? []))
+    setServerText(toLines(instance.serverArgs ?? []))
+    setArgFileText(toLines(instance.argFiles ?? []))
+    setArgFileMode((instance.argFiles?.length ?? 0) > 0)
+    setError(null)
+    setStatus(null)
+  }
+
   const update = <K extends keyof InstanceInput>(
     key: K,
     value: InstanceInput[K],
@@ -410,10 +447,21 @@ export function LaunchSettings({
     <form className="stack" onSubmit={save}>
       <PageHead title="实例设置" lead="名称、目录、核心、Java 和内存，以及它怎么启动。" />
 
-      <section className="panel panel--form">
-        <h3 className="panel__title">基本信息</h3>
+      <LaunchCheckPanel
+        check={check}
+        legacyCommand={instance.legacyCommand ?? []}
+        onRecheck={() => setCheckRev((rev) => rev + 1)}
+      />
 
-        <label className="field">
+      <section className="panel panel--form">
+        <div className="panel__aside">
+          <h3 className="panel__title">基本信息</h3>
+          <p className="panel__note">这台服务器叫什么、文件放在哪、是什么服务端。</p>
+        </div>
+
+        <div className="panel__body">
+
+        <label className="field field--md">
           <span>实例名称</span>
           <input
             value={form.name}
@@ -423,7 +471,6 @@ export function LaunchSettings({
         </label>
 
         <DirectoryField
-          className="field--full"
           value={form.directory}
           onChange={(value) => update('directory', value)}
           disabled={isLive(instance.state)}
@@ -438,7 +485,7 @@ export function LaunchSettings({
         />
 
         <div className="field-row">
-          <label className="field">
+          <label className="field field--md">
             <span>服务端类型</span>
             <Select
               ariaLabel="服务端类型"
@@ -451,7 +498,7 @@ export function LaunchSettings({
               onChange={(next) => update('loader', next)}
             />
           </label>
-          <label className="field">
+          <label className="field field--sm">
             <span>游戏版本</span>
             <input
               value={form.gameVersion}
@@ -464,28 +511,22 @@ export function LaunchSettings({
 
         <p className="muted">
           面板先从目录和 jar 名认，认不出来才用这里填的。
-          <strong>Forge 这类认不出来</strong> —— 没有 jar 名可读，
-          <code>version_history.json</code> 也只有 Paper 系才写。认不出来的后果很具体：
-          mod 会被装进 <code>plugins/</code> 而不是 <code>mods/</code>，插件市场里每一条也都标成「未知」。
+          <FieldHelp summary="哪些认不出来？">
+            <strong>Forge 这类认不出来</strong> —— 没有 jar 名可读，
+            <code>version_history.json</code> 也只有 Paper 系才写。认不出来的后果很具体：
+            mod 会被装进 <code>plugins/</code> 而不是 <code>mods/</code>，插件市场里每一条也都标成「未知」。
+          </FieldHelp>
         </p>
+        </div>
       </section>
 
-      <InstanceCorePicker
-        instance={instance}
-        cores={cores}
-        onApplied={onCoreApplied}
-        onOpenLibrary={onOpenLibrary}
-        jarIgnored={argFileMode}
-      />
-
-      <LaunchCheckPanel
-        check={check}
-        legacyCommand={instance.legacyCommand ?? []}
-        onRecheck={() => setCheckRev((rev) => rev + 1)}
-      />
-
       <section className="panel panel--form">
-        <h3 className="panel__title">启动方式</h3>
+        <div className="panel__aside">
+          <h3 className="panel__title">启动方式</h3>
+          <p className="panel__note">面板拼出来的那条命令行：用哪个 Java、跑哪个 jar、给多少内存。</p>
+        </div>
+
+        <div className="panel__body">
 
         <div className="segmented" role="group" aria-label="启动方式">
           {[
@@ -518,7 +559,7 @@ export function LaunchSettings({
         {/* The Java choice is argv[0] in both modes. It is also exported into
             the environment, which is what a server that shells out to a java
             of its own picks up. */}
-        <label className="field">
+        <label className="field field--md">
           <span>Java 环境</span>
           <Select
             ariaLabel="Java 环境"
@@ -564,7 +605,7 @@ export function LaunchSettings({
 
         {argFileMode ? (
           <>
-            <label className="field field--full">
+            <label className="field">
               <span>参数文件</span>
               <textarea
                 rows={3}
@@ -575,9 +616,12 @@ export function LaunchSettings({
               />
               <small>
                 一行一个，路径从实例目录算起，面板会按顺序拼成
-                <code> java @第一个 @第二个 …</code>。Forge 和 NeoForge 从 1.17 起就没有可以
-                直接跑的 jar 了，安装器留下的就是这两个文件 —— 照 <code>run.sh</code> 里那行抄过来即可。
+                <code> java @第一个 @第二个 …</code>。
               </small>
+              <FieldHelp summary="为什么 Forge 没有 jar？">
+                Forge 和 NeoForge 从 1.17 起就没有可以
+                直接跑的 jar 了，安装器留下的就是这两个文件 —— 照 <code>run.sh</code> 里那行抄过来即可。
+              </FieldHelp>
             </label>
 
             <div className="actions">
@@ -599,7 +643,7 @@ export function LaunchSettings({
           </>
         ) : (
           <>
-            <label className="field">
+            <label className="field field--md">
               <span>服务端 jar</span>
               <input
                 value={form.jar}
@@ -620,7 +664,7 @@ export function LaunchSettings({
             </label>
 
             <div className="field-row">
-              <label className="field">
+              <label className="field field--num">
                 <span>最小内存 (MB)</span>
                 <input
                   type="number"
@@ -630,7 +674,7 @@ export function LaunchSettings({
                   onChange={(e) => update('minMemoryMB', Number(e.target.value))}
                 />
               </label>
-              <label className="field">
+              <label className="field field--num">
                 <span>最大内存 (MB)</span>
                 <input
                   type="number"
@@ -642,7 +686,7 @@ export function LaunchSettings({
               </label>
             </div>
 
-            <div className="field field--full">
+            <div className="field">
               <span>JVM 参数</span>
               <JVMPresets
                 activeNote={presetNote}
@@ -671,7 +715,7 @@ export function LaunchSettings({
               {!jvmRows && <small>一行一个参数，会放在 -jar 之前。</small>}
             </div>
 
-            <div className="field field--full">
+            <div className="field">
               <span>服务端参数</span>
               {!proxy && (
                 <div className="presets">
@@ -704,6 +748,14 @@ export function LaunchSettings({
           </>
         )}
 
+        <InstanceCorePicker
+          instance={instance}
+          cores={cores}
+          onApplied={onCoreApplied}
+          onOpenLibrary={onOpenLibrary}
+          jarIgnored={argFileMode}
+        />
+
         {importing && (
           <ScriptImportDialog
             instanceId={instance.id}
@@ -711,12 +763,18 @@ export function LaunchSettings({
             onClose={() => setImporting(false)}
           />
         )}
+        </div>
       </section>
 
       <section className="panel panel--form">
-        <h3 className="panel__title">控制台</h3>
+        <div className="panel__aside">
+          <h3 className="panel__title">控制台</h3>
+          <p className="panel__note">网页控制台怎么读服务端的输出、怎么把命令送回去。</p>
+        </div>
 
-        <label className="field">
+        <div className="panel__body">
+
+        <label className="field field--md">
           <span>输出编码</span>
           <Select
             ariaLabel="输出编码"
@@ -727,12 +785,13 @@ export function LaunchSettings({
             }))}
             onChange={(next) => update('encoding', next)}
           />
-          <small>
-            控制台按这个编码解读服务器输出、并按同样的编码发送命令。「自动」会让 JVM 用
+          <small>控制台按这个编码解读服务器输出、并按同样的编码发送命令。</small>
+          <FieldHelp summary="乱码了怎么办？">
+            「自动」会让 JVM 用
             UTF-8 输出，同时对不是 UTF-8 的行按系统编码兜底。用自己的脚本启动时，
             「让 JVM 用 UTF-8」这半件事要靠上面那个 <code>JAVA_TOOL_OPTIONS</code> 开关；
             那个关着、中文 Windows 上又乱码的话，这里改成 GBK 通常就好了。
-          </small>
+          </FieldHelp>
         </label>
 
         <label className="checkbox">
@@ -742,19 +801,22 @@ export function LaunchSettings({
             disabled={!ttySupported}
             onChange={(e) => update('tty', e.target.checked)}
           />
-          <span>使用终端模式（推荐）</span>
-          <small>
+          <div className="checkbox__text">
+            <span>使用终端模式（推荐）</span>
             {ttySupported ? (
               <>
-                把服务器跑在伪终端上，就像你自己在 SSH 里开着它一样。这样 Tab 补全由
-                <strong>正在运行的服务端</strong>回答（插件命令、真实玩家名都算数），
-                进度条不用等换行就能看到，颜色也不需要强制。代价是终端只有一条流，
-                stderr 不再单独标红。关掉则回到管道模式。
+                <small>Tab 补全由正在运行的服务端回答，进度条不用等换行就能看到。</small>
+                <FieldHelp>
+                  把服务器跑在伪终端上，就像你自己在 SSH 里开着它一样。这样 Tab 补全由
+                  <strong>正在运行的服务端</strong>回答（插件命令、真实玩家名都算数），
+                  进度条不用等换行就能看到，颜色也不需要强制。代价是终端只有一条流，
+                  stderr 不再单独标红。关掉则回到管道模式。
+                </FieldHelp>
               </>
             ) : (
-              <>本系统没有可用的伪终端（Windows 需要 ConPTY），所有实例都以管道模式运行。</>
+              <small>本系统没有可用的伪终端（Windows 需要 ConPTY），所有实例都以管道模式运行。</small>
             )}
-          </small>
+          </div>
         </label>
 
         <label className="checkbox">
@@ -764,20 +826,29 @@ export function LaunchSettings({
             disabled={form.tty && ttySupported}
             onChange={(e) => update('forceColor', e.target.checked)}
           />
-          <span>强制彩色输出（推荐）</span>
-          <small>
-            仅在管道模式下有意义：服务端只在检测到终端时才上色，所以管道模式会加上
-            <code> -Dterminal.jline=false -Dterminal.ansi=true</code>，让网页控制台和
-            cmd 里一样有颜色。终端模式下服务端本来就看得到终端，这两个参数不会被加上
-            —— <code>terminal.jline=false</code> 恰好会关掉终端模式想要的那个补全。
-            用自己的脚本启动时，这两个参数走
-            <code> JAVA_TOOL_OPTIONS</code> 送进去，要在上面把那个开关留着。
-          </small>
+          <div className="checkbox__text">
+            <span>强制彩色输出（推荐）</span>
+            <small>仅在管道模式下有意义，终端模式下这两个参数不会被加上。</small>
+            <FieldHelp>
+              服务端只在检测到终端时才上色，所以管道模式会加上
+              <code> -Dterminal.jline=false -Dterminal.ansi=true</code>，让网页控制台和
+              cmd 里一样有颜色。终端模式下服务端本来就看得到终端，这两个参数不会被加上
+              —— <code>terminal.jline=false</code> 恰好会关掉终端模式想要的那个补全。
+              用自己的脚本启动时，这两个参数走
+              <code> JAVA_TOOL_OPTIONS</code> 送进去，要在上面把那个开关留着。
+            </FieldHelp>
+          </div>
         </label>
+        </div>
       </section>
 
       <section className="panel panel--form">
-        <h3 className="panel__title">进程管理</h3>
+        <div className="panel__aside">
+          <h3 className="panel__title">进程管理</h3>
+          <p className="panel__note">面板什么时候替你开服、什么时候替你重启、怎么停。</p>
+        </div>
+
+        <div className="panel__body">
 
         <label className="checkbox">
           <input
@@ -798,7 +869,7 @@ export function LaunchSettings({
         </label>
 
         <div className="field-row">
-          <label className="field">
+          <label className="field field--md">
             <span>停服命令</span>
             <input
               value={form.stopCommand}
@@ -806,7 +877,7 @@ export function LaunchSettings({
               placeholder={proxy ? 'end' : 'stop'}
             />
           </label>
-          <label className="field">
+          <label className="field field--num">
             <span>停服超时 (秒)</span>
             <input
               type="number"
@@ -817,16 +888,30 @@ export function LaunchSettings({
             <small>超时后发送终止信号，再等 15 秒强制结束。</small>
           </label>
         </div>
+        </div>
       </section>
 
       {error && <div className="alert alert--error">{error}</div>}
       {status && <div className="alert alert--ok">{status}</div>}
 
-      <div className="actions">
-        <Button variant="primary" type="submit" disabled={busy}>
-          保存设置
-        </Button>
-        <div className="actions__danger">
+      {dirty && (
+        <div className="formbar">
+          <span className="formbar__note">有未保存的改动</span>
+          <Button size="row" type="button" onClick={revert} disabled={busy}>
+            放弃
+          </Button>
+          <Button variant="primary" size="row" type="submit" disabled={busy}>
+            {busy ? '保存中…' : '保存设置'}
+          </Button>
+        </div>
+      )}
+
+      <section className="panel panel--danger">
+        <h3 className="panel__title">危险操作</h3>
+        <p className="muted">
+          这两个都不可撤销，面板没有为它们留回收站。服务器运行时都不可用。
+        </p>
+        <div className="actions">
           <Button
             type="button"
             onClick={() => remove(false)}
@@ -843,7 +928,7 @@ export function LaunchSettings({
             删除实例及所有文件
           </Button>
         </div>
-      </div>
+      </section>
     </form>
   )
 }
@@ -878,18 +963,34 @@ function LaunchCheckPanel({
 }) {
   if (check === null) return null
 
-  return (
-    <section className="panel panel--form">
-      <h3 className="panel__title">开服前检查</h3>
-
-      {check.issues.length === 0 ? (
-        <p className="muted">
+  // No findings is the normal case and does not deserve a card: a heading that
+  // says "everything is fine" is one the eye has to process on every visit to
+  // learn nothing. One line under the page head says it and gets out of the way.
+  if (check.issues.length === 0) {
+    return (
+      <div className="launchstrip">
+        <span className="launchstrip__dot" aria-hidden="true" />
+        <span>
           没发现问题。
           {check.mode === 'argfile'
             ? '参数文件都在目录里。'
             : '核心和目录都对得上。'}
-        </p>
-      ) : (
+        </span>
+        <button className="link" type="button" onClick={onRecheck}>
+          重新检查
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <section className="panel panel--form">
+      <div className="panel__aside">
+        <h3 className="panel__title">开服前检查</h3>
+        <p className="panel__note">按下「启动」之前，面板能先看出来的问题。</p>
+      </div>
+
+      <div className="panel__body">
         <ul className="launchcheck">
           {check.issues.map((issue) => (
             <li
@@ -910,12 +1011,12 @@ function LaunchCheckPanel({
             </li>
           ))}
         </ul>
-      )}
 
-      <div className="actions">
-        <Button size="row" type="button" onClick={onRecheck}>
-          重新检查
-        </Button>
+        <div className="actions">
+          <Button size="row" type="button" onClick={onRecheck}>
+            重新检查
+          </Button>
+        </div>
       </div>
     </section>
   )
@@ -1022,7 +1123,7 @@ function ArgFileMemory({
 }) {
   if (!jvm?.exists) {
     return (
-      <p className="muted field--full">
+      <p className="muted">
         这个服务端的内存写在参数文件里，面板不去猜 —— 上面那组内存设置只对「核心 jar」有效。
         Forge / NeoForge 把 <code>-Xmx</code> 放在
         <code> user_jvm_args.txt</code>，那个文件在时这里会直接变成可编辑的。
@@ -1035,7 +1136,7 @@ function ArgFileMemory({
   return (
     <>
       <div className="field-row">
-        <label className="field">
+        <label className="field field--num">
           <span>最小内存 (MB)</span>
           <input
             type="number"
@@ -1045,7 +1146,7 @@ function ArgFileMemory({
             onChange={(e) => onMin(Number(e.target.value))}
           />
         </label>
-        <label className="field">
+        <label className="field field--num">
           <span>最大内存 (MB)</span>
           <input
             type="number"
@@ -1057,7 +1158,7 @@ function ArgFileMemory({
         </label>
       </div>
 
-      <p className="muted field--full">
+      <p className="muted">
         这两个数写进 <code>{jvm.fileName}</code>，也就是 Forge 的
         <code> run.sh</code> 真正会读的那个文件 —— 文件里的注释和其他参数都会原样保留，
         填 0 是删掉这一行。
