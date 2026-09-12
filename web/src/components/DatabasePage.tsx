@@ -648,7 +648,14 @@ function EngineList({
               </div>
             )}
 
+            {/* The hole goes first, not last. An engine row has two facts for
+                three tracks, and the third track is the wide one the shelves
+                size for a date — leaving the gap at the end pushed 安装于 into
+                a 96px track and clipped it. Skipping the narrow track instead
+                lands the date where it fits and still lines the rows up with
+                each other, which is all the alignment is for. */}
             <dl className="asset__facts asset__facts--split">
+              <div className="asset__hole" aria-hidden="true" />
               <div>
                 <dt>体积</dt>
                 <dd>{formatBytes(install.size)}</dd>
@@ -657,7 +664,6 @@ function EngineList({
                 <dt>安装于</dt>
                 <dd>{formatDate(install.installedAt)}</dd>
               </div>
-              <div className="asset__hole" aria-hidden="true" />
             </dl>
 
             <footer className="asset__actions asset__actions--split">

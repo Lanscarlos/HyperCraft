@@ -331,8 +331,9 @@ export function scopeOf(route: Route): Scope {
  * Pairs a row with the scope header it becomes, across the two sidebars.
  *
  * Shared rather than spelled out at each end: the row, the header it flies to,
- * and the two ways back out (the sidebar's 返回上级 and the top bar's) all have
- * to agree on the string or the animation silently does nothing.
+ * and the two ways back out (the exit at the foot of the sidebar and the top
+ * bar's back button) all have to agree on the string or the animation silently
+ * does nothing.
  */
 export function navKeyOf(route: Route): string | null {
   switch (route.kind) {
