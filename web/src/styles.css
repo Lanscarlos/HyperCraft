@@ -10922,22 +10922,164 @@ button.rows__name:hover strong {
 
 /* -------------------------------------------------------------- discovery
 
-   Wide rows, and nothing beside them. Not a card grid: every fact that decides
-   a plugin is text, and a card spends its area on an icon that identifies
-   nothing while truncating the description.
+   A card grid, with the filters open down the left. Both were tried the other
+   way round and both came back. Wide rows fit more answers on a screen, but
+   the first pass through a registry is not reading ten results end to end —
+   it is finding the four or five worth reading at all, and a row of clipped
+   text gives that pass nothing to catch on. Filters as chips over closed
+   sheets cost a click to read and said nothing while shut, which is the worst
+   property a control that silently decides every result can have. The
+   contract is unchanged either way: nothing goes upstream until 搜索 is
+   pressed.
 
-   The filters were a 208px rail down the left. At 1440px that left the results
-   — the thing the page is — with well under half the window, permanently, in
-   exchange for six controls touched once a session. They are a row of chips
-   above the results now: the two that actually get adjusted (which servers the
-   badges are measured against, and whether to hide what will not run on them)
-   are always visible, and the rest are behind 更多筛选, which is where a
-   control you set once belongs. The contract is unchanged — nothing goes
-   upstream until 搜索 is pressed. */
+   The rail and the results are one wrapping flex line rather than a grid with
+   a breakpoint, because this page renders at two quite different widths — the
+   插件市场 page, and the 市场 tab inside an instance, which is narrower by a
+   whole sidebar. A viewport media query would be measuring the wrong box in
+   the second case. Instead the results carry a huge flex-grow against a 520px
+   basis: they take every spare pixel while both fit on the line, and the rail
+   drops above them the moment they do not. */
 .browse {
   display: flex;
   flex-direction: column;
+  gap: 12px;
   min-width: 0;
+}
+
+.browse__body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+/* 208px is the width this rail had before it was taken away, and what the
+   checkbox hints inside it are still written to wrap at. It grows by a
+   thousandth of the spare space while the results sit beside it — near enough
+   to fixed — and to the whole line once they wrap under it.
+
+   A grid inside, not a column, and for the wrapped case only: at 208px the
+   auto-fill lands on one column and the cards stack exactly as they would
+   have, but on a full-width line they sit three or four across instead of
+   becoming a 700px wall of filters above the first result. Narrower than that
+   and there is no arrangement that helps — the rail folds behind a button
+   instead, which is FOLD_QUERY's job in PluginBrowse.tsx. */
+.browse__rail {
+  display: grid;
+  flex: 1 1 208px;
+  grid-template-columns: repeat(auto-fill, minmax(min(192px, 100%), 1fr));
+  align-content: start;
+  /* Each card is as tall as what is in it. Stretching them to the row would
+     leave 来源 — three chips — padded out to the height of 参照实例, which
+     reads as a card that failed to load rather than a short one. */
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Only ever drawn folded, and then it is the whole rail, so it spans whatever
+   the auto-fill decided. */
+.browse__rail-toggle {
+  grid-column: 1 / -1;
+  justify-content: center;
+}
+
+/* Something is narrowed and the rail that would say what is shut. Not a count:
+   the number would be of filter controls, which is not a thing anybody is
+   keeping track of — only whether there is anything in there to go and look
+   at. */
+.browse__rail-dot {
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.browse__rail-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.browse__rail-label {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.browse__rail-note {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.browse__rail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.browse__rail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Under the whole rail, not in whichever column the auto-fill left it in. */
+.browse__rail-reset {
+  grid-column: 1 / -1;
+  justify-self: start;
+  font-size: 12px;
+}
+
+/* The categories as a list rather than a select. There are a dozen of them and
+   they are the one filter someone browses *with* rather than sets once — a
+   closed control that has to be opened to be read is exactly what this rail
+   came back to stop. */
+.browse__cats {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0 -6px;
+}
+
+.browse__cat {
+  padding: 5px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+
+.browse__cat:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.browse__cat:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.browse__cat--on {
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 500;
 }
 
 .browse__check {
@@ -10975,6 +11117,22 @@ button.rows__name:hover strong {
   line-height: 1.55;
 }
 
+/* The label line itself. It carries the status dot on the 参照 rows, and a dot
+   is sized in pixels — which it only gets as a flex item. Aligned to the top
+   rather than the centre, because an instance name long enough to wrap would
+   otherwise drag the dot down beside its second line, where it reads as the
+   status of nothing. */
+.browse__check-name {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* Optically centred on the first line of the name (13px × 1.5, dot 9px). */
+.browse__check-name .status__dot {
+  margin-top: 5px;
+}
+
 /* Why a control is off, or why a column is missing — said where the fix is,
    which is the only place it is any use. */
 .browse__check-warn {
@@ -10983,14 +11141,16 @@ button.rows__name:hover strong {
 
 .browse__main {
   display: flex;
+  flex: 999 1 520px;
   flex-direction: column;
   gap: 12px;
   min-width: 0;
 }
 
-/* The box and the button that fires it, on one line. The button is not a
-   convenience — it is the page's contract: nothing goes upstream until it is
-   pressed, so it has to be beside the thing being typed. */
+/* The box and the button that fires it, on one line across the top of both
+   columns. The button is not a convenience — it is the page's contract:
+   nothing goes upstream until it is pressed, so it has to be beside the thing
+   being typed rather than at the foot of the rail. */
 .browse__search {
   display: flex;
   gap: 8px;
@@ -11074,66 +11234,191 @@ button.rows__name:hover strong {
   color: var(--text-faint);
 }
 
-.browse__rows {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--surface-1);
-}
-
-/* Tightened from three comfortable lines to three legible ones: at the old
-   height a screen held eight results, which is less than one search's worth of
-   candidates and meant scrolling to compare the third against the ninth. */
-.browse-row {
+/* The count and the narrowings that produced it, on one line. A count on its
+   own cannot explain a short list; the chips beside it can, and each comes off
+   where it is being read rather than back in the rail. */
+.browse__result-head {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 7px 14px;
-  border-bottom: 1px solid var(--border);
-  transition: background var(--dur-1) var(--ease);
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-.browse-row:last-child {
-  border-bottom: none;
+.browse__applied {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
 }
 
-.browse-row:hover {
-  background: var(--surface-2);
+.browse__applied-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 8px;
 }
 
-/* Incompatible rows are dimmed, never hidden. Someone searching for a plugin
+.browse__applied-x {
+  color: var(--text-faint);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.browse__applied-chip:hover .browse__applied-x {
+  color: var(--text);
+}
+
+.browse__applied-reset {
+  font-size: 12px;
+}
+
+/* auto-fill rather than auto-fit: one lone result should be a card the size of
+   every other card, not one stretched across the row — nothing about a single
+   match makes it bigger. 268px is where a card stops being able to hold a name,
+   a compatibility badge and two lines of description without the name wrapping;
+   the min() keeps it from overflowing a container narrower than that, which is
+   what a phone gives it. */
+.browse__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(268px, 100%), 1fr));
+  gap: 14px;
+}
+
+.browse-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition:
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+.browse-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Incompatible cards are dimmed, never hidden. Someone searching for a plugin
    that stopped at 1.16.5 needs to be told that — a search that returns nothing
    reads as a broken panel, and "三年没更新、只支持到 1.16.5" is the answer. */
-.browse-row--dim {
+.browse-card--dim {
   opacity: 0.55;
 }
 
-.browse-row--dim:hover {
+.browse-card--dim:hover {
   opacity: 0.85;
 }
 
-.browse-row--focused {
-  background: var(--surface-2);
-  box-shadow: inset 2px 0 0 var(--accent);
+/* The keyboard cursor. A ring rather than the rows' inset left bar: on a grid
+   there is no left edge every result shares, so an edge marker lands in a
+   different place on every card in the row. */
+.browse-card--focused {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
 }
 
-.browse-row__open {
+.browse-card__open {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
   flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
   min-width: 0;
-  padding: 0;
+  padding: 14px 14px 12px;
   background: none;
   border: none;
+  border-radius: var(--radius-lg);
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 
+.browse-card__open:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.browse-card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* Bigger than the 32px the rows gave it. On a card the icon is where the eye
+   lands first and the part a project is recognised by before its name is read;
+   at row size it read as a bullet point. */
+.browse-card__icon {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--surface-3);
+}
+
+.browse-card__ident {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.browse-card__name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Plugin names are identifiers, and a card is narrow: they break anywhere
+   rather than being clipped. An ellipsis here would hide the one string the
+   reader is matching against — and "AVeryLongPluginName…" is not a name you
+   can look up. Without this the longest name in a page of results simply
+   walked out of the right-hand side of its card. */
+.browse-card__name strong {
+  min-width: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+/* The badge's own margin is for sitting after text; here the flex gap already
+   does that job and the two together read as a gap twice as wide. */
+.browse-card__name .badge {
+  margin-left: 0;
+}
+
+.browse-card__author {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Two lines, and both of them reserved whether or not they are filled. A clamp
+   that collapses on a short description leaves every card's footer at its own
+   height, and buttons that do not line up across a grid read as cards that are
+   not the same kind of thing. */
+.browse-card__summary {
+  display: -webkit-box;
+  min-height: calc(2 * 1.6em);
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  line-height: 1.6;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* Not the market's own icon any more — that is .browse-card__icon. This is the
+   32px square the two plugin drawers put beside their heading, which is still
+   a row and still wants a row's icon. */
 .browse-row__icon {
   width: 32px;
   height: 32px;
@@ -11145,7 +11430,7 @@ button.rows__name:hover strong {
 
 /* The fallback face, wherever PluginIcon is used: the initial, on the same
    square the image would have filled. Sized off the box it is standing in so
-   one rule covers a 34px card icon and a 32px search result. */
+   one rule covers a 40px market card and a 32px drawer heading. */
 .plugin-icon--blank {
   display: grid;
   place-items: center;
@@ -11155,54 +11440,37 @@ button.rows__name:hover strong {
   user-select: none;
 }
 
-.browse-row__body {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.browse-row__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.browse-row__head strong {
-  font-size: 14px;
-}
-
-.browse-row__author {
-  color: var(--text-faint);
-  font-size: 12px;
-}
-
-/* One line, clipped. The full description is a click away in the drawer, and
-   two lines here would halve how many plugins fit on a screen. */
-.browse-row__summary {
-  color: var(--text-dim);
-  font-size: 12.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.browse-row__facts {
+/* Downloads, last release, loaders — pushed to the foot of the card's body so
+   they sit on the border above the button whatever the description did. */
+.browse-card__facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
+  gap: 3px 12px;
+  margin-top: auto;
   color: var(--text-faint);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
-.browse-row__stale {
+.browse-card__stale {
   color: var(--caution-ink);
 }
 
-.browse-row__action {
-  flex: none;
+/* The footer is outside the card's own button — a button inside a button is
+   not markup a browser will accept — which is also what lets every card's
+   action sit on one line across the row. */
+.browse-card__action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* Where the jar would come from, at the far end of the line it would be
+   fetched by. */
+.browse-card__source {
+  margin-left: auto;
 }
 
 /* ----------------------------------------------------------------- drawer
@@ -11918,77 +12186,6 @@ button.rows__name:hover strong {
   color: var(--text-faint);
 }
 
-.chips--filters {
-  margin-bottom: 14px;
-}
-
-.chips__reset {
-  margin-left: 4px;
-  font-size: 12px;
-}
-
-/* A filter chip's sheet holds checkboxes rather than actions, so unlike the ⋯
-   menu it stays open while several are ticked: three sources is one decision
-   made in three clicks. */
-.menu__sheet--filter {
-  min-width: 240px;
-  /* Kept in step with FILTER_WIDTH in PluginBrowse.tsx, which is what the
-     placement clamps against. */
-  max-width: 320px;
-  padding: 8px;
-  gap: 2px;
-  transform-origin: top left;
-}
-
-.menu__sheet--filter[data-dir='up'] {
-  transform-origin: bottom left;
-}
-
-.menu__note {
-  margin: 0 0 6px;
-  color: var(--text-faint);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.menu__check {
-  display: flex;
-  gap: 8px;
-  padding: 6px 6px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.menu__check:hover {
-  background: var(--surface-2);
-}
-
-.menu__check > span {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.menu__check small {
-  color: var(--text-faint);
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.menu__field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px;
-  font-size: 12px;
-}
-
-.menu__field > span {
-  color: var(--text-faint);
-  font-size: 11px;
-}
 
 /* ------------------------------------------------------------- the table */
 
