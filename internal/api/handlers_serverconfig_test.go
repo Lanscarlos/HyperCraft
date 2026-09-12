@@ -257,3 +257,44 @@ func contains(values []string, want string) bool {
 	}
 	return false
 }
+
+// Every file gets a one-line blurb, because the file picker is a row of cards
+// now and a card with only a filename on it is a chip that took more room.
+func TestServerConfigFilesHaveBlurbs(t *testing.T) {
+	for _, file := range allServerConfigFiles() {
+		if file.Blurb == "" {
+			t.Errorf("%s 没有 Blurb：文件选择卡片上那一行就是从这里来的", file.ID)
+		}
+		// Long enough and it wraps to three lines and the cards stop being the
+		// same height. The lead is where the full sentence lives.
+		if len([]rune(file.Blurb)) > 24 {
+			t.Errorf("%s 的 Blurb 有 %d 个字，卡片上放不下", file.ID, len([]rune(file.Blurb)))
+		}
+	}
+}
+
+// Proxy forwarding is the one thing in these files that opens a server up:
+// with it on and the port reachable, anyone can connect straight past the
+// proxy and claim any UUID. Those rows say so.
+func TestProxyForwardingCarriesRisk(t *testing.T) {
+	want := map[string]bool{
+		"settings.bungeecord":      true,
+		"proxies.velocity.enabled": true,
+	}
+	seen := map[string]bool{}
+	for _, file := range allServerConfigFiles() {
+		for _, setting := range file.Known {
+			if want[setting.Key] {
+				seen[setting.Key] = true
+				if setting.Risk == "" {
+					t.Errorf("%s 必须写明打开之后的后果", setting.Key)
+				}
+			}
+		}
+	}
+	for key := range want {
+		if !seen[key] {
+			t.Errorf("配置表里没有 %s", key)
+		}
+	}
+}

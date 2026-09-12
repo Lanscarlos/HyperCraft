@@ -1,14 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api'
-import { reducedMotion } from '../motion'
 import type {
   EulaStatus,
   InstanceStatus,
   KnownProperty,
   PropertiesResponse,
 } from '../types'
-import { Select } from './Select'
+import { ConfigLayout, ConfigRow, ConfigSaveBar, changedKeys } from './ConfigLayout'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
 /**
@@ -34,7 +33,6 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
   // Hides every row that still reads the way it did on disk. Off by default:
   // the page is also how you find a setting you have never touched.
   const [onlyChanged, setOnlyChanged] = useState(false)
-  const formRef = useRef<HTMLFormElement>(null)
 
   const load = async () => {
     try {
@@ -77,13 +75,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
   // decides what gets written, and its comment above says why — but a key
   // typed back to what it already was is not a change, and a badge saying
   // otherwise is the page lying about a diff the operator can read.
-  const changed = useMemo(() => {
-    const set = new Set<string>()
-    for (const [key, value] of Object.entries(values)) {
-      if (value !== original[key]) set.add(key)
-    }
-    return set
-  }, [values, original])
+  const changed = useMemo(() => changedKeys(values, original), [values, original])
 
   /** The rail, and the sections under it, in the order the daemon lists the
    *  keys — which is the order they were grouped in, not alphabetical. */
@@ -98,11 +90,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
       }
       byGroup.get(name)?.push(prop)
     }
-    return order.map((name, index) => ({
-      id: `cfg-g${index}`,
-      name,
-      props: byGroup.get(name) ?? [],
-    }))
+    return order.map((name) => ({ id: name, label: name, props: byGroup.get(name) ?? [] }))
   }, [known])
 
 
@@ -151,14 +139,6 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
     setError(null)
   }
 
-  const jumpTo = (id: string) => {
-    const target = formRef.current?.querySelector(`#${id}`)
-    target?.scrollIntoView({
-      block: 'start',
-      behavior: reducedMotion() ? 'auto' : 'smooth',
-    })
-  }
-
   const acceptEula = async () => {
     try {
       setEula(await api.acceptEula(instance.id))
@@ -189,7 +169,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
   }
 
   return (
-    <form className="stack" onSubmit={save} ref={formRef}>
+    <form className="stack" onSubmit={save}>
       {eula && !eula.accepted && (
         <section className="panel panel--warn">
           <h3 className="panel__title">还没有同意 EULA</h3>
@@ -218,230 +198,79 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
         </div>
       )}
 
-      <div className="cfg">
-        {/* The rail. Anchors rather than tabs: the sections are one document
-            and scrolling between them is how you notice the setting next to
-            the one you came for. */}
-        <aside className="cfg__rail">
-          <button
-            type="button"
-            className={`cfg__filter${onlyChanged ? ' cfg__filter--on' : ''}`}
-            onClick={() => setOnlyChanged((on) => !on)}
-            disabled={changed.size === 0}
-            aria-pressed={onlyChanged}
-          >
-            仅看已修改
-            <b>{changed.size}</b>
-          </button>
-
-          <nav className="cfg__anchors" aria-label="配置分组">
-            {groups.map((group) => (
-              <button
-                type="button"
-                className="cfg__anchor"
-                key={group.id}
-                onClick={() => jumpTo(group.id)}
-              >
-                <span>{group.name}</span>
-                <b>{group.props.length}</b>
-              </button>
-            ))}
-            {extras.length > 0 && (
-              <button type="button" className="cfg__anchor" onClick={() => jumpTo('cfg-extras')}>
-                <span>未分类</span>
-                <b>{extras.length}</b>
-              </button>
-            )}
-          </nav>
-
-          <p className="cfg__note">
-            面板只写入你改动过的键，其余保持文件原样（含注释与顺序）。
-          </p>
-          <p className="cfg__path" title={data.path}>
-            {data.path}
-          </p>
-        </aside>
-
-        <div className="cfg__body">
-          {groups.map((group) => {
-            const rows = group.props.filter((prop) => !onlyChanged || changed.has(prop.key))
-            if (rows.length === 0) return null
-            return (
-              <section className="panel cfg__group" id={group.id} key={group.id}>
-                <h3 className="panel__title">{group.name}</h3>
-                {rows.map((prop) => (
-                  <PropertyField
-                    key={prop.key}
-                    prop={prop}
-                    value={valueOf(prop)}
-                    unset={!present.has(prop.key) && !dirty.has(prop.key)}
-                    changed={changed.has(prop.key)}
-                    original={original[prop.key]}
-                    onChange={(v) => set(prop.key, v)}
-                  />
-                ))}
-              </section>
-            )
-          })}
-
-          {extras.length > 0 && (!onlyChanged || extras.some((key) => changed.has(key))) && (
-            <section className="panel cfg__group" id="cfg-extras">
-              <h3 className="panel__title">未分类 ({extras.length})</h3>
-              <p className="muted">
-                面板不认识的键 —— 模组、插件或者更新的服务端加的。原样可编辑，保存时不会丢。
-              </p>
-              <div className="props-grid">
-                {extras
-                  .filter((key) => !onlyChanged || changed.has(key))
-                  .map((key) => (
-                    <label
-                      className={`field field--inline${changed.has(key) ? ' field--changed' : ''}`}
-                      key={key}
-                    >
-                      <span title={key}>{key}</span>
-                      <input
-                        value={values[key] ?? ''}
-                        onChange={(e) => set(key, e.target.value)}
-                        spellCheck={false}
-                      />
-                    </label>
-                  ))}
-              </div>
+      <ConfigLayout
+        groups={[
+          ...groups.map((group) => ({ id: group.id, label: group.label })),
+          ...(extras.length > 0 ? [{ id: 'cfg-extras', label: '未分类' }] : []),
+        ]}
+        counts={{
+          ...Object.fromEntries(groups.map((group) => [group.id, group.props.length])),
+          'cfg-extras': extras.length,
+        }}
+        changed={changed.size}
+        onlyChanged={onlyChanged}
+        onToggleOnlyChanged={() => setOnlyChanged((on) => !on)}
+        note="面板只写入你改动过的键，其余保持文件原样（含注释与顺序）。"
+        path={data.path}
+      >
+        {groups.map((group) => {
+          const rows = group.props.filter((prop) => !onlyChanged || changed.has(prop.key))
+          if (rows.length === 0) return null
+          return (
+            <section className="panel cfg__group" data-group={group.id} key={group.id}>
+              <h3 className="panel__title">{group.label}</h3>
+              {rows.map((prop) => (
+                <ConfigRow
+                  key={prop.key}
+                  setting={prop}
+                  value={valueOf(prop)}
+                  unset={!present.has(prop.key) && !dirty.has(prop.key)}
+                  changed={changed.has(prop.key)}
+                  original={original[prop.key]}
+                  onChange={(v) => set(prop.key, v)}
+                />
+              ))}
             </section>
-          )}
+          )
+        })}
 
-          {error && <div className="alert alert--error">{error}</div>}
-          {status && <div className="alert alert--ok">{status}</div>}
-
-          <div className="actions">
-            <button className="btn" type="button" onClick={() => void load()}>
-              重新读取
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Rises from the foot of the page while anything is unsaved. The restart
-          is stated once, here, rather than as a badge on every row: the server
-          reads this file at startup, so it is true of every line in it, and a
-          badge that is always on stops being read. */}
-      {changed.size > 0 && (
-        <div className="cfg__savebar" role="status">
-          <span className="cfg__savecount">
-            <b>{changed.size}</b> 项更改待保存
-          </span>
-          <span className="cfg__savenote">重启服务器后生效</span>
-          <div className="cfg__saveactions">
-            <button className="btn" type="button" onClick={discard} disabled={busy}>
-              放弃更改
-            </button>
-            <button className="btn btn--primary" type="submit" disabled={busy}>
-              保存
-            </button>
-          </div>
-        </div>
-      )}
-    </form>
-  )
-}
-
-function PropertyField({
-  prop,
-  value,
-  unset,
-  changed,
-  original,
-  onChange,
-}: {
-  prop: KnownProperty
-  value: string
-  unset: boolean
-  /** True when this row no longer reads the way the file does. */
-  changed: boolean
-  /** What the file says, or undefined when the file has no such line. */
-  original: string | undefined
-  onChange: (value: string) => void
-}) {
-  const hint = [prop.hint, unset ? '当前使用默认值，未写入文件' : null]
-    .filter(Boolean)
-    .join(' · ')
-
-  // Under the control rather than beside it: the original is read after the
-  // new value, as the answer to "what was it before", and putting it in the
-  // label turns every changed row into two columns of small text.
-  const footnotes = (
-    <>
-      {changed && (
-        <small className="cfg__was">
-          原值 <s>{original ?? `（未写入，默认 ${prop.default || '空'}）`}</s>
-        </small>
-      )}
-      {prop.risk && (
-        <small className="cfg__risk">
-          <span aria-hidden="true">⚠</span> {prop.risk}
-        </small>
-      )}
-      {changed && prop.live && (
-        <small className="cfg__live">
-          也可以直接在控制台敲 <code>{prop.live}</code> 立即生效，不用等重启。
-        </small>
-      )}
-    </>
-  )
-
-  const label = (
-    <span className="cfg__name">
-      {prop.label}
-      <code className="cfg__key">{prop.key}</code>
-      {changed && <span className="badge badge--changed">已修改</span>}
-    </span>
-  )
-
-  if (prop.type === 'boolean') {
-    return (
-      <div className={`cfg__row${changed ? ' cfg__row--changed' : ''}`}>
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={value === 'true'}
-            onChange={(e) => onChange(e.target.checked ? 'true' : 'false')}
-          />
-          {label}
-        </label>
-        {hint && <small>{hint}</small>}
-        {footnotes}
-      </div>
-    )
-  }
-
-  return (
-    <div className={`cfg__row${changed ? ' cfg__row--changed' : ''}`}>
-      <label className="field">
-        {label}
-        {prop.type === 'select' ? (
-          <Select
-            ariaLabel={prop.label}
-            value={value}
-            options={[
-              // An unset key must not silently become the first option.
-              ...(prop.options?.includes(value)
-                ? []
-                : [{ value, label: value || '(未设置)' }]),
-              ...(prop.options ?? []).map((option) => ({ value: option, label: option })),
-            ]}
-            onChange={onChange}
-          />
-        ) : (
-          <input
-            type={prop.type === 'number' ? 'number' : 'text'}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            spellCheck={false}
-          />
+        {extras.length > 0 && (!onlyChanged || extras.some((key) => changed.has(key))) && (
+          <section className="panel cfg__group" data-group="cfg-extras">
+            <h3 className="panel__title">未分类 ({extras.length})</h3>
+            <p className="muted">
+              面板不认识的键 —— 模组、插件或者更新的服务端加的。原样可编辑，保存时不会丢。
+            </p>
+            <div className="props-grid">
+              {extras
+                .filter((key) => !onlyChanged || changed.has(key))
+                .map((key) => (
+                  <label
+                    className={`field field--inline${changed.has(key) ? ' field--changed' : ''}`}
+                    key={key}
+                  >
+                    <span title={key}>{key}</span>
+                    <input
+                      value={values[key] ?? ''}
+                      onChange={(e) => set(key, e.target.value)}
+                      spellCheck={false}
+                    />
+                  </label>
+                ))}
+            </div>
+          </section>
         )}
-        {hint && <small>{hint}</small>}
-      </label>
-      {footnotes}
-    </div>
+
+        {error && <div className="alert alert--error">{error}</div>}
+        {status && <div className="alert alert--ok">{status}</div>}
+
+        <div className="actions">
+          <button className="btn" type="button" onClick={() => void load()}>
+            重新读取
+          </button>
+        </div>
+      </ConfigLayout>
+
+      <ConfigSaveBar changed={changed.size} busy={busy} onDiscard={discard} />
+    </form>
   )
 }
