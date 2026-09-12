@@ -36,8 +36,16 @@ export type LibrarySection = 'cores' | 'java' | 'database' | 'plugins' | 'schema
  * and the settings that govern the downloading. Three different jobs with
  * three different frequencies — you look at the shelf weekly, download monthly
  * and choose a mirror once — and the first of them, the one you actually came
- * for, was the one you had to scroll past the others to read. They are pages of
- * their own now, and opening a section opens *them* (see Scope).
+ * for, was the one you had to scroll past the others to read. So they became
+ * pages of their own, and opening a section opens *them* (see Scope).
+ *
+ * Java 环境 and 数据库环境 have since gone back to one page each, because the
+ * thing that made the scroll long was the catalogue's own layout rather than
+ * the number of jobs on the page — see the note on LIBRARY_VIEWS. The union
+ * keeps their retired ids: nothing renders them, but LIBRARY_VIEWS is what
+ * parse() matches against, so an old /library/java/install falls through to
+ * defaultView and redirects instead of 404ing, and cores and schematics still
+ * use ids of the same name.
  */
 export type LibraryView =
   | 'stock'
@@ -214,20 +222,20 @@ export const LIBRARY_VIEWS: Record<LibrarySection, { id: LibraryView; label: str
     { id: 'stock', label: '核心库' },
     { id: 'download', label: '下载核心' },
   ],
-  java: [
-    { id: 'installed', label: '已安装' },
-    { id: 'install', label: '安装新版本' },
-    { id: 'source', label: '下载设置' },
-  ],
-  // Three pages, and the order is the order of the questions: what databases
-  // do I have, what engines are they built on, and how do I get another engine.
-  // The engine list comes second because after the first install it is the page
-  // you never open again — it is where you go to free disk space.
-  database: [
-    { id: 'databases', label: '我的数据库' },
-    { id: 'engines', label: '已装引擎' },
-    { id: 'install', label: '安装引擎' },
-  ],
+  // One page, back from three.
+  //
+  // Splitting them (see the note on LibraryView) was right about the ordering
+  // and wrong about the cost: with 已安装 first and 安装新版本 / 下载设置 as
+  // pages of their own, every one of the three carried a single card and left
+  // two thirds of a 1440px screen empty. What made the split necessary was
+  // that the catalogue and the settings were each a screen tall — a grid of
+  // large chooser tiles, and a form. They are not any more: the catalogue is
+  // one line per build, and the distribution and mirror are two selects in
+  // that card's head. So all of it fits above the fold, and what the split was
+  // protecting — 已安装 first, never a form — is protected by the order of the
+  // cards instead.
+  java: [{ id: 'installed', label: 'Java 环境' }],
+  database: [{ id: 'databases', label: '数据库环境' }],
   // Three pages, and they are three questions rather than three lists: 插件列表
   // is "what is the state of what I run", 插件市场 is "is this worth
   // installing", 下载队列 is "where did the five I just asked for get to".

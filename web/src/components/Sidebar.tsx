@@ -559,7 +559,7 @@ function LibraryScope(props: Props) {
   // the global nav, and these rows are pages of the one already open. The
   // sibling shelves below are a different matter — those are destinations, and
   // an account that cannot open 数据库环境 must not be shown a way in.
-  const { route, follow, navigate, java, cores, plugins } = props
+  const { route, follow, navigate, cores, plugins } = props
   const can = useCan()
   const section: LibrarySection = route.kind === 'library' ? route.section : 'cores'
   const view = route.kind === 'library' ? route.view : defaultView(section)
@@ -578,14 +578,18 @@ function LibraryScope(props: Props) {
       />
 
       <div className="sidebar__scroll">
+        {/* A shelf with one page has no page list: a single row repeating the
+            shelf's own name underneath itself is a step that goes nowhere.
+            Java 环境 and 数据库环境 are that shape — see LIBRARY_VIEWS. Their
+            in-progress badge moves to the head's meta line, which is the only
+            thing left in this column that belongs to the shelf. */}
+        {LIBRARY_VIEWS[section].length > 1 && (
         <nav className="sidebar__nav" aria-label={`${entry?.label ?? '资源库'}页面`}>
           {LIBRARY_VIEWS[section].map((page) => {
             const current = view === page.id
             const badge =
               section === 'cores' && page.id === 'download' && cores.downloading ? (
                 <span className="badge badge--update">下载中</span>
-              ) : section === 'java' && page.id === 'install' && java.installing ? (
-                <span className="badge badge--update">安装中</span>
               ) : section === 'plugins' && page.id === 'list' && plugins.updates > 0 ? (
                 <span className="badge badge--update">{plugins.updates}</span>
               ) : // A count rather than 下载中: with a queue the interesting
@@ -617,6 +621,7 @@ function LibraryScope(props: Props) {
             )
           })}
         </nav>
+        )}
 
         {/* The other four shelves, in the same column.
             Without them a shelf is a room with one door: the five are ordered
@@ -709,11 +714,16 @@ function libraryMeta(
   switch (section) {
     case 'cores':
       return cores.cores.length > 0 ? `${cores.cores.length} 个核心` : '还没有核心'
+    // These two are one page each, so their head's meta line is the only row
+    // in this column that belongs to the shelf — which makes it the only place
+    // left to say a download is running. It used to be a badge on 安装新版本.
     case 'java': {
+      if (java.installing) return '正在安装…'
       const count = java.overview?.runtimes.length ?? 0
       return count > 0 ? `${count} 个运行时` : '还没装 Java'
     }
     case 'database': {
+      if (databases.installing) return '正在安装引擎…'
       const services = databases.overview?.services ?? []
       const live = services.filter((service) => service.state === 'running').length
       if (services.length === 0) return '还没建数据库'

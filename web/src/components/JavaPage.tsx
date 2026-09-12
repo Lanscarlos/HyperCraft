@@ -2,16 +2,10 @@ import { useEffect, useState } from 'react'
 
 import { ask } from '../confirm'
 import { formatBytes, formatDate } from '../format'
-import type { LibraryView } from '../routes'
-import type {
-  JavaDistribution,
-  JavaInstallJob,
-  JavaRuntime,
-  JavaSource,
-  SystemJava,
-} from '../types'
+import type { JavaDistribution, JavaInstallJob, JavaRuntime, SystemJava } from '../types'
 import type { JavaController } from '../useJava'
 import { Page } from './Page'
+import { Select } from './Select'
 import { Shelf } from './Shelf'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
@@ -19,26 +13,6 @@ import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleto
  *  and the two have to be the same string or the page moves when it loads. */
 const JAVA_LEAD =
   '不同版本的服务端要不同的 Java：1.16 要 8，1.17 要 17，1.20.5 起要 21，Paper 26 要 25。这里装的 Java 归面板所有，不动系统里的 Java；装好之后在实例的「启动设置」里选一个即可。'
-
-/** The heading each of the three pages carries. */
-const TITLES: Partial<Record<LibraryView, string>> = {
-  installed: 'Java 环境',
-  install: '安装新版本',
-  source: '下载设置',
-}
-
-/** The install and source pages name the chosen distribution, so their leads
- *  are built rather than constant. The installed page's is JAVA_LEAD. */
-function installLead(name: string): string {
-  return `从 ${name} 装一个新的大版本。下载走服务器自己的网络，关掉网页也会继续。`
-}
-
-function sourceLead(name: string): string {
-  return (
-    `选哪个发行版、从哪里下。装的都是 ${name} 的官方构建 —— 版本信息和校验和` +
-    '始终来自它自己的接口，下载源只负责传那几十兆的压缩包，对不上的一律不装。'
-  )
-}
 
 /** Which Java a Minecraft version needs, shown on the version being picked. */
 const VERSION_HINTS: Record<number, string> = {
@@ -67,22 +41,14 @@ const IMAGE_TYPES: { value: 'jre' | 'jdk'; label: string; note: string }[] = [
  * deleting one is a decision about all of them. Instances only pick from what
  * is here, in their 「启动设置」.
  *
- * Three pages under one entry — what is installed, what can be installed, and
- * where it is fetched from — but one component: the version list and the
- * chosen mirror are the same decision seen from two sides, and the source page
- * would have nothing to hand the install page if they were split apart.
+ * One page, and it was three: what is installed, what can be installed, and
+ * where it is fetched from. They were split because the second and third were
+ * each a screen tall; they are a line-per-build grid and two selects in a card
+ * head now, so all three fit above the fold and the split was costing a
+ * navigation step for nothing. The order still carries what the split was
+ * protecting: what you have first, never a form.
  */
-export function JavaPage({
-  java,
-  view,
-  onOpenView,
-  onOpenCores,
-}: {
-  java: JavaController
-  view: LibraryView
-  onOpenView: (view: LibraryView) => void
-  onOpenCores: () => void
-}) {
+export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCores: () => void }) {
   const { overview, majors, distributions, job, installing, busy } = java
   const [major, setMajor] = useState<number | null>(null)
   const [imageType, setImageType] = useState<'jre' | 'jdk'>('jre')
@@ -134,7 +100,7 @@ export function JavaPage({
     // the lead with 正在读取… and then swapping in three lines of copy moved
     // everything below it down the moment the request came back.
     return (
-      <Page wide title={TITLES[view] ?? 'Java 环境'} lead={JAVA_LEAD}>
+      <Page wide title="Java 环境" lead={JAVA_LEAD}>
         <SkeletonScreen inPage label="正在读取已装的 Java…">
           <SkeletonPanel title={false}>
             <div className="chart-head">
@@ -175,45 +141,44 @@ export function JavaPage({
   // straight away, before anything is installed.
   const chosen = distributions.find((entry) => entry.id === distribution)
   const sources = chosen?.sources ?? []
-  const sourceName =
-    sources.find((entry) => entry.id === source)?.name ?? (source || '自动选择')
   const distributionName = chosen?.name ?? 'Java'
-  const leads: Partial<Record<LibraryView, string>> = {
-    installed: JAVA_LEAD,
-    install: installLead(distributionName),
-    source: sourceLead(distributionName),
-  }
+  // A source that is a URL rather than one of the offered mirrors is the
+  // hand-typed Zulu prefix, and the box below the grid is where it shows.
+  const customMirror = source != null && /^https?:\/\//.test(source) ? source : ''
 
   return (
     <Page
       wide
-      title={TITLES[view] ?? 'Java 环境'}
-      lead={leads[view] ?? JAVA_LEAD}
+      title="Java 环境"
+      lead={JAVA_LEAD}
       aside={
         <p className="meta-chips">
+          {/* One fact, not four. The head used to carry os/arch, a count, a
+              total and the distribution's name as four separate chips, none of
+              which is the thing you came to read. What is worth a glance is
+              how much of the disk this shelf is holding. */}
+          <span>
+            {runtimes.length > 0
+              ? `${runtimes.length} 个运行时 · 占用 ${formatBytes(totalSize)}`
+              : '还没装 Java'}
+          </span>
           {overview.platform.os && (
             <span>
               {overview.platform.os}/{overview.platform.arch}
             </span>
           )}
-          <span>面板已装 {runtimes.length} 个</span>
-          {runtimes.length > 0 && <span>共 {formatBytes(totalSize)}</span>}
-          <span>由 {distributionName} 提供</span>
         </p>
       }
     >
-
       {overview.platform.warning && (
         <div className="alert alert--error">{overview.platform.warning}</div>
       )}
+      {java.error && <div className="alert alert--error">{java.error}</div>}
 
       {/* An install keeps running after you navigate away, so it is reported
-          on whichever of these pages you happen to be looking at. */}
-      {view !== 'install' && job && (job.state === 'downloading' || job.state === 'extracting') && (
-        <InstallStatus job={job} distributions={distributions} />
-      )}
+          at the top of the page rather than inside the card that started it. */}
+      {job && <InstallStatus job={job} distributions={distributions} />}
 
-      {view === 'installed' && (
       <section className="panel">
         <div className="chart-head">
           <h2 className="panel__title">已安装</h2>
@@ -227,12 +192,7 @@ export function JavaPage({
         {runtimes.length === 0 && !overview.system ? (
           <div className="welcome__empty">
             <p>这台机器上还没有任何 Java，服务端起不来。</p>
-            <p className="muted">
-              <button className="link" type="button" onClick={() => onOpenView('install')}>
-                挑一个版本装上
-              </button>
-              ，几十秒的事，全程不动系统环境。
-            </p>
+            <p className="muted">下面挑一个版本装上，几十秒的事，全程不动系统环境。</p>
           </div>
         ) : (
           <Shelf head={['运行时', '完整版本', '体积', '安装于', '使用中的实例', '']}>
@@ -248,70 +208,91 @@ export function JavaPage({
           </Shelf>
         )}
       </section>
-      )}
 
-      {view === 'install' && (
+      {/* 可安装 used to be a page of its own, and 下载设置 another. Both are on
+          this one now: the catalogue is a line per build rather than a screen
+          of chooser tiles, and where those builds come from is two selects in
+          this card's head — which is where a property of the download belongs,
+          rather than behind a second navigation step. */}
       <section className="panel">
-        {job && <InstallStatus job={job} distributions={distributions} />}
-        {java.error && <div className="alert alert--error">{java.error}</div>}
-
         {majors.length === 0 ? (
-          <p className="muted">
-            没能从 {distributionName} 取到可安装的版本列表 —— 通常是这台机器连不上外网。
-            已装的 Java 不受影响，仍然可以正常启动服务器。
-          </p>
-        ) : (
           <>
-            {/* JRE or JDK is a property of the download, not of the version, so
-                it sits above the list rather than inside every tile — and it
-                is above rather than in the head because the head is where the
-                *source* lives and two control clusters in one 44px strip is
-                the row that wraps first on a laptop. */}
-            <div className="field">
-              <span>镜像类型</span>
-              <div className="segmented" role="group" aria-label="镜像类型">
-                {IMAGE_TYPES.map((entry) => (
-                  <button
-                    key={entry.value}
-                    type="button"
-                    className={`segmented__option${
-                      imageType === entry.value ? ' segmented__option--active' : ''
-                    }`}
-                    aria-pressed={imageType === entry.value}
-                    disabled={installing}
-                    onClick={() => setImageType(entry.value)}
-                  >
-                    <strong>{entry.label}</strong>
-                    <small>{entry.note}</small>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* The list used to be a chooser: press a version, then find the
-                install button under the form. Nobody picking Java 21 out of
-                four tiles wants a second step to say so, so the button is on
-                the line — and the version that would have been preselected is
-                tinted instead, which is all that selection was ever telling
-                anyone. */}
             <div className="chart-head">
               <h2 className="panel__title">可安装</h2>
-              <p className="chart-head__meta">
-                {distributionName} · 下载源 {sourceName}
-              </p>
+            </div>
+            <p className="muted">
+              没能从 {distributionName} 取到可安装的版本列表 —— 通常是这台机器连不上外网。
+              已装的 Java 不受影响，仍然可以正常启动服务器。
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="chart-head">
+              <h2 className="panel__title">可安装</h2>
               <div className="chart-head__tools">
+                {distributions.length > 1 && (
+                  <Select
+                    value={distribution ?? ''}
+                    onChange={(id) => {
+                      setDistribution(id)
+                      // The two source lists share nothing but auto and
+                      // official, so a mirror picked for the other
+                      // distribution cannot carry over.
+                      setSource(null)
+                    }}
+                    disabled={installing}
+                    ariaLabel="发行版"
+                    className="input-slim"
+                    options={distributions.map((entry) => ({
+                      value: entry.id,
+                      label: entry.name,
+                      note: entry.note,
+                    }))}
+                  />
+                )}
+                {sources.length > 0 && (
+                  <Select
+                    value={source ?? ''}
+                    onChange={setSource}
+                    disabled={installing}
+                    ariaLabel="下载源"
+                    className="input-slim"
+                    placeholder="下载源"
+                    options={sources.map((entry) => ({
+                      value: entry.id,
+                      label: entry.name,
+                      note: entry.note,
+                    }))}
+                  />
+                )}
+                <div
+                  className="segmented segmented--inline"
+                  role="group"
+                  aria-label="镜像类型"
+                >
+                  {IMAGE_TYPES.map((entry) => (
+                    <button
+                      key={entry.value}
+                      type="button"
+                      className={`segmented__option${
+                        imageType === entry.value ? ' segmented__option--active' : ''
+                      }`}
+                      aria-pressed={imageType === entry.value}
+                      title={entry.note}
+                      disabled={installing}
+                      onClick={() => setImageType(entry.value)}
+                    >
+                      <strong>{entry.label}</strong>
+                    </button>
+                  ))}
+                </div>
                 {(hiddenMajors > 0 || showAllMajors) && (
                   <button
                     className="link"
                     type="button"
                     onClick={() => setShowAllMajors((on) => !on)}
                   >
-                    {showAllMajors ? '只看 LTS 版本' : `显示全部 ${majors.length} 个版本`}
-                  </button>
-                )}
-                {sources.length > 0 && (
-                  <button className="link" type="button" onClick={() => onOpenView('source')}>
-                    换发行版或下载源
+                    {showAllMajors ? '只看 LTS' : `全部 ${majors.length} 个`}
                   </button>
                 )}
               </div>
@@ -368,164 +349,43 @@ export function JavaPage({
               })}
             </div>
 
+            {/* Only Zulu. Temurin's mirrors copy a nested tree, so a bare
+                prefix there would 404 — which is why this is not a field the
+                other distribution simply leaves empty. */}
+            {distribution === 'zulu' && (
+              <div className="field">
+                <span>或者自己填一个镜像地址（可选）</span>
+                <input
+                  value={customMirror}
+                  onChange={(event) => setSource(event.target.value.trim())}
+                  placeholder="https://mirror.example/zulu/bin/"
+                  spellCheck={false}
+                  disabled={installing}
+                />
+                <small>
+                  Zulu 的包在 cdn.azul.com，国内没有已知的镜像，所以上面不预设。知道能用的加速地址就填在这儿
+                  —— 面板会把文件名接在后面下载，校验和照样卡 Azul 官方的，下不到会自动退回官方 CDN。
+                </small>
+              </div>
+            )}
+
             <p className="chart-note">
-              标注的是这个大版本对应的服务端版本区间，拿不准就选 LTS。装到{' '}
+              标注的是这个大版本对应的服务端版本区间，拿不准就选 LTS。装的都是 {distributionName}{' '}
+              的官方构建，校验和始终来自它自己的接口，下载源只负责传压缩包，对不上的一律不装；装到{' '}
               <code>{overview.root}</code>，不会碰系统里的 Java。
             </p>
           </>
         )}
       </section>
-      )}
 
-      {view === 'source' && (
-        <SourcePicker
-          distributions={distributions}
-          distribution={distribution}
-          sources={sources}
-          current={source}
-          busy={installing}
-          onPickDistribution={(id) => {
-            setDistribution(id)
-            // The two source lists share nothing but auto and official, so a
-            // mirror picked for the other distribution cannot carry over.
-            setSource(null)
-          }}
-          onPick={setSource}
-          onDone={() => onOpenView('install')}
-        />
-      )}
-
-      {view === 'installed' && (
-        <p className="chart-note">
-          服务端 jar 本身不在这里 —— 那在
-          <button className="link" onClick={onOpenCores}>
-            服务端核心
-          </button>
-          。每个核心版本对 Java 的最低要求也标在那一页上。
-        </p>
-      )}
-    </Page>
-  )
-}
-
-/**
- * Which Java to fetch, and from where.
- *
- * Its own page rather than fields in the install form: both are chosen once,
- * on the day the panel is set up or the day a mirror stops working, and the
- * install form is where you go weekly. They share a page because the source
- * list belongs to the distribution — splitting them would let this page's
- * contents change from a setting you cannot see. Both choices are remembered
- * by the panel itself — they describe the server's route out, not this
- * browser's — so they are the same on a phone as on the laptop that set them.
- */
-function SourcePicker({
-  distributions,
-  distribution,
-  sources,
-  current,
-  busy,
-  onPickDistribution,
-  onPick,
-  onDone,
-}: {
-  distributions: JavaDistribution[]
-  distribution: string | null
-  sources: JavaSource[]
-  current: string | null
-  busy: boolean
-  onPickDistribution: (id: string) => void
-  onPick: (id: string) => void
-  onDone: () => void
-}) {
-  // A prefix is only offered for a distribution whose sources are open-ended;
-  // Temurin's mirrors copy a nested tree, so a bare prefix there would 404.
-  const custom = current != null && /^https?:\/\//.test(current) ? current : ''
-
-  if (sources.length === 0) {
-    return (
-      <div className="alert">
-        没能取到可用的下载源列表 —— 通常是这台机器连不上外网。已装的 Java 不受影响。
-      </div>
-    )
-  }
-
-  return (
-    <section className="panel">
-      <div className="field">
-        <span>发行版</span>
-        <div className="choice-grid choice-grid--wide">
-          {distributions.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              className={`choice${entry.id === distribution ? ' choice--active' : ''}`}
-              aria-pressed={entry.id === distribution}
-              disabled={busy}
-              onClick={() => onPickDistribution(entry.id)}
-            >
-              <span className="choice__label">
-                {entry.name}
-                {entry.default && <span className="badge">推荐</span>}
-              </span>
-              <span className="choice__note">{entry.note}</span>
-            </button>
-          ))}
-        </div>
-        <small>
-          都是 TCK 认证的 OpenJDK 构建，跑服没有区别。已经装好的 Java 不受影响，换发行版只影响之后装的。
-        </small>
-      </div>
-
-      <div className="field">
-        <span>下载源</span>
-        <div className="choice-grid choice-grid--wide">
-          {sources.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              className={`choice${entry.id === current ? ' choice--active' : ''}`}
-              aria-pressed={entry.id === current}
-              disabled={busy}
-              onClick={() => onPick(entry.id)}
-            >
-              <span className="choice__label">
-                {entry.name}
-                {entry.default && <span className="badge">推荐</span>}
-              </span>
-              <span className="choice__note">{entry.note}</span>
-            </button>
-          ))}
-        </div>
-        <small>
-          只影响下载速度：装的是同一个构建，校验和始终来自发行版官方的接口。选的源没有某个版本
-          （镜像同步有延迟）会自动换下一个，安装任务条上会写明这一次实际是从哪里下的。
-        </small>
-      </div>
-
-      {distribution === 'zulu' && (
-        <div className="field">
-          <span>或者自己填一个镜像地址（可选）</span>
-          <input
-            value={custom}
-            onChange={(event) => onPick(event.target.value.trim())}
-            placeholder="https://mirror.example/zulu/bin/"
-            spellCheck={false}
-            disabled={busy}
-          />
-          <small>
-            Zulu 的包在 cdn.azul.com，国内没有已知的镜像，所以这里不预设。知道能用的加速地址就填在这儿
-            —— 面板会把文件名接在后面下载，校验和照样卡 Azul 官方的，下不到会自动退回官方 CDN。
-          </small>
-        </div>
-      )}
-
-      <div className="actions">
-        <button className="btn btn--primary" type="button" onClick={onDone}>
-          去安装
+      <p className="chart-note">
+        服务端 jar 本身不在这里 —— 那在
+        <button className="link" onClick={onOpenCores}>
+          服务端核心
         </button>
-      </div>
-    </section>
+        。每个核心版本对 Java 的最低要求也标在那一页上。
+      </p>
+    </Page>
   )
 }
 
