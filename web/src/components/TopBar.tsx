@@ -259,10 +259,10 @@ function InstanceStrip({
             <span className="topbar__fact topbar__fact--uptime">
               已运行 <b>{uptime ?? '—'}</b>
             </span>
-            <span className="topbar__fact topbar__fact--cpu">
+            <span className="topbar__fact">
               CPU <b>{cpu}</b>
             </span>
-            <span className="topbar__fact topbar__fact--memory">
+            <span className="topbar__fact">
               内存 <b>{memory}</b>
             </span>
           </>

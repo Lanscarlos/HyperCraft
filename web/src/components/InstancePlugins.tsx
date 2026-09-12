@@ -288,7 +288,7 @@ export function InstancePlugins({
             </p>
           </div>
           <button
-            className="btn btn--sm"
+            className="btn btn--small"
             onClick={() => {
               setTab('installed')
               setFilter('broken')

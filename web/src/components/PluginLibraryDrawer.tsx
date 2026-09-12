@@ -520,7 +520,7 @@ function MatrixRow({
             {statusLabel(trouble)}
           </span>
         ) : use.checkedAt ? (
-          <span className="pstate pstate--ok">
+          <span className="pstate">
             <span className="pdot pdot--ok" aria-hidden="true" />
             一致
           </span>

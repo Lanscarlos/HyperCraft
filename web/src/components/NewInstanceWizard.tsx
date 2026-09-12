@@ -579,7 +579,7 @@ export function NewInstanceWizard({
                 <span className="wizard-step__index" aria-hidden="true">
                   {done ? '✓' : position + 1}
                 </span>
-                <span className="wizard-step__label">{entry.label}</span>
+                <span>{entry.label}</span>
               </button>
             </li>
           )
