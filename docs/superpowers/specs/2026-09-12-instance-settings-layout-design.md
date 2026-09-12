@@ -77,14 +77,14 @@
 
 /* 左栏：段标题 + 一句话说明。不设 max-width —— 下面那个悬殊的 grow 比
    已经把它按在 flex-basis 上了，而换行之后它必须能独占整行。 */
-.panel--form > .panel__head {
+.panel--form > .panel__aside {
   flex: 1 1 200px;
 }
 
 /* 右栏：字段。999 的 grow 让剩余空间几乎全部归它，左栏因此稳定停在
    ~200px；480px 的 basis 决定了换行点。880px 封顶是阅读测量，不是
    容器宽度 —— 宽屏上尾部留白是有意的。 */
-.panel--form > .form-body {
+.panel--form > .panel__body {
   flex: 999 1 480px;
   max-width: var(--content-max);
   min-width: 0;
@@ -99,6 +99,8 @@
 `min-width: 0` 在右栏是必需的：里面装长路径和 `<textarea>`，没有它会撑破卡片（仓库最高频的布局 bug）。
 
 卡片本身仍是 pane 的 `--content-max-wide`，和控制台 / 文件 / 监控各页保持同一条边。右栏 880 封顶后尾部留约 100–250px 空白 —— 这是 Shopify Admin / Stripe Settings 的做法：宽屏用来放导览，不是用来拉长输入框。
+
+**命名**：`.panel__head` 这个名字**不能用** —— 它已经是 `UsersPage` 在用的横向标题行（`styles.css:8570`，`display:flex; align-items:center`），复用会被 `check-ui` 的 `ruleNoSilentOverrides` 判为重复声明 `display`/`gap`/`flex-wrap`。改用 `.panel__aside`（左）/ `.panel__body`（右），两者当前均未占用。
 
 **连带删除**：`styles.css:3729-3738` 那份 10 个选择器的 `grid-column: 1 / -1` 白名单整份删掉 —— 右栏是纵向 flex，一切天然整行。`.checkbox` 漏白名单的 bug 随之消失，不需要单独修。
 
@@ -220,11 +222,11 @@ sticky 相对的是 `.instance__pane--scroll`（`styles.css:3080`，`overflow-y:
 
 ### 7. 三个消费方的连带改动
 
-`.panel--form` 共 8 处使用、跨 3 个文件。改成两栏 flex 后，每一处都要补 `.panel__head` / `.form-body` 两层包裹，否则会退化成一列平铺 —— 不难看，但不算做完。
+`.panel--form` 共 **11 处**使用、跨 3 个文件（`LaunchSettings` 5 / `VelocityConfig` 4 / `NewInstanceWizard` 2）。注意向导里的 `.panel__title` 是 `<h2>`，另两个文件是 `<h3>` —— 包裹时不要顺手改标签层级。改成两栏 flex 后，每一处都要补 `.panel__aside` / `.panel__body` 两层包裹，否则会退化成一列平铺 —— 不难看，但不算做完。
 
 | 文件 | 卡片数 | 说明 |
 | --- | --- | --- |
-| `LaunchSettings.tsx` | 4（重构后） | 本次主体 |
+| `LaunchSettings.tsx` | 5（基本信息 / 启动方式 / 控制台 / 进程管理 / 开服前检查） | 本次主体 |
 | `VelocityConfig.tsx` | 4（基本设置 / 玩家信息转发 / 高级设置 / Query） | 补包裹层 + 给字段归档宽度 |
 | `NewInstanceWizard.tsx` | 2（服务器设置 / 代理端设置） | 同上。向导是窄容器，多半直接走换行分支，仍需实测 |
 
