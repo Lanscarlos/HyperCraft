@@ -14,7 +14,12 @@
          it travels inside the single binary with everything else, and with the
          percent-encoding a data URI needs for < > and #. A tab strip has no
          theme to follow, so this one keeps the light gradient in both modes
-         rather than the themed --brand-face the in-app tiles use. -->
+         rather than the themed --brand-face the in-app tiles use.
+
+         The two stops are the default scheme's; under any other 配色 they are
+         substituted at boot and on every switch from --mark-1 / --mark-2 (see
+         syncFavicon in theme.ts), which is why this markup is the only copy of
+         the artwork and not one of two. -->
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3ClinearGradient id='f' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23c97b62'/%3E%3Cstop offset='1' stop-color='%237d402e'/%3E%3C/linearGradient%3E%3Crect width='64' height='64' rx='16' fill='url(%23f)'/%3E%3Cg fill='%23fff'%3E%3Cpolygon points='32,13 46,21 32,29 18,21' opacity='.96'/%3E%3Cpolygon points='18,21 32,29 32,45 18,37' opacity='.72'/%3E%3Cpolygon points='46,21 32,29 32,45 46,37' opacity='.52'/%3E%3C/g%3E%3C/svg%3E"
