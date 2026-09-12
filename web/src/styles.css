@@ -3969,6 +3969,50 @@ a:hover {
   margin-left: auto;
 }
 
+/* The save bar, which exists only while there is something to save. Sticky
+   against .instance__pane--scroll (overflow-y: auto, so it is the scrollport)
+   rather than fixed: fixed leaves the pane, and sits wrong the moment the
+   navigation drawer opens over it. */
+.formbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  /* Appearing in place, not crossing the screen. */
+  animation: formbar-in var(--dur-3) var(--ease);
+}
+
+.formbar__note {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+@keyframes formbar-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Destructive operations, in their own block at the foot of the page. They used
+   to sit at the two ends of the same .actions row as 保存设置 — the hand going
+   for save and the hand going for 删除实例及所有文件 started from one place.
+   background-image: none kills .panel's top sheen, which washes the red out. */
+.panel--danger {
+  border-color: var(--danger-edge);
+  background: var(--danger-soft);
+  background-image: none;
+}
+
 /* ---- the proxy's sub-servers -------------------------------------------
    The one part of 代理配置 that is a list rather than a form: a name, an
    address, whether it is in the login order, and the three buttons that move

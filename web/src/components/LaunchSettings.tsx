@@ -294,6 +294,42 @@ export function LaunchSettings({
   const aikarNeedsEqualHeap =
     jvmText.includes('using.aikars.flags') && form.minMemoryMB !== form.maxMemoryMB
 
+  // What 保存 would send, against what is stored. Built exactly the way save()
+  // builds its payload, so the bar cannot claim there is nothing to save while
+  // the button would still write something.
+  //
+  // Field by field rather than JSON.stringify on the two objects: the payload is
+  // a spread with three keys reassigned, and leaning on a spread to preserve key
+  // order for a string comparison is a bug waiting for someone to reorder
+  // toInput().
+  const stored = toInput(instance)
+  const pending: InstanceInput = {
+    ...form,
+    jvmArgs: fromLines(jvmText),
+    serverArgs: fromLines(serverText),
+    argFiles: argFileMode ? fromLines(argFileText) : [],
+  }
+  const dirty = (Object.keys(stored) as (keyof InstanceInput)[]).some((key) => {
+    const a = stored[key]
+    const b = pending[key]
+    if (Array.isArray(a) && Array.isArray(b)) {
+      return a.length !== b.length || a.some((item, at) => item !== b[at])
+    }
+    return a !== b
+  })
+
+  // Back to what is stored. The same setters the instance-change effect uses, so
+  // 放弃 and switching instances land in exactly the same state.
+  const revert = () => {
+    setForm(toInput(instance))
+    setJvmText(toLines(instance.jvmArgs ?? []))
+    setServerText(toLines(instance.serverArgs ?? []))
+    setArgFileText(toLines(instance.argFiles ?? []))
+    setArgFileMode((instance.argFiles?.length ?? 0) > 0)
+    setError(null)
+    setStatus(null)
+  }
+
   const update = <K extends keyof InstanceInput>(
     key: K,
     value: InstanceInput[K],
@@ -858,11 +894,24 @@ export function LaunchSettings({
       {error && <div className="alert alert--error">{error}</div>}
       {status && <div className="alert alert--ok">{status}</div>}
 
-      <div className="actions">
-        <Button variant="primary" type="submit" disabled={busy}>
-          保存设置
-        </Button>
-        <div className="actions__danger">
+      {dirty && (
+        <div className="formbar">
+          <span className="formbar__note">有未保存的改动</span>
+          <Button size="row" type="button" onClick={revert} disabled={busy}>
+            放弃
+          </Button>
+          <Button variant="primary" size="row" type="submit" disabled={busy}>
+            {busy ? '保存中…' : '保存设置'}
+          </Button>
+        </div>
+      )}
+
+      <section className="panel panel--danger">
+        <h3 className="panel__title">危险操作</h3>
+        <p className="muted">
+          这两个都不可撤销，面板没有为它们留回收站。服务器运行时都不可用。
+        </p>
+        <div className="actions">
           <Button
             type="button"
             onClick={() => remove(false)}
@@ -879,7 +928,7 @@ export function LaunchSettings({
             删除实例及所有文件
           </Button>
         </div>
-      </div>
+      </section>
     </form>
   )
 }
