@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { api } from '../api'
 import { formatBytes, formatPercent, formatTime } from '../format'
+import { cpuVerdict, instanceEvents, memoryVerdict } from '../instanceEvents'
+import type { Verdict } from '../instanceEvents'
 import type { InstanceMetrics, InstanceStatus } from '../types'
+import { isLive } from '../types'
 import { PageHead } from './Page'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 import { CHART_HEIGHT, TimeSeriesChart, type Point } from './TimeSeriesChart'
@@ -94,6 +97,25 @@ export function ResourcePanel({ instance, active }: Props) {
     }
   }, [windowed])
 
+  const rangeLabel = RANGES.find((r) => r.ms === rangeMs)?.label ?? ''
+
+  // The ceiling that will really apply, which is not maxMemoryMB the moment the
+  // launch is a list of @argfiles — see the note on the field in types.ts.
+  const ceiling =
+    instance.effectiveMaxMemoryMB > 0 ? instance.effectiveMaxMemoryMB * 1024 * 1024 : 0
+
+  // Only while it is running. A stopped server's last sample is a reading from
+  // a process that no longer exists, and "CPU 0% 正常" over a server that is
+  // down is the page reporting health it has no evidence for — the same reason
+  // the cockpit's tiles and the top bar's strip show an em dash.
+  const live = isLive(instance.state)
+  const latest = live ? (windowed.samples[windowed.samples.length - 1] ?? null) : null
+
+  const events = useMemo(
+    () => instanceEvents(instance, windowed.samples, rangeLabel),
+    [instance, windowed.samples, rangeLabel],
+  )
+
   // The same head over the charts, the placeholder and the error, so the
   // section opens in the same place whichever of the three it is showing.
   const head = (
@@ -165,6 +187,47 @@ export function ResourcePanel({ instance, active }: Props) {
         </button>
       </div>
 
+      {/* The conclusion first, the curve under it. Reading a number off a chart
+          still leaves "and is that bad?" unanswered, and that question has a
+          defensible answer here — thresholds and their reasoning are in
+          instanceEvents.ts rather than scattered through this file. */}
+      <div className="kpis">
+        <Kpi
+          label="CPU"
+          value={latest ? formatPercent(latest.cpuPercent) : '—'}
+          verdict={live && windowed.samples.length > 0 ? cpuVerdict(stats.cpuMean) : null}
+          note={
+            live && windowed.samples.length > 0
+              ? `${rangeLabel}平均 ${formatPercent(stats.cpuMean)} · 本机 ${data.cpuCores} 核`
+              : live
+                ? '还没有采样'
+                : `服务器没有在运行 · 本机 ${data.cpuCores} 核`
+          }
+        />
+        <Kpi
+          label="内存"
+          value={latest ? formatBytes(latest.memoryBytes) : '—'}
+          verdict={latest ? memoryVerdict(stats.memPeak, ceiling) : null}
+          note={
+            ceiling > 0
+              ? live
+                ? `峰值 ${formatBytes(stats.memPeak)} · 上限 ${formatBytes(ceiling)}`
+                : `上限 ${formatBytes(ceiling)}`
+              : '没有设置 -Xmx，画不出参照'
+          }
+        />
+        <Kpi
+          label="进程数"
+          value={latest ? String(latest.processes) : '—'}
+          verdict={null}
+          note={`采样间隔 ${Math.round(data.intervalSeconds)} 秒`}
+
+        />
+      </div>
+
+      <div className="metrics">
+        <div className="metrics__charts">
+
       <section className="panel">
         <div className="chart-head">
           <h3 className="panel__title">CPU 占用</h3>
@@ -215,6 +278,24 @@ export function ResourcePanel({ instance, active }: Props) {
         </p>
       </section>
 
+        </div>
+
+        {/* The rail. Beside the charts where there is room for it, under them
+            where there is not — the same 1280px the console's own right-hand
+            column appears at. */}
+        <aside className="metrics__events">
+          <h3 className="panel__title">这段时间</h3>
+          <ul className="events">
+            {events.map((event) => (
+              <li className={`events__item events__item--${event.level}`} key={event.id}>
+                <strong>{event.title}</strong>
+                {event.detail && <span>{event.detail}</span>}
+              </li>
+            ))}
+          </ul>
+        </aside>
+      </div>
+
       {showTable && (
         <section className="panel">
           <h3 className="panel__title">采样数据</h3>
@@ -245,6 +326,38 @@ export function ResourcePanel({ instance, active }: Props) {
           )}
         </section>
       )}
+    </div>
+  )
+}
+
+/**
+ * One reading with a verdict on it.
+ *
+ * The verdict is the point: a number is only actionable next to the range it
+ * is supposed to be in, and every operator working that out for themselves
+ * from a chart is the panel making them do arithmetic it could have done. No
+ * verdict at all is shown rather than a guessed one — a memory card with no
+ * -Xmx to measure against says so in the note instead.
+ */
+function Kpi({
+  label,
+  value,
+  verdict,
+  note,
+}: {
+  label: string
+  value: string
+  verdict: Verdict | null
+  note: string
+}) {
+  return (
+    <div className="kpi">
+      <div className="kpi__head">
+        <span className="kpi__label">{label}</span>
+        {verdict && <span className={`kpi__verdict kpi__verdict--${verdict.level}`}>{verdict.label}</span>}
+      </div>
+      <strong className="kpi__value">{value}</strong>
+      <small className="kpi__note">{note}</small>
     </div>
   )
 }

@@ -6444,6 +6444,182 @@ small.field__bad {
   white-space: nowrap;
 }
 
+/* ------------------------------------------------------------- 实例监控
+
+   Conclusion, then process, then what happened. The KPI row answers "is it all
+   right"; the charts answer "what has it been doing"; the rail answers "and
+   was anything wrong". Reading the first off the second was the reader doing
+   arithmetic the page could do for them.
+
+   The thresholds behind the verdicts, and the reasoning for each, live in
+   instanceEvents.ts — one place, not sprinkled through the markup. */
+/* auto-fit rather than auto-fill: there are three of these and there will not
+   suddenly be nine, so collapsing the empty tracks and letting the three share
+   the row reads as the row it is, instead of three cards with a hole beside
+   them where a fourth looks like it should be. */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+  background: var(--surface-1);
+  background-image: linear-gradient(180deg, var(--sheen), transparent 64px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.kpi__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kpi__label {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.kpi__verdict {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+
+/* The verdicts borrow the status hues rather than the brand: 正常 has to read
+   as the same "fine" the running dot does, and 偏高 as the same caution. */
+.kpi__verdict--ok {
+  background: var(--ok-soft);
+  border-color: color-mix(in srgb, var(--ok) 34%, transparent);
+  color: var(--ok-ink);
+}
+
+.kpi__verdict--info {
+  background: var(--surface-3);
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+
+.kpi__verdict--warn {
+  background: var(--caution-soft);
+  border-color: color-mix(in srgb, var(--caution) 36%, transparent);
+  color: var(--caution-ink);
+}
+
+.kpi__verdict--error {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 34%, transparent);
+  color: var(--danger-ink);
+}
+
+.kpi__value {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.kpi__note {
+  color: var(--text-faint);
+  min-width: 0;
+}
+
+.metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.metrics__charts {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  /* The charts are SVG: without this they refuse to shrink and carry the grid
+     off the right edge. */
+  min-width: 0;
+}
+
+.metrics__events {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  background: var(--surface-1);
+  background-image: linear-gradient(180deg, var(--sheen), transparent 96px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Beside the charts only where taking 320px off them still leaves a readable
+   chart. Same breakpoint the console's right-hand column uses, for the same
+   reason and so the two pages behave alike. */
+@media (min-width: 1280px) {
+  .metrics {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    align-items: start;
+  }
+}
+
+.events {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.events__item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--border-strong);
+  font-size: 12px;
+}
+
+.events__item strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.events__item span {
+  color: var(--text-dim);
+}
+
+.events__item--ok {
+  border-left-color: var(--ok);
+}
+
+.events__item--info {
+  border-left-color: var(--border-strong);
+}
+
+.events__item--warn {
+  border-left-color: var(--caution);
+}
+
+.events__item--error {
+  border-left-color: var(--danger);
+}
+
 /* ------------------------------------------------------ server.properties
 
    The page answers three questions that the old flat form could not: where a
