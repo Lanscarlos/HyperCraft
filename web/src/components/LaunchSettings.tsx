@@ -411,7 +411,12 @@ export function LaunchSettings({
       <PageHead title="实例设置" lead="名称、目录、核心、Java 和内存，以及它怎么启动。" />
 
       <section className="panel panel--form">
-        <h3 className="panel__title">基本信息</h3>
+        <div className="panel__aside">
+          <h3 className="panel__title">基本信息</h3>
+          <p className="panel__note">这台服务器叫什么、文件放在哪、是什么服务端。</p>
+        </div>
+
+        <div className="panel__body">
 
         <label className="field">
           <span>实例名称</span>
@@ -423,7 +428,6 @@ export function LaunchSettings({
         </label>
 
         <DirectoryField
-          className="field--full"
           value={form.directory}
           onChange={(value) => update('directory', value)}
           disabled={isLive(instance.state)}
@@ -468,6 +472,7 @@ export function LaunchSettings({
           <code>version_history.json</code> 也只有 Paper 系才写。认不出来的后果很具体：
           mod 会被装进 <code>plugins/</code> 而不是 <code>mods/</code>，插件市场里每一条也都标成「未知」。
         </p>
+        </div>
       </section>
 
       <InstanceCorePicker
@@ -485,7 +490,12 @@ export function LaunchSettings({
       />
 
       <section className="panel panel--form">
-        <h3 className="panel__title">启动方式</h3>
+        <div className="panel__aside">
+          <h3 className="panel__title">启动方式</h3>
+          <p className="panel__note">面板拼出来的那条命令行：用哪个 Java、跑哪个 jar、给多少内存。</p>
+        </div>
+
+        <div className="panel__body">
 
         <div className="segmented" role="group" aria-label="启动方式">
           {[
@@ -564,7 +574,7 @@ export function LaunchSettings({
 
         {argFileMode ? (
           <>
-            <label className="field field--full">
+            <label className="field">
               <span>参数文件</span>
               <textarea
                 rows={3}
@@ -642,7 +652,7 @@ export function LaunchSettings({
               </label>
             </div>
 
-            <div className="field field--full">
+            <div className="field">
               <span>JVM 参数</span>
               <JVMPresets
                 activeNote={presetNote}
@@ -671,7 +681,7 @@ export function LaunchSettings({
               {!jvmRows && <small>一行一个参数，会放在 -jar 之前。</small>}
             </div>
 
-            <div className="field field--full">
+            <div className="field">
               <span>服务端参数</span>
               {!proxy && (
                 <div className="presets">
@@ -711,10 +721,16 @@ export function LaunchSettings({
             onClose={() => setImporting(false)}
           />
         )}
+        </div>
       </section>
 
       <section className="panel panel--form">
-        <h3 className="panel__title">控制台</h3>
+        <div className="panel__aside">
+          <h3 className="panel__title">控制台</h3>
+          <p className="panel__note">网页控制台怎么读服务端的输出、怎么把命令送回去。</p>
+        </div>
+
+        <div className="panel__body">
 
         <label className="field">
           <span>输出编码</span>
@@ -774,10 +790,16 @@ export function LaunchSettings({
             <code> JAVA_TOOL_OPTIONS</code> 送进去，要在上面把那个开关留着。
           </small>
         </label>
+        </div>
       </section>
 
       <section className="panel panel--form">
-        <h3 className="panel__title">进程管理</h3>
+        <div className="panel__aside">
+          <h3 className="panel__title">进程管理</h3>
+          <p className="panel__note">面板什么时候替你开服、什么时候替你重启、怎么停。</p>
+        </div>
+
+        <div className="panel__body">
 
         <label className="checkbox">
           <input
@@ -816,6 +838,7 @@ export function LaunchSettings({
             />
             <small>超时后发送终止信号，再等 15 秒强制结束。</small>
           </label>
+        </div>
         </div>
       </section>
 
@@ -880,8 +903,12 @@ function LaunchCheckPanel({
 
   return (
     <section className="panel panel--form">
-      <h3 className="panel__title">开服前检查</h3>
+      <div className="panel__aside">
+        <h3 className="panel__title">开服前检查</h3>
+        <p className="panel__note">按下「启动」之前，面板能先看出来的问题。</p>
+      </div>
 
+      <div className="panel__body">
       {check.issues.length === 0 ? (
         <p className="muted">
           没发现问题。
@@ -916,6 +943,7 @@ function LaunchCheckPanel({
         <Button size="row" type="button" onClick={onRecheck}>
           重新检查
         </Button>
+      </div>
       </div>
     </section>
   )
@@ -1022,7 +1050,7 @@ function ArgFileMemory({
 }) {
   if (!jvm?.exists) {
     return (
-      <p className="muted field--full">
+      <p className="muted">
         这个服务端的内存写在参数文件里，面板不去猜 —— 上面那组内存设置只对「核心 jar」有效。
         Forge / NeoForge 把 <code>-Xmx</code> 放在
         <code> user_jvm_args.txt</code>，那个文件在时这里会直接变成可编辑的。
@@ -1057,7 +1085,7 @@ function ArgFileMemory({
         </label>
       </div>
 
-      <p className="muted field--full">
+      <p className="muted">
         这两个数写进 <code>{jvm.fileName}</code>，也就是 Forge 的
         <code> run.sh</code> 真正会读的那个文件 —— 文件里的注释和其他参数都会原样保留，
         填 0 是删掉这一行。

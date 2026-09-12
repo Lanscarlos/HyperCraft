@@ -185,6 +185,34 @@ function ruleNoSilentOverrides() {
   }
 }
 
+/** Rule: a .panel--form declares both of its columns.
+ *
+ *  The panel is a two-column flex box — an aside carrying the section's title
+ *  and one sentence of why, and a body carrying the fields. A section that
+ *  forgets the wrappers does not break: it degrades into one flat column of
+ *  full-width controls, which looks close enough to right that it survives
+ *  review. That is exactly the failure this layout set out to remove, so it is
+ *  checked rather than remembered.
+ *
+ *  Counting occurrences per file rather than parsing JSX nesting: the files
+ *  that use .panel--form write one aside and one body per section, so the
+ *  counts match when every section is wrapped and diverge the moment one is
+ *  missed. A nesting parser would catch more and cost far more. */
+function ruleFormPanelsHaveColumns() {
+  for (const file of tsxFiles(SRC)) {
+    const src = fs.readFileSync(file, 'utf8')
+    const panels = (src.match(/panel--form/g) ?? []).length
+    if (panels === 0) continue
+    const asides = (src.match(/panel__aside/g) ?? []).length
+    const bodies = (src.match(/panel__body/g) ?? []).length
+    if (asides === panels && bodies === panels) continue
+    problems.push(
+      `${path.relative(SRC, file)} 有 ${panels} 个 .panel--form，` +
+        `但 ${asides} 个 .panel__aside、${bodies} 个 .panel__body —— 每个都要两栏包裹`,
+    )
+  }
+}
+
 /** Advisory: one filled button per screen.
  *
  *  Not an error yet — a dozen components exceed it, and each needs a
@@ -201,7 +229,12 @@ function adviseOnePrimaryPerFile() {
   }
 }
 
-const RULES = [ruleNoUndefinedClasses, ruleIconButtonsAreLabelled, ruleNoSilentOverrides]
+const RULES = [
+  ruleNoUndefinedClasses,
+  ruleIconButtonsAreLabelled,
+  ruleNoSilentOverrides,
+  ruleFormPanelsHaveColumns,
+]
 
 for (const rule of RULES) rule()
 adviseOnePrimaryPerFile()

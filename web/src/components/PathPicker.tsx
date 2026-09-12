@@ -173,8 +173,8 @@ export function DirectoryField({
   label?: string
   hint?: React.ReactNode
   placeholder?: string
-  /** Extra classes for the field, e.g. `field--full` inside a column layout —
-   *  a path plus a browse button is the widest thing on any of these forms. */
+  /** Extra classes for the field. A path plus a browse button is the widest
+   *  thing on any of these forms, so callers rarely need to narrow it. */
   className?: string
 }) {
   const [picking, setPicking] = useState(false)
