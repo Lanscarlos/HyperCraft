@@ -1,31 +1,40 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { MutableRefObject } from 'react'
 
 import {
-  KNOWN_FLAGS,
   formatFlags,
   knownFor,
   parseFlag,
   parseFlags,
   reflow,
+  suggestFlags,
   wantsUnit,
   type Flag,
+  type KnownFlag,
 } from '../jvmFlags'
 import { Select } from './Select'
 
 /**
- * The JVM arguments, one per row, each with the control its syntax calls for.
+ * The JVM arguments, one small card each, with the control the argument's own
+ * syntax asks for.
  *
- * The text is still the truth. This component parses the same one-per-line
- * string the textarea holds and writes the same string back, so presets,
- * 从启动脚本读, the Aikar heap warning and saving all go on working against
- * one value and know nothing about rows. Nothing here can express an argument
- * you could not have typed — the property jvmPresets.ts cares about.
+ * The text is still the truth. This parses the same one-per-line string the
+ * textarea holds and writes the same string back, so presets, 从启动脚本读,
+ * the Aikar heap warning and saving all go on working against one value and
+ * know nothing about cards. Nothing here can express an argument you could not
+ * have typed — the property jvmPresets.ts cares about.
  *
- * Rows carry the line they came from verbatim, and only a row an operator
- * actually edited is rebuilt from its parts. Without that, opening this view
- * on someone else's args and touching one of them would rewrite the spacing of
- * the other twenty, and the diff in 配置历史 would be a wall instead of a line.
+ * Cards and not rows, after the rows shipped and were wrong: a row put the
+ * name hard left and its control hard right, half the panel apart, so no value
+ * read as belonging to the flag above it and no two rows lined up. A card
+ * stacks name, note and control in that order and the grid puts two of them on
+ * a line, which is both tidier and shorter — twenty of Aikar's flags are ten
+ * rows of cards rather than twenty rows.
+ *
+ * Cards carry the line they came from verbatim, and only one an operator
+ * actually edited is rebuilt from its parts. Without that, opening this on
+ * someone else's arguments and touching one would rewrite the spacing of the
+ * other twenty, and the diff in 配置历史 would be a wall instead of a line.
  */
 export function JVMArgsEditor({
   value,
@@ -37,15 +46,14 @@ export function JVMArgsEditor({
   const [rows, setRows] = useState<Flag[]>(() => parseFlags(value))
   /** The text this component last produced. Anything else arriving in `value`
    *  came from outside — a preset, a script import, a different instance —
-   *  and replaces the rows wholesale. */
+   *  and replaces the cards wholesale. */
   const emitted = useRef(value)
-  /** The row being typed into as free text: a new one, or one whose name the
-   *  operator clicked to rewrite. At most one at a time. */
+  /** The card being typed into as free text: a new one, or one whose name was
+   *  clicked to rewrite it. At most one at a time. */
   const [editing, setEditing] = useState<string | null>(null)
-  /** Set when a row should take focus on the next render, so 添加参数 lands
-   *  the cursor in the row it just created. */
+  /** Set when a card should take focus on the next render, so 添加参数 lands
+   *  the cursor in the card it just created. */
   const focusing = useRef<string | null>(null)
-  const listId = useId()
 
   useEffect(() => {
     if (value === emitted.current) return
@@ -66,23 +74,31 @@ export function JVMArgsEditor({
 
   const remove = (id: string) => push(rows.filter((row) => row.id !== id))
 
+  /** Turning a card into its own text is only useful if the cursor goes with
+   *  it — otherwise clicking the name produces a field you then have to click
+   *  again. Both ways in go through here for that reason. */
+  const edit = (id: string) => {
+    focusing.current = id
+    setEditing(id)
+  }
+
   const add = () => {
     const row = parseFlag('')
-    focusing.current = row.id
-    setEditing(row.id)
-    // Not through push(): an empty row is not an argument yet, and emitting it
-    // would put a blank line into the value every 添加参数 press.
+    edit(row.id)
+    // Not through push(): an empty card is not an argument yet, and emitting it
+    // would put a blank line into the value on every 添加参数 press.
     setRows([...rows, row])
   }
 
-  /** Re-reads a free-text row once typing stops. An emptied row is dropped
+  /** Re-reads a free-text card once typing stops. An emptied one is dropped
    *  rather than kept as a blank line — the same thing saving would do to it. */
   const commit = (id: string, text: string) => {
     setEditing(null)
-    const next = rows
-      .map((row) => (row.id === id ? { ...parseFlag(text), id: row.id } : row))
-      .filter((row) => row.raw !== '')
-    push(next)
+    push(
+      rows
+        .map((row) => (row.id === id ? { ...parseFlag(text), id: row.id } : row))
+        .filter((row) => row.raw !== ''),
+    )
   }
 
   return (
@@ -93,39 +109,28 @@ export function JVMArgsEditor({
         </p>
       )}
 
-      <ul className="jvmargs__list">
+      <div className="jvmargs__grid">
         {rows.map((flag) => (
-          <ArgRow
+          <ArgCard
             key={flag.id}
             flag={flag}
-            listId={listId}
             editing={editing === flag.id}
             focusing={focusing}
-            onEdit={() => setEditing(flag.id)}
+            onEdit={() => edit(flag.id)}
             onCommit={(text) => commit(flag.id, text)}
             onPatch={(changes) => patch(flag.id, changes)}
             onRemove={() => remove(flag.id)}
           />
         ))}
-      </ul>
 
-      <div className="jvmargs__foot">
-        <button className="btn btn--row" type="button" onClick={add}>
+        <button className="jvmcard__add" type="button" onClick={add}>
           + 添加参数
         </button>
-        <small className="muted">
-          面板不认识的参数照样能加，会原样保存。参数会放在 <code>-jar</code> 之前。
-        </small>
       </div>
 
-      {/* Native rather than the console's own popup: it completes and still
-          lets anything be typed, which is the whole point — the list is a
-          shortcut, never a gate. */}
-      <datalist id={listId}>
-        {KNOWN_FLAGS.map((entry) => (
-          <option key={entry.sample} value={entry.sample} label={entry.note} />
-        ))}
-      </datalist>
+      <small className="muted">
+        面板不认识的参数照样能加，会原样保存。参数会放在 <code>-jar</code> 之前。
+      </small>
     </div>
   )
 }
@@ -137,9 +142,8 @@ const UNITS = [
   { value: 'G', label: 'G' },
 ]
 
-function ArgRow({
+function ArgCard({
   flag,
-  listId,
   editing,
   focusing,
   onEdit,
@@ -148,7 +152,6 @@ function ArgRow({
   onRemove,
 }: {
   flag: Flag
-  listId: string
   editing: boolean
   focusing: MutableRefObject<string | null>
   onEdit: () => void
@@ -157,7 +160,132 @@ function ArgRow({
   onRemove: () => void
 }) {
   const known = knownFor(flag)
+
+  // Free text: a card being retyped, and every argument whose syntax this panel
+  // cannot classify. The second is not a failure state — -Xss512k and
+  // -javaagent:… live here permanently and are none the worse for it. Both take
+  // the full width of the grid, because what goes in them is the long form.
+  if (editing || flag.kind === 'raw') {
+    return (
+      <div className="jvmcard jvmcard--full">
+        <FreeText
+          flag={flag}
+          editing={editing}
+          focusing={focusing}
+          onEdit={onEdit}
+          onCommit={onCommit}
+          onRemove={onRemove}
+        />
+        {!editing && (
+          <div className="jvmcard__note">面板不认识这个参数的写法，按原文保存。</div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="jvmcard">
+      <div className="jvmcard__head">
+        <button type="button" className="jvmcard__name" onClick={onEdit} title="改这一行的原文">
+          <span className="jvmcard__prefix">{flag.prefix}</span>
+          {flag.name}
+        </button>
+        <RemoveButton flag={flag} onRemove={onRemove} />
+      </div>
+
+      {known && <div className="jvmcard__note">{known.note}</div>}
+
+      <div className="jvmcard__control">
+        {flag.kind === 'boolean' && (
+          <>
+            <input
+              type="checkbox"
+              className="switch"
+              role="switch"
+              checked={flag.on}
+              aria-label={`${flag.prefix}${flag.name}`}
+              onChange={(e) => onPatch({ on: e.target.checked })}
+            />
+            {/* Off is not gone: the argument stays on the command line as
+                -XX:-Name, explicitly disabling something a default or an
+                earlier argument may have turned on. The ✕ is what removes it,
+                and saying so here is what keeps the two apart. */}
+            <span className="switch__label">
+              {flag.on ? '已启用' : '已禁用（写成 -XX:-…）'}
+            </span>
+          </>
+        )}
+
+        {flag.kind === 'number' && (
+          <>
+            <input
+              type="number"
+              className="input-slim jvmcard__num"
+              value={flag.value}
+              min={known?.min}
+              max={known?.max}
+              aria-label={`${flag.prefix}${flag.name} 的值`}
+              onChange={(e) => onPatch({ value: e.target.value })}
+            />
+            {wantsUnit(flag) && (
+              <Select
+                className="input-slim jvmcard__unit"
+                /* Displayed upper-case because the options are; a lower-case
+                   suffix already on the line is only rewritten if this is
+                   actually used, which keeps an untouched card untouched. */
+                value={flag.unit.toUpperCase()}
+                options={UNITS}
+                ariaLabel={`${flag.prefix}${flag.name} 的单位`}
+                onChange={(unit) => onPatch({ unit })}
+              />
+            )}
+            {known?.suffix && <span className="switch__label">{known.suffix}</span>}
+          </>
+        )}
+
+        {flag.kind === 'text' && (
+          <input
+            type="text"
+            className="input-slim"
+            value={flag.value}
+            spellCheck={false}
+            aria-label={`${flag.prefix}${flag.name} 的值`}
+            onChange={(e) => onPatch({ value: e.target.value })}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The one field that takes a whole argument, and the completion under it.
+ *
+ * Its own popup rather than a <datalist>: a native one cannot be themed, so it
+ * arrived in the panel's pixel face and left in the browser's, and it has
+ * nowhere to put the line of Chinese that is most of why the list is worth
+ * offering. The interaction is the one a datalist gave — arrow keys, Enter,
+ * and anything at all still typeable — so the list stays a shortcut and never
+ * becomes a gate.
+ */
+function FreeText({
+  flag,
+  editing,
+  focusing,
+  onEdit,
+  onCommit,
+  onRemove,
+}: {
+  flag: Flag
+  editing: boolean
+  focusing: MutableRefObject<string | null>
+  onEdit: () => void
+  onCommit: (text: string) => void
+  onRemove: () => void
+}) {
   const [draft, setDraft] = useState(flag.raw)
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(-1)
   const input = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -171,126 +299,98 @@ function ArgRow({
     }
   })
 
-  // Free text: a row being retyped, and every row whose syntax this panel
-  // cannot classify. The second case is not a failure state — -Xss512k and
-  // -javaagent:… live here permanently and are none the worse for it.
-  if (editing || flag.kind === 'raw') {
-    return (
-      <li className="jvmarg jvmarg--raw">
+  const hits: KnownFlag[] = open && editing ? suggestFlags(draft) : []
+
+  const pick = (entry: KnownFlag) => {
+    setOpen(false)
+    setDraft(entry.sample)
+    onCommit(entry.sample)
+  }
+
+  return (
+    <div className="jvmpick">
+      <div className="jvmcard__head">
         <input
           ref={input}
-          className="input-slim jvmarg__free"
+          className="input-slim jvmpick__input"
           value={editing ? draft : flag.raw}
-          list={listId}
           spellCheck={false}
           placeholder="-XX:+UseG1GC"
           aria-label="JVM 参数"
-          onFocus={onEdit}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={(e) => onCommit(e.target.value)}
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={hits.length > 0}
+          onFocus={() => {
+            onEdit()
+            setOpen(true)
+            setActive(-1)
+          }}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            setOpen(true)
+            setActive(-1)
+          }}
+          onBlur={(e) => {
+            setOpen(false)
+            onCommit(e.target.value)
+          }}
           onKeyDown={(e) => {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              if (hits.length === 0) return
+              e.preventDefault()
+              const step = e.key === 'ArrowDown' ? 1 : -1
+              setActive((i) => (i + step + hits.length) % hits.length)
+              return
+            }
             if (e.key === 'Enter') {
               e.preventDefault()
-              e.currentTarget.blur()
+              if (active >= 0 && hits[active]) pick(hits[active])
+              else e.currentTarget.blur()
+              return
             }
-            // Escape puts the row back the way it was, which for a row added
-            // by mistake means it disappears — committing '' drops it.
             if (e.key === 'Escape') {
+              // One Escape closes the list; a second puts the card back the way
+              // it was, which for one added by mistake means it disappears.
+              if (open && hits.length > 0) {
+                setOpen(false)
+                return
+              }
               setDraft(flag.raw)
               onCommit(flag.raw)
             }
           }}
         />
         <RemoveButton flag={flag} onRemove={onRemove} />
-      </li>
-    )
-  }
-
-  return (
-    <li className="jvmarg">
-      <div className="jvmarg__body">
-        <button
-          type="button"
-          className="jvmarg__name"
-          onClick={onEdit}
-          title="改这一行的原文"
-        >
-          <span className="jvmarg__prefix">{flag.prefix}</span>
-          {flag.name}
-        </button>
-
-        <div className="jvmarg__control">
-          {flag.kind === 'boolean' && (
-            <div className="jvmarg__bool" role="group" aria-label={`${flag.prefix}${flag.name}`}>
-              <button
-                type="button"
-                className={`chip${flag.on ? ' chip--active' : ''}`}
-                aria-pressed={flag.on}
-                onClick={() => onPatch({ on: true })}
-              >
-                开
-              </button>
-              <button
-                type="button"
-                className={`chip${flag.on ? '' : ' chip--active'}`}
-                aria-pressed={!flag.on}
-                onClick={() => onPatch({ on: false })}
-              >
-                关
-              </button>
-            </div>
-          )}
-
-          {flag.kind === 'number' && (
-            <>
-              <input
-                type="number"
-                className="input-slim jvmarg__num"
-                value={flag.value}
-                min={known?.min}
-                max={known?.max}
-                aria-label={`${flag.prefix}${flag.name} 的值`}
-                onChange={(e) => onPatch({ value: e.target.value })}
-              />
-              {wantsUnit(flag) && (
-                <Select
-                  className="input-slim jvmarg__unit"
-                  /* Displayed upper-case because the options are; a lower-case
-                     suffix already on the line is only rewritten if this is
-                     actually used, which keeps an untouched row untouched. */
-                  value={flag.unit.toUpperCase()}
-                  options={UNITS}
-                  ariaLabel={`${flag.prefix}${flag.name} 的单位`}
-                  onChange={(unit) => onPatch({ unit })}
-                />
-              )}
-            </>
-          )}
-
-          {flag.kind === 'text' && (
-            <input
-              type="text"
-              className="input-slim jvmarg__text"
-              value={flag.value}
-              spellCheck={false}
-              aria-label={`${flag.prefix}${flag.name} 的值`}
-              onChange={(e) => onPatch({ value: e.target.value })}
-            />
-          )}
-        </div>
       </div>
 
-      <RemoveButton flag={flag} onRemove={onRemove} />
-
-      {known && <small className="jvmarg__note">{known.note}</small>}
-    </li>
+      {hits.length > 0 && (
+        <div className="jvmpick__pop" role="listbox">
+          {hits.map((entry, index) => (
+            <button
+              key={entry.sample}
+              type="button"
+              role="option"
+              aria-selected={index === active}
+              className={`jvmpick__item${index === active ? ' jvmpick__item--active' : ''}`}
+              // The input must keep focus through the press, or its own blur
+              // commits the half-typed text before the click ever lands.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => pick(entry)}
+            >
+              <b>{entry.sample}</b>
+              <small>{entry.note}</small>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
 function RemoveButton({ flag, onRemove }: { flag: Flag; onRemove: () => void }) {
   return (
     <button
-      className="btn btn--icon btn--row jvmarg__del"
+      className="jvmcard__del"
       type="button"
       aria-label={`删除 ${flag.raw || '这一行'}`}
       onClick={onRemove}
