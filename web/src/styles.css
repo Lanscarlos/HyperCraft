@@ -185,6 +185,19 @@
   --selection: var(--primary-container);
   --on-selection: var(--on-primary-container);
 
+  /* The editor's syntax colours. Every one is a reference rather than a hue of
+     its own, so the other three palettes inherit a set that belongs to them
+     without redefining anything. Five roles is the whole scheme: what you are
+     meant to skip (comments), what names a setting (keys), and the three
+     shapes a value comes in. A rainbow would be a legend to memorise. */
+  --code-comment: var(--text-faint);
+  --code-key: var(--accent);
+  --code-string: var(--ok-ink);
+  --code-number: var(--caution-ink);
+  --code-bool: var(--danger);
+  --code-punct: var(--text-dim);
+  --code-heading: var(--text);
+
   /* The terminal keeps a dark canvas in both modes: Minecraft's log colours
      are ANSI, and ANSI is written for a dark background. On light that canvas
      is the scheme's own inverse surface, which is exactly what M3 reserves
@@ -317,6 +330,20 @@
   --caution: #e0b13a;
   --caution-ink: #e8d9ae;
   --caution-soft: rgba(216, 197, 141, 0.12);
+
+  /* Same seven roles as the light block, with the two value hues taken from
+     the plain step rather than the `-ink` one. `-ink` moves towards the mode's
+     text colour, which on light means darker (what a white page needs) and on
+     dark means paler — and a pale green sitting next to near-white text stops
+     reading as a different kind of thing. The saturated step is what keeps a
+     value distinguishable from the prose around it here. */
+  --code-comment: var(--text-faint);
+  --code-key: var(--accent);
+  --code-string: var(--ok);
+  --code-number: var(--caution);
+  --code-bool: var(--danger);
+  --code-punct: var(--text-dim);
+  --code-heading: var(--text);
 
   /* The ladder read from the other end: the page is the darkest step and a
      card is one lighter, where light has the page tinted and the card white. */
@@ -5866,7 +5893,12 @@ details[open]::details-content {
   box-shadow: var(--ring);
 }
 
+/* Three layers that have to agree to the pixel: the numbers in the margin, the
+   colours underneath, and the text actually being typed into. One declaration,
+   three selectors — a second copy of any of these five properties is a drift
+   waiting to happen, and it shows up as colour sliding off the words. */
 .editor__gutter,
+.editor__hl,
 .editor__text {
   padding: 12px 0;
   font-family: var(--font-mono);
@@ -5904,6 +5936,82 @@ details[open]::details-content {
 
 .editor__text:focus {
   outline: none;
+}
+
+.editor__wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+/* The coloured copy, sitting under the real one. It scrolls by having its
+   offsets written from the textarea's own scroll event rather than by
+   scrolling itself, which is the same trick the gutter has always used. */
+.editor__hl {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding-right: 14px;
+  padding-left: 14px;
+  overflow: hidden;
+  color: var(--text);
+  white-space: pre;
+  pointer-events: none;
+}
+
+/* The typed text goes invisible and the layer below shows through. The caret
+   and the selection do not follow it into transparency, which is why both are
+   named here instead of inheriting a colour that is now `transparent`. */
+.editor__text--lit {
+  position: relative;
+  color: transparent;
+  caret-color: var(--text);
+}
+
+.editor__text--lit::selection {
+  background: var(--selection);
+  color: var(--on-selection);
+}
+
+.editor__hl .token.comment,
+.editor__hl .token.prolog {
+  color: var(--code-comment);
+  font-style: italic;
+}
+
+.editor__hl .token.key,
+.editor__hl .token.property,
+.editor__hl .token.attr-name,
+.editor__hl .token.selector {
+  color: var(--code-key);
+}
+
+.editor__hl .token.string,
+.editor__hl .token.attr-value {
+  color: var(--code-string);
+}
+
+.editor__hl .token.number {
+  color: var(--code-number);
+}
+
+.editor__hl .token.boolean,
+.editor__hl .token.null,
+.editor__hl .token.keyword,
+.editor__hl .token.important,
+.editor__hl .token.tag {
+  color: var(--code-bool);
+}
+
+.editor__hl .token.punctuation,
+.editor__hl .token.operator {
+  color: var(--code-punct);
+}
+
+.editor__hl .token.title,
+.editor__hl .token.bold {
+  color: var(--code-heading);
+  font-weight: 600;
 }
 
 /* ---- dialogs ---------------------------------------------------------- */

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ApiError, api, downloadURL, previewURL, uploadFiles } from '../api'
 import { ask } from '../confirm'
 import { formatBytes, formatDate, formatSince } from '../format'
+import { highlight, langOf } from '../highlight'
 import { toast } from '../toast'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
 import { FileIcon, extensionOf } from './FileIcon'
@@ -1400,6 +1401,19 @@ function FileEditor({
   // it looks. Memoised because the Blob is an allocation per keystroke.
   const bytes = useMemo(() => new Blob([editor.content]).size, [editor.content])
 
+  const hl = useRef<HTMLPreElement | null>(null)
+  const lang = useMemo(() => langOf(editor.path), [editor.path])
+  // Past the threshold the gutter is already off (see `lines`), and tokenising
+  // a 400 000-character log on every keystroke is the same bad trade twice.
+  const huge = lines === 0
+  // A frame behind the textarea on purpose: typing must never wait on a
+  // tokeniser, and a colour that lands one frame late is invisible.
+  const deferred = useDeferredValue(editor.content)
+  const painted = useMemo(
+    () => (huge || !lang.prism ? null : highlight(deferred, lang.prism)),
+    [deferred, huge, lang.prism],
+  )
+
   // A tab away with unsaved changes is a browser-level event; the panel's own
   // 返回 already asks.
   useEffect(() => {
@@ -1464,28 +1478,49 @@ function FileEditor({
               {gutterText}
             </div>
           )}
-          <textarea
-            className="editor__text"
-            value={editor.content}
-            onChange={(event) => onChange(event.target.value)}
-            onScroll={(event) => {
-              if (gutter.current) gutter.current.scrollTop = event.currentTarget.scrollTop
-            }}
-            onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-            onClick={(event) => setCaret(event.currentTarget.selectionStart)}
-            onKeyUp={(event) => setCaret(event.currentTarget.selectionStart)}
-            onKeyDown={(event) => {
-              // The shortcut everyone's fingers already know, and without it
-              // the browser offers to save the whole page as HTML.
-              if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
-                event.preventDefault()
-                onSave()
-              }
-            }}
-            spellCheck={false}
-            wrap="off"
-            aria-label={`编辑 ${editor.path}`}
-          />
+          <div className="editor__wrap">
+            {/* Under the textarea, never in front of it: it must not take a
+                click, a selection, or a screen reader's attention. Safe as
+                innerHTML — see highlight(), which escapes every character Prism
+                does not wrap itself. */}
+            {painted !== null && (
+              <pre
+                className="editor__hl"
+                ref={hl}
+                aria-hidden="true"
+                dangerouslySetInnerHTML={{ __html: painted }}
+              />
+            )}
+            <textarea
+              className={painted !== null ? 'editor__text editor__text--lit' : 'editor__text'}
+              value={editor.content}
+              onChange={(event) => onChange(event.target.value)}
+              onScroll={(event) => {
+                // Both mirrors, from the one event: three layers that scroll
+                // apart are three layers that say different things about the
+                // same line.
+                if (gutter.current) gutter.current.scrollTop = event.currentTarget.scrollTop
+                if (hl.current) {
+                  hl.current.scrollTop = event.currentTarget.scrollTop
+                  hl.current.scrollLeft = event.currentTarget.scrollLeft
+                }
+              }}
+              onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+              onClick={(event) => setCaret(event.currentTarget.selectionStart)}
+              onKeyUp={(event) => setCaret(event.currentTarget.selectionStart)}
+              onKeyDown={(event) => {
+                // The shortcut everyone's fingers already know, and without it
+                // the browser offers to save the whole page as HTML.
+                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+                  event.preventDefault()
+                  onSave()
+                }
+              }}
+              spellCheck={false}
+              wrap="off"
+              aria-label={`编辑 ${editor.path}`}
+            />
+          </div>
         </div>
 
         {/* What an editor's foot is for: the facts you check before saving,
@@ -1493,7 +1528,7 @@ function FileEditor({
             thing that sends someone to this box is usually a console line
             ending in "at line 42". */}
         <div className="editor__status">
-          <span>{languageOf(editor.path)}</span>
+          <span>{lang.label}</span>
           <span>UTF-8</span>
           <span>{editor.content.includes('\r\n') ? 'CRLF' : 'LF'}</span>
           <span>
@@ -1502,6 +1537,7 @@ function FileEditor({
           <span className="editor__status-right">
             {formatBytes(bytes)}
             {lines > 0 && ` · ${lines} 行`}
+            {huge && ' · 文件过大，已关闭高亮'}
           </span>
           <span className={dirty ? 'editor__dot editor__dot--dirty' : 'editor__dot'}>
             {dirty ? '有未保存的修改' : '已是最新'}
@@ -1710,21 +1746,3 @@ function position(text: string, offset: number): { line: number; column: number 
 /** What the status line calls this file. Extension only — the panel does not
  *  parse these, and claiming to would be claiming a syntax check it has not
  *  got. */
-function languageOf(path: string): string {
-  const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
-  const known: Record<string, string> = {
-    yml: 'YAML',
-    yaml: 'YAML',
-    json: 'JSON',
-    properties: 'Properties',
-    toml: 'TOML',
-    conf: 'Conf',
-    cfg: 'Conf',
-    txt: '纯文本',
-    log: '日志',
-    sh: 'Shell',
-    md: 'Markdown',
-    kts: 'Kotlin Script',
-  }
-  return known[ext] ?? (ext ? ext.toUpperCase() : '纯文本')
-}
