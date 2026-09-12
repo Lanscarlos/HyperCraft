@@ -185,9 +185,26 @@ function ruleNoSilentOverrides() {
   }
 }
 
+/** Advisory: one filled button per screen.
+ *
+ *  Not an error yet — a dozen components exceed it, and each needs a
+ *  judgement about which of its buttons is the primary one. Printed so the
+ *  number goes down over time rather than up. */
+function adviseOnePrimaryPerFile() {
+  const over = []
+  for (const file of tsxFiles(SRC)) {
+    const n = (fs.readFileSync(file, 'utf8').match(/variant="primary"/g) ?? []).length
+    if (n > 1) over.push(`${path.relative(SRC, file)} (${n})`)
+  }
+  if (over.length > 0) {
+    console.warn(`check-ui 提示: ${over.length} 个组件有多于一个实心按钮 — ${over.join('、')}`)
+  }
+}
+
 const RULES = [ruleNoUndefinedClasses, ruleIconButtonsAreLabelled, ruleNoSilentOverrides]
 
 for (const rule of RULES) rule()
+adviseOnePrimaryPerFile()
 
 if (problems.length > 0) {
   console.error(`check-ui: ${problems.length} 处问题\n`)
