@@ -781,6 +781,9 @@ export default function App() {
                         against: [route.id],
                       })
                     }
+                    // Where a download from the embedded 市场 actually lands.
+                    // Not 'browse' — that is the tab they are already on.
+                    onOpenLibraryList={() => openLibrary('plugins', 'list')}
                     onOpenCoreLibrary={() => openLibrary('cores', 'stock')}
                   />
                 ) : (

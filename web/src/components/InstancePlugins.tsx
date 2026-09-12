@@ -17,14 +17,28 @@ import { Menu } from './Menu'
 import type { MenuItem } from './Menu'
 import { Modal } from './Modal'
 import { PageHead } from './Page'
-import { loaderLabel } from './PluginBrowse'
+import { PluginBrowse, loaderLabel } from './PluginBrowse'
 import { CompatBadge } from './PluginCompat'
 import { PluginInstallDialog, loaderNote } from './PluginInstallDialog'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
-/** Which rows the status chips are showing. */
-type StatusFilter = 'all' | 'broken' | 'updatable' | 'duplicate'
+/** Which rows the status chips are showing, inside 已安装. */
+type StatusFilter = 'all' | 'broken' | 'duplicate'
+
+/**
+ * The three things someone comes to this page to do.
+ *
+ * 已安装 and 可更新 are the same table twice — the second is the first with a
+ * filter that people were reaching for often enough to deserve its own place.
+ * 市场 is 插件市场 rendered here with this server as the compatibility
+ * reference, and that is all it is: **downloading is still a panel-wide act**
+ * and what it downloads still lands in the panel's library, not in this
+ * server's plugins directory. The two layers stay apart — see the note at the
+ * top of this file — and the tab says so in as many words, because a 市场 tab
+ * inside a server is exactly where somebody would assume otherwise.
+ */
+type Tab = 'installed' | 'updatable' | 'market'
 
 /**
  * One server's plugins.
@@ -57,14 +71,20 @@ export function InstancePlugins({
   instance,
   plugins,
   onOpenBrowse,
+  onOpenLibraryList,
   onOpenSection,
   onChanged,
 }: {
   instance: InstanceStatus
   /** The panel-wide library: what this server can be given. */
   plugins: PluginController
-  /** Opens 插件市场, with this server as the compatibility reference. */
+  /** Opens 插件市场 in the library, with this server as the compatibility
+   *  reference. Still reachable from the 市场 tab's own empty state: the tab
+   *  here is a lens on the same catalogue, not a replacement for the page. */
   onOpenBrowse: () => void
+  /** Opens 插件列表 in the library — where anything downloaded from the 市场
+   *  tab actually lands, which is the one thing that tab has to be clear about. */
+  onOpenLibraryList: () => void
   /** Opens another page of this server — the file manager, for a config dir. */
   onOpenSection: (section: InstanceSection, path?: string) => void
   onChanged: (instance: InstanceStatus) => void
@@ -75,6 +95,7 @@ export function InstancePlugins({
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>('all')
+  const [tab, setTab] = useState<Tab>('installed')
   // The library plugin being handed to this server, or null. Opened from the
   // header and from the empty state, which are the two places the thought
   // "this server needs something" occurs.
@@ -144,7 +165,7 @@ export function InstancePlugins({
           插件 {!loading && <span className="muted">{entries.length}</span>}
         </>
       }
-      lead="这台服务器目录里的插件：哪些能更新、哪些出了问题。下载新的去「资源库 → 插件库」。"
+      lead="这台服务器目录里的插件：哪些能更新、哪些出了问题。「市场」按这台服的核心和版本判兼容性，不过下载来的东西进的是面板插件库。"
       aside={
         !loading && (
           <div className="page__actions">
@@ -181,8 +202,11 @@ export function InstancePlugins({
             >
               从插件库安装
             </button>
-            <button className="link" onClick={onOpenBrowse}>
-              去插件市场
+            {/* 市场 is a tab on this page now, so the link out is to the
+                shelf the downloads land on — which is the half of the trip
+                this page cannot do. */}
+            <button className="link" onClick={onOpenLibraryList}>
+              去插件库
             </button>
           </div>
         )
@@ -208,8 +232,8 @@ export function InstancePlugins({
   }
 
   const shown = entries.filter((entry) => {
+    if (tab === 'updatable') return Boolean(entry.update)
     if (filter === 'broken') return Boolean(entry.failure)
-    if (filter === 'updatable') return Boolean(entry.update)
     if (filter === 'duplicate') return (entry.conflicts?.length ?? 0) > 0
     return true
   })
@@ -251,9 +275,70 @@ export function InstancePlugins({
         </div>
       )}
 
+      {/* Above the tabs, not inside 已安装. A plugin that did not load is the
+          one thing on this page that is wrong right now, and switching to
+          市场 must not be a way to stop seeing it. */}
+      {broken > 0 && (
+        <div className="alert alert--error">
+          <div>
+            <strong>有 {broken} 个插件没能加载</strong>
+            <p className="restart-banner__list">
+              服务端把原因写在启动日志里，然后照常报告自己健康 —— 所以这一条是面板替你从控制台里捞
+              出来的。点开对应的行看具体是哪一个、为什么。
+            </p>
+          </div>
+          <button
+            className="btn btn--sm"
+            onClick={() => {
+              setTab('installed')
+              setFilter('broken')
+            }}
+          >
+            去看
+          </button>
+        </div>
+      )}
+
+      <div className="tabs" role="tablist" aria-label="插件">
+        <Tab on={tab === 'installed'} onClick={() => setTab('installed')}>
+          已安装 {entries.length}
+        </Tab>
+        <Tab on={tab === 'updatable'} onClick={() => setTab('updatable')}>
+          可更新 {updatable}
+        </Tab>
+        <Tab on={tab === 'market'} onClick={() => setTab('market')}>
+          市场
+        </Tab>
+      </div>
+
+      {tab === 'market' ? (
+        <>
+          <div className="alert">
+            <div>
+              <strong>这里下载的插件进的是面板的插件库，不是这台服务器</strong>
+              <p className="restart-banner__list">
+                下载和安装是两件事：插件库是这台机器上所有服务器共用的一份收藏，装到这台服要回
+                「已安装」用「从插件库安装」挑一个版本。下面的兼容性徽章按 {instance.name} 算。
+              </p>
+            </div>
+          </div>
+          <PluginBrowse
+            against={[instance.id]}
+            recents={[instance.id]}
+            onChooseAgainst={() => {
+              /* No URL to keep in step with here: on this page the reference is
+                 the server you are already in. The rail still lets it be
+                 changed for a one-off comparison. */
+            }}
+            onOpenLibrary={onOpenLibraryList}
+          />
+        </>
+      ) : (
+        <>
+
       <TargetLine listing={listing} />
 
-      {entries.length > 0 && (
+      {tab === 'installed' && entries.length > 0 && (
         <div className="filters__chips">
           <Chip active={filter === 'all'} onClick={() => setFilter('all')}>
             全部 {entries.length}
@@ -266,9 +351,6 @@ export function InstancePlugins({
               重名 {duplicate}
             </Chip>
           )}
-          <Chip active={filter === 'updatable'} onClick={() => setFilter('updatable')}>
-            可更新 {updatable}
-          </Chip>
         </div>
       )}
 
@@ -282,11 +364,11 @@ export function InstancePlugins({
               </>
             ) : (
               <>
-                插件库还是空的，先去
-                <button className="link" onClick={onOpenBrowse}>
-                  插件市场
+                插件库还是空的，先在上面的
+                <button className="link" onClick={() => setTab('market')}>
+                  「市场」
                 </button>
-                下载一个。
+                下载一个到插件库，再回这里装。
               </>
             )}
             也可以把 jar 直接传进 <code>plugins/</code>，面板会认出来。
@@ -436,7 +518,11 @@ export function InstancePlugins({
           这台服务器自面板启动以来没跑过，读不到启动日志 —— 插件有没有加载失败，要开起来才知道。
         </p>
       )}
+        </>
+      )}
 
+      {/* Outside the tabs: a dialog opened from 已安装 must survive the tab it
+          was opened from, and all three of these are modal anyway. */}
       {picking && (
         <LibraryPicker
           available={available}
@@ -927,3 +1013,27 @@ function StatusCell({ entry, live }: { entry: InstancePlugin; live: boolean }) {
   )
 }
 
+/** One of the three panes. Built on the chip vocabulary the rest of the panel
+ *  uses rather than a tab component of its own — there is one tab bar in this
+ *  codebase and this is it. */
+function Tab({
+  on,
+  onClick,
+  children,
+}: {
+  on: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={on}
+      className={`tabs__tab${on ? ' tabs__tab--on' : ''}`}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  )
+}

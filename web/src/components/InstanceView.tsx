@@ -37,6 +37,8 @@ interface Props {
   /** Opens 插件市场 in the library, with this server as the compatibility
    *  reference. Downloading is panel-wide and happens there. */
   onOpenBrowse: () => void
+  /** 插件列表 in the library: where a download lands. */
+  onOpenLibraryList: () => void
   /** The panel-wide core library, for "download another one". */
   onOpenCoreLibrary: () => void
   /** 代理连线 is about two instances, so it is the one section that can send
@@ -71,6 +73,7 @@ export function InstanceView({
   onDeleted,
   onOpenSection,
   onOpenBrowse,
+  onOpenLibraryList,
   onOpenCoreLibrary,
   onOpenInstance,
   onCreate,
@@ -157,6 +160,7 @@ export function InstanceView({
             instance={instance}
             plugins={plugins}
             onOpenBrowse={onOpenBrowse}
+            onOpenLibraryList={onOpenLibraryList}
             onChanged={onChanged}
             onOpenSection={(target, path) => {
               if (target === 'files' && path) {

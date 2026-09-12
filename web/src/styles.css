@@ -6444,6 +6444,46 @@ small.field__bad {
   white-space: nowrap;
 }
 
+/* One tab bar, and this is it: the plugins page's 已安装 / 可更新 / 市场.
+   Built from the panel's chip vocabulary rather than a component of its own,
+   so a tab and a filter chip read as the same kind of control — which they
+   are, one just changes the whole pane. */
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.tabs__tab {
+  padding: 7px 13px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.tabs__tab:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.tabs__tab--on {
+  background: var(--accent-soft);
+  border-color: var(--border-accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* ------------------------------------------------------------- 实例监控
 
    Conclusion, then process, then what happened. The KPI row answers "is it all
