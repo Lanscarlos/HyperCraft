@@ -48,12 +48,21 @@
 
 /* ------------------------------------------------------------------ tokens
 
-   Colour is one Material 3 scheme — a warm terracotta grown from #8F4C38 —
-   in two modes. The two blocks below are the only place a raw hex appears;
-   every rule after them works in named roles, so a mode is a table of values
-   and nothing else. `data-theme` on <html> is always resolved to light or
-   dark before first paint (see theme.ts), so dark needs one block, not a
-   media query and an override of it.
+   Colour is one Material 3 scheme in two modes — 樱花, grown from a warm
+   #8F4C38, the one the panel ships with. Three more schemes sit in the
+   palettes section below and work exactly the same way. These two blocks and
+   those six are the only place a raw hex appears; every rule after them works
+   in named roles, so a mode is a table of values and nothing else.
+   `data-theme` on <html> is always resolved to light or dark before first
+   paint (see theme.ts), so dark needs one block, not a media query and an
+   override of it.
+
+   Each block answers to a second selector as well, and it is not decoration:
+   <html> never carries data-palette for the default (the absence of it *is*
+   the default), so without this the 外观 picker's 樱花 swatch would have no
+   scheme of its own to read and would inherit whichever one is currently on —
+   showing 松绿 while claiming to be 樱花. The default needs a name a swatch
+   can ask for, even though the page itself never uses it.
 
    The M3 roles come first, copied from the scheme. Under them are the working
    names the rest of the sheet uses: surfaces climb from --bg (the page)
@@ -62,7 +71,8 @@
    has to read as "on top of" something else moves up one step rather than
    inventing a value. */
 
-:root {
+:root,
+[data-theme='light'][data-palette='sakura'] {
   /* --- M3 roles, light ----------------------------------------------
      Only the roles the panel actually paints with; the scheme's secondary
      family and the containers nothing reads are left out rather than carried
@@ -269,7 +279,8 @@
 
 /* The same scheme's dark mode. Only the values move — no rule below this
    block tests for a mode. */
-:root[data-theme='dark'] {
+:root[data-theme='dark'],
+[data-theme='dark'][data-palette='sakura'] {
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%23d8c2bc' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
   --primary: #ffb5a0;
   --on-primary: #561f0f;
@@ -370,9 +381,9 @@
 
    `data-palette` on <html> picks one, resolved before first paint alongside
    the mode (see palette.ts and the inline script in index.html). The default
-   terracotta is the absence of the attribute rather than a value of its own —
-   the same trick the mode uses for 跟随系统 — so the base blocks stay the
-   scheme the panel ships with and these only ever override.
+   樱花 is the absence of the attribute rather than a value of its own — the
+   same trick the mode uses for 跟随系统 — so the base blocks stay the scheme
+   the panel ships with and these only ever override it.
 
    The selectors deliberately do not start at :root. Any element carrying both
    attributes gets the scheme, which is what lets the picker in 外观 paint a
@@ -380,10 +391,11 @@
    swatch has to read the M3 roles directly (--surface, --primary) because the
    working names above are substituted where they are declared, on :root, and
    an element redefining --surface cannot reach the --bg that was already
-   resolved from it.
+   resolved from it. The base blocks carry the 'sakura' spelling of the same
+   selector for exactly this reason — see the note up there.
 
    The M3 roles come from the Material Theme Builder export of each seed. What
-   is under them is the same set of relationships the terracotta blocks
+   is under them is the same set of relationships the 樱花 blocks
    encode — a shadow is the scheme's own ink at 11%, a button face is the
    primary lifted 4.5 points of lightness, the ANSI greys are the neutral
    variant — re-derived at the new hue rather than eyeballed, which is why
@@ -4717,7 +4729,7 @@ details[open]::details-content {
 }
 
 /* The grid and the reference line are the scheme's own neutrals, so they follow
-   the 配色 the way every other border does — a terracotta grid under 碧蓝 is
+   the 配色 the way every other border does — a 樱花 grid under 碧蓝 is
    the one thing on the page that would still be pink. The series colours above
    do not follow it and must not: they are picked to stay apart from *each
    other* under colour vision deficiency, and that is a validation of the four

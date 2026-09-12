@@ -46,7 +46,7 @@
         // visible in the frame before the CSS arrives. Eight values, kept in
         // step with the token blocks in styles.css by hand.
         var page = {
-          terracotta: ['#fff8f6', '#1a1110'],
+          sakura: ['#fff8f6', '#1a1110'],
           green: ['#f9faef', '#12140e'],
           yellow: ['#fff9ee', '#15130b'],
           blue: ['#f9f9ff', '#111318'],
@@ -60,8 +60,8 @@
         // hasOwnProperty rather than a truthiness test: a hand-edited key of
         // "constructor" is a real value on every object literal, and it would
         // get written onto <html> as a scheme no stylesheet answers to.
-        if (!Object.prototype.hasOwnProperty.call(page, palette)) palette = 'terracotta'
-        if (palette !== 'terracotta') document.documentElement.dataset.palette = palette
+        if (!Object.prototype.hasOwnProperty.call(page, palette)) palette = 'sakura'
+        if (palette !== 'sakura') document.documentElement.dataset.palette = palette
 
         var bg = page[palette][dark ? 1 : 0]
         document.documentElement.style.background = bg
