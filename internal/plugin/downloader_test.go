@@ -1,11 +1,17 @@
 package plugin
 
 import (
+	"context"
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -415,4 +421,131 @@ func TestConcurrentStartsAreSerialised(t *testing.T) {
 		t.Errorf("expected one job per plugin, got %d for %d plugins", len(jobs), len(items))
 	}
 	stub.releaseAll()
+}
+
+// jarServer serves one fixed body at /dl, which is all the transfer tests need
+// out of a source: they drive transfer directly rather than through a release
+// listing, because the published checksum they turn on is something only a
+// registry puts on an asset and no GitHub release has.
+func jarServer(t *testing.T, body string) string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(server.Close)
+	return server.URL + "/dl/plug.jar"
+}
+
+// transferOnce runs one transfer against a fresh downloader and reports what
+// it made of the asset.
+func transferOnce(t *testing.T, asset Asset) (string, error) {
+	t.Helper()
+	library := newLibrary(t)
+	downloader := NewDownloader(NewClient("https://example.invalid", "test"), library, slog.New(slog.DiscardHandler))
+	t.Cleanup(downloader.Close)
+	return downloader.transfer(context.Background(), &Job{}, filepath.Join(t.TempDir(), "plug.jar.part"),
+		Source{Kind: SourceHangar, Repo: "plug"}, asset)
+}
+
+// Upstream's declared size is not always right — Azul's metadata under-reports
+// a Zulu package by 9 bytes and still publishes the correct SHA-256 for it — so
+// a jar whose published checksum matches must install whatever the number next
+// to it said.
+func TestTransferAcceptsMisdeclaredSizeWhenChecksumMatches(t *testing.T) {
+	body := "a fine plugin jar"
+	sum := sha256.Sum256([]byte(body))
+	digest, err := transferOnce(t, Asset{
+		Name:   "plug.jar",
+		Size:   int64(len(body)) - 3,
+		URL:    jarServer(t, body),
+		SHA256: hex.EncodeToString(sum[:]),
+	})
+	if err != nil {
+		t.Fatalf("transfer: %v", err)
+	}
+	if digest != hex.EncodeToString(sum[:]) {
+		t.Errorf("recorded digest %q", digest)
+	}
+}
+
+// A published checksum that does not match is a jar the panel must not keep,
+// whatever its size says. Until this check existed, a registry's digest was
+// recorded and never compared.
+func TestTransferRejectsPublishedChecksumMismatch(t *testing.T) {
+	body := "a fine plugin jar"
+	_, err := transferOnce(t, Asset{
+		Name:   "plug.jar",
+		Size:   int64(len(body)),
+		URL:    jarServer(t, body),
+		SHA256: strings.Repeat("ab", 32),
+	})
+	if !errors.Is(err, ErrChecksum) {
+		t.Fatalf("expected a checksum failure, got %v", err)
+	}
+}
+
+// Without a published checksum the declared size is the only integrity check
+// there is, so it stays exact. This is every GitHub release, and Modrinth and
+// SpigotMC too.
+func TestTransferRejectsMisdeclaredSizeWithoutChecksum(t *testing.T) {
+	body := "a fine plugin jar"
+	_, err := transferOnce(t, Asset{
+		Name: "plug.jar",
+		Size: int64(len(body)) - 3,
+		URL:  jarServer(t, body),
+	})
+	if err == nil || !strings.Contains(err.Error(), "声明的") {
+		t.Fatalf("expected a size failure, got %v", err)
+	}
+}
+
+// A body that stops early no longer trips the size check, so the checksum
+// failure has to be the one that explains it.
+func TestTransferReportsTruncatedBody(t *testing.T) {
+	whole := "a fine plugin jar"
+	sum := sha256.Sum256([]byte(whole))
+	_, err := transferOnce(t, Asset{
+		Name:   "plug.jar",
+		Size:   int64(len(whole)),
+		URL:    jarServer(t, whole[:8]),
+		SHA256: hex.EncodeToString(sum[:]),
+	})
+	if err == nil || !strings.Contains(err.Error(), "下载中断") {
+		t.Fatalf("expected a truncation failure, got %v", err)
+	}
+}
+
+// Modrinth publishes a SHA-512 and no SHA-256, so that is what a Modrinth jar
+// has to be checked against — the recorded digest stays SHA-256 either way,
+// because that is the identity everything downstream matches on.
+func TestTransferVerifiesSHA512(t *testing.T) {
+	body := "a fine plugin jar"
+	wide := sha512.Sum512([]byte(body))
+	narrow := sha256.Sum256([]byte(body))
+
+	digest, err := transferOnce(t, Asset{
+		Name:   "plug.jar",
+		Size:   int64(len(body)) - 3,
+		URL:    jarServer(t, body),
+		SHA512: hex.EncodeToString(wide[:]),
+	})
+	if err != nil {
+		t.Fatalf("transfer: %v", err)
+	}
+	if digest != hex.EncodeToString(narrow[:]) {
+		t.Errorf("recorded digest is %q, want the SHA-256 of the bytes", digest)
+	}
+}
+
+func TestTransferRejectsSHA512Mismatch(t *testing.T) {
+	body := "a fine plugin jar"
+	_, err := transferOnce(t, Asset{
+		Name:   "plug.jar",
+		Size:   int64(len(body)),
+		URL:    jarServer(t, body),
+		SHA512: strings.Repeat("ab", 64),
+	})
+	if !errors.Is(err, ErrChecksum) {
+		t.Fatalf("expected a checksum failure, got %v", err)
+	}
 }

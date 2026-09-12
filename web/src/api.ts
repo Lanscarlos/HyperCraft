@@ -209,6 +209,16 @@ export const api = {
    *  directory. Path is relative to the instance. */
   parseInstanceScript: (id: string, path: string) =>
     request<ParsedScript>('POST', `/api/instances/${id}/parse-script`, { path }),
+  /** The same read for a script the operator picked on their own machine. The
+   *  file is read in the browser and only its text is posted — nothing lands in
+   *  the server directory, because a run.sh sitting next to a server the panel
+   *  launches itself is a second, stale answer to "how does this start".
+   *  `name` only picks the dialect off the extension. */
+  parseInstanceScriptText: (id: string, name: string, text: string) =>
+    request<ParsedScript>('POST', `/api/instances/${id}/parse-script-text`, {
+      name,
+      text,
+    }),
 
   /** Forge's user_jvm_args.txt, which is where the heap of an argfile-launched
    *  server actually lives. */

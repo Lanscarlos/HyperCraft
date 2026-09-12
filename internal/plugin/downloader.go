@@ -3,9 +3,11 @@ package plugin
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"log/slog"
 	"os"
@@ -589,13 +591,38 @@ func (d *Downloader) transfer(ctx context.Context, pub *Job, temp string, src So
 		return "", err
 	}
 
-	limit := asset.Size
-	if limit <= 0 {
-		limit = maxUnknownSize
+	// sized marks the case where the declared size is the only check there
+	// is — every GitHub release, and Modrinth and SpigotMC too — and so has
+	// to be exact.
+	//
+	// Where a source does publish a digest it is both the stronger check and
+	// the more reliable one: Azul's Java metadata under-reports a package by
+	// 9 bytes while publishing the right SHA-256 for it, which turned a
+	// perfectly good install into "exceeds the declared size" until the gate
+	// moved (see javaruntime.Installer.download). So with a digest the size
+	// drives the progress bar, and the cap falls back to the same ceiling an
+	// undeclared size gets — there to bound the disk a runaway redirect can
+	// eat, not to verify anything.
+	sized := asset.Size > 0 && !asset.verifiable()
+	limit := int64(maxUnknownSize)
+	if sized {
+		limit = asset.Size
 	}
+
+	// The SHA-256 is always computed, whatever the source published: it is the
+	// identity the library records and the fleet is reconciled against, not
+	// the proof. A second digest is only computed when there is a published
+	// one to compare it to, because hashing 30 MB twice for nothing is a cost
+	// every download would pay.
 	digest := sha256.New()
+	writers := []io.Writer{file, digest}
+	var wide hash.Hash
+	if asset.SHA512 != "" {
+		wide = sha512.New()
+		writers = append(writers, wide)
+	}
 	progress := &progressWriter{
-		to: io.MultiWriter(file, digest),
+		to: io.MultiWriter(writers...),
 		report: func(n int64) {
 			d.mu.Lock()
 			pub.Downloaded = n
@@ -615,13 +642,43 @@ func (d *Downloader) transfer(ctx context.Context, pub *Job, temp string, src So
 	if closeErr != nil {
 		return "", closeErr
 	}
-	if written > limit {
-		return "", fmt.Errorf("%w: download exceeds the declared %d bytes", ErrUpstream, limit)
+	switch {
+	case sized && written > limit:
+		return "", fmt.Errorf("%w: 下载的内容比声明的 %d 字节还多", ErrUpstream, limit)
+	case sized && written != asset.Size:
+		return "", fmt.Errorf("%w: 收到 %d 字节，应为 %d", ErrUpstream, written, asset.Size)
+	case written > limit:
+		return "", fmt.Errorf("%w: 下载超过 %d 字节的上限，已中止", ErrUpstream, limit)
 	}
-	if asset.Size > 0 && written != asset.Size {
-		return "", fmt.Errorf("%w: got %d bytes, expected %d", ErrUpstream, written, asset.Size)
+
+	// The digest a source published, when it published one, is finally
+	// compared rather than only recorded — the field has been carried on the
+	// asset since the registries went in, and nothing ever read it.
+	sum := hex.EncodeToString(digest.Sum(nil))
+	if err := verifyDigest(asset, sum, wide, written); err != nil {
+		return "", err
 	}
-	return hex.EncodeToString(digest.Sum(nil)), nil
+	return sum, nil
+}
+
+// verifyDigest checks the bytes against whichever digest the source published.
+// sum is the SHA-256 of what arrived and wide the SHA-512 of it, non-nil only
+// when there was a published SHA-512 to check.
+func verifyDigest(asset Asset, sum string, wide hash.Hash, written int64) error {
+	algo, got, want := "SHA-256", sum, asset.SHA256
+	if wide != nil {
+		algo, got, want = "SHA-512", hex.EncodeToString(wide.Sum(nil)), asset.SHA512
+	}
+	if want == "" || strings.EqualFold(got, want) {
+		return nil
+	}
+	// A short body is the one checksum failure with an obvious cause, and
+	// "the connection dropped, run it again" is very different advice from
+	// "this source is serving the wrong jar".
+	if asset.Size > 0 && written < asset.Size {
+		return fmt.Errorf("%w: 下载中断，只收到 %d 字节，应为 %d", ErrChecksum, written, asset.Size)
+	}
+	return fmt.Errorf("%w: %s 不符，算出 %s，应为 %s", ErrChecksum, algo, got, strings.ToLower(want))
 }
 
 func (d *Downloader) finish(pub *Job, state JobState, err error) {

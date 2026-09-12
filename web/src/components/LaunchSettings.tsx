@@ -8,12 +8,13 @@ import type {
   JavaRuntime,
   JVMArgs,
   LaunchCheck,
+  LaunchDraft,
   LaunchIssue,
-  ParsedScript,
   SystemJava,
 } from '../types'
 import { ENCODING_OPTIONS, isLive, LOADER_OPTIONS } from '../types'
-import { ScriptDraft } from './ScriptDraft'
+import { JVM_PRESETS } from '../jvmPresets'
+import { ScriptImportDialog } from './ScriptImportDialog'
 import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
 import { InstanceCorePicker } from './InstanceCorePicker'
@@ -98,9 +99,10 @@ export function LaunchSettings({
   // preview: nothing is applied until 填进表单 is pressed, and nothing is
   // stored until 保存 is. So every drafted value goes through the same fields,
   // and the same eyes, as one typed by hand.
-  const [scriptPath, setScriptPath] = useState('run.sh')
-  const [parsed, setParsed] = useState<ParsedScript | null>(null)
-  const [parsing, setParsing] = useState(false)
+  const [importing, setImporting] = useState(false)
+  // Which preset was last pressed, so its one line of "why you would pick
+  // this" can sit under the row instead of on twenty hover targets.
+  const [preset, setPreset] = useState<string | null>(null)
   const [check, setCheck] = useState<LaunchCheck | null>(null)
   const [checkRev, setCheckRev] = useState(0)
   const [jvm, setJvm] = useState<JVMArgs | null>(null)
@@ -197,44 +199,82 @@ export function LaunchSettings({
     [onSaved],
   )
 
-  const readScript = async () => {
-    const path = scriptPath.trim()
-    if (path === '') return
-    setParsing(true)
-    setParsed(null)
-    setError(null)
-    try {
-      setParsed(await api.parseInstanceScript(instance.id, path))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '读不了这个脚本')
-    } finally {
-      setParsing(false)
-    }
-  }
-
-  const applyDraft = () => {
-    if (!parsed?.ok) return
-    const draft = parsed.draft
-    // Java only when the script actually named one: where it came from an
-    // environment variable the panel cannot read, the instance keeps the JVM
-    // it already has rather than silently getting a different one.
-    if (draft.java) {
-      setForm((prev) => ({ ...prev, java: draft.java }))
-      setCustomJava(false)
-    }
+  // What a parsed script is allowed to overwrite here.
+  //
+  // Not Java and not the jar, even though the script names both. By the time
+  // an instance exists the panel owns those two — Java comes from 资源库 →
+  // Java 环境 and the jar from the core library — and letting a run.sh from
+  // 2019 put /usr/lib/jvm/java-8 back would undo a choice made deliberately
+  // in the panel. The dialog reads them out instead, because "this used to run
+  // on Java 8" explains a server that will not start on 25.
+  //
+  // Argfiles are the exception that proves the rule: nothing in the panel
+  // writes them. A Forge unix_args.txt path carries the exact version
+  // (libraries/net/neoforged/neoforge/21.1.9/unix_args.txt) and there is no
+  // picker for it anywhere, so a script is the only place it can come from
+  // without being typed by hand.
+  const applyDraft = (draft: LaunchDraft) => {
     setForm((prev) => ({
       ...prev,
       minMemoryMB: draft.minMemoryMB,
       maxMemoryMB: draft.maxMemoryMB,
-      jar: draft.argFiles.length > 0 ? '' : draft.jar,
     }))
     setJvmText(toLines(draft.jvmArgs))
     setServerText(toLines(draft.serverArgs))
     setArgFileText(toLines(draft.argFiles))
-    setArgFileMode(draft.argFiles.length > 0)
-    setParsed(null)
-    setStatus('已填进表单，确认无误再点保存')
+    // One-way. A script with argfiles has to switch the form over or the value it
+    // just filled in is on a tab nobody is looking at; a script without them
+    // leaves the mode alone, because switching back to 核心 jar would land on
+    // an empty jar field — the one thing this deliberately does not import.
+    if (draft.argFiles.length > 0) setArgFileMode(true)
+    setError(null)
+    setStatus(
+      draft.argFiles.length > 0
+        ? '已填进表单（Java 和核心没动），确认无误再点保存'
+        : '已填进表单（Java 和服务端 jar 没动），确认无误再点保存',
+    )
   }
+
+  // Presets replace the box rather than appending to it: these sets are tuned
+  // as wholes and half of one merged into half of another is not a third
+  // tuning, it is a bug report. Which is also why something already in there
+  // is worth one question first.
+  const applyPreset = async (id: string) => {
+    const chosen = JVM_PRESETS.find((entry) => entry.id === id)
+    if (!chosen) return
+    if (jvmText.trim() !== '') {
+      const ok = await ask({
+        title: `用「${chosen.label}」替换现在的 JVM 参数？`,
+        lead: '预设是整套替换，不是往后面追加。',
+        detail: '现在框里那几行会被清掉。还没保存，觉得不对可以直接改回来或者离开这页。',
+        confirmLabel: '替换',
+      })
+      if (!ok) return
+    }
+    setJvmText(toLines(chosen.args(form.maxMemoryMB)))
+    setPreset(chosen.id)
+    setStatus(`已填上「${chosen.label}」，确认无误再点保存`)
+  }
+
+  const presetNote = JVM_PRESETS.find((entry) => entry.id === preset)?.note ?? null
+
+  // The one server argument worth a shortcut. --forceUpgrade and --eraseCache
+  // are deliberately not offered: they are one-shot conversions, and a control
+  // that remembers one is a control that runs it again on every restart.
+  const hasNogui = fromLines(serverText).includes('--nogui')
+  const toggleNogui = () =>
+    setServerText((text) => {
+      const args = fromLines(text)
+      return toLines(
+        hasNogui ? args.filter((arg) => arg !== '--nogui') : [...args, '--nogui'],
+      )
+    })
+
+  // Aikar's set assumes -Xms equals -Xmx. Checked against the box rather than
+  // against `preset`, so it also catches the case that actually bites: the
+  // flags arrived by reading somebody's run.sh, not by pressing the button.
+  const aikarNeedsEqualHeap =
+    jvmText.includes('using.aikars.flags') && form.minMemoryMB !== form.maxMemoryMB
 
   const update = <K extends keyof InstanceInput>(
     key: K,
@@ -505,48 +545,6 @@ export function LaunchSettings({
           </small>
         </label>
 
-        {/* Reading an existing start script. Offered in both modes because
-            which mode this instance belongs in is one of the things the script
-            answers: a Forge run.sh puts it in 参数文件, a Paper start.sh in
-            核心 jar. */}
-        <div className="netadd field--full">
-          <label className="field">
-            <span>从脚本读启动参数</span>
-            <input
-              value={scriptPath}
-              onChange={(e) => setScriptPath(e.target.value)}
-              placeholder="run.sh"
-              spellCheck={false}
-            />
-            <small>
-              目录里原来那个 <code>run.sh</code> / <code>启动.sh</code> 里写好的
-              <code> -Xmx</code>、JVM 参数和核心，面板可以读出来填进下面的表单。
-              <strong>面板不会执行这个脚本</strong>，读完它照样躺在目录里不动。
-            </small>
-          </label>
-          <button
-            className="btn"
-            type="button"
-            disabled={parsing || scriptPath.trim() === ''}
-            onClick={readScript}
-          >
-            {parsing ? '读取中…' : '读一下'}
-          </button>
-        </div>
-
-        <ScriptDraft parsed={parsed} parsing={parsing} />
-
-        {parsed?.ok && (
-          <div className="actions">
-            <button className="btn btn--primary" type="button" onClick={applyDraft}>
-              填进表单
-            </button>
-            <button className="btn" type="button" onClick={() => setParsed(null)}>
-              不用
-            </button>
-          </div>
-        )}
-
         {argFileMode ? (
           <>
             <label className="field field--full">
@@ -564,6 +562,12 @@ export function LaunchSettings({
                 直接跑的 jar 了，安装器留下的就是这两个文件 —— 照 <code>run.sh</code> 里那行抄过来即可。
               </small>
             </label>
+
+            <div className="actions">
+              <button className="btn" type="button" onClick={() => setImporting(true)}>
+                从启动脚本读参数…
+              </button>
+            </div>
 
             <ArgFileMemory
               jvm={jvm}
@@ -621,31 +625,68 @@ export function LaunchSettings({
               </label>
             </div>
 
-            <label className="field field--full">
+            <div className="field field--full">
               <span>JVM 参数</span>
+              <JVMPresets
+                activeNote={presetNote}
+                onPick={(id) => void applyPreset(id)}
+                onImport={() => setImporting(true)}
+              />
               <textarea
                 rows={4}
                 value={jvmText}
                 onChange={(e) => setJvmText(e.target.value)}
                 placeholder={'-XX:+UseG1GC\n-XX:MaxGCPauseMillis=200'}
+                aria-label="JVM 参数"
               />
+              {aikarNeedsEqualHeap && (
+                <div className="alert alert--warn">
+                  这套参数的前提是最小内存和最大内存一样大，现在填的是 {form.minMemoryMB} /{' '}
+                  {form.maxMemoryMB} MB。把上面的最小内存也改成 {form.maxMemoryMB} 再保存。
+                </div>
+              )}
               <small>一行一个参数，会放在 -jar 之前。</small>
-            </label>
+            </div>
 
-            <label className="field field--full">
+            <div className="field field--full">
               <span>服务端参数</span>
+              {!proxy && (
+                <div className="presets">
+                  <div className="presets__row">
+                    <button
+                      className={`chip${hasNogui ? ' chip--active' : ''}`}
+                      type="button"
+                      aria-pressed={hasNogui}
+                      onClick={toggleNogui}
+                    >
+                      --nogui
+                    </button>
+                  </div>
+                </div>
+              )}
               <textarea
                 rows={2}
                 value={serverText}
                 onChange={(e) => setServerText(e.target.value)}
                 placeholder={proxy ? '' : '--nogui'}
+                aria-label="服务端参数"
               />
               <small>
                 一行一个参数，会放在 jar 之后。
-                {proxy && ' Velocity 遇到不认识的参数会直接退出，一般这里留空。'}
+                {proxy
+                  ? ' Velocity 遇到不认识的参数会直接退出，一般这里留空。'
+                  : ' --nogui 关掉服务端自带的那个 Swing 窗口，无头机器上基本都要。'}
               </small>
-            </label>
+            </div>
           </>
+        )}
+
+        {importing && (
+          <ScriptImportDialog
+            instanceId={instance.id}
+            onApply={applyDraft}
+            onClose={() => setImporting(false)}
+          />
         )}
       </section>
 
@@ -867,6 +908,49 @@ function LaunchCheckPanel({
  * panel emits none and the control moves into that file — and where there is
  * no such file it says so instead of showing a slider that changes nothing.
  */
+/**
+ * The ready-made argument sets, above the box they fill.
+ *
+ * Buttons and not a checkbox per flag. The sets here only work as sets — half
+ * of Aikar's G1 tuning merged into half of a ZGC setup is not a third tuning —
+ * and the flags worth offering at all are a handful out of hundreds, each with
+ * a Java-version predicate that goes stale every release. See jvmPresets.ts.
+ *
+ * 从启动脚本读参数 sits in the same row because it answers the same question,
+ * one step further back: what the arguments should be when you already have a
+ * server that works and no idea what is in its run.sh.
+ */
+function JVMPresets({
+  activeNote,
+  onPick,
+  onImport,
+}: {
+  activeNote: string | null
+  onPick: (id: string) => void
+  onImport: () => void
+}) {
+  return (
+    <div className="presets">
+      <div className="presets__row">
+        {JVM_PRESETS.map((entry) => (
+          <button
+            key={entry.id}
+            className="chip"
+            type="button"
+            onClick={() => onPick(entry.id)}
+          >
+            {entry.label}
+          </button>
+        ))}
+        <button className="chip chip--right" type="button" onClick={onImport}>
+          从启动脚本读…
+        </button>
+      </div>
+      {activeNote && <small className="presets__note">{activeNote}</small>}
+    </div>
+  )
+}
+
 function ArgFileMemory({
   jvm,
   min,

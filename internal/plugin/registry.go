@@ -558,12 +558,20 @@ type modrinthVersion struct {
 		FileName       string `json:"file_name"`
 		DependencyType string `json:"dependency_type"`
 	} `json:"dependencies"`
-	Files []struct {
-		URL      string `json:"url"`
-		FileName string `json:"filename"`
-		Primary  bool   `json:"primary"`
-		Size     int64  `json:"size"`
-	} `json:"files"`
+	Files []modrinthFile `json:"files"`
+}
+
+// modrinthFile is one jar under a version. Modrinth publishes sha1 and sha512
+// for every file; only the sha512 is read, sha1 being the one an attacker
+// would pick if the panel would take it.
+type modrinthFile struct {
+	URL      string `json:"url"`
+	FileName string `json:"filename"`
+	Primary  bool   `json:"primary"`
+	Size     int64  `json:"size"`
+	Hashes   struct {
+		SHA512 string `json:"sha512"`
+	} `json:"hashes"`
 }
 
 func (r *Registry) modrinthVersions(ctx context.Context, id string) ([]Release, error) {
@@ -603,6 +611,7 @@ func (r *Registry) modrinthVersions(ctx context.Context, id string) ([]Release, 
 			Platform:     platform,
 			Loaders:      version.Loaders,
 			GameVersions: version.GameVersions,
+			SHA512:       strings.ToLower(file.Hashes.SHA512),
 		}
 
 		if number == "" {
@@ -832,12 +841,7 @@ func orderAssets(release Release) Release {
 	return release
 }
 
-func primaryFile(version modrinthVersion) (struct {
-	URL      string `json:"url"`
-	FileName string `json:"filename"`
-	Primary  bool   `json:"primary"`
-	Size     int64  `json:"size"`
-}, bool) {
+func primaryFile(version modrinthVersion) (modrinthFile, bool) {
 	for _, file := range version.Files {
 		if file.Primary && strings.HasSuffix(strings.ToLower(file.FileName), ".jar") {
 			return file, true
@@ -848,13 +852,7 @@ func primaryFile(version modrinthVersion) (struct {
 			return file, true
 		}
 	}
-	var zero struct {
-		URL      string `json:"url"`
-		FileName string `json:"filename"`
-		Primary  bool   `json:"primary"`
-		Size     int64  `json:"size"`
-	}
-	return zero, false
+	return modrinthFile{}, false
 }
 
 func dependencyIDs(versions []modrinthVersion) []string {

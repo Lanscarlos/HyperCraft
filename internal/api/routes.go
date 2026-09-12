@@ -328,6 +328,12 @@ func (s *Server) protectedRoutes() []route {
 		// own directory: it reads a file there and echoes lines of it back.
 		rt("POST /api/instances/{id}/parse-script", s.handleParseInstanceScript,
 			authz.CapInstanceFilesRead),
+		// The same read for a script that never lands on the disk — the
+		// operator's own file, posted as text. It reads nothing, so the file
+		// capability has nothing to confine; what it can do is fill in the
+		// launch form, which is the capability that governs it.
+		rt("POST /api/instances/{id}/parse-script-text", s.handleParseInstanceScriptText,
+			authz.CapInstanceLaunch),
 
 		// Directories on the host, for the instance directory picker. Read-only,
 		// and not confined to an instance — see handlers_hostfs.go. Which is

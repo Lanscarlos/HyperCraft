@@ -978,7 +978,12 @@ export interface PluginAsset {
    *  is not what the release as a whole supports. */
   loaders?: string[]
   gameVersions?: string[]
+  /** The digest the source published for this jar, when it published one, in
+   *  whichever algorithm it uses — Hangar a sha256, Modrinth a sha512, GitHub
+   *  and SpigotMC neither. Not what the library records for an installed jar:
+   *  that is always a sha256 computed from the bytes that arrived. */
   sha256?: string
+  sha512?: string
 }
 
 export interface PluginDependency {
