@@ -942,8 +942,8 @@ function LaunchCheckPanel({
  * one step further back: what the arguments should be when you already have a
  * server that works and no idea what is in its run.sh.
  *
- * The 列表 / 文本 pair at the far end switches how the same arguments are
- * shown. Both write one-per-line text and the row view can express nothing a
+ * The 卡片 / 文本 pair at the far end switches how the same arguments are
+ * shown. Both write one-per-line text and the card view can express nothing a
  * keyboard could not — so this is a view toggle, not two ways to configure a
  * JVM, and neither side has to be reachable from the other for a setting to be
  * settable.
@@ -984,7 +984,7 @@ function JVMPresets({
             aria-pressed={rows}
             onClick={() => onView(true)}
           >
-            列表
+            卡片
           </button>
           <button
             className={`chip${rows ? '' : ' chip--active'}`}
