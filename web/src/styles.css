@@ -3696,6 +3696,34 @@ a:hover {
   min-width: 0;
 }
 
+/* ------------------------------------------------------- argument presets
+
+   The row of ready-made argument sets above the JVM / 服务端参数 boxes, plus
+   the one line of "why you would pick this" the last press leaves behind.
+
+   Wrapping chips rather than a grid: there are three of them and they are as
+   wide as their own labels, so there is nothing to line up — at 390px they
+   simply take two rows. The 从启动脚本读… chip is pushed to the far end by
+   .chip--right, which puts the control that rewrites the whole form away from
+   the three that only fill one box. */
+.presets {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.presets__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.presets__note {
+  color: var(--text-dim);
+}
+
 /* ---------------------------------------------------------------- update */
 
 .update {

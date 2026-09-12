@@ -30,6 +30,16 @@ import (
 
 type parseScriptRequest struct {
 	Path string `json:"path"`
+	// Name and Text carry a script the operator picked on their own machine,
+	// which never reaches the disk: the browser reads the file and posts its
+	// contents. Uploading it into the server directory would leave a run.sh
+	// sitting next to a server the panel launches itself — a second, stale
+	// answer to "how does this start", and the one a human would find first.
+	//
+	// Name exists only to pick the dialect off the extension. It is never
+	// joined to a path.
+	Name string `json:"name"`
+	Text string `json:"text"`
 }
 
 // launchDraft is a parsed launch, in the shape the launch settings form takes.
@@ -116,6 +126,51 @@ func (s *Server) handleParseInstanceScript(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, parseScript(req.Path, req.Path, text))
+}
+
+// handleParseInstanceScriptText reads a script posted as text, for a file the
+// operator picked out of their own filesystem rather than the server's.
+//
+// It touches no file at all, so the confinement the other two routes need has
+// nothing to bite on here — what guards it is that the answer is only useful in
+// the launch form, which is what CapInstanceLaunch already governs.
+func (s *Server) handleParseInstanceScriptText(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.instanceFromPath(w, r); !ok {
+		return
+	}
+	// Its own cap rather than decodeJSON's, which is maxScriptBytes exactly:
+	// the field names, quoting and \n escaping around the script would push a
+	// legitimate file at the ceiling over it, and the operator would be told
+	// their request was malformed rather than that their file was too big. The
+	// cap belongs on the script; the envelope is not theirs to spend.
+	r.Body = http.MaxBytesReader(w, r.Body, 2*maxScriptBytes+64*1024)
+	var req parseScriptRequest
+	if err := decodeJSONBody(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "malformed request body")
+		return
+	}
+	if strings.TrimSpace(req.Text) == "" {
+		writeError(w, http.StatusBadRequest, "这个文件是空的，读不出启动参数")
+		return
+	}
+	if len(req.Text) > maxScriptBytes {
+		writeError(w, http.StatusBadRequest, "这个文件太大，不像启动脚本")
+		return
+	}
+	if strings.ContainsRune(req.Text, 0) {
+		// A Bedrock binary is also a file somebody can pick in a file dialog.
+		writeError(w, http.StatusBadRequest, "这不是一个文本文件，读不出启动参数")
+		return
+	}
+
+	// Basename only. The name decides the dialect and is echoed back as the
+	// label on the preview, so anything path-shaped in it is stripped rather
+	// than carried into the UI.
+	name := filepath.Base(strings.TrimSpace(req.Name))
+	if name == "." || name == string(filepath.Separator) {
+		name = "script.sh"
+	}
+	writeJSON(w, http.StatusOK, parseScript(name, name, req.Text))
 }
 
 // readScriptFile reads a host path, answering the two ways it can fail.
