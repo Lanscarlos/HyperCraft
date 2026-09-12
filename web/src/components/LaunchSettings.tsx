@@ -16,6 +16,7 @@ import { ENCODING_OPTIONS, isLive, LOADER_OPTIONS } from '../types'
 import { JVM_PRESETS } from '../jvmPresets'
 import { Button } from './Button'
 import { JVMArgsEditor } from './JVMArgsEditor'
+import { FieldHelp } from './FieldHelp'
 import { ScriptImportDialog } from './ScriptImportDialog'
 import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
@@ -468,9 +469,11 @@ export function LaunchSettings({
 
         <p className="muted">
           面板先从目录和 jar 名认，认不出来才用这里填的。
-          <strong>Forge 这类认不出来</strong> —— 没有 jar 名可读，
-          <code>version_history.json</code> 也只有 Paper 系才写。认不出来的后果很具体：
-          mod 会被装进 <code>plugins/</code> 而不是 <code>mods/</code>，插件市场里每一条也都标成「未知」。
+          <FieldHelp summary="哪些认不出来？">
+            <strong>Forge 这类认不出来</strong> —— 没有 jar 名可读，
+            <code>version_history.json</code> 也只有 Paper 系才写。认不出来的后果很具体：
+            mod 会被装进 <code>plugins/</code> 而不是 <code>mods/</code>，插件市场里每一条也都标成「未知」。
+          </FieldHelp>
         </p>
         </div>
       </section>
@@ -585,9 +588,12 @@ export function LaunchSettings({
               />
               <small>
                 一行一个，路径从实例目录算起，面板会按顺序拼成
-                <code> java @第一个 @第二个 …</code>。Forge 和 NeoForge 从 1.17 起就没有可以
-                直接跑的 jar 了，安装器留下的就是这两个文件 —— 照 <code>run.sh</code> 里那行抄过来即可。
+                <code> java @第一个 @第二个 …</code>。
               </small>
+              <FieldHelp summary="为什么 Forge 没有 jar？">
+                Forge 和 NeoForge 从 1.17 起就没有可以
+                直接跑的 jar 了，安装器留下的就是这两个文件 —— 照 <code>run.sh</code> 里那行抄过来即可。
+              </FieldHelp>
             </label>
 
             <div className="actions">
@@ -743,12 +749,13 @@ export function LaunchSettings({
             }))}
             onChange={(next) => update('encoding', next)}
           />
-          <small>
-            控制台按这个编码解读服务器输出、并按同样的编码发送命令。「自动」会让 JVM 用
+          <small>控制台按这个编码解读服务器输出、并按同样的编码发送命令。</small>
+          <FieldHelp summary="乱码了怎么办？">
+            「自动」会让 JVM 用
             UTF-8 输出，同时对不是 UTF-8 的行按系统编码兜底。用自己的脚本启动时，
             「让 JVM 用 UTF-8」这半件事要靠上面那个 <code>JAVA_TOOL_OPTIONS</code> 开关；
             那个关着、中文 Windows 上又乱码的话，这里改成 GBK 通常就好了。
-          </small>
+          </FieldHelp>
         </label>
 
         <label className="checkbox">
@@ -758,19 +765,22 @@ export function LaunchSettings({
             disabled={!ttySupported}
             onChange={(e) => update('tty', e.target.checked)}
           />
-          <span>使用终端模式（推荐）</span>
-          <small>
+          <div className="checkbox__text">
+            <span>使用终端模式（推荐）</span>
             {ttySupported ? (
               <>
-                把服务器跑在伪终端上，就像你自己在 SSH 里开着它一样。这样 Tab 补全由
-                <strong>正在运行的服务端</strong>回答（插件命令、真实玩家名都算数），
-                进度条不用等换行就能看到，颜色也不需要强制。代价是终端只有一条流，
-                stderr 不再单独标红。关掉则回到管道模式。
+                <small>Tab 补全由正在运行的服务端回答，进度条不用等换行就能看到。</small>
+                <FieldHelp>
+                  把服务器跑在伪终端上，就像你自己在 SSH 里开着它一样。这样 Tab 补全由
+                  <strong>正在运行的服务端</strong>回答（插件命令、真实玩家名都算数），
+                  进度条不用等换行就能看到，颜色也不需要强制。代价是终端只有一条流，
+                  stderr 不再单独标红。关掉则回到管道模式。
+                </FieldHelp>
               </>
             ) : (
-              <>本系统没有可用的伪终端（Windows 需要 ConPTY），所有实例都以管道模式运行。</>
+              <small>本系统没有可用的伪终端（Windows 需要 ConPTY），所有实例都以管道模式运行。</small>
             )}
-          </small>
+          </div>
         </label>
 
         <label className="checkbox">
@@ -780,15 +790,18 @@ export function LaunchSettings({
             disabled={form.tty && ttySupported}
             onChange={(e) => update('forceColor', e.target.checked)}
           />
-          <span>强制彩色输出（推荐）</span>
-          <small>
-            仅在管道模式下有意义：服务端只在检测到终端时才上色，所以管道模式会加上
-            <code> -Dterminal.jline=false -Dterminal.ansi=true</code>，让网页控制台和
-            cmd 里一样有颜色。终端模式下服务端本来就看得到终端，这两个参数不会被加上
-            —— <code>terminal.jline=false</code> 恰好会关掉终端模式想要的那个补全。
-            用自己的脚本启动时，这两个参数走
-            <code> JAVA_TOOL_OPTIONS</code> 送进去，要在上面把那个开关留着。
-          </small>
+          <div className="checkbox__text">
+            <span>强制彩色输出（推荐）</span>
+            <small>仅在管道模式下有意义，终端模式下这两个参数不会被加上。</small>
+            <FieldHelp>
+              服务端只在检测到终端时才上色，所以管道模式会加上
+              <code> -Dterminal.jline=false -Dterminal.ansi=true</code>，让网页控制台和
+              cmd 里一样有颜色。终端模式下服务端本来就看得到终端，这两个参数不会被加上
+              —— <code>terminal.jline=false</code> 恰好会关掉终端模式想要的那个补全。
+              用自己的脚本启动时，这两个参数走
+              <code> JAVA_TOOL_OPTIONS</code> 送进去，要在上面把那个开关留着。
+            </FieldHelp>
+          </div>
         </label>
         </div>
       </section>

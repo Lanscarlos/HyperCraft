@@ -2687,6 +2687,59 @@ a:hover {
   color: var(--text-dim);
 }
 
+/* A checkbox whose explanation folds: the tick box stays on the left and
+   everything describing it — the label, the one-line hint, the disclosure —
+   stacks in a column beside it. Without this wrapper the row's
+   align-items: flex-start pulls the <details> up into the tick box's column. */
+.checkbox__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The disclosure a long hint folds into. Styled as a quiet link rather than a
+   control: it is a footnote you may open, not a setting you must decide. */
+.field__help > summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--text-dim);
+  font-size: 11px;
+  list-style: none;
+}
+
+.field__help > summary::-webkit-details-marker {
+  display: none;
+}
+
+.field__help > summary::before {
+  content: '›';
+  display: inline-block;
+  margin-right: 5px;
+  transition: transform var(--dur) var(--ease);
+}
+
+.field__help[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.field__help > summary:hover {
+  color: var(--text);
+}
+
+.field__help > summary:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--ring);
+}
+
+.field__help-body {
+  margin-top: 6px;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 /* --------------------------------------------------------------- feedback */
 
 /* Off screen but still read out. Used to hand a screen reader the one sentence
