@@ -62,7 +62,7 @@
 
 - `App` 加一个 `workspace` 布尔 state。`data-rail` 的判断从 `!compact && railed` 变成 `!compact && (railed || workspace)`，传给 `Sidebar` 的 `railed` 同理。
 - **用户自己的 `railed` 不被改写**，所以退出编辑模式时自动回到他原本的折叠状态，不需要记「进来之前是什么样」。
-- 编辑模式下侧栏的折叠按钮和 `[` 快捷键要锁住，否则点了没反应会让人以为坏了：`Sidebar` 加 `railLocked` prop，按钮 `disabled` 并把 title 换成「编辑模式下侧栏保持图标条」；`App` 的 `[` 快捷键在 `workspace` 为真时直接返回。
+- 编辑模式下 `[` 快捷键要锁住，否则按了没反应会让人以为坏了：`App` 的 `[` 处理在 `workspace` 为真时直接返回。侧栏那个折叠按钮不用管——它只在 `scope === 'global'` 时渲染（`Sidebar.tsx:171`），而编辑模式必定在实例 scope 下，按钮根本不在场。
 - 状态怎么从 `FileManager` 传到 `App`：一路 props（`App` → `InstanceView` → `FileManager` 的 `onWorkspaceChange?: (full: boolean) => void`）。两层，显式，不引新的全局 store。
 
 **顶栏保留**。面包屑、状态灯、启动按钮都不藏——「改完配置立刻重启」正是面板比通用编辑器强的地方。
@@ -124,11 +124,13 @@
 
 颜色**全部走令牌**，light / dark 两个块都加，一行裸 hex 都不写：
 
-`--code-comment` / `--code-key` / `--code-string` / `--code-number` / `--code-bool` / `--code-punct` / `--code-heading` / `--code-selection`。
+`--code-comment` / `--code-key` / `--code-string` / `--code-number` / `--code-bool` / `--code-punct` / `--code-heading`。
+
+**每一条的值都写成 `var(--已有令牌)`**（注释走 `--text-faint`，键走 `--accent`，字符串走 `--ok-ink`／深色下 `--ok`，数字走 `--caution-ink`／`--caution`，布尔和关键字走 `--danger`，标点走 `--text-dim`）。面板有四套配色 × 明暗两种模式共八个令牌块；写成引用，就只需要动 sakura 的那两块，另外三套配色自动得到属于它们自己的一组颜色。
 
 映射到 Prism 的 class：`.token.comment/.prolog` → comment；`.token.key/.property/.attr-name` → key；`.token.string/.attr-value` → string；`.token.number` → number；`.token.boolean/.null/.keyword/.important` → bool；`.token.punctuation/.operator` → punct；`.token.title/.bold` → heading。**不引 Prism 自带的主题 CSS**。
 
-`color: transparent` 的 textarea 里选区仍然可见（选区画的是背景），但要给它一个明确的 `::selection` 背景令牌，不能靠浏览器默认色——深浅两套里它都得压得住高亮层的字。
+`color: transparent` 的 textarea 里选区仍然可见（选区画的是背景），但要给它一个明确的 `::selection` 配色，不能靠浏览器默认色——深浅两套里它都得压得住高亮层的字。样式表里已经有 `--selection` / `--on-selection`，直接用，不新增令牌。
 
 新令牌不准碰 `--term-*`（服务器控制台）和 `--shell-*`（主机 shell）。那两块画布在明暗两种模式下都要保持深色且明显不同色，这是防止把危险命令敲进错误终端的唯一屏障。
 
