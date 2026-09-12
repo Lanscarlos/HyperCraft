@@ -5513,6 +5513,19 @@ details[open]::details-content {
   font-size: 12px;
 }
 
+/* The controls that belong to a card rather than to one thing inside it: the
+   download source a list of installable builds is read from, the link to the
+   page that changes it. Pushed to the far end so the title and its count stay
+   together at the start — .chart-head is space-between, which on three
+   children would otherwise strand the count in the middle. */
+.chart-head__tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
 /* A second chart under the first inside one card — the two directions of
    network traffic. Quieter than the card's own title, because the card is the
    subject and these two are its halves. */
@@ -8602,6 +8615,58 @@ small.field__bad {
   overflow: hidden;
 }
 
+/* The shelf's column header.
+
+   A row used to carry its own labels — 体积 over 312 MB, 安装于 over the date
+   — on every one of them, which is a label repeated once per runtime for a
+   column that never changes. Naming the tracks once above the list gets that
+   height back and is what makes a shelf read as a table rather than as a pile
+   of cards that happen to line up.
+
+   The labels each row carries are still in the DOM, and that is the point:
+   below 1240px the tracks collapse and the numbers travel as a group (see the
+   media query), so the header stops mapping onto anything and hides itself
+   while the per-row labels come back. Which is also why this is aria-hidden in
+   the markup — a screen reader reads the <dt> beside the value, in both
+   layouts, and a header row it cannot associate with a cell would only say
+   every label twice.
+
+   Not part of the shelf's stagger: the entrance is for the things that
+   arrived, and a column header is furniture that was always going to be
+   there. */
+.asset-list__head {
+  display: none;
+  gap: 10px 16px;
+  padding: 7px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 11px;
+  animation: none;
+}
+
+.asset-list__head > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Only where the row is still six tracks wide, which is the one width the
+   header's own six can sit over. The template is repeated rather than shared
+   through a custom property because the row's is the authority — see the note
+   on .asset for why those four numbers are what they are. */
+@media (min-width: 1241px) {
+  .asset-list--titled > .asset-list__head {
+    display: grid;
+    grid-template-columns: minmax(0, 2.4fr) 96px 96px 148px minmax(0, 1.4fr) auto;
+  }
+
+  .asset-list--titled .asset__facts dt {
+    display: none;
+  }
+}
+
 /* The number tracks are fixed rather than fractional so each one reads
    straight down the page. Every row therefore has to fill all three, even
    when it has nothing to put there — see the placeholders in JavaPage.
@@ -8806,6 +8871,360 @@ small.field__bad {
   color: var(--text);
   white-space: nowrap;
   -webkit-overflow-scrolling: touch;
+}
+
+/* A row that is picked out of a shelf because something beside the shelf is
+   showing the rest of it. Same treatment the plugin table gives an open row —
+   the tint alone reads as hover on a list that also has hover, so the edge is
+   what actually says "this one". */
+.asset--picked {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.asset--picked:hover {
+  background: var(--accent-soft);
+}
+
+/* The name cell doubles as the row's hit target when there is a detail pane
+   to open. A button rather than a click handler on the row: the row is a grid
+   of six independent cells, two of which are already buttons. */
+.asset__pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+/* ------------------------------------------------------------ install tiles
+
+   What can be downloaded, one line each, with the button on the line. The
+   chooser below it is for a decision that has a second step (pick a version,
+   then pick JRE or JDK, then press install); this is for the case where the
+   line *is* the decision — an operator scanning eight builds for the one they
+   want does not want to select it first and then look for the button.
+
+   auto-fill rather than a column count: the same grid holds four Java majors
+   on the 资源库 page and a dozen MySQL point releases, and 280px is where a
+   version, its note and a button still read. */
+.pick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+}
+
+.pick {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  padding: 9px 11px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.pick:hover {
+  border-color: var(--border-strong);
+}
+
+/* The one the panel would pick for you: newest LTS, or the version already on
+   disk. Tinted rather than badged only, because on a grid of eight the badge
+   is the thing you have to go looking for. */
+.pick--on {
+  background: var(--accent-soft);
+  border-color: var(--border-accent);
+}
+
+.pick__tile {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  font-size: 13px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.pick--on .pick__tile {
+  background: var(--primary-container);
+  border-color: var(--border-accent);
+  color: var(--on-primary-container);
+}
+
+.pick__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.pick__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pick__name > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick__name .badge {
+  margin-left: 0;
+  flex: none;
+}
+
+.pick__meta {
+  color: var(--text-dim);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick > .btn {
+  flex: none;
+}
+
+/* ----------------------------------------------------------- setting rows
+
+   A switch with its own explanation, in a boxed list. The .field grammar puts
+   the label above the control, which is right for a form being filled in and
+   wrong for a page of settings that are already set: read down the left edge
+   and you get the list of things this page decides, with each answer on the
+   same line as its question. */
+.setting-list {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.setting-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 16px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.setting-row:last-child {
+  border-bottom: none;
+}
+
+/* A row whose control is what you choose it *with* — a radio for one of five
+   mirrors — puts that control first, where a list of choices is read from. */
+.setting-row--pick {
+  /* The trailing track is minmax(0, auto) rather than auto: it holds a proxy
+     prefix, and a self-hosted one is long enough to push the name out of the
+     row if the track is allowed to size to its content. */
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, auto);
+  cursor: pointer;
+}
+
+.setting-row--pick:hover {
+  background: var(--surface-2);
+}
+
+.setting-row--on {
+  background: var(--accent-soft);
+}
+
+.setting-row--on:hover {
+  background: var(--accent-soft);
+}
+
+.setting-row > input[type='radio'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.setting-row__label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.setting-row__label > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.setting-row__label small {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.setting-row__label code {
+  font-size: 11px;
+}
+
+.setting-row__control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  justify-self: end;
+}
+
+.setting-row__control code {
+  min-width: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A stored credential is the same kind of list item as a mirror, so it goes in
+   the same box. Its own padding was vertical only, from when the rows sat
+   loose on the card with nothing to be inset from. */
+.setting-list > .tokenrow {
+  padding: 10px 14px;
+}
+
+.setting-list > .tokenrow:last-child {
+  border-bottom: none;
+}
+
+/* --------------------------------------------------------- database detail
+
+   The table on the left says which databases exist; this says everything about
+   the one being looked at. They used to be one thing — every row carried its
+   own connection string, JDBC line and password — which made a list of four
+   databases four screens long, and put the one field somebody actually reads
+   character by character in a different place on the page each time.
+
+   356px because that is what a jdbc:mysql://127.0.0.1:3306/… line needs before
+   it starts scrolling inside its own box, and the table keeps the rest. */
+.dbsplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 356px;
+  align-items: start;
+  gap: 16px;
+}
+
+.dbsplit__main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.dbdetail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface-1);
+  background-image: linear-gradient(180deg, var(--sheen), transparent 96px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.dbdetail__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dbdetail__head strong {
+  min-width: 0;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dbdetail__sec {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dbdetail__sec:last-child {
+  border-bottom: none;
+}
+
+.dbdetail__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.dbdetail__label > :last-child {
+  margin-left: auto;
+}
+
+/* Field name, value, and the copy that is the reason the pane exists. The
+   name track is fixed so the values line up under each other; the value gets
+   the rest and clips, because a 64-character URI is what the 复制 button is
+   for. */
+.dbdetail__row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.dbdetail__row > span:first-child {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.dbdetail__row > code {
+  min-width: 0;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dbdetail__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 /* --------------------------------------------------------------- choosers
@@ -10427,6 +10846,18 @@ button.rows__name:hover strong {
   .asset__hole {
     display: none;
   }
+
+  /* The detail pane needs 356px and the table needs the rest; below this the
+     rest is no longer enough for six tracks (see the rule above), so the pane
+     goes under the table instead of beside it — capped, because a pane as wide
+     as the table sets 127.0.0.1:3306 in a box eleven hundred pixels long. */
+  .dbsplit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dbdetail {
+    max-width: 560px;
+  }
 }
 
 /* Under this width the sidebar stops being a column and becomes a drawer: it
@@ -11224,6 +11655,23 @@ button.rows__name:hover strong {
    about seventy. Stacked, each part gets the full measure — and the order is
    unchanged, so it still reads digest, file, then what you can do about it. */
 @media (max-width: 560px) {
+  /* The mirror's prefix drops under its name. Beside it on a 390px row the
+     name track is down to a third of the width and 「公共代理，速度看运气」
+     comes out one word per line — and the prefix is the half you read second,
+     after the name has already told you which proxy this is. */
+  .setting-row--pick {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .setting-row--pick > .setting-row__control {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .setting-row--pick > .setting-row__control:empty {
+    display: none;
+  }
+
   .arow {
     grid-template-columns: minmax(0, 1fr) auto;
     row-gap: 4px;

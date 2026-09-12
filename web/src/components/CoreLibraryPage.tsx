@@ -7,6 +7,7 @@ import type { CoreDownloadJob, ServerCore } from '../types'
 import type { CoreController } from '../useCores'
 import { CoreCatalogue, isRecommended, useCoreCatalogue } from './CoreCatalogue'
 import { Page } from './Page'
+import { Shelf } from './Shelf'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
 /**
@@ -110,11 +111,11 @@ export function CoreLibraryPage({
             </p>
           </div>
         ) : (
-          <div className="asset-list">
+          <Shelf head={['核心', '构建', '体积', '加入于', '使用中的实例', '']}>
             {stored.map((core) => (
               <CoreRow key={core.id} core={core} busy={busy} onRemove={() => void remove(core)} />
             ))}
-          </div>
+          </Shelf>
         )}
       </section>
       )}
