@@ -6430,6 +6430,239 @@ small.field__bad {
   white-space: nowrap;
 }
 
+/* ------------------------------------------------------ server.properties
+
+   The page answers three questions that the old flat form could not: where a
+   setting lives, what you have changed, and what happens when you save. The
+   rail is the first, the row markings are the second, and the bar at the foot
+   is the third.
+
+   What is deliberately *not* here is a 需重启 badge per row. The server reads
+   this file once, at startup, so every line in it waits for a restart — a
+   badge on all of them is read on none. The bar says it once. What varies is
+   the handful that can also be changed live from the console, and those rows
+   say so, but only once they are actually changed. */
+.cfg {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.cfg__rail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Sticks while the sections scroll under it; `top` clears the instance
+     pane's own head. */
+  position: sticky;
+  top: 0;
+  min-width: 0;
+}
+
+.cfg__filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.cfg__filter:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.cfg__filter--on {
+  background: var(--accent-soft);
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.cfg__filter:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.cfg__anchors {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cfg__anchor {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.cfg__anchor:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.cfg__anchor > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cfg__anchor > b {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.cfg__note,
+.cfg__path {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.cfg__path {
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.cfg__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* Scrolled to by the rail, so it needs room above it or the heading lands
+   under the sticky rail's first row. */
+.cfg__group {
+  scroll-margin-top: 12px;
+}
+
+.cfg__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The bar is the whole marking: a tinted row would read as selection, and a
+   changed row is not selected — it is different from the file. */
+.cfg__row--changed {
+  margin-left: -14px;
+  padding-left: 11px;
+  border-left: 3px solid var(--accent);
+}
+
+.cfg__name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The real key, beside the label that explains it. People who have edited this
+   file by hand know the key and not the label, and people who have not need
+   the key the moment they search the wiki for it. */
+.cfg__key {
+  padding: 0 5px;
+  background: var(--surface-3);
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.badge--changed {
+  margin-left: 0;
+  background: var(--accent-soft);
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.cfg__was {
+  color: var(--text-faint);
+}
+
+.cfg__was s {
+  font-family: var(--font-mono);
+}
+
+.cfg__risk {
+  color: var(--danger-ink);
+}
+
+.cfg__live code {
+  font-size: 11px;
+}
+
+.field--changed {
+  border-left: 3px solid var(--accent);
+  padding-left: 8px;
+}
+
+/* Only while there is something to save. Sticky rather than fixed so it stops
+   at the foot of the content column instead of floating over the sidebar. */
+.cfg__savebar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  padding: 12px 16px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  animation: rise var(--dur-3) var(--ease) both;
+}
+
+.cfg__savecount b {
+  font-variant-numeric: tabular-nums;
+}
+
+.cfg__savenote {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.cfg__saveactions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
 .progress {
   position: relative;
   height: 22px;
@@ -9162,6 +9395,37 @@ button.rows__name:hover strong {
 
 /* Below this the four columns stop fitting side by side, and a row that wraps
    mid-column reads worse than one that stacks. */
+@media (max-width: 900px) {
+  /* The rail stops being a rail: two columns at this width leaves the form
+     about 300px, and a select with 四个游戏模式 does not fit in that. It goes
+     above the sections as a row of chips that wraps, which is the same jump
+     targets in the shape this width has room for. */
+  .cfg {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cfg__rail {
+    position: static;
+  }
+
+  .cfg__anchors {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .cfg__anchor {
+    border: 1px solid var(--border);
+  }
+
+  /* Said once at the top of the page on this layout; repeating the path under
+     a wrapped chip row pushes the first setting off the screen. */
+  .cfg__note,
+  .cfg__path {
+    display: none;
+  }
+}
+
 @media (max-width: 900px) {
   .plugin-row {
     flex-wrap: wrap;

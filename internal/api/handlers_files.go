@@ -31,27 +31,63 @@ type knownPropertyUI struct {
 	// shows it for keys the file does not contain yet, so an unwritten
 	// online-mode reads as "on" rather than as a silently disabled setting.
 	Default string `json:"default"`
+	// Group is the section of the form this belongs to, and the rail down the
+	// left is built from these in table order. Empty is not allowed — see
+	// TestKnownPropertiesAreGrouped — because a key with no section would
+	// either drop off the rail or invent one.
+	Group string `json:"group,omitempty"`
+	// Live is the in-game command that applies this setting without a restart,
+	// for the few keys that have one.
+	//
+	// The obvious field here is the opposite one — a 需重启 flag per row — and
+	// it would be on every row: the server reads server.properties once, at
+	// startup, so every edit on this page waits for a restart. A badge that is
+	// always on is read by nobody. What actually varies is which handful can
+	// also be changed right now from the console, so that is what a row
+	// carries, and the restart is said once in the save bar where it is true
+	// of everything being saved.
+	Live string `json:"live,omitempty"`
+	// Risk spells out what goes wrong if this is set carelessly: a server
+	// anyone can walk into under someone else's name, a world that cannot be
+	// put back. Only the few keys that can do that carry one — a warning on
+	// every row is a warning on none.
+	Risk string `json:"risk,omitempty"`
 }
 
 var knownProperties = []knownPropertyUI{
-	{Key: "motd", Label: "服务器标语 (MOTD)", Type: "text", Default: "A Minecraft Server", Hint: "中文会自动转成 \\uXXXX 转义，游戏内显示正常"},
-	{Key: "server-port", Label: "端口", Type: "number", Default: "25565"},
-	{Key: "max-players", Label: "最大玩家数", Type: "number", Default: "20"},
-	{Key: "gamemode", Label: "默认游戏模式", Type: "select", Default: "survival", Options: []string{"survival", "creative", "adventure", "spectator"}},
-	{Key: "difficulty", Label: "难度", Type: "select", Default: "easy", Options: []string{"peaceful", "easy", "normal", "hard"}},
-	{Key: "level-name", Label: "存档名称", Type: "text", Default: "world"},
-	{Key: "level-seed", Label: "世界种子", Type: "text", Default: "", Hint: "留空为随机生成"},
-	{Key: "online-mode", Label: "正版验证", Type: "boolean", Default: "true", Hint: "离线服请关闭"},
-	{Key: "pvp", Label: "允许 PVP", Type: "boolean", Default: "true"},
-	{Key: "white-list", Label: "启用白名单", Type: "boolean", Default: "false"},
-	{Key: "enable-command-block", Label: "启用命令方块", Type: "boolean", Default: "false"},
-	{Key: "spawn-protection", Label: "出生点保护半径", Type: "number", Default: "16"},
-	{Key: "view-distance", Label: "视距 (区块)", Type: "number", Default: "10"},
-	{Key: "simulation-distance", Label: "模拟距离 (区块)", Type: "number", Default: "10"},
-	{Key: "allow-flight", Label: "允许飞行", Type: "boolean", Default: "false"},
-	{Key: "allow-nether", Label: "允许下界", Type: "boolean", Default: "true"},
-	{Key: "hardcore", Label: "极限模式", Type: "boolean", Default: "false"},
-	{Key: "enforce-secure-profile", Label: "强制安全档案", Type: "boolean", Default: "true"},
+	// 基础
+	{Key: "motd", Label: "服务器标语 (MOTD)", Type: "text", Default: "A Minecraft Server", Hint: "中文会自动转成 \\uXXXX 转义，游戏内显示正常", Group: "基础"},
+	{Key: "gamemode", Label: "默认游戏模式", Type: "select", Default: "survival", Options: []string{"survival", "creative", "adventure", "spectator"}, Group: "基础", Live: "/defaultgamemode <模式>"},
+	{Key: "difficulty", Label: "难度", Type: "select", Default: "easy", Options: []string{"peaceful", "easy", "normal", "hard"}, Group: "基础", Live: "/difficulty <难度>"},
+	{Key: "pvp", Label: "允许 PVP", Type: "boolean", Default: "true", Group: "基础"},
+	{Key: "hardcore", Label: "极限模式", Type: "boolean", Default: "false", Group: "基础",
+		Risk: "开启后玩家死亡即永久旁观，且这个改动对已有存档不可逆"},
+
+	// 世界与生成
+	{Key: "level-name", Label: "存档名称", Type: "text", Default: "world", Group: "世界与生成",
+		Risk: "改成一个不存在的名字会直接生成新世界：原存档不会被删掉，但服务器从此不再加载它"},
+	{Key: "level-seed", Label: "世界种子", Type: "text", Default: "", Hint: "留空为随机生成", Group: "世界与生成"},
+	{Key: "allow-nether", Label: "允许下界", Type: "boolean", Default: "true", Group: "世界与生成"},
+
+	// 玩家与权限
+	{Key: "max-players", Label: "最大玩家数", Type: "number", Default: "20", Group: "玩家与权限"},
+	{Key: "online-mode", Label: "正版验证", Type: "boolean", Default: "true", Group: "玩家与权限",
+		Risk: "关闭后任何人都能冒用他人 ID 进入，必须配合前置验证插件，且不要直接暴露在公网"},
+	{Key: "white-list", Label: "启用白名单", Type: "boolean", Default: "false", Group: "玩家与权限", Live: "/whitelist on"},
+	{Key: "enable-command-block", Label: "启用命令方块", Type: "boolean", Default: "false", Group: "玩家与权限"},
+	{Key: "spawn-protection", Label: "出生点保护半径", Type: "number", Default: "16", Group: "玩家与权限"},
+	{Key: "allow-flight", Label: "允许飞行", Type: "boolean", Default: "false", Group: "玩家与权限",
+		Hint: "关着的时候，飞行类插件和鞘翅加速容易被服务端判定为作弊踢出"},
+	{Key: "enforce-secure-profile", Label: "强制安全档案", Type: "boolean", Default: "true", Group: "玩家与权限"},
+
+	// 网络与端口
+	{Key: "server-port", Label: "端口", Type: "number", Default: "25565", Group: "网络与端口"},
+
+	// 性能
+	{Key: "view-distance", Label: "视距 (区块)", Type: "number", Default: "10", Group: "性能",
+		Hint: "对 TPS 影响最大的单项设置，8–12 通常是性价比区间"},
+	{Key: "simulation-distance", Label: "模拟距离 (区块)", Type: "number", Default: "10", Group: "性能",
+		Hint: "比视距更吃 CPU：只有这个半径内的实体和红石才真的在跑"},
 }
 
 func (s *Server) propertiesPath(dir string) string {

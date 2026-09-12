@@ -245,6 +245,16 @@ export interface KnownProperty {
   hint?: string
   /** What Minecraft uses when the key is absent from the file. */
   default: string
+  /** The section of the form this belongs to, and what the rail down the left
+   *  is built from. Blank falls into 未分类 rather than disappearing. */
+  group?: string
+  /** The in-game command that applies this without a restart, for the few
+   *  keys that have one. See the note in handlers_files.go for why the row
+   *  carries this rather than a 需重启 flag. */
+  live?: string
+  /** What goes wrong if this is set carelessly. Only on the keys that can open
+   *  a server up or cannot be undone. */
+  risk?: string
 }
 
 export interface PropertiesResponse {
