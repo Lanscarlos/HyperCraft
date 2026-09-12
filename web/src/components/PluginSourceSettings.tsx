@@ -112,15 +112,19 @@ function GitHubTokenPanel({
         「检查全部更新」一次就是一个插件一次调用，插件一多就不够用。
       </p>
 
-      {tokens.map((entry) => (
-        <TokenRow
-          key={entry.id}
-          token={entry}
-          busy={busy}
-          onUpdate={onUpdate}
-          onRemove={onRemove}
-        />
-      ))}
+      {tokens.length > 0 && (
+        <div className="setting-list">
+          {tokens.map((entry) => (
+            <TokenRow
+              key={entry.id}
+              token={entry}
+              busy={busy}
+              onUpdate={onUpdate}
+              onRemove={onRemove}
+            />
+          ))}
+        </div>
+      )}
 
       <form onSubmit={(event) => void save(event)}>
         <div className="field-row">
@@ -318,47 +322,66 @@ function MirrorPanel({
 
   return (
     <section className="panel">
-      <h2 className="panel__title">下载源</h2>
+      <div className="chart-head">
+        <h2 className="panel__title">下载源</h2>
+        <p className="chart-head__meta">{mirrors.length + 1} 个可选，一次用一个</p>
+      </div>
       <p className="chart-note">
         只影响 jar 的下载速度：版本列表、更新检查始终直连 api.github.com（这些代理不代理它），
         私有仓库的 jar 也只走认证过的 API，不会经过任何第三方。
       </p>
 
-      {mirrors.map((mirror) => (
-        <label className="checkbox" key={mirror.id}>
+      {/* One boxed list rather than a column of loose radios: these are five
+          answers to one question, and a bordered list is what says so. The
+          prefix goes in a column of its own — it is the half that tells you
+          whether a proxy is the one you set up. */}
+      <div className="setting-list">
+        {mirrors.map((mirror) => (
+          <label
+            className={`setting-row setting-row--pick${
+              selection === mirror.id ? ' setting-row--on' : ''
+            }`}
+            key={mirror.id}
+          >
+            <input
+              type="radio"
+              name="plugin-mirror"
+              checked={selection === mirror.id}
+              disabled={busy}
+              onChange={() => {
+                setEditing(false)
+                void onChange(mirror.id)
+              }}
+            />
+            <span className="setting-row__label">
+              <span>{mirror.name}</span>
+              <small>{mirror.note}</small>
+            </span>
+            <span className="setting-row__control">
+              {mirror.prefix && <code>{mirror.prefix}</code>}
+            </span>
+          </label>
+        ))}
+
+        <label
+          className={`setting-row setting-row--pick${
+            selection === 'custom' ? ' setting-row--on' : ''
+          }`}
+        >
           <input
             type="radio"
             name="plugin-mirror"
-            checked={selection === mirror.id}
+            checked={selection === 'custom'}
             disabled={busy}
-            onChange={() => {
-              setEditing(false)
-              void onChange(mirror.id)
-            }}
+            onChange={() => setEditing(true)}
           />
-          <span>
-            {mirror.name}
-            <small style={{ display: 'block' }}>
-              {mirror.note}
-              {mirror.prefix && ` · ${mirror.prefix}`}
-            </small>
+          <span className="setting-row__label">
+            <span>自定义</span>
+            <small>自己搭的代理，填前缀，GitHub 链接会拼在它后面</small>
           </span>
+          <span className="setting-row__control" />
         </label>
-      ))}
-
-      <label className="checkbox">
-        <input
-          type="radio"
-          name="plugin-mirror"
-          checked={selection === 'custom'}
-          disabled={busy}
-          onChange={() => setEditing(true)}
-        />
-        <span>
-          自定义
-          <small style={{ display: 'block' }}>自己搭的代理，填前缀，GitHub 链接会拼在它后面</small>
-        </span>
-      </label>
+      </div>
 
       {editing && (
         <div className="update__mirror-custom">
