@@ -185,6 +185,19 @@
   --selection: var(--primary-container);
   --on-selection: var(--on-primary-container);
 
+  /* The editor's syntax colours. Every one is a reference rather than a hue of
+     its own, so the other three palettes inherit a set that belongs to them
+     without redefining anything. Five roles is the whole scheme: what you are
+     meant to skip (comments), what names a setting (keys), and the three
+     shapes a value comes in. A rainbow would be a legend to memorise. */
+  --code-comment: var(--text-faint);
+  --code-key: var(--accent);
+  --code-string: var(--ok-ink);
+  --code-number: var(--caution-ink);
+  --code-bool: var(--danger);
+  --code-punct: var(--text-dim);
+  --code-heading: var(--text);
+
   /* The terminal keeps a dark canvas in both modes: Minecraft's log colours
      are ANSI, and ANSI is written for a dark background. On light that canvas
      is the scheme's own inverse surface, which is exactly what M3 reserves
@@ -317,6 +330,20 @@
   --caution: #e0b13a;
   --caution-ink: #e8d9ae;
   --caution-soft: rgba(216, 197, 141, 0.12);
+
+  /* Same seven roles as the light block, with the two value hues taken from
+     the plain step rather than the `-ink` one. `-ink` moves towards the mode's
+     text colour, which on light means darker (what a white page needs) and on
+     dark means paler — and a pale green sitting next to near-white text stops
+     reading as a different kind of thing. The saturated step is what keeps a
+     value distinguishable from the prose around it here. */
+  --code-comment: var(--text-faint);
+  --code-key: var(--accent);
+  --code-string: var(--ok);
+  --code-number: var(--caution);
+  --code-bool: var(--danger);
+  --code-punct: var(--text-dim);
+  --code-heading: var(--text);
 
   /* The ladder read from the other end: the page is the darkest step and a
      card is one lighter, where light has the page tinted and the card white. */
@@ -3076,6 +3103,24 @@ a:hover {
   padding-top: 0;
 }
 
+/* The same third form, for a section that lives in an instance pane rather
+   than in a Page. The pane brings its own scrolling, which is exactly what a
+   full-bleed workspace must not have on top of its own: two nested scrollers
+   means the editor never reaches the bottom of the window. */
+.instance__pane .stack--full {
+  max-width: none;
+  flex: 1;
+  min-height: 0;
+  /* .stack's 40px foot is breathing room under the last card of a page you
+     scroll. A workspace does not scroll and has no last card — that padding is
+     just 40px the editor cannot reach the bottom of the window through. */
+  padding-bottom: 0;
+}
+
+.instance__pane--scroll:has(.stack--full) {
+  overflow: hidden;
+}
+
 
 /* ------------------------------------------------------------- cockpit
 
@@ -4968,6 +5013,22 @@ details[open]::details-content {
   max-width: var(--content-max-wide);
 }
 
+/* The third form: a full-bleed workspace. Not a third width — the absence of
+   one. What goes in here is a canvas that should take every pixel it is given
+   (the file pane's edit mode), not a column of content, so it also keeps the
+   scrolling inside itself rather than handing it to .page. Prose and tiles are
+   still the whole of the choice for anything you read rather than work in. */
+.page--full {
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+
+.page--full > * {
+  max-width: none;
+}
+
 .welcome h1 {
   font-size: 22px;
   margin: 0 0 8px;
@@ -6275,7 +6336,12 @@ details[open]::details-content {
   box-shadow: var(--ring);
 }
 
+/* Three layers that have to agree to the pixel: the numbers in the margin, the
+   colours underneath, and the text actually being typed into. One declaration,
+   three selectors — a second copy of any of these five properties is a drift
+   waiting to happen, and it shows up as colour sliding off the words. */
 .editor__gutter,
+.editor__hl,
 .editor__text {
   padding: 12px 0;
   font-family: var(--font-mono);
@@ -6313,6 +6379,88 @@ details[open]::details-content {
 
 .editor__text:focus {
   outline: none;
+}
+
+/* A flex row of one, so the textarea keeps stretching to the full height of
+   the box. It used to be a direct child of .editor and got that for free;
+   moving it in here to have something to position the overlay against took it
+   away, and the result was a 65px-tall textarea under a full-height overlay —
+   which *looks* right and puts the caret in the wrong place. */
+.editor__wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+/* The coloured copy, sitting under the real one. It scrolls by having its
+   offsets written from the textarea's own scroll event rather than by
+   scrolling itself, which is the same trick the gutter has always used. */
+.editor__hl {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding-right: 14px;
+  padding-left: 14px;
+  overflow: hidden;
+  color: var(--text);
+  white-space: pre;
+  pointer-events: none;
+}
+
+/* The typed text goes invisible and the layer below shows through. The caret
+   and the selection do not follow it into transparency, which is why both are
+   named here instead of inheriting a colour that is now `transparent`. */
+.editor__text--lit {
+  position: relative;
+  color: transparent;
+  caret-color: var(--text);
+}
+
+.editor__text--lit::selection {
+  background: var(--selection);
+  color: var(--on-selection);
+}
+
+.editor__hl .token.comment,
+.editor__hl .token.prolog {
+  color: var(--code-comment);
+  font-style: italic;
+}
+
+.editor__hl .token.key,
+.editor__hl .token.property,
+.editor__hl .token.attr-name,
+.editor__hl .token.selector {
+  color: var(--code-key);
+}
+
+.editor__hl .token.string,
+.editor__hl .token.attr-value {
+  color: var(--code-string);
+}
+
+.editor__hl .token.number {
+  color: var(--code-number);
+}
+
+.editor__hl .token.boolean,
+.editor__hl .token.null,
+.editor__hl .token.keyword,
+.editor__hl .token.important,
+.editor__hl .token.tag {
+  color: var(--code-bool);
+}
+
+.editor__hl .token.punctuation,
+.editor__hl .token.operator {
+  color: var(--code-punct);
+}
+
+.editor__hl .token.title,
+.editor__hl .token.bold {
+  color: var(--code-heading);
+  font-weight: 600;
 }
 
 /* ---- dialogs ---------------------------------------------------------- */
@@ -6939,6 +7087,101 @@ small.field__bad {
   align-items: start;
 }
 
+/* Edit mode: the tree and the editor, and nothing between them. The listing is
+   not narrowed here, it is gone — a column of file sizes beside an open config
+   is exactly the width that was making the config scroll sideways. */
+.fm--editing {
+  grid-template-columns: 260px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  /* Both panes run the full height of the pane rather than sitting at the top
+     of it: what the mode buys is vertical room, and `start` would hand it back. */
+  align-items: stretch;
+}
+
+.fm--editing .fm__tree {
+  display: flex;
+  flex-direction: column;
+  max-height: none;
+  min-height: 0;
+}
+
+/* Every layer from the pane down has to give up its content height, or the
+   editor sizes to its text and pushes a second scrollbar onto the page. This
+   is the repo's most frequent layout bug, and a four-deep flex column is where
+   it likes to happen. */
+.fm--editing .fm__editor,
+.fm--editing .fm__editor > .stack,
+.fm--editing .editor-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* .stack's own 40px foot, again — the editor wraps in one of its own, and the
+   padding there is 40px the box cannot reach the bottom of the pane through. */
+.fm--editing .fm__editor > .stack {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* Outside the mode the editor is a fixed box you can drag taller. Inside it,
+   it is the page. */
+.fm--editing .editor {
+  height: auto;
+  flex: 1;
+  min-height: 0;
+  resize: none;
+}
+
+/* Only the layout below 1024 hides the listing behind a button. In edit mode
+   the listing is not somewhere else, it is off. */
+.fm--editing .editor__back {
+  display: none;
+}
+
+.fm--editing .fm__blank {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Folded away: the editor takes the whole row. The button that brings the tree
+   back lives on the editor's own head, because with the tree gone there is
+   nothing else on screen to put it on. */
+.fm--editing[data-tree='off'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.fm--editing[data-tree='off'] .fm__tree {
+  display: none;
+}
+
+.editor__tree {
+  align-self: flex-start;
+}
+
+/* Two columns fit here, but not two comfortable ones. So the tree comes back
+   *over* the editor instead of taking a quarter of a width that is already
+   short — the editor keeps the row either way, and nothing reflows when the
+   tree opens and shuts. */
+@media (max-width: 1200px) {
+  .fm--editing {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fm--editing[data-tree='on'] .fm__tree {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 260px;
+    box-shadow: var(--shadow-lg);
+  }
+}
+
 /* The listing's own column-dropping is keyed to the viewport, which stopped
    being a fair proxy for its width the moment it became one of three panes: at
    a 1440px window this panel is about 450px wide, which is the width the
@@ -6981,6 +7224,76 @@ small.field__bad {
   font-size: 13px;
 }
 
+/* Edit mode only: the four buttons the listing's toolbar was carrying, at icon
+   size because the tree column is 260px and five labels do not fit in it. */
+.ftree__bar {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Pushed to the far end of the row: leaving the mode is not one of the four
+   things you do inside it. */
+.ftree__leave {
+  margin-left: auto;
+}
+
+/* Where 上传 and 新建 will land. The listing used to say this in its
+   breadcrumb; in edit mode the breadcrumb is off screen. Truncated from the
+   left, because when plugins/Atalanta/artifact/model/armor does not fit, the
+   part worth keeping is the end. */
+.ftree__where {
+  flex: 0 0 auto;
+  overflow: hidden;
+  margin: 6px 0 4px;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  direction: rtl;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ftree__find {
+  flex: 0 0 auto;
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+/* The tree itself takes what is left and scrolls inside it, so the toolbar and
+   the filter box stay put while a long tree moves under them. */
+.fm--editing .ftree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Out of the way until the row is under the pointer or the keyboard. Hidden
+   with opacity rather than display so the row does not change width when it
+   appears — a tree that reflows under the pointer is a tree you misclick. */
+.ftree__more {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.ftree__row:hover .ftree__more,
+.ftree__row:focus-within .ftree__more,
+.ftree__more:focus-visible {
+  opacity: 1;
+}
+
+.ftree__more:hover {
+  color: var(--text);
+}
+
 .ftree__row {
   display: flex;
   align-items: center;
@@ -6993,6 +7306,30 @@ small.field__bad {
   transition:
     background var(--dur) var(--ease),
     color var(--dur) var(--ease);
+}
+
+.ftree__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The same mark the tab strip uses, for the same fact. Pushed to the right
+   edge so a column of them reads as one list of "these are unsaved". */
+.ftree__dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+/* The tree's icons sit in a 26px row rather than a table cell, so they must
+   not take the listing's own sizing with them. */
+.ftree .fileicon {
+  flex: 0 0 auto;
 }
 
 .ftree__row:hover {
@@ -7033,8 +7370,14 @@ small.field__bad {
   cursor: default;
 }
 
+/* A row of three now — icon, name, unsaved dot — rather than a bare label, so
+   it lays them out itself. The ellipsis moved onto .ftree__label with the
+   text: a flex container cannot truncate what it does not directly hold. */
 .ftree__name {
+  display: flex;
   flex: 1;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
   overflow: hidden;
   padding: 0;
@@ -7044,8 +7387,6 @@ small.field__bad {
   cursor: pointer;
   font: inherit;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .ftree__wait {
