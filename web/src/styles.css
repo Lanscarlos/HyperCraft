@@ -6444,6 +6444,328 @@ small.field__bad {
   white-space: nowrap;
 }
 
+/* ---------------------------------------------------------------- 文件页
+
+   Tree / listing / editor. The editor used to replace the listing outright —
+   one file at a time, and comparing two configs meant closing the first and
+   remembering what it said — which is the difference between a file manager
+   people use and one they SSH around.
+
+   The editor takes the largest share because it holds content; the two rails
+   beside it are navigation. */
+.fm {
+  display: grid;
+  /* Even shares between the listing and the editor. The editor holding more
+     content is not a reason to give it more width here: the listing has five
+     columns and a toolbar, and starving it is what made 修改时间 fall off the
+     right edge of its own panel. */
+  grid-template-columns: 220px minmax(340px, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+  align-items: start;
+}
+
+/* The listing's own column-dropping is keyed to the viewport, which stopped
+   being a fair proxy for its width the moment it became one of three panes: at
+   a 1440px window this panel is about 450px wide, which is the width the
+   viewport rules call 820. So the same column goes at the same width, judged
+   where it actually applies. 修改时间 is still on each row's tooltip. */
+.fm .data-table--files col.col--time,
+.fm .data-table--files th:nth-child(4),
+.fm .data-table--files td:nth-child(4) {
+  display: none;
+}
+
+/* Below the three-pane layout the listing has the page to itself again, so the
+   column comes back and the viewport rules take over. */
+@media (max-width: 1024px) {
+  .fm .data-table--files col.col--time,
+  .fm .data-table--files th:nth-child(4),
+  .fm .data-table--files td:nth-child(4) {
+    display: table-cell;
+  }
+
+  .fm .data-table--files col.col--time {
+    display: table-column;
+  }
+}
+
+.fm__tree {
+  min-width: 0;
+  max-height: 70vh;
+  overflow: auto;
+  padding: 8px 6px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.ftree {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+}
+
+.ftree__row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  height: 26px;
+  padding-right: 6px;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.ftree__row:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.ftree__row--on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.ftree__twist {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: transform var(--dur) var(--ease);
+}
+
+.ftree__twist--open {
+  transform: rotate(90deg);
+}
+
+.ftree__twist svg {
+  width: 13px;
+  height: 13px;
+}
+
+.ftree__twist:disabled {
+  cursor: default;
+}
+
+.ftree__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ftree__wait {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text-faint);
+  animation: pulse 1.2s var(--ease) infinite;
+}
+
+.fm__editor {
+  min-width: 0;
+}
+
+/* A placeholder rather than a collapsed track: without it the listing beside
+   it jumps several hundred pixels wider the moment a file is opened, and back
+   again when it is closed — on every open and every close. */
+.fm__blank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 280px;
+  padding: 24px;
+  background: var(--surface-1);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.fm__blank svg {
+  width: 28px;
+  height: 28px;
+  color: var(--text-faint);
+}
+
+.fm__blank p {
+  margin: 0;
+}
+
+.editor-pane {
+  min-width: 0;
+}
+
+/* One row per open file, scrolling sideways rather than wrapping: a wrapped
+   tab strip changes height as files are opened and shoves the editor down. */
+.etabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.etabs__tab {
+  display: flex;
+  align-items: center;
+  flex: none;
+  max-width: 220px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.etabs__tab:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.etabs__tab--on {
+  background: var(--accent-soft);
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.etabs__pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 4px 6px 8px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.etabs__pick .fileicon {
+  flex: none;
+}
+
+/* The one unsaved marker that survives switching away from a file: the line at
+   the foot only ever describes whichever tab is in front. */
+.etabs__dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.etabs__close {
+  padding: 0 6px 0 2px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.etabs__close:hover {
+  opacity: 1;
+}
+
+.editor__back {
+  /* Wide layouts show the listing beside this, so the way back is to look
+     left. It only earns a row where the listing is off screen. */
+  display: none;
+  align-self: flex-start;
+  padding: 4px 8px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.editor__back:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.editor__status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding-top: 2px;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor__status-right {
+  margin-left: auto;
+}
+
+/* Below this the three columns cannot all be useful — the listing alone wants
+   300px and the editor more — so the page shows one at a time: whatever is
+   open, or the listing when nothing is. The tree goes entirely; the listing's
+   own breadcrumb and 返回上一级 already walk the tree, and the tree was the
+   addition, not the replacement.
+
+   Kept in step with App.tsx's DRAWER_QUERY, which is the same 1024. */
+@media (max-width: 1024px) {
+  .fm {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fm__tree {
+    display: none;
+  }
+
+  .fm[data-pane='editor'] .files {
+    display: none;
+  }
+
+  .fm[data-pane='list'] .fm__editor {
+    display: none;
+  }
+
+  .editor__back {
+    display: inline-flex;
+  }
+}
+
 /* One tab bar, and this is it: the plugins page's 已安装 / 可更新 / 市场.
    Built from the panel's chip vocabulary rather than a component of its own,
    so a tab and a filter chip read as the same kind of control — which they

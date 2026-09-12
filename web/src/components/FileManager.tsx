@@ -6,6 +6,7 @@ import { ask } from '../confirm'
 import { formatBytes, formatDate, formatSince } from '../format'
 import { toast } from '../toast'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
+import { FileTree } from './FileTree'
 import { Modal } from './Modal'
 import { PageHead } from './Page'
 import { SchematicPreview } from './SchematicPreview'
@@ -69,7 +70,20 @@ export function FileManager({
 }) {
   const [dir, setDir] = useState('')
   const [listing, setListing] = useState<FileListing | null>(null)
-  const [editor, setEditor] = useState<EditorState | null>(null)
+  // Open files, in the order they were opened, and which one is in front.
+  //
+  // It used to be one file at a time, and the editor replaced the listing
+  // while it was open: comparing two configs meant closing one, finding the
+  // other, and remembering what the first one said. Tabs are the whole reason
+  // the pane beside the list is worth having.
+  const [tabs, setTabs] = useState<EditorState[]>([])
+  const [activeTab, setActiveTab] = useState<string | null>(null)
+  // Which of the two the narrow layout is showing. Only that layout reads it —
+  // wide shows all three panes at once — but it has to live here because
+  // opening a file is what flips it, and closing the last tab is not the only
+  // way back: with two files open there would otherwise be no way to reach the
+  // listing without closing both.
+  const [narrowPane, setNarrowPane] = useState<'list' | 'editor'>('list')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
@@ -124,13 +138,44 @@ export function FileManager({
     [instance.id],
   )
 
+  const editor = useMemo(
+    () => tabs.find((tab) => tab.path === activeTab) ?? null,
+    [tabs, activeTab],
+  )
+
+  /** Brings a file to the front, opening a tab for it if it has none. A file
+   *  already open is never re-read: it may have unsaved edits in it. */
+  const openEditor = useCallback((next: EditorState) => {
+    setTabs((current) =>
+      current.some((tab) => tab.path === next.path) ? current : [...current, next],
+    )
+    setActiveTab(next.path)
+    setNarrowPane('editor')
+  }, [])
+
+  /** Edits the tab in front. */
+  const patchActive = useCallback(
+    (patch: Partial<EditorState>) => {
+      setTabs((current) =>
+        current.map((tab) => (tab.path === activeTab ? { ...tab, ...patch } : tab)),
+      )
+    },
+    [activeTab],
+  )
+
+  const closeAll = useCallback(() => {
+    setTabs([])
+    setActiveTab(null)
+    setNarrowPane('list')
+  }, [])
+
   /** Opens a file in the editor by path, for callers that never had a row to
    *  click — the jump from 配置历史 arrives with a path and nothing else. */
   const openPath = useCallback(
     async (path: string) => {
       try {
         const file = await api.readFile(instance.id, path)
-        setEditor({ path, content: file.content, original: file.content })
+        openEditor({ path, content: file.content, original: file.content })
         setError(null)
       } catch (err) {
         setError(err instanceof Error ? err.message : '打开文件失败')
@@ -140,9 +185,9 @@ export function FileManager({
   )
 
   useEffect(() => {
-    setEditor(null)
+    closeAll()
     void load('')
-  }, [instance.id, load])
+  }, [instance.id, load, closeAll])
 
   // Keyed on the token alone: the path is read when it fires, and adding it to
   // the dependencies would re-navigate on an unrelated render that happened to
@@ -151,7 +196,7 @@ export function FileManager({
   jumpTo.current = jump
   useEffect(() => {
     if (jump?.token === undefined) return
-    setEditor(null)
+    closeAll()
     const target = jumpTo.current
     void (async () => {
       await load(target?.path ?? '')
@@ -163,7 +208,14 @@ export function FileManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jump?.token, load])
 
-  const refresh = () => void load(dir)
+  // Bumped so the tree drops what it cached: 刷新 means "read the disk again",
+  // and a tree still showing a folder that was deleted elsewhere is exactly
+  // what the button is pressed about.
+  const [treeKey, setTreeKey] = useState(0)
+  const refresh = () => {
+    setTreeKey((key) => key + 1)
+    void load(dir)
+  }
 
   /**
    * "Type a name", as a promise — the same shape as `ask` in confirm.ts, and
@@ -278,7 +330,7 @@ export function FileManager({
     try {
       await api.writeFile(instance.id, path, '')
       await load(dir)
-      setEditor({ path, content: '', original: '' })
+      openEditor({ path, content: '', original: '' })
       toast(`已创建 ${name}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建失败')
@@ -400,7 +452,7 @@ export function FileManager({
     setError(null)
     try {
       await api.writeFile(instance.id, editor.path, editor.content)
-      setEditor({ ...editor, original: editor.content })
+      patchActive({ original: editor.content })
       toast(`已保存 ${baseName(editor.path)}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')
@@ -409,18 +461,29 @@ export function FileManager({
     }
   }
 
-  const closeEditor = async () => {
-    if (editor && editor.content !== editor.original) {
+  /** Closes one tab, asking first if it still holds unsaved edits. */
+  const closeTab = async (path: string) => {
+    const target = tabs.find((tab) => tab.path === path)
+    if (target && target.content !== target.original) {
       const ok = await ask({
         title: '放弃未保存的修改？',
-        lead: `${baseName(editor.path)} 有改动还没有保存，返回列表会丢掉它们。`,
+        lead: `${baseName(path)} 有改动还没有保存，关掉这个标签会丢掉它们。`,
         confirmLabel: '放弃修改',
         danger: true,
       })
       if (!ok) return
     }
-    setEditor(null)
+    const index = tabs.findIndex((tab) => tab.path === path)
+    const rest = tabs.filter((tab) => tab.path !== path)
+    setTabs(rest)
+    if (activeTab === path) {
+      // The neighbour on the left, or the new first one: closing the tab you
+      // were reading should leave you next to where you were, not nowhere.
+      setActiveTab(rest[Math.max(0, index - 1)]?.path ?? null)
+    }
   }
+
+  const closeEditor = () => void closeTab(activeTab ?? '')
 
   /** The rows actually on screen: the directory, filtered and ordered. */
   const rows = useMemo(() => {
@@ -510,24 +573,6 @@ export function FileManager({
     )
   }
 
-  if (editor) {
-    return (
-      <>
-        <FileEditor
-          editor={editor}
-          busy={busy}
-          error={error}
-          onChange={(content) => setEditor({ ...editor, content })}
-          onSave={() => void saveEditor()}
-          onRevert={() => setEditor({ ...editor, content: editor.original })}
-          onClose={() => void closeEditor()}
-          onOpenHistory={onOpenHistory && (() => onOpenHistory(editor.path))}
-        />
-        {dialogs}
-      </>
-    )
-  }
-
   const folders = entries.filter((entry) => entry.isDir).length
   const files = entries.length - folders
   const totalBytes = entries.reduce((sum, entry) => sum + (entry.isDir ? 0 : entry.size), 0)
@@ -556,7 +601,25 @@ export function FileManager({
         void upload(Array.from(event.dataTransfer.files))
       }}
     >
-      <PageHead title="文件" lead="服务器目录里的东西：jar、存档、配置和日志。" />
+      <PageHead
+        title="文件"
+        lead="服务器目录里的东西：jar、存档、配置和日志。点一个文件直接打开，可以同时开着几个对照。"
+      />
+
+      {/* Tree, listing, editor. The editor used to replace the listing — one
+          file at a time, and comparing two configs meant closing the first and
+          remembering what it said. `data-pane` is what the narrow layout reads:
+          below 1024 there is only room for one of these, and which one depends
+          on whether anything is open. */}
+      <div className="fm" data-pane={editor ? narrowPane : 'list'}>
+        <aside className="fm__tree">
+          <FileTree
+            instanceId={instance.id}
+            path={dir}
+            reloadKey={treeKey}
+            onOpen={(next) => void load(next)}
+          />
+        </aside>
 
       <section className={`panel files${dragging ? ' files--dropping' : ''}`}>
         <div className="files__head">
@@ -787,6 +850,36 @@ export function FileManager({
         )}
       </section>
 
+        <div className="fm__editor">
+          {editor ? (
+            <FileEditor
+              editor={editor}
+              tabs={tabs}
+              activeTab={activeTab}
+              onBackToList={() => setNarrowPane('list')}
+              onSelectTab={(path: string) => setActiveTab(path)}
+              onCloseTab={(path: string) => void closeTab(path)}
+              busy={busy}
+              error={error}
+              onChange={(content) => patchActive({ content })}
+              onSave={() => void saveEditor()}
+              onRevert={() => patchActive({ content: editor.original })}
+              onClose={() => void closeEditor()}
+              onOpenHistory={onOpenHistory && (() => onOpenHistory(editor.path))}
+            />
+          ) : (
+            // A placeholder rather than a collapsed column: the listing beside
+            // it would otherwise jump a few hundred pixels wider the moment
+            // anything is opened, on every open and every close.
+            <div className="fm__blank">
+              <Glyph name="doc" />
+              <p>从中间的列表里点一个文件，会在这里打开。</p>
+              <p className="muted">可以同时开着几个，用上面的标签切换。</p>
+            </div>
+          )}
+        </div>
+      </div>
+
       {dialogs}
     </div>
   )
@@ -977,6 +1070,11 @@ function Breadcrumb({ dir, onNavigate }: { dir: string; onNavigate: (next: strin
  */
 function FileEditor({
   editor,
+  tabs,
+  activeTab,
+  onBackToList,
+  onSelectTab,
+  onCloseTab,
   busy,
   error,
   onChange,
@@ -986,6 +1084,13 @@ function FileEditor({
   onOpenHistory,
 }: {
   editor: EditorState
+  tabs: EditorState[]
+  activeTab: string | null
+  /** Narrow layouts only: the listing is off screen there, and closing every
+   *  tab must not be the only way back to it. */
+  onBackToList: () => void
+  onSelectTab: (path: string) => void
+  onCloseTab: (path: string) => void
   busy: boolean
   error: string | null
   onChange: (content: string) => void
@@ -996,6 +1101,10 @@ function FileEditor({
 }) {
   const dirty = editor.content !== editor.original
   const gutter = useRef<HTMLDivElement | null>(null)
+  // Where the caret is, for the status line. Read off the textarea on every
+  // event that can move it rather than derived from the content: a click and
+  // an arrow key both move it without changing a character.
+  const [caret, setCaret] = useState(0)
 
   // Past this the count is recomputed on every keystroke over a string big
   // enough to feel it, and the numbers have stopped being useful anyway.
@@ -1022,29 +1131,54 @@ function FileEditor({
 
   return (
     <div className="stack">
-      <section className="panel">
-        <div className="editor__head">
-          <div className="editor__title">
-            <span className={`fileicon fileicon--${TONE[kindOfName(editor.path)]}`}>
-              <Glyph name={GLYPH[kindOfName(editor.path)]} />
-            </span>
-            <div>
-              <h3 className="panel__title">{baseName(editor.path)}</h3>
-              {/* Only when it says something the title does not: a file in the
-                  root would otherwise print its own name twice. */}
-              {editor.path !== baseName(editor.path) && (
-                <p className="editor__path">{editor.path}</p>
-              )}
+      <section className="panel editor-pane">
+        {/* One row per open file. The dot is the only unsaved indicator that
+            survives switching away — the 有未保存的修改 line below only ever
+            describes the file in front. */}
+        {/* Only on the layout that hides the listing. */}
+        <button type="button" className="editor__back" onClick={onBackToList}>
+          ← 文件列表
+        </button>
+
+        <div className="etabs" role="tablist" aria-label="打开的文件">
+          {tabs.map((tab) => (
+            <div
+              className={`etabs__tab${tab.path === activeTab ? ' etabs__tab--on' : ''}`}
+              key={tab.path}
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab.path === activeTab}
+                className="etabs__pick"
+                onClick={() => onSelectTab(tab.path)}
+                title={tab.path}
+              >
+                <span className={`fileicon fileicon--${TONE[kindOfName(tab.path)]}`}>
+                  <Glyph name={GLYPH[kindOfName(tab.path)]} />
+                </span>
+                {baseName(tab.path)}
+                {tab.content !== tab.original && (
+                  <span className="etabs__dot" aria-label="有未保存的修改" />
+                )}
+              </button>
+              <button
+                type="button"
+                className="etabs__close"
+                onClick={() => onCloseTab(tab.path)}
+                aria-label={`关闭 ${baseName(tab.path)}`}
+              >
+                ×
+              </button>
             </div>
-          </div>
-          <div className="editor__facts">
-            <span>{formatBytes(bytes)}</span>
-            {lines > 0 && <span>{lines} 行</span>}
-            <span className={dirty ? 'editor__dot editor__dot--dirty' : 'editor__dot'}>
-              {dirty ? '有未保存的修改' : '已是最新'}
-            </span>
-          </div>
+          ))}
         </div>
+
+        {/* Only when it says something the tab does not: a file in the root
+            would otherwise print its own name twice. */}
+        {editor.path !== baseName(editor.path) && (
+          <p className="editor__path">{editor.path}</p>
+        )}
 
         <div className="editor">
           {lines > 0 && (
@@ -1059,6 +1193,9 @@ function FileEditor({
             onScroll={(event) => {
               if (gutter.current) gutter.current.scrollTop = event.currentTarget.scrollTop
             }}
+            onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+            onClick={(event) => setCaret(event.currentTarget.selectionStart)}
+            onKeyUp={(event) => setCaret(event.currentTarget.selectionStart)}
             onKeyDown={(event) => {
               // The shortcut everyone's fingers already know, and without it
               // the browser offers to save the whole page as HTML.
@@ -1071,6 +1208,26 @@ function FileEditor({
             wrap="off"
             aria-label={`编辑 ${editor.path}`}
           />
+        </div>
+
+        {/* What an editor's foot is for: the facts you check before saving,
+            none of which are worth a line of prose. 行/列 is here because the
+            thing that sends someone to this box is usually a console line
+            ending in "at line 42". */}
+        <div className="editor__status">
+          <span>{languageOf(editor.path)}</span>
+          <span>UTF-8</span>
+          <span>{editor.content.includes('\r\n') ? 'CRLF' : 'LF'}</span>
+          <span>
+            行 {position(editor.content, caret).line}，列 {position(editor.content, caret).column}
+          </span>
+          <span className="editor__status-right">
+            {formatBytes(bytes)}
+            {lines > 0 && ` · ${lines} 行`}
+          </span>
+          <span className={dirty ? 'editor__dot editor__dot--dirty' : 'editor__dot'}>
+            {dirty ? '有未保存的修改' : '已是最新'}
+          </span>
         </div>
 
         {error && <div className="alert alert--error">{error}</div>}
@@ -1090,8 +1247,8 @@ function FileEditor({
             </button>
           )}
           <span className="editor__hint">Ctrl / ⌘ + S 也能保存</span>
-          <button className="btn actions__danger" onClick={onClose}>
-            返回文件列表
+          <button className="btn" onClick={onClose}>
+            关闭
           </button>
         </div>
       </section>
@@ -1542,4 +1699,33 @@ function parentOf(dir: string): string {
 function baseName(path: string): string {
   const index = path.lastIndexOf('/')
   return index < 0 ? path : path.slice(index + 1)
+}
+
+/** Line and column of an offset, both 1-based, the way an editor counts. */
+function position(text: string, offset: number): { line: number; column: number } {
+  const before = text.slice(0, Math.min(offset, text.length))
+  const lines = before.split('\n')
+  return { line: lines.length, column: lines[lines.length - 1].length + 1 }
+}
+
+/** What the status line calls this file. Extension only — the panel does not
+ *  parse these, and claiming to would be claiming a syntax check it has not
+ *  got. */
+function languageOf(path: string): string {
+  const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
+  const known: Record<string, string> = {
+    yml: 'YAML',
+    yaml: 'YAML',
+    json: 'JSON',
+    properties: 'Properties',
+    toml: 'TOML',
+    conf: 'Conf',
+    cfg: 'Conf',
+    txt: '纯文本',
+    log: '日志',
+    sh: 'Shell',
+    md: 'Markdown',
+    kts: 'Kotlin Script',
+  }
+  return known[ext] ?? (ext ? ext.toUpperCase() : '纯文本')
 }
