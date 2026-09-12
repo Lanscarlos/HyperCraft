@@ -127,8 +127,8 @@ export function FileManager({
   }, [roomy])
 
   useEffect(() => {
-    if (editing) setTreeOpen(!tight)
-  }, [editing, tight])
+    if (editing) setTreeOpen(true)
+  }, [editing])
 
   // Leaving the section leaves the mode. It could be remembered instead, but
   // then coming back to 文件 would land on a page with no listing and no
@@ -211,6 +211,12 @@ export function FileManager({
     [tabs],
   )
 
+  // Folding the tree away buys room for the editor, so with no file open there
+  // is nothing to buy it for — and the button that brings the tree back lives
+  // on the editor's own head, which is not on screen either. Folded and empty
+  // is a dead end, so it is not a state that can be reached.
+  const treeShown = treeOpen || editor === null
+
   /** Brings a file to the front, opening a tab for it if it has none. A file
    *  already open is never re-read: it may have unsaved edits in it. */
   const openEditor = useCallback((next: EditorState) => {
@@ -285,20 +291,19 @@ export function FileManager({
     void load(dir)
   }
 
-  // Escape leaves the mode. Not while typing: Escape in the editor is how the
-  // browser's own find bar is dismissed, and in a filter box it clears the box
-  // — neither should throw the whole layout away.
+  // Escape leaves the mode, including from inside the editor — that is where
+  // the caret spends nearly all of its time in this mode, and a way out that
+  // only works when nothing is focused is not a way out.
+  //
+  // The filter box is the one exception: Escape there already means "clear what
+  // I typed", and that is the smaller, more local undo of the two. Press it
+  // twice and the second one leaves.
   useEffect(() => {
     if (!editing) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       const target = event.target as HTMLElement | null
-      if (
-        target?.isContentEditable ||
-        (target != null && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
-      ) {
-        return
-      }
+      if (target?.classList.contains('ftree__find')) return
       setEditing(false)
     }
     window.addEventListener('keydown', onKey)
@@ -823,7 +828,7 @@ export function FileManager({
       <div
         className={editing ? 'fm fm--editing' : 'fm'}
         data-pane={editor ? narrowPane : 'list'}
-        data-tree={editing ? (treeOpen ? 'on' : 'off') : undefined}
+        data-tree={editing ? (treeShown ? 'on' : 'off') : undefined}
       >
         <aside className="fm__tree">
           {/* In edit mode the listing's toolbar is off screen, so the four
@@ -870,14 +875,16 @@ export function FileManager({
                 >
                   <Glyph name="refresh" className={pending ? 'spin' : undefined} />
                 </button>
-                <button
-                  className="btn btn--icon"
-                  onClick={() => setTreeOpen(false)}
-                  title="收起目录树"
-                  aria-label="收起目录树"
-                >
-                  <Glyph name="folder" />
-                </button>
+                {editor !== null && (
+                  <button
+                    className="btn btn--icon"
+                    onClick={() => setTreeOpen(false)}
+                    title="收起目录树"
+                    aria-label="收起目录树"
+                  >
+                    <Glyph name="folder" />
+                  </button>
+                )}
                 <button
                   className="btn btn--icon ftree__leave"
                   onClick={() => setEditing(false)}
@@ -913,7 +920,14 @@ export function FileManager({
             filter={editing ? treeQuery : ''}
             menuFor={editing ? treeMenu : undefined}
             onOpen={(next) => void load(next)}
-            onOpenFile={(next) => void openPath(next)}
+            onOpenFile={(next) => {
+              // Below 1200 the tree is an overlay sitting on top of the editor,
+              // so picking a file is also how it gets dismissed — the same
+              // reasoning as the navigation drawer in App. Above it the tree
+              // has a column of its own and nothing is covered.
+              if (tight) setTreeOpen(false)
+              void openPath(next)
+            }}
           />
         </aside>
 
@@ -1169,7 +1183,7 @@ export function FileManager({
               tabs={tabs}
               activeTab={activeTab}
               onBackToList={() => setNarrowPane('list')}
-              onShowTree={editing && !treeOpen ? () => setTreeOpen(true) : undefined}
+              onShowTree={editing && !treeShown ? () => setTreeOpen(true) : undefined}
               onSelectTab={(path: string) => setActiveTab(path)}
               onCloseTab={(path: string) => void closeTab(path)}
               busy={busy}

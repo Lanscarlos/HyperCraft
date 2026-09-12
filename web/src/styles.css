@@ -3102,6 +3102,10 @@ a:hover {
   max-width: none;
   flex: 1;
   min-height: 0;
+  /* .stack's 40px foot is breathing room under the last card of a page you
+     scroll. A workspace does not scroll and has no last card — that padding is
+     just 40px the editor cannot reach the bottom of the window through. */
+  padding-bottom: 0;
 }
 
 .instance__pane--scroll:has(.stack--full) {
@@ -5938,8 +5942,14 @@ details[open]::details-content {
   outline: none;
 }
 
+/* A flex row of one, so the textarea keeps stretching to the full height of
+   the box. It used to be a direct child of .editor and got that for free;
+   moving it in here to have something to position the overlay against took it
+   away, and the result was a 65px-tall textarea under a full-height overlay —
+   which *looks* right and puts the caret in the wrong place. */
 .editor__wrap {
   position: relative;
+  display: flex;
   flex: 1;
   min-width: 0;
 }
@@ -6668,6 +6678,13 @@ small.field__bad {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+}
+
+/* .stack's own 40px foot, again — the editor wraps in one of its own, and the
+   padding there is 40px the box cannot reach the bottom of the pane through. */
+.fm--editing .fm__editor > .stack {
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 /* Outside the mode the editor is a fixed box you can drag taller. Inside it,
