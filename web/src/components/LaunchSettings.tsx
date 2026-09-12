@@ -14,6 +14,7 @@ import type {
 } from '../types'
 import { ENCODING_OPTIONS, isLive, LOADER_OPTIONS } from '../types'
 import { JVM_PRESETS } from '../jvmPresets'
+import { JVMArgsEditor } from './JVMArgsEditor'
 import { ScriptImportDialog } from './ScriptImportDialog'
 import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
@@ -55,6 +56,9 @@ function toInput(instance: InstanceStatus): InstanceInput {
 
 /** Sentinel for the "type a path yourself" option in the Java picker. */
 const CUSTOM_JAVA = '__custom__'
+
+/** Where the JVM 参数 view preference is kept. */
+const JVM_VIEW_KEY = 'hc.jvmargs.view'
 
 /** Args are edited as one-per-line text, which is far easier than a list UI. */
 const toLines = (args: string[]) => args.join('\n')
@@ -110,6 +114,18 @@ export function LaunchSettings({
   const [jvmMax, setJvmMax] = useState(0)
   const [jvmBusy, setJvmBusy] = useState(false)
   const [jvmStatus, setJvmStatus] = useState<string | null>(null)
+  // Rows or the raw text. Remembered because it is a preference about how you
+  // read arguments, not about this instance — someone who thinks in text wants
+  // text on every instance, and having to say so on each one is the annoying
+  // half of offering the choice at all.
+  const [jvmRows, setJvmRows] = useState(
+    () => window.localStorage.getItem(JVM_VIEW_KEY) !== 'text',
+  )
+
+  const setJvmView = (rows: boolean) => {
+    setJvmRows(rows)
+    window.localStorage.setItem(JVM_VIEW_KEY, rows ? 'rows' : 'text')
+  }
 
   // A proxy launches differently enough to be worth saying so in two
   // placeholders: it answers "end" rather than "stop", and it exits on the
@@ -629,23 +645,29 @@ export function LaunchSettings({
               <span>JVM 参数</span>
               <JVMPresets
                 activeNote={presetNote}
+                rows={jvmRows}
                 onPick={(id) => void applyPreset(id)}
                 onImport={() => setImporting(true)}
+                onView={setJvmView}
               />
-              <textarea
-                rows={4}
-                value={jvmText}
-                onChange={(e) => setJvmText(e.target.value)}
-                placeholder={'-XX:+UseG1GC\n-XX:MaxGCPauseMillis=200'}
-                aria-label="JVM 参数"
-              />
+              {jvmRows ? (
+                <JVMArgsEditor value={jvmText} onChange={setJvmText} />
+              ) : (
+                <textarea
+                  rows={4}
+                  value={jvmText}
+                  onChange={(e) => setJvmText(e.target.value)}
+                  placeholder={'-XX:+UseG1GC\n-XX:MaxGCPauseMillis=200'}
+                  aria-label="JVM 参数"
+                />
+              )}
               {aikarNeedsEqualHeap && (
                 <div className="alert alert--warn">
                   这套参数的前提是最小内存和最大内存一样大，现在填的是 {form.minMemoryMB} /{' '}
                   {form.maxMemoryMB} MB。把上面的最小内存也改成 {form.maxMemoryMB} 再保存。
                 </div>
               )}
-              <small>一行一个参数，会放在 -jar 之前。</small>
+              {!jvmRows && <small>一行一个参数，会放在 -jar 之前。</small>}
             </div>
 
             <div className="field field--full">
@@ -919,15 +941,25 @@ function LaunchCheckPanel({
  * 从启动脚本读参数 sits in the same row because it answers the same question,
  * one step further back: what the arguments should be when you already have a
  * server that works and no idea what is in its run.sh.
+ *
+ * The 列表 / 文本 pair at the far end switches how the same arguments are
+ * shown. Both write one-per-line text and the row view can express nothing a
+ * keyboard could not — so this is a view toggle, not two ways to configure a
+ * JVM, and neither side has to be reachable from the other for a setting to be
+ * settable.
  */
 function JVMPresets({
   activeNote,
+  rows,
   onPick,
   onImport,
+  onView,
 }: {
   activeNote: string | null
+  rows: boolean
   onPick: (id: string) => void
   onImport: () => void
+  onView: (rows: boolean) => void
 }) {
   return (
     <div className="presets">
@@ -945,6 +977,24 @@ function JVMPresets({
         <button className="chip chip--right" type="button" onClick={onImport}>
           从启动脚本读…
         </button>
+        <div className="presets__view" role="group" aria-label="JVM 参数的显示方式">
+          <button
+            className={`chip${rows ? ' chip--active' : ''}`}
+            type="button"
+            aria-pressed={rows}
+            onClick={() => onView(true)}
+          >
+            列表
+          </button>
+          <button
+            className={`chip${rows ? '' : ' chip--active'}`}
+            type="button"
+            aria-pressed={!rows}
+            onClick={() => onView(false)}
+          >
+            文本
+          </button>
+        </div>
       </div>
       {activeNote && <small className="presets__note">{activeNote}</small>}
     </div>
