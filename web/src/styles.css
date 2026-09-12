@@ -3067,6 +3067,20 @@ a:hover {
   padding-top: 0;
 }
 
+/* The same third form, for a section that lives in an instance pane rather
+   than in a Page. The pane brings its own scrolling, which is exactly what a
+   full-bleed workspace must not have on top of its own: two nested scrollers
+   means the editor never reaches the bottom of the window. */
+.instance__pane .stack--full {
+  max-width: none;
+  flex: 1;
+  min-height: 0;
+}
+
+.instance__pane--scroll:has(.stack--full) {
+  overflow: hidden;
+}
+
 
 /* ------------------------------------------------------------- cockpit
 
@@ -4527,6 +4541,22 @@ details[open]::details-content {
    up to a point. Their own paragraphs stay capped by .page__lead. */
 .page--wide > * {
   max-width: var(--content-max-wide);
+}
+
+/* The third form: a full-bleed workspace. Not a third width — the absence of
+   one. What goes in here is a canvas that should take every pixel it is given
+   (the file pane's edit mode), not a column of content, so it also keeps the
+   scrolling inside itself rather than handing it to .page. Prose and tiles are
+   still the whole of the choice for anything you read rather than work in. */
+.page--full {
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+
+.page--full > * {
+  max-width: none;
 }
 
 .welcome h1 {
