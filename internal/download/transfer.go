@@ -38,33 +38,46 @@ func (w *progressWriter) Write(p []byte) (int, error) {
 
 // transfer walks r's Attempts, most preferred first, streaming the body of
 // whichever one opens to temp while verifying it against whichever digest r
-// published. It records which attempt actually answered into the job's Route.
-func transfer(ctx context.Context, q *Queue, e *entry, r Request, temp string) error {
+// published. It records which attempt actually answered into the job's Route,
+// and returns the SHA-256 of what arrived — the identity every shelf records
+// its downloads by, whether or not the request published a digest to check.
+func transfer(ctx context.Context, q *Queue, e *entry, r Request, temp string) (string, error) {
 	attempts, err := r.Attempts(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if len(attempts) == 0 {
-		return errors.New("no attempts to try")
+		return "", errors.New("no attempts to try")
 	}
 
 	var body io.ReadCloser
 	var route string
 	var lastErr error
 	for _, attempt := range attempts {
-		body, lastErr = attempt.Open(ctx)
-		if lastErr == nil {
-			route = attempt.Route
+		opened, openErr := attempt.Open(ctx)
+		if openErr == nil && opened != nil {
+			body, route = opened, attempt.Route
 			break
 		}
+		// An Attempt that hands back a body *and* an error is a caller bug, but
+		// leaking the connection on top of it helps nobody.
+		if opened != nil {
+			opened.Close()
+		}
+		lastErr = openErr
 		// A cancelled job must not march down the fallback list pretending a
 		// mirror was at fault — the same rule the original Fetch enforced.
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return "", ctx.Err()
 		}
 	}
 	if body == nil {
-		return lastErr
+		if lastErr == nil {
+			// Every attempt opened nothing without saying why. Also a caller
+			// bug, and one that would otherwise read as a silent success.
+			lastErr = errors.New("no attempt produced a body")
+		}
+		return "", lastErr
 	}
 	defer body.Close()
 
@@ -74,7 +87,7 @@ func transfer(ctx context.Context, q *Queue, e *entry, r Request, temp string) e
 
 	file, err := os.OpenFile(temp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	verifiable := r.SHA256 != "" || r.SHA512 != ""
@@ -123,24 +136,24 @@ func transfer(ctx context.Context, q *Queue, e *entry, r Request, temp string) e
 	// a truncated one, so it is checked rather than deferred away.
 	closeErr := file.Close()
 	if copyErr != nil {
-		return copyErr
+		return "", copyErr
 	}
 	if closeErr != nil {
-		return closeErr
+		return "", closeErr
 	}
 	switch {
 	case sized && written > limit:
-		return fmt.Errorf("下载的内容比声明的 %d 字节还多", limit)
+		return "", fmt.Errorf("下载的内容比声明的 %d 字节还多", limit)
 	case sized && written != r.Total:
-		return fmt.Errorf("收到 %d 字节，应为 %d", written, r.Total)
+		return "", fmt.Errorf("收到 %d 字节，应为 %d", written, r.Total)
 	case written > limit:
-		return fmt.Errorf("下载超过 %d 字节的上限，已中止", limit)
+		return "", fmt.Errorf("下载超过 %d 字节的上限，已中止", limit)
 	}
 
 	// The digest a request published, when it published one, is finally
 	// compared rather than only recorded.
 	sum := hex.EncodeToString(digest.Sum(nil))
-	return verifyDigest(r, sum, wide, written)
+	return sum, verifyDigest(r, sum, wide, written)
 }
 
 // verifyDigest checks the bytes against whichever digest r published. sum is

@@ -71,6 +71,11 @@ type Request struct {
 	// Empty means os.TempDir(). Callers that want the bytes to land on the same
 	// filesystem as their final home set it, so the move at the end is a rename
 	// rather than a copy of 200 MB.
+	//
+	// Every shelf should set it. Left empty the part file lands in the shared
+	// system temp directory under a name drawn from the job id, and ids restart
+	// at 1 with the process — two panels on one machine would be picking names
+	// out of the same small set.
 	TempDir string
 	// Attempts is where to try, most preferred first. Called on the worker
 	// rather than at submit time, because a queued job may be minutes from its
@@ -79,7 +84,12 @@ type Request struct {
 	// Install is what to do with the finished bytes: unpack, record, register.
 	// It runs on the worker goroutine with the job in StateExtracting, and
 	// returns the id its shelf knows the result by.
-	Install func(ctx context.Context, temp string, pub *Progress) (ref string, err error)
+	//
+	// sha256 is the digest of what arrived, always computed whatever the
+	// request published — every shelf records its downloads by it, and making
+	// Install re-open and re-hash a 200 MB archive to learn what the transfer
+	// already knows is the kind of waste that only looks free.
+	Install func(ctx context.Context, temp, sha256 string, pub *Progress) (ref string, err error)
 }
 
 // entry is one queue slot: the public snapshot plus what it takes to run it.
@@ -338,7 +348,8 @@ func (q *Queue) work(ctx context.Context, e *entry) {
 	temp := filepath.Join(dir, e.pub.ID+".part")
 	_ = os.Remove(temp)
 
-	if err := transfer(ctx, q, e, e.req, temp); err != nil {
+	sum, err := transfer(ctx, q, e, e.req, temp)
+	if err != nil {
 		os.Remove(temp)
 		if ctx.Err() != nil {
 			q.finish(e, StateCancelled, ErrCancelled)
@@ -353,9 +364,8 @@ func (q *Queue) work(ctx context.Context, e *entry) {
 	q.mu.Unlock()
 
 	var ref string
-	var err error
 	if e.req.Install != nil {
-		ref, err = e.req.Install(ctx, temp, &Progress{q: q, entry: e})
+		ref, err = e.req.Install(ctx, temp, sum, &Progress{q: q, entry: e})
 	}
 	// Success path decides where the bytes end up (Install's own os.Rename
 	// moves them out from under this path), so the Remove that follows either

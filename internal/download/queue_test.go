@@ -48,7 +48,7 @@ func req(q *Queue, h *held, kind Kind, title string) Request {
 		FileName:  title + ".bin",
 		DedupeKey: title,
 		Attempts:  func(context.Context) ([]Attempt, error) { return []Attempt{h.attempt("ok!")}, nil },
-		Install:   func(context.Context, string, *Progress) (string, error) { return title + "-ref", nil },
+		Install:   func(context.Context, string, string, *Progress) (string, error) { return title + "-ref", nil },
 	}
 }
 
