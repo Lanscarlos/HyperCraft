@@ -23,6 +23,7 @@ import type { PluginController } from '../usePlugins'
 import { Button } from './Button'
 import { loaderLabel, sourceLabel } from './PluginBrowse'
 import { PluginIcon } from './PluginIcon'
+import { Select } from './Select'
 
 /**
  * One plugin's detail, over the list rather than instead of it.
@@ -1132,20 +1133,24 @@ function SettingsTab({
         {item.source.kind === 'github' && (tokens.length > 1 || missingToken) && (
           <label className="field">
             <span>用哪个令牌读</span>
-            <select
+            <Select
+              ariaLabel="用哪个令牌读"
               value={tokenId}
               disabled={busy || saving}
-              onChange={(event) => setTokenId(event.target.value)}
-            >
-              <option value="">默认{tokens.length > 0 ? `（${tokens[0].name}）` : ''}</option>
-              {tokens.map((token) => (
-                <option key={token.id} value={token.id}>
-                  {token.name}
-                  {token.hint ? ` ···${token.hint}` : ''}
-                </option>
-              ))}
-              {missingToken && <option value={tokenId}>已删除的令牌</option>}
-            </select>
+              options={[
+                { value: '', label: `默认${tokens.length > 0 ? `（${tokens[0].name}）` : ''}` },
+                ...tokens.map((token) => ({
+                  value: token.id,
+                  label: token.name,
+                  // The tail of the token, on its own line now rather than run
+                  // onto the name — which is the only way to tell two tokens
+                  // from the same account apart.
+                  note: token.hint ? `···${token.hint}` : undefined,
+                })),
+                ...(missingToken ? [{ value: tokenId, label: '已删除的令牌' }] : []),
+              ]}
+              onChange={setTokenId}
+            />
             <small>
               {missingToken ? (
                 <>这个插件指定的令牌已经不在了，检查更新和下载都会失败 —— 挑一个现有的。</>
@@ -1183,18 +1188,19 @@ function SettingsTab({
         <div className="field-row">
           <label className="field">
             <span>版本锁定</span>
-            <select
+            <Select
+              ariaLabel="版本锁定"
               value={pin}
               disabled={busy || saving}
-              onChange={(event) => setPin(event.target.value)}
-            >
-              <option value="">不锁定</option>
-              {item.versions.map((version) => (
-                <option value={version.tag} key={version.tag}>
-                  {version.version}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: '', label: '不锁定' },
+                ...item.versions.map((version) => ({
+                  value: version.tag,
+                  label: version.version,
+                })),
+              ]}
+              onChange={setPin}
+            />
             <small>
               锁上之后这个插件不再报「有更新」，批量升级也会跳过它 ——
               给「5.4.2 是最后一个能配我们那套改动的版本」用的。

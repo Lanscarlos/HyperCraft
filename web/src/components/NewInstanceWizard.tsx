@@ -1287,18 +1287,18 @@ function BasicsStep({
       {needsJar && (
         <label className="field">
           <span>服务端 jar 文件名</span>
-          <input
+          <Select
+            allowCustom
+            ariaLabel="服务端 jar 文件名"
             value={jar}
-            onChange={(e) => onJar(e.target.value)}
             placeholder="server.jar"
-            list="wizard-jars"
-            spellCheck={false}
+            options={jars.map((entry) => ({
+              value: entry.name,
+              label: entry.name,
+              note: formatBytes(entry.size),
+            }))}
+            onChange={onJar}
           />
-          <datalist id="wizard-jars">
-            {jars.map((entry) => (
-              <option key={entry.name} value={entry.name} />
-            ))}
-          </datalist>
           <small>
             {jars.length > 0
               ? `目录下找到 ${jars.length} 个 jar，点输入框可以直接选。`
