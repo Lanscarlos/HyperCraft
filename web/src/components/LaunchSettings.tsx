@@ -458,7 +458,7 @@ export function LaunchSettings({
   }
 
   return (
-    <form className="stack" onSubmit={save}>
+    <form className="stack stack--narrow" onSubmit={save}>
       <PageHead title="实例设置" lead="名称、目录、核心、Java 和内存，以及它怎么启动。" />
 
       <LaunchCheckPanel

@@ -3815,11 +3815,20 @@ a:hover {
   max-width: var(--content-max);
 }
 
-/* A section that is a form and nothing else — 实例设置, 代理配置 — keeps the
-   prose measure even inside an instance pane, where .stack is otherwise
-   widened to the tile measure (see .instance__pane .stack). A card 1440px
-   wide whose fields stop at 880 is a card with a hole in its right half. */
-.stack--narrow {
+/* A page that is a form is a narrow page.
+   The panel has always had two measures — prose at 880, tiles at 1440 — and
+   the choice is a property of the page, not of the card on it. An instance
+   pane widens .stack to the tile measure because the file listing, the charts
+   and the plugin rows all wanted it; 实例设置 and 代理配置 are forms from top
+   to bottom and wanted the opposite, so every card on them carried 268px of
+   itself as empty right-hand side while the fields stopped at 880.
+
+   Capping the *card* instead was tried and was worse: a page that mixes a form
+   with a shelf then carries two card widths, which is more obviously wrong
+   than trailing space is. The second selector is what makes this stick — the
+   pane's own rule is two classes deep and outranks a lone modifier. */
+.stack--narrow,
+.instance__pane .stack--narrow {
   max-width: var(--content-max);
 }
 
@@ -3938,15 +3947,6 @@ a:hover {
    So the head goes where every other card's head goes. */
 .panel--form {
   gap: 14px;
-  /* The card is as wide as a form, not as wide as the pane.
-     .panel__body has always stopped at the reading measure; the card around it
-     did not, so in an instance pane (1148px) every form card carried 268px of
-     itself as empty right-hand side. A card with an empty quarter reads as a
-     hole in the card, which is the exact complaint that moved this section's
-     head out of a left column in the first place — the hole had simply moved
-     to the other edge. The padding and the two borders are added back so the
-     fields keep the full 880 they are measured for. */
-  max-width: calc(var(--content-max) + 42px);
 }
 
 /* Capped at the reading measure rather than at the card: past ~880px a row of
