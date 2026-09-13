@@ -35,6 +35,7 @@ func init() {
 			{
 				ID: "ghfast", Name: "ghfast.top",
 				Note:   "国内访问通常最快，面板自身更新也默认走它",
+				Prefix: "https://ghfast.top/",
 				Kind:   RouteProxy,
 				Serves: githubHosts,
 				Link:   proxyLink("https://ghfast.top/", githubHosts),
@@ -42,6 +43,7 @@ func init() {
 			{
 				ID: "ghproxy", Name: "gh-proxy.com",
 				Note:   "老牌代理，ghfast 不通时的第一备选",
+				Prefix: "https://gh-proxy.com/",
 				Kind:   RouteProxy,
 				Serves: githubHosts,
 				Link:   proxyLink("https://gh-proxy.com/", githubHosts),
@@ -49,6 +51,7 @@ func init() {
 			{
 				ID: "moeyy", Name: "github.moeyy.xyz",
 				Note:   "再一个备选，用法相同",
+				Prefix: "https://github.moeyy.xyz/",
 				Kind:   RouteProxy,
 				Serves: githubHosts,
 				Link:   proxyLink("https://github.moeyy.xyz/", githubHosts),

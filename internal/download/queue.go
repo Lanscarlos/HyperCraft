@@ -67,6 +67,8 @@ type Request struct {
 	// DedupeKey collapses a repeat request onto the job already doing it. Two
 	// workers writing the same part file is a corrupt download.
 	DedupeKey string
+	// Meta rides onto the Job untouched. See Job.Meta.
+	Meta map[string]string
 	// TempDir is where the part file is written before Install is handed it.
 	// Empty means os.TempDir(). Callers that want the bytes to land on the same
 	// filesystem as their final home set it, so the move at the end is a rename
@@ -161,6 +163,7 @@ func (q *Queue) Submit(r Request) (Job, error) {
 			Title:    r.Title,
 			Subtitle: r.Subtitle,
 			FileName: r.FileName,
+			Meta:     r.Meta,
 			Total:    r.Total,
 			State:    StateQueued,
 			QueuedAt: time.Now(),

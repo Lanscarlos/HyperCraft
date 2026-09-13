@@ -72,8 +72,13 @@ type Job struct {
 	// Ref is what the finished download produced, by the id its own shelf knows
 	// it as — a core, a runtime, an install, a plugin. It is how the UI offers
 	// "go and look at it" without the panel having to guess.
-	Ref      string    `json:"ref,omitempty"`
-	QueuedAt time.Time `json:"queuedAt"`
+	Ref string `json:"ref,omitempty"`
+	// Meta is whatever the shelf that submitted this job wants to carry on it —
+	// its own identifiers, for an API that speaks in them. The kernel never
+	// reads it; it rides along so a shelf does not have to keep a side table
+	// keyed by job id and then keep that table pruned in step with the history.
+	Meta     map[string]string `json:"meta,omitempty"`
+	QueuedAt time.Time         `json:"queuedAt"`
 	// StartedAt is when the job left the queue, so it is absent on one that
 	// never has. Kept separate from QueuedAt rather than folded into it: "sat
 	// in the queue for four minutes" and "took four minutes to download" are

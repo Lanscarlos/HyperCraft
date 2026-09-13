@@ -59,6 +59,7 @@ const (
 // /download/{project}/{version}/build{n} against PaperMC's content-addressed
 // /v1/objects/{sha256}/{name}, and no amount of prefixing turns one into the
 // other.
+//
 // Parts is a map rather than named fields because the coordinates differ per
 // upstream and have nothing in common: Adoptium's tree is addressed by major,
 // image type, arch, os and file name, PaperMC's by project, version and build.
@@ -91,13 +92,18 @@ type Route struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Note string `json:"note"`
-	Kind RouteKind
+	// Prefix is what a RouteProxy prepends to the origin URL, empty for every
+	// other kind. It travels to the UI so an operator can see where a name
+	// actually points rather than having to trust the label.
+	Prefix string    `json:"prefix,omitempty"`
+	Kind   RouteKind `json:"-"`
 	// Serves names the upstream hosts this route can address. Meaningless for
 	// RouteDirect, which is the upstream.
-	Serves []string
+	Serves []string `json:"-"`
 	// Link is where this route serves the given upstream, or "" when it cannot
-	// serve that one at all.
-	Link func(Upstream) string
+	// serve that one at all. Not serialisable, and nothing outside this package
+	// needs it — the UI picks a route by id and the daemon does the rest.
+	Link func(Upstream) string `json:"-"`
 }
 
 // RouteSet is the routes for one upstream, most preferred first and ending at
@@ -207,7 +213,7 @@ func RouteOrder(set, pref string, up Upstream) []Route {
 			prefix += "/"
 		}
 		custom := Route{
-			ID: pref, Name: pref, Note: "自定义代理", Kind: RouteProxy,
+			ID: pref, Name: pref, Note: "自定义代理", Prefix: prefix, Kind: RouteProxy,
 			Serves: []string{up.Host},
 			Link:   func(u Upstream) string { return prefix + u.URL },
 		}

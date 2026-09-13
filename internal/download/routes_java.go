@@ -79,7 +79,8 @@ func init() {
 			},
 			{
 				ID: "ghproxy", Name: "GitHub 加速", Note: "代理官方发布页，镜像还没同步的新版本走这个",
-				Kind: RouteProxy, Serves: githubHosts,
+				Prefix: "https://ghfast.top/",
+				Kind:   RouteProxy, Serves: githubHosts,
 				Link: proxyLink("https://ghfast.top/", githubHosts),
 			},
 			{
