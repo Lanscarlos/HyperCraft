@@ -562,7 +562,7 @@ function LibraryScope(props: Props) {
   // the global nav, and these rows are pages of the one already open. The
   // sibling shelves below are a different matter — those are destinations, and
   // an account that cannot open 数据库环境 must not be shown a way in.
-  const { route, follow, navigate, cores, plugins } = props
+  const { route, follow, navigate, plugins } = props
   const can = useCan()
   const section: LibrarySection = route.kind === 'library' ? route.section : 'cores'
   const view = route.kind === 'library' ? route.view : defaultView(section)
@@ -583,17 +583,16 @@ function LibraryScope(props: Props) {
       <div className="sidebar__scroll">
         {/* A shelf with one page has no page list: a single row repeating the
             shelf's own name underneath itself is a step that goes nowhere.
-            Java 环境 and 数据库环境 are that shape — see LIBRARY_VIEWS. Their
-            in-progress badge moves to the head's meta line, which is the only
-            thing left in this column that belongs to the shelf. */}
+            Java 环境, 数据库环境 and 服务端核心 are that shape — see
+            LIBRARY_VIEWS. Their in-progress badge moves to the head's meta
+            line, which is the only thing left in this column that belongs to
+            the shelf. */}
         {LIBRARY_VIEWS[section].length > 1 && (
         <nav className="sidebar__nav" aria-label={`${entry?.label ?? '资源库'}页面`}>
           {LIBRARY_VIEWS[section].map((page) => {
             const current = view === page.id
             const badge =
-              section === 'cores' && page.id === 'download' && cores.downloading ? (
-                <Badge tone="update">下载中</Badge>
-              ) : section === 'plugins' && page.id === 'list' && plugins.updates > 0 ? (
+              section === 'plugins' && page.id === 'list' && plugins.updates > 0 ? (
                 <Badge tone="update">{plugins.updates}</Badge>
               ) : // A count rather than 下载中: with a queue the interesting
               // number is how many, and the row is the way to the page that
@@ -715,11 +714,14 @@ function libraryMeta(
   section: LibrarySection,
 ): string {
   switch (section) {
-    case 'cores':
-      return cores.cores.length > 0 ? `${cores.cores.length} 个核心` : '还没有核心'
-    // These two are one page each, so their head's meta line is the only row
+    // These three are one page each, so their head's meta line is the only row
     // in this column that belongs to the shelf — which makes it the only place
-    // left to say a download is running. It used to be a badge on 安装新版本.
+    // left to say a download is running. It used to be a badge on 下载核心 and
+    // on 安装新版本.
+    case 'cores': {
+      if (cores.downloading) return '正在下载…'
+      return cores.cores.length > 0 ? `${cores.cores.length} 个核心` : '还没有核心'
+    }
     case 'java': {
       if (java.installing) return '正在安装…'
       const count = java.overview?.runtimes.length ?? 0

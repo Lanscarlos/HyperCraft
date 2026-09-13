@@ -39,13 +39,13 @@ export type LibrarySection = 'cores' | 'java' | 'database' | 'plugins' | 'schema
  * for, was the one you had to scroll past the others to read. So they became
  * pages of their own, and opening a section opens *them* (see Scope).
  *
- * Java 环境 and 数据库环境 have since gone back to one page each, because the
- * thing that made the scroll long was the catalogue's own layout rather than
- * the number of jobs on the page — see the note on LIBRARY_VIEWS. The union
- * keeps their retired ids: nothing renders them, but LIBRARY_VIEWS is what
- * parse() matches against, so an old /library/java/install falls through to
- * defaultView and redirects instead of 404ing, and cores and schematics still
- * use ids of the same name.
+ * Java 环境, 数据库环境 and 服务端核心 have since gone back to one page each,
+ * because the thing that made the scroll long was the catalogue's own layout
+ * rather than the number of jobs on the page — see the note on LIBRARY_VIEWS.
+ * The union keeps the ids they retired — 'download', 'install', 'engines':
+ * nothing renders them, but LIBRARY_VIEWS is what parse() matches against, so
+ * an old /library/cores/download falls through to defaultView and redirects
+ * instead of 404ing. 'source' and the rest are still live on other shelves.
  */
 export type LibraryView =
   | 'stock'
@@ -218,10 +218,18 @@ export const LIBRARY_SECTIONS: { id: LibrarySection; label: string; cap: Capabil
 /** The pages inside each library section, in order. The first is the default —
  *  always "what you already have", never a form. */
 export const LIBRARY_VIEWS: Record<LibrarySection, { id: LibraryView; label: string }[]> = {
-  cores: [
-    { id: 'stock', label: '核心库' },
-    { id: 'download', label: '下载核心' },
-  ],
+  // One page, back from two, and for the same reason as the two below.
+  //
+  // 核心库 first and 下载核心 as a page of its own was right about the ordering
+  // and wrong about the cost: it left the shelf alone on a 1440px screen with
+  // two rows on it, and put a navigation step in front of the one thing you
+  // come to this shelf to do. What made the split look necessary elsewhere —
+  // a catalogue a screen tall — was never true here: Paper and Velocity are
+  // the whole project list (see internal/serverjar), so the chooser is one row
+  // of two tiles, and the versions under it are capped at 168px. The order of
+  // the cards carries what the split was protecting: what you have first,
+  // never a form.
+  cores: [{ id: 'stock', label: '服务端核心' }],
   // One page, back from three.
   //
   // Splitting them (see the note on LibraryView) was right about the ordering
