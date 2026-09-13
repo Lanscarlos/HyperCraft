@@ -14,6 +14,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/lanscarlos/hypercraft/internal/download"
 	"time"
 )
 
@@ -88,7 +90,9 @@ func newTestInstaller(t *testing.T, fake *fakeAdoptium) (*Installer, string) {
 	root := filepath.Join(t.TempDir(), "java")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	registry := NewRegistry(filepath.Join(t.TempDir(), "java-registry.json"), logger)
-	return NewInstaller(newTestClient(DistTemurin, fake.URL), NewStore(root), registry, logger), root
+	queue := download.NewQueue(logger)
+	t.Cleanup(queue.Close)
+	return NewInstaller(newTestClient(DistTemurin, fake.URL), NewStore(root), registry, queue, logger), root
 }
 
 func awaitInstall(t *testing.T, installer *Installer) Job {
@@ -196,7 +200,7 @@ func TestUnpackMovesRuntimeIntoPlace(t *testing.T) {
 
 	// No registry: unpack never looks at one, and a nil is the honest way to
 	// say this test is not about the registry at all.
-	installer := NewInstaller(nil, NewStore(root), nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	installer := NewInstaller(nil, NewStore(root), nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	err := installer.unpack(context.Background(), staging, release, openArchive(t, buildTarGz(t, jdkEntriesForThisOS())))
 	if err != nil {
 		t.Fatalf("unpack: %v", err)
@@ -391,8 +395,12 @@ func TestInstallRefusesDuplicateAndConcurrent(t *testing.T) {
 	if _, err := installer.Start(DistTemurin, 21, ImageJRE, SourceOfficial); err != nil {
 		t.Fatalf("first Start: %v", err)
 	}
-	if _, err := installer.Start(DistTemurin, 17, ImageJRE, SourceOfficial); !errors.Is(err, ErrBusy) {
-		t.Fatalf("second Start: got %v, want ErrBusy", err)
+	// Installs used to hold a single slot and answer the second request with
+	// 409. They queue now — installing two major versions back to back is an
+	// ordinary thing to want — but asking twice for the *same* runtime still
+	// collapses onto one job.
+	if _, err := installer.Start(DistTemurin, 17, ImageJRE, SourceOfficial); err != nil {
+		t.Fatalf("second Start: %v", err)
 	}
 
 	close(fake.gate)
@@ -438,9 +446,12 @@ func TestInstallUnknownMajor(t *testing.T) {
 	if _, err := installer.Start(DistTemurin, 99, ImageJRE, SourceOfficial); !errors.Is(err, ErrUnknownRelease) {
 		t.Fatalf("got %v, want ErrUnknownRelease", err)
 	}
-	job, ok := installer.Status()
-	if !ok || job.State != JobFailed {
-		t.Errorf("the failed attempt should be visible as a job: %+v", job)
+	// No job is created for it. The build is resolved before the job exists,
+	// so this was answered as a bad request and there is nothing to show a row
+	// for — a failed row that duplicates an error the caller already has is
+	// noise on a list that is now panel-wide.
+	if _, ok := installer.Status(); ok {
+		t.Error("an unknown major should not leave a job behind")
 	}
 }
 

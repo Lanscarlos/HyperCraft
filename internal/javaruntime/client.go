@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/lanscarlos/hypercraft/internal/download"
 )
 
 // Client is the panel's way in to every distribution it can install from.
@@ -73,28 +75,32 @@ func (c *Client) LatestRelease(ctx context.Context, dist string, major int, imag
 	return p.LatestRelease(ctx, major, imageType, platform)
 }
 
-// Fetch opens the archive body from the requested download source, falling
-// back through the rest as described in attempts. It returns the body — which
-// the caller closes — and the id of the source that answered.
+// Attempts is where to look for a release, most preferred first, in the shape
+// the download kernel walks.
 //
-// Which sources exist is the release's own business: it carries the
-// distribution it came from, so nothing upstream has to pass that along.
-func (c *Client) Fetch(ctx context.Context, release Release, sourceID string) (io.ReadCloser, string, error) {
-	tries := attempts(release.Distribution, sourceID, release)
-	if len(tries) == 0 {
-		return nil, "", fmt.Errorf("%w: unusable download URL %q", ErrUpstream, release.URL)
+// Which routes exist is the release's own business: it carries the distribution
+// it came from, so nothing upstream has to pass that along.
+func (c *Client) Attempts(release Release, sourceID string) ([]download.Attempt, error) {
+	up := upstreamFor(release)
+	routes := download.RouteOrder(routeSetFor(release.Distribution), sourceID, up)
+	if len(routes) == 0 {
+		return nil, fmt.Errorf("%w: unusable download URL %q", ErrUpstream, release.URL)
 	}
-
-	var lastErr error
-	for _, try := range tries {
-		if err := ctx.Err(); err != nil {
-			return nil, "", err
-		}
-		body, err := c.http.open(ctx, try.url)
-		if err == nil {
-			return body, try.id, nil
-		}
-		lastErr = fmt.Errorf("%s: %w", SourceName(release.Distribution, try.id), err)
+	out := make([]download.Attempt, 0, len(routes))
+	for _, route := range routes {
+		url, name := route.Link(up), route.Name
+		out = append(out, download.Attempt{
+			Route: route.ID,
+			Open: func(ctx context.Context) (io.ReadCloser, error) {
+				body, err := c.http.open(ctx, url)
+				if err != nil {
+					// Named, because "it failed" and "清华 failed, and so did
+					// 南大" are different things to read in a job's error.
+					return nil, fmt.Errorf("%s: %w", name, err)
+				}
+				return body, nil
+			},
+		})
 	}
-	return nil, "", lastErr
+	return out, nil
 }

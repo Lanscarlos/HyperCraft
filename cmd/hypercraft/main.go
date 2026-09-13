@@ -170,9 +170,9 @@ func run() error {
 		javaruntime.NewClient(userAgent, nil),
 		javaruntime.NewStore(paths.JavaRoot()),
 		javaRegistry,
+		downloadQueue,
 		logger,
 	)
-	defer javaInstaller.Close()
 
 	// Every instance that existed before the registry is launching with a java
 	// path nobody registered. Record them, or tightening the instance form to
@@ -499,7 +499,6 @@ func run() error {
 	}
 	// Downloads go before the servers do: a half-written jar is worth nothing,
 	// and the servers deserve the whole shutdown budget.
-	javaInstaller.Close()
 	databaseInstaller.Close()
 	downloadQueue.Close()
 

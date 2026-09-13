@@ -7,8 +7,6 @@ var (
 	ErrUnsupported = errors.New("unsupported platform")
 	// ErrUnknownRelease is returned when no build matches the request.
 	ErrUnknownRelease = errors.New("no matching java build")
-	// ErrUnknownSource is returned for a download source we do not know.
-	ErrUnknownSource = errors.New("unknown download source")
 	// ErrUpstream wraps anything an upstream metadata API did that we cannot
 	// act on.
 	ErrUpstream = errors.New("java metadata api")

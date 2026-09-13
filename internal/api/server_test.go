@@ -122,6 +122,7 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 			}),
 			javaruntime.NewStore(paths.JavaRoot()),
 			javaruntime.NewRegistry(paths.JavaRegistryFile(), logger),
+			downloadQueue,
 			logger,
 		),
 		Plugins: plugin.NewDownloader(

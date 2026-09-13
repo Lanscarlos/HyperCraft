@@ -1,9 +1,8 @@
 package javaruntime
 
 import (
+	"cmp"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -11,37 +10,40 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/lanscarlos/hypercraft/internal/unpack"
+
+	"github.com/lanscarlos/hypercraft/internal/download"
 )
 
 var (
 	// ErrBusy is returned while another install is already running.
-	ErrBusy = errors.New("a java install is already running")
+	ErrBusy = download.ErrBusy
 	// ErrExists is returned when that runtime is already on disk.
 	ErrExists = errors.New("this java version is already installed")
 	// ErrCancelled is recorded on an install the operator stopped.
-	ErrCancelled = errors.New("install cancelled")
+	ErrCancelled = download.ErrCancelled
 	// ErrChecksum is recorded when the archive is not what the distribution
 	// published.
-	ErrChecksum = errors.New("checksum mismatch")
+	ErrChecksum = download.ErrChecksum
 )
 
-// JobState is where an install has got to.
-type JobState string
-
+// The states an install reports, which are the kernel's under this package's
+// long-standing names — what the panel API publishes and its clients switch on.
 const (
-	JobDownloading JobState = "downloading"
-	JobExtracting  JobState = "extracting"
-	JobDone        JobState = "done"
-	JobFailed      JobState = "failed"
-	JobCancelled   JobState = "cancelled"
+	JobDownloading = string(download.StateDownloading)
+	JobExtracting  = string(download.StateExtracting)
+	JobDone        = string(download.StateDone)
+	JobFailed      = string(download.StateFailed)
+	JobCancelled   = string(download.StateCancelled)
 )
 
-// Job is a snapshot of the most recent install.
+// Job is a snapshot of one install, in the shape the panel API has always
+// published. The queue itself is internal/download's; this is the projection of
+// one of its jobs back into the vocabulary the Java endpoints speak.
 type Job struct {
 	// Distribution is who built the runtime being installed.
 	Distribution string `json:"distribution"`
@@ -55,18 +57,70 @@ type Job struct {
 	FileName   string     `json:"fileName"`
 	Total      int64      `json:"total"`
 	Downloaded int64      `json:"downloaded"`
-	State      JobState   `json:"state"`
+	State      string     `json:"state"`
 	Error      string     `json:"error,omitempty"`
 	RuntimeID  string     `json:"runtimeId,omitempty"`
 	StartedAt  time.Time  `json:"startedAt"`
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 }
 
+// Meta keys Start writes onto a kernel job so jobOf can rebuild a Job from it.
+const (
+	metaDistribution = "distribution"
+	metaMajor        = "major"
+	metaImageType    = "imageType"
+	metaAskedSource  = "source"
+	metaVersion      = "version"
+	metaRuntimeID    = "runtimeId"
+)
+
+// jobOf projects a kernel job back into this package's shape.
+func jobOf(j download.Job) Job {
+	major, _ := strconv.Atoi(j.Meta[metaMajor])
+	started := j.QueuedAt
+	if j.StartedAt != nil {
+		started = *j.StartedAt
+	}
+	state := string(j.State)
+	if j.State == download.StateQueued {
+		// New: installs used to hold a single slot. A client that has only ever
+		// known four states reads queued as downloading; the panel-wide list
+		// shows the real one.
+		state = JobDownloading
+	}
+	// Route is empty until a route answers, and until then the honest thing to
+	// show is what the operator asked for.
+	source := j.Route
+	if source == "" {
+		source = j.Meta[metaAskedSource]
+	}
+	return Job{
+		Distribution: j.Meta[metaDistribution],
+		Major:        major,
+		ImageType:    j.Meta[metaImageType],
+		Source:       source,
+		Version:      j.Meta[metaVersion],
+		FileName:     j.FileName,
+		Total:        j.Total,
+		Downloaded:   j.Downloaded,
+		State:        state,
+		Error:        j.Error,
+		// Known from the moment the build resolves, which is before the job
+		// exists — so the page can link to what is being installed rather than
+		// only to what was. Ref is the same id once the install finishes.
+		RuntimeID:  cmp.Or(j.Ref, j.Meta[metaRuntimeID]),
+		StartedAt:  started,
+		FinishedAt: j.FinishedAt,
+	}
+}
+
 // Installer downloads and unpacks Java runtimes.
 //
-// One at a time, panel-wide: installs are not per-instance, and two of them
-// racing over the runtimes directory buys nothing. Like every other long job
-// here it belongs to the daemon, so closing the browser does not stop it.
+// The queue it used to own moved to internal/download, shared with every other
+// shelf, and with it the single slot went: asking for a second JDK while the
+// first is coming down now queues rather than answering 409. What stays here is
+// what only this package knows — which distributions exist, how their metadata
+// describes a build, and what unpacking one safely means.
 type Installer struct {
 	client *Client
 	store  *Store
@@ -74,16 +128,12 @@ type Installer struct {
 	// rather than beside it so that the API keeps one nil check for "this
 	// panel does Java management" instead of one per feature.
 	registry *Registry
+	queue    *download.Queue
 	log      *slog.Logger
-
-	mu     sync.Mutex
-	job    *Job
-	cancel context.CancelFunc
-	done   chan struct{}
 }
 
-func NewInstaller(client *Client, store *Store, registry *Registry, logger *slog.Logger) *Installer {
-	return &Installer{client: client, store: store, registry: registry, log: logger}
+func NewInstaller(client *Client, store *Store, registry *Registry, queue *download.Queue, logger *slog.Logger) *Installer {
+	return &Installer{client: client, store: store, registry: registry, queue: queue, log: logger}
 }
 
 // Client exposes the API client for the metadata handlers.
@@ -115,56 +165,119 @@ func (i *Installer) Start(dist string, major int, imageType, source string) (Job
 		return Job{}, err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
-	i.mu.Lock()
-	if i.job != nil && (i.job.State == JobDownloading || i.job.State == JobExtracting) {
-		i.mu.Unlock()
-		cancel()
-		return Job{}, ErrBusy
-	}
-	i.job = &Job{
-		Distribution: dist,
-		Major:        major,
-		ImageType:    imageType,
-		Source:       source,
-		State:        JobDownloading,
-		StartedAt:    time.Now(),
-	}
-	i.cancel = cancel
-	i.done = make(chan struct{})
-	job, done := i.job, i.done
-	i.mu.Unlock()
-
-	release, err := i.resolve(ctx, dist, major, imageType, platform)
-	if err == nil {
-		err = i.checkNotInstalled(release)
-	}
+	// Resolved on the request, not on the worker. An unknown major version and
+	// an already-installed runtime are answers a person is waiting for with a
+	// dialog open, and the panel's API says them with a 400 and a 409 — the same
+	// call cores make, and for the same reason. See serverjar.Downloader.Start.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	release, err := i.client.LatestRelease(ctx, dist, major, imageType, platform)
 	if err != nil {
-		cancel()
-		close(done)
-		i.finish(job, JobFailed, err)
 		return Job{}, err
 	}
+	if err := i.checkNotInstalled(release); err != nil {
+		return Job{}, err
+	}
+	id := installID(release)
 
-	i.mu.Lock()
-	job.Version = release.Version
-	job.FileName = release.FileName
-	job.Total = release.Size
-	job.RuntimeID = installID(release)
-	snapshot := *job
-	i.mu.Unlock()
+	job, err := i.queue.Submit(download.Request{
+		Kind:     download.KindJava,
+		Title:    DistributionName(dist) + " " + release.Version,
+		Subtitle: imageType,
+		FileName: release.FileName,
+		Total:    release.Size,
+		// The digest the distribution's metadata API published, never the one
+		// the source serving the file claims. This is what makes the mirrors
+		// safe to offer at all.
+		SHA256:    release.SHA256,
+		DedupeKey: id,
+		// Beside the runtimes, so the finished archive and the staging
+		// directory it unpacks into are on one filesystem.
+		TempDir: i.store.Root(),
+		Meta: map[string]string{
+			metaDistribution: dist,
+			metaMajor:        strconv.Itoa(major),
+			metaImageType:    imageType,
+			metaAskedSource:  source,
+			metaVersion:      release.Version,
+			metaRuntimeID:    id,
+		},
+		Attempts: func(_ context.Context, _ *download.Progress) ([]download.Attempt, error) {
+			i.log.Info("java install started",
+				"dist", dist, "major", major, "image", imageType, "version", release.Version,
+				"file", release.FileName, "size", release.Size, "source", source)
+			return i.client.Attempts(release, source)
+		},
+		Install: func(ctx context.Context, temp, _ string, pub *download.Progress) (string, error) {
+			pub.Extracting()
+			if err := i.install(ctx, release, temp); err != nil {
+				return "", err
+			}
+			i.log.Info("java install finished", "runtime", id, "version", release.Version)
+			return id, nil
+		},
+	})
+	if err != nil {
+		return Job{}, err
+	}
+	return jobOf(job), nil
+}
 
-	i.log.Info("java install started",
-		"dist", dist, "major", major, "image", imageType, "version", release.Version,
-		"file", release.FileName, "size", release.Size, "source", source)
+// install unpacks a verified archive into a staging directory that is only
+// renamed into place once a working java is in it — so a half-unpacked runtime
+// never shows up in the dropdown.
+func (i *Installer) install(ctx context.Context, release Release, temp string) error {
+	id := installID(release)
+	staging := filepath.Join(i.store.Root(), ".installing-"+id)
 
-	go func() {
-		defer cancel()
-		defer close(done)
-		i.run(ctx, job, release, source)
-	}()
-	return snapshot, nil
+	// A staging directory left by an earlier attempt has to go before this one
+	// starts: unpacking on top of it would leave the previous run's files mixed
+	// into the new runtime, and flatten() would not recognise the layout.
+	if err := os.RemoveAll(staging); err != nil {
+		return err
+	}
+
+	archive, err := os.Open(temp)
+	if err != nil {
+		return err
+	}
+	defer archive.Close()
+
+	if err := i.unpack(ctx, staging, release, archive); err != nil {
+		_ = os.RemoveAll(staging)
+		return err
+	}
+	return nil
+}
+
+// Jobs returns this shelf's installs, newest first.
+func (i *Installer) Jobs() []Job {
+	all := i.queue.Jobs()
+	out := make([]Job, 0, len(all))
+	for _, j := range all {
+		if j.Kind == download.KindJava {
+			out = append(out, jobOf(j))
+		}
+	}
+	return out
+}
+
+// Status returns the current or most recent install job.
+func (i *Installer) Status() (Job, bool) {
+	jobs := i.Jobs()
+	if len(jobs) == 0 {
+		return Job{}, false
+	}
+	return jobs[0], true
+}
+
+// Cancel stops every install still going. The button that sends it has never
+// named one, because there was only ever one to name.
+func (i *Installer) Cancel() error {
+	if i.queue.CancelAll(download.KindJava) == 0 {
+		return fmt.Errorf("%w: no install is running", ErrCancelled)
+	}
+	return nil
 }
 
 func (i *Installer) resolve(ctx context.Context, dist string, major int, imageType string, platform Platform) (Release, error) {
@@ -180,155 +293,6 @@ func (i *Installer) checkNotInstalled(release Release) error {
 	}
 	return nil
 }
-
-// run downloads the archive, checks it, and unpacks it into a staging
-// directory that is only renamed into place once a working java is in it —
-// so a half-unpacked runtime never shows up in the dropdown.
-func (i *Installer) run(ctx context.Context, job *Job, release Release, source string) {
-	id := installID(release)
-	staging := filepath.Join(i.store.Root(), ".installing-"+id)
-
-	// A staging directory left by an earlier attempt has to go before this one
-	// starts: unpacking on top of it would leave the previous run's files mixed
-	// into the new runtime, and flatten() would not recognise the layout.
-	err := os.RemoveAll(staging)
-	if err == nil {
-		err = i.fetchAndUnpack(ctx, job, staging, release, source)
-	}
-
-	switch {
-	case err == nil:
-		i.finish(job, JobDone, nil)
-		i.log.Info("java install finished", "runtime", id, "version", release.Version)
-	case ctx.Err() != nil:
-		_ = os.RemoveAll(staging)
-		i.finish(job, JobCancelled, ErrCancelled)
-		i.log.Info("java install cancelled", "runtime", id)
-	default:
-		_ = os.RemoveAll(staging)
-		i.finish(job, JobFailed, err)
-		i.log.Warn("java install failed", "runtime", id, "err", err)
-	}
-}
-
-// fetchAndUnpack downloads the archive and unpacks it, deleting the temporary
-// download either way.
-func (i *Installer) fetchAndUnpack(ctx context.Context, job *Job, staging string, release Release, source string) error {
-	archive, err := i.download(ctx, job, release, source)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		archive.Close()
-		_ = os.Remove(archive.Name())
-	}()
-
-	i.setState(job, JobExtracting)
-	return i.unpack(ctx, staging, release, archive)
-}
-
-// download streams the archive to a temp file and verifies it. Nothing is
-// unpacked until the bytes match what the distribution published: an archive
-// is a lot of files to have to clean up after deciding not to trust it.
-//
-// That check is also what makes the mirrors safe to offer — the checksum comes
-// from the distribution's metadata API, never from the source serving the file.
-func (i *Installer) download(ctx context.Context, job *Job, release Release, source string) (*os.File, error) {
-	if err := os.MkdirAll(i.store.Root(), 0o755); err != nil {
-		return nil, err
-	}
-	temp, err := os.CreateTemp(i.store.Root(), ".download-*.part")
-	if err != nil {
-		return nil, err
-	}
-	cleanup := func() {
-		temp.Close()
-		_ = os.Remove(temp.Name())
-	}
-
-	body, served, err := i.client.Fetch(ctx, release, source)
-	if err != nil {
-		cleanup()
-		return nil, err
-	}
-	defer body.Close()
-
-	if served != source {
-		i.log.Info("java download fell back to another source",
-			"asked", source, "using", served, "file", release.FileName)
-	}
-	i.mu.Lock()
-	job.Source = served
-	i.mu.Unlock()
-
-	// sized marks the case where the declared size is the only check there
-	// is, and so has to be exact.
-	//
-	// With a checksum it is neither the stronger check nor a reliable one:
-	// Azul's metadata says Zulu 25.0.4.1's linux/x64 JRE is 61117500 bytes,
-	// cdn.azul.com serves 61117509, and those 61117509 bytes hash to exactly
-	// the SHA-256 Azul published for the package. Gating on the size turned a
-	// perfectly good archive into "exceeds the declared 61117500 bytes" with
-	// no way round it, on the one distribution that has no second source to
-	// try. So the size drives the progress bar and nothing else, and the cap
-	// falls back to the blanket ceiling: the checksum catches a truncated,
-	// stale or substituted archive either way, and the ceiling is only there
-	// to bound the disk a runaway source can eat.
-	sized := release.Size > 0 && release.SHA256 == ""
-	limit := int64(maxArchiveBytes)
-	if sized {
-		limit = release.Size
-	}
-	digest := sha256.New()
-	progress := &progressWriter{
-		to: io.MultiWriter(temp, digest),
-		report: func(n int64) {
-			i.mu.Lock()
-			job.Downloaded = n
-			i.mu.Unlock()
-		},
-	}
-
-	written, err := io.Copy(progress, io.LimitReader(body, limit+1))
-	if err != nil {
-		cleanup()
-		return nil, err
-	}
-	// Every failure below names the source that served the bytes. With more
-	// than one to choose from, "which mirror handed me this" is the first
-	// thing an operator needs to know — a stale or half-synced copy shows up
-	// exactly here, and the fix is to install from somewhere else.
-	from := SourceName(release.Distribution, served)
-	switch {
-	case sized && written > limit:
-		cleanup()
-		return nil, fmt.Errorf("%w: %s: 下载的内容比声明的 %d 字节还多", ErrUpstream, from, limit)
-	case sized && written != release.Size:
-		cleanup()
-		return nil, fmt.Errorf("%w: %s: 收到 %d 字节，应为 %d", ErrUpstream, from, written, release.Size)
-	case written > limit:
-		cleanup()
-		return nil, fmt.Errorf("%w: %s: 下载超过 %d 字节的上限，已中止", ErrUpstream, from, limit)
-	}
-	if release.SHA256 != "" {
-		if sum := hex.EncodeToString(digest.Sum(nil)); sum != release.SHA256 {
-			cleanup()
-			// A short body is the one checksum failure with an obvious cause,
-			// and "the connection dropped, run it again" is very different
-			// advice from "this source is serving the wrong file" — so say
-			// which one it was while the byte count is still to hand.
-			if release.Size > 0 && written < release.Size {
-				return nil, fmt.Errorf("%w: %s: 下载中断，只收到 %d 字节，应为 %d",
-					ErrChecksum, from, written, release.Size)
-			}
-			return nil, fmt.Errorf("%w: %s: 校验和不符，算出 %s，应为 %s", ErrChecksum, from, sum, release.SHA256)
-		}
-	}
-	return temp, nil
-}
-
-// maxArchiveBytes caps a download whose size upstream did not declare.
-const maxArchiveBytes = 1 << 30 // 1 GiB
 
 func (i *Installer) unpack(ctx context.Context, staging string, release Release, archive *os.File) error {
 	if err := os.MkdirAll(staging, 0o755); err != nil {
@@ -426,68 +390,6 @@ func flatten(root *os.Root) error {
 		}
 	}
 	return root.Remove(wrapper)
-}
-
-func (i *Installer) setState(job *Job, state JobState) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	job.State = state
-}
-
-func (i *Installer) finish(job *Job, state JobState, err error) {
-	now := time.Now()
-
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	job.State = state
-	job.FinishedAt = &now
-	if err != nil {
-		job.Error = err.Error()
-	}
-	if state != JobDone {
-		job.RuntimeID = ""
-	}
-}
-
-// Status returns the current or most recent install job.
-func (i *Installer) Status() (Job, bool) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	if i.job == nil {
-		return Job{}, false
-	}
-	return *i.job, true
-}
-
-// Cancel stops an install that is still running.
-func (i *Installer) Cancel() error {
-	i.mu.Lock()
-	if i.job == nil || (i.job.State != JobDownloading && i.job.State != JobExtracting) {
-		i.mu.Unlock()
-		return fmt.Errorf("%w: no install is running", ErrCancelled)
-	}
-	cancel := i.cancel
-	i.mu.Unlock()
-
-	cancel()
-	return nil
-}
-
-// Close cancels a running install and waits briefly for it to unwind.
-func (i *Installer) Close() {
-	i.mu.Lock()
-	running := i.job != nil && (i.job.State == JobDownloading || i.job.State == JobExtracting)
-	cancel, done := i.cancel, i.done
-	i.mu.Unlock()
-
-	if !running || cancel == nil {
-		return
-	}
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-	}
 }
 
 // installID names the directory a release is installed into, e.g.
