@@ -349,3 +349,16 @@ func TestAnUnknownAlgorithmIsTreatedAsNoDigest(t *testing.T) {
 		t.Fatalf("state = %q err = %q, want done", job.State, job.Error)
 	}
 }
+
+// A Request with no Attempts is a caller bug, but it must not take the daemon
+// with it: this runs on a worker goroutine inside the process that holds every
+// server, so an unrecovered panic there stops the whole fleet.
+func TestARequestWithNoSourceFailsRatherThanPanicking(t *testing.T) {
+	job := runOne(t, Request{Kind: KindCore, Title: "nothing", DedupeKey: "nothing"})
+	if job.State != StateFailed {
+		t.Fatalf("state = %q, want failed", job.State)
+	}
+	if job.Error == "" {
+		t.Fatal("the job failed without saying why")
+	}
+}

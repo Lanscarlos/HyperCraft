@@ -170,6 +170,22 @@ func (s *Server) protectedRoutes() []route {
 		rt("POST /api/instances/{id}/config-history/compact", s.handleConfigHistoryCompact, authz.CapInstanceHistory),
 		rt("PUT /api/instances/{id}/config-history/settings", s.handleConfigHistorySettings, authz.CapInstanceHistory),
 
+		// The panel-wide download queue, which every shelf submits to.
+		//
+		// Gated on being signed in rather than on a capability, and this is the
+		// one place in here where that is the *stricter* choice: there are four
+		// shelves behind this list and hanging any one of their capabilities on
+		// the door would hide the other three from an account that holds them.
+		// The filter is per row, in handlers_downloads_queue.go, and it covers
+		// the count as well as the list.
+		//
+		// Not to be confused with /api/downloads/projects below, which is the
+		// PaperMC catalogue and predates the queue having a name.
+		rt("GET /api/downloads", s.handleDownloads, authz.CapSignedIn),
+		rt("POST /api/downloads/{id}/cancel", s.handleCancelDownload, authz.CapSignedIn),
+		rt("DELETE /api/downloads", s.handleClearDownloads, authz.CapSignedIn),
+		rt("GET /api/downloads/routes", s.handleDownloadRoutes, authz.CapSignedIn),
+
 		// Server cores. Panel-wide rather than per-instance, for the same
 		// reason Java runtimes are: one download serves every server built from
 		// it, and an instance is handed its own copy out of the library.

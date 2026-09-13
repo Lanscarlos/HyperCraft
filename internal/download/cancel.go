@@ -81,15 +81,24 @@ func (q *Queue) CancelAll(kinds ...Kind) int {
 	return stopped
 }
 
-// ClearFinished forgets the history and reports how many rows went. What is
-// still queued or running stays — this clears a record, it does not stop work.
-func (q *Queue) ClearFinished() int {
+// ClearFinished forgets the history and reports how many rows went, for the
+// given kinds or for every kind when given none. What is still queued or
+// running stays — this clears a record, it does not stop work.
+func (q *Queue) ClearFinished(kinds ...Kind) int {
+	want := map[Kind]bool{}
+	for _, kind := range kinds {
+		want[kind] = true
+	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	kept := make([]*entry, 0, len(q.jobs))
 	for _, e := range q.jobs {
-		if e.pub.State.Active() {
+		// Kept when it is still working, or when this caller was not asking
+		// about its shelf. The panel-wide page clears only what the account
+		// looking at it may see: an account that cannot look at Java installs
+		// may not delete the record of them either.
+		if e.pub.State.Active() || (len(want) > 0 && !want[e.pub.Kind]) {
 			kept = append(kept, e)
 		}
 	}

@@ -29,6 +29,8 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/serverjar"
 	"github.com/lanscarlos/hypercraft/internal/store"
 	"github.com/lanscarlos/hypercraft/internal/users"
+
+	"github.com/lanscarlos/hypercraft/internal/download"
 )
 
 // sessionCookie is the browser cookie holding the session token. It is also
@@ -85,6 +87,12 @@ type Server struct {
 	// jars fetches server cores from PaperMC into the panel-wide library.
 	// Optional: a nil downloader turns the feature off and leaves uploading a
 	// jar as the only way in.
+	// downloads is the panel-wide queue every shelf submits to. Held here as
+	// well as inside each shelf because the panel-wide list reads it directly:
+	// asking four shelves and concatenating would mean four places to forget a
+	// capability check.
+	downloads *download.Queue
+
 	jars *serverjar.Downloader
 	// java manages the Java runtimes servers are launched with. Optional, on
 	// the same terms as jars.
@@ -138,19 +146,20 @@ type Server struct {
 
 // Options configures a Server.
 type Options struct {
-	Manager  *instance.Manager
-	Store    *store.Store
-	Sessions *auth.SessionStore
-	Metrics  *metrics.Collector
-	Paths    config.Paths
-	Jars     *serverjar.Downloader
-	Java     *javaruntime.Installer
-	Updater  *selfupdate.Service
-	Terminal *hostterm.Service
-	Panel    config.Panel
-	Users    *users.Registry
-	Version  string
-	Logger   *slog.Logger
+	Manager   *instance.Manager
+	Store     *store.Store
+	Sessions  *auth.SessionStore
+	Metrics   *metrics.Collector
+	Paths     config.Paths
+	Downloads *download.Queue
+	Jars      *serverjar.Downloader
+	Java      *javaruntime.Installer
+	Updater   *selfupdate.Service
+	Terminal  *hostterm.Service
+	Panel     config.Panel
+	Users     *users.Registry
+	Version   string
+	Logger    *slog.Logger
 
 	Plugins         *plugin.Downloader
 	InstancePlugins *plugin.Instances
@@ -186,15 +195,16 @@ func NewServer(opts Options) *Server {
 		authLog:        newAuthLog(),
 		trustedProxies: trusted,
 
-		metrics:  opts.Metrics,
-		paths:    opts.Paths,
-		jars:     opts.Jars,
-		java:     opts.Java,
-		plugins:  opts.Plugins,
-		updater:  opts.Updater,
-		terminal: opts.Terminal,
-		panel:    opts.Panel,
-		version:  opts.Version,
+		metrics:   opts.Metrics,
+		paths:     opts.Paths,
+		downloads: opts.Downloads,
+		jars:      opts.Jars,
+		java:      opts.Java,
+		plugins:   opts.Plugins,
+		updater:   opts.Updater,
+		terminal:  opts.Terminal,
+		panel:     opts.Panel,
+		version:   opts.Version,
 
 		instancePlugins: opts.InstancePlugins,
 		pendingPlugins:  opts.PendingPlugins,

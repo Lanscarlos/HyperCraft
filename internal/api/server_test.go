@@ -44,7 +44,10 @@ type testEnv struct {
 	store *store.Store
 	// accounts is the registry behind api, for tests that add a second account.
 	accounts *users.Registry
-	paths    config.Paths
+	// downloads is the shared queue behind api, for tests that need to put a
+	// job on it without going through a shelf.
+	downloads *download.Queue
+	paths     config.Paths
 	// fill stands in for the PaperMC API and its CDN; see handlers_downloads_test.go.
 	fill *fakeFill
 	// adoptium stands in for the Java download API; see handlers_java_test.go.
@@ -104,11 +107,12 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 	t.Cleanup(downloadQueue.Close)
 
 	options := Options{
-		Manager:  mgr,
-		Store:    st,
-		Sessions: auth.NewSessionStore(time.Hour),
-		Metrics:  metrics.New(time.Second, time.Minute, t.TempDir(), logger),
-		Paths:    paths,
+		Manager:   mgr,
+		Store:     st,
+		Sessions:  auth.NewSessionStore(time.Hour),
+		Metrics:   metrics.New(time.Second, time.Minute, t.TempDir(), logger),
+		Paths:     paths,
+		Downloads: downloadQueue,
 		Jars: serverjar.NewDownloader(
 			serverjar.NewClient(fill.URL(), "test"),
 			serverjar.NewLibrary(paths.CoresRoot()),
@@ -167,6 +171,7 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 	return &testEnv{
 		t: t, server: srv, client: &http.Client{Jar: jar}, api: api,
 		mgr: mgr, store: st, accounts: accounts, paths: paths, fill: fill, adoptium: adoptium, github: gh,
+		downloads: downloadQueue,
 	}
 }
 

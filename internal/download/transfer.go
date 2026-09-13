@@ -97,6 +97,13 @@ func (w *progressWriter) Write(p []byte) (int, error) {
 // and returns the SHA-256 of what arrived — the identity every shelf records
 // its downloads by, whether or not the request published a digest to check.
 func transfer(ctx context.Context, q *Queue, e *entry, r Request, temp string, pub *Progress) (string, error) {
+	if r.Attempts == nil {
+		// A caller bug, but one that must not take the daemon with it: this
+		// runs on a worker goroutine inside the process that holds every server,
+		// and an unrecovered panic here stops the whole fleet. Failing the job
+		// says the same thing and says it on the row.
+		return "", errors.New("这个下载没有可用的来源")
+	}
 	attempts, err := r.Attempts(ctx, pub)
 	if err != nil {
 		return "", err
