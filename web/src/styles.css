@@ -1011,14 +1011,12 @@ a:hover {
    warning is the one thing that should not wait its turn. */
 :is(
   .cards,
-  .dashboard__instances,
   .summary,
   .asset-list,
   .choice-grid,
   .tiles,
   .rows,
-  .plugin-rows,
-  .device-list
+  .rowlist
 ) > * {
   animation: rise var(--dur-3) var(--ease) backwards;
 
@@ -3167,11 +3165,6 @@ a:hover {
   }
 }
 
-.status__label {
-  color: var(--text);
-  font-weight: 500;
-}
-
 /* -------------------------------------------------------------- instance */
 
 .instance {
@@ -3288,7 +3281,6 @@ a:hover {
   overflow: hidden;
 }
 
-
 /* ------------------------------------------------------------- cockpit
 
    The instance home page. Identity and power on top, three numbers under it,
@@ -3390,33 +3382,6 @@ a:hover {
 .cockpit__address span {
   color: var(--accent);
   font-size: 11px;
-}
-
-/* Status as a filled chip rather than a word: it is the one thing on this bar
-   that is read at a glance from across a desk. */
-.pill {
-  padding: 2px 10px;
-  border-radius: var(--radius-pill);
-  font-size: 11px;
-  font-weight: 600;
-  background: var(--surface-3);
-  color: var(--text-dim);
-}
-
-.pill--running {
-  background: var(--ok-soft);
-  color: var(--ok-ink);
-}
-
-.pill--starting,
-.pill--stopping {
-  background: var(--caution-soft);
-  color: var(--caution-ink);
-}
-
-.pill--crashed {
-  background: var(--danger-soft);
-  color: var(--danger-ink);
 }
 
 /* --- the metric strip ------------------------------------------------- */
@@ -3850,6 +3815,23 @@ a:hover {
   max-width: var(--content-max);
 }
 
+/* A page that is a form is a narrow page.
+   The panel has always had two measures — prose at 880, tiles at 1440 — and
+   the choice is a property of the page, not of the card on it. An instance
+   pane widens .stack to the tile measure because the file listing, the charts
+   and the plugin rows all wanted it; 实例设置 and 代理配置 are forms from top
+   to bottom and wanted the opposite, so every card on them carried 268px of
+   itself as empty right-hand side while the fields stopped at 880.
+
+   Capping the *card* instead was tried and was worse: a page that mixes a form
+   with a shelf then carries two card widths, which is more obviously wrong
+   than trailing space is. The second selector is what makes this stick — the
+   pane's own rule is two classes deep and outranks a lone modifier. */
+.stack--narrow,
+.instance__pane .stack--narrow {
+  max-width: var(--content-max);
+}
+
 .panel {
   display: flex;
   flex-direction: column;
@@ -3877,42 +3859,94 @@ a:hover {
   font-weight: 600;
 }
 
+/* ---- the head every section opens with ------------------------------------
+
+   Title and note on the left, a short fact and the section's controls on the
+   right, the body under both. Five shapes said this before (.chart-head with
+   a meta line, .panel__head with a button, .update__head, the form panel's
+   .panel__aside, a bare h3) and the note landed in three different places
+   depending on which one the page had been copied from. Section.tsx is the
+   only thing that writes these classes.
+
+   align-items: flex-start rather than center: a two-line note under the title
+   must not drag the tools down to its midpoint, and a title on its own is
+   short enough that flex-start and center agree. */
+.panel__head {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+/* The title column claims the row; the fact and the tools take what they
+   need at the end and wrap under it, together, when it is not there.
+
+   The basis is what decides that wrap, and it is deliberately short: it is not
+   the width the column wants (flex-grow gives it the whole row anyway), it is
+   the width below which a title and one small button stop fitting side by
+   side. At 280 they stopped fitting inside a card on a 390px phone, so every
+   section head there put its one button alone on a second line, right-aligned
+   under nothing — 账号 and 新建账号 reading as two unrelated things. */
+.panel__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.panel__count {
+  margin-left: 8px;
+  color: var(--text-faint);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The head's one sentence: why this section exists, not what the fields do.
+   Reads at the size every card's subtitle reads at — as a column caption it
+   was 11px and faint, which is the weight of a footnote, and a footnote is
+   not what the line under a card's title is. */
+.panel__note {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* A fact, not a sentence: "物理 15.7 GB", "还没建数据库". It sits on the
+   title's baseline, at the end of the row, so a column of cards reads as a
+   column of ledger lines. Sentences go in the note, under the title, where
+   a line of prose can be as long as it needs to be without pushing the tools
+   off the row. */
+.panel__meta {
+  margin: 0;
+  padding-top: 2px;
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.panel__tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
 /* A settings form is a card like every other card in the panel: its own head,
-   then what the head is about. The head is 段标题 + one sentence of why; the
-   body is the fields.
+   then what the head is about. What the modifier adds is the rhythm between
+   fields and the cap on the body.
 
    It used to be two columns — the head stood to the left of the fields, and the
    width a wide window brought went to it. On paper that reads as "width goes to
    the guide, not into making a text input longer". On screen it was a caption
    of two lines standing in a column three hundred pixels wide and four hundred
    tall, and the emptiness read as a hole in the card rather than as a margin.
-   The arithmetic that was supposed to hold it at 200px did not: flexbox freezes
-   the body once it hits its max-width and hands the leftover to whoever can
-   still grow, which was the head, alone — 282px of it at 1186px of card, 536px
-   at 1440px. Capping it stopped the growth without answering the objection,
-   which was that the column should not be there.
-
-   So the head goes where a card's head goes. The body still stops at the
-   reading measure, and the width a wide window brings is now genuinely trailing
-   space — which is what the comment here claimed all along, from the wrong
-   layout.
-
-   .panel is already a flex column, so this modifier no longer overrides the
-   direction. What is left of it is the gap and the two children's own rules,
-   and the guarantee that both wrappers are written (see ruleFormPanelsHaveColumns
-   in check-ui.mjs) — without them the fields lose their measure and run to the
-   card's edge. */
+   So the head goes where every other card's head goes. */
 .panel--form {
   gap: 14px;
-}
-
-/* The head. Same shape as .chart-head, one sentence quieter: this one is
-   explaining a section of a form, not labelling a chart with a control on it. */
-.panel--form > .panel__aside {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-width: var(--content-max);
 }
 
 /* Capped at the reading measure rather than at the card: past ~880px a row of
@@ -3927,29 +3961,12 @@ a:hover {
   gap: 14px;
 }
 
-/* The head's one sentence: why this section exists, not what the fields do.
-   Reads at the size every other card's subtitle reads at (.chart-head__meta) —
-   as a column caption it was 11px and faint, which is the weight of a footnote,
-   and a footnote is not what the line under a card's title is. */
-.panel__aside .panel__note {
-  margin: 0;
-  color: var(--text-dim);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
 .panel__path {
-  margin: -10px 0 0;
+  margin: 0;
   color: var(--text-faint);
   font-family: var(--font-mono);
   font-size: 11px;
   word-break: break-all;
-}
-
-/* In a form head the gap above is already 4px, so the pull-up would lift the
-   path onto the sentence it sits under. */
-.panel__aside .panel__path {
-  margin-top: 0;
 }
 
 /* The long tail of server.properties: dozens of one-line key/value pairs the
@@ -3971,11 +3988,6 @@ a:hover {
   flex-wrap: wrap;
 }
 
-.actions__danger {
-  display: flex;
-  gap: 8px;
-  margin-left: auto;
-}
 
 /* The save bar, which exists only while there is something to save. Sticky
    against .instance__pane--scroll (overflow-y: auto, so it is the scrollport)
@@ -4074,136 +4086,6 @@ a:hover {
   gap: 6px;
   margin-left: auto;
   padding-bottom: 8px;
-}
-
-/* The other instances on this machine, offered as one click each. A chip
-   rather than a row: it is a shortcut into the list above, and it disappears
-   from use — not from view — once that address is already in it. */
-.subserver-picks {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.subserver-picks__label {
-  color: var(--text-faint);
-  font-size: 12px;
-}
-
-.subserver-picks .chip small {
-  color: var(--text-faint);
-  font-family: var(--font-mono);
-  font-size: 11px;
-}
-
-.subserver-picks .chip:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* ---- 服务器配置 的文件切换 -----------------------------------------------
-   A server's settings live in four files, and the tab row is what turns "which
-   file is this setting in" from a thing you have to know into a thing you can
-   read. Chips rather than a .segmented: there are up to five of them, they are
-   filenames of very different lengths, and a segmented control would either
-   stretch them to equal widths or spill. */
-/* The file picker on 服务器配置.
-
-   It was a row of chips, and five filenames in identical pills read as one
-   long word — nothing on them answered the question people actually arrive
-   with, which is not "which file is called what" but "which file holds the
-   thing I want". The line under the name answers it, and that needs a card.
-
-   auto-fill rather than auto-fit: there are five of these today and a core
-   that ships a sixth would join the row rather than stretch it. The floor is
-   200px because five of them then share one row on a normal window — at 240
-   the fifth wrapped alone, which reads as a card that did not fit rather than
-   a row of five. The blurb ellipses if a future file needs a longer one. */
-.filecards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px;
-}
-
-.filecard {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-  padding: 10px 12px;
-  background: var(--surface-1);
-  background-image: linear-gradient(180deg, var(--sheen), transparent 48px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-  color: inherit;
-  cursor: pointer;
-  font-family: inherit;
-  text-align: left;
-  transition:
-    background var(--dur) var(--ease),
-    border-color var(--dur) var(--ease),
-    box-shadow var(--dur) var(--ease),
-    transform var(--dur-1) var(--ease);
-}
-
-.filecard:hover {
-  border-color: var(--border-strong);
-  transform: translateY(-1px);
-}
-
-.filecard:active {
-  transform: translateY(0);
-}
-
-/* The selected card is the page's subject, so it takes the accent edge the
-   rest of the panel uses for "this is the one" — not a filled face, which at
-   this size reads as a button waiting to be pressed. */
-.filecard--on {
-  background: var(--accent-soft);
-  border-color: var(--border-accent);
-  box-shadow: var(--shadow);
-}
-
-.filecard__name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.filecard--on .filecard__name {
-  color: var(--accent);
-}
-
-.filecard__blurb {
-  /* Pinned to the foot of the card. A long filename wraps to two lines and
-     would otherwise push its own blurb a line below everyone else's, so the
-     row reads as one card sitting wrong rather than one name being long. */
-  margin-top: auto;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-dim);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.filecard__new {
-  flex: none;
-  padding: 0 6px;
-  background: var(--surface-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  color: var(--text-faint);
-  font-family: inherit;
-  font-size: 10px;
-  font-weight: 500;
-  line-height: 1.7;
 }
 
 /* ---- 代理连线 ------------------------------------------------------------
@@ -4639,11 +4521,6 @@ a:hover {
   gap: 10px;
 }
 
-.jvmargs__empty {
-  margin: 0;
-  color: var(--text-dim);
-}
-
 .jvmargs__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
@@ -4773,6 +4650,21 @@ a:hover {
 
 /* Last in the grid, and dashed so it reads as the empty slot it is rather than
    as another argument. */
+/* With no arguments yet this is the whole of the empty state: one dashed box
+   that both says so and is the way out of it. There used to be a centred
+   paragraph above it saying the same thing, so an empty editor spent 250px
+   and two affordances on "there is nothing here". */
+.jvmcard__add--empty {
+  grid-column: 1 / -1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.jvmcard__add--empty small {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
 .jvmcard__add {
   display: flex;
   align-items: center;
@@ -5178,13 +5070,6 @@ details[open]::details-content {
   border-bottom: 1px solid var(--border);
 }
 
-.tokenrow__head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
 /* The name edits in place — renaming a token is the one change to it that is
    purely cosmetic, so it should not need a dialog. Borderless until it is
    touched, so the row reads as a list rather than as a form. */
@@ -5218,27 +5103,22 @@ details[open]::details-content {
   font-size: 12px;
 }
 
-/* ------------------------------------------------------- welcome & pages
+/* ------------------------------------------------------------------ pages
 
-   .page is the plain scrolling page shell every panel-wide view uses; the
-   overview is the same thing with cards under it. */
+   .page is the scrolling page shell every panel-wide view uses. */
 
 /* Every page arrives the same way, and it is deliberately the smallest of the
    entrances: six pixels and a fifth of a second. A page is the largest thing
    that moves in the panel, so it is also the thing whose movement gets old
    fastest — anything more theatrical here would be paid for on every click for
    the life of the install. */
-.welcome,
-.page {
-  overflow-y: auto;
-  padding-bottom: 30px;
-  animation: rise var(--dur-3) var(--ease) backwards;
-}
-
 .page {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow-y: auto;
+  padding-bottom: 30px;
+  animation: rise var(--dur-3) var(--ease) backwards;
 }
 
 /* The scroll container itself is always as wide as the pane, so its scrollbar
@@ -5270,11 +5150,6 @@ details[open]::details-content {
   max-width: none;
 }
 
-.welcome h1 {
-  font-size: 22px;
-  margin: 0 0 8px;
-}
-
 /* The second selector is the same head inside an instance pane, which is not
    a .page: the sections there open with the head every page opens with, so the
    title has to be the same size in both places or the panel has two ideas of
@@ -5295,11 +5170,11 @@ details[open]::details-content {
   flex-wrap: wrap;
 }
 
-/* The title column, and only it: `> div` also caught an aside that happened to
-   be a div — a button row beside the title — and gave it the title's column
-   direction and 280px floor, which is how two buttons ended up stacked in a
-   box a third of the head wide. */
-.page__head > div:first-child {
+/* The title column, and only it: the actions beside it are a row of their
+   own (see .page__actions) and must not inherit the column direction or the
+   280px floor, which is how two buttons once ended up stacked in a box a third
+   of the head wide. */
+.page__heading {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -5340,31 +5215,38 @@ details[open]::details-content {
   font-size: 12px;
 }
 
-/* A button row beside a page title stays on one line. The head is a wrapping
-   flex row whose left half claims the space, which squeezes anything on the
-   right down to its narrowest column — two buttons, stacked. They move under
-   the title together instead. */
-.page__head .actions {
+/* The count after a title — how many plugins, how many snapshots. Quieter
+   and smaller than the title, so it reads as a fact about it rather than as
+   part of the name. */
+.page__count {
+  margin-left: 10px;
+  color: var(--text-faint);
+  font-size: 15px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The page's facts sit under the lead, in the title column, where a long path
+   wraps within the column instead of across the head. They used to be the
+   head's right-hand half, where the wrap put them on a second line under
+   nothing in particular. */
+.page__facts {
+  margin: 0;
+}
+
+/* The page's own actions: at most two buttons and an overflow menu, on one
+   line at the end of the head. The head is a wrapping flex row whose left
+   column claims the space, so without the nowrap and the fixed basis anything
+   on the right gets squeezed down to its narrowest column — two buttons,
+   stacked. Together they move under the title instead. */
+.page__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
   flex: 0 0 auto;
   flex-wrap: nowrap;
-}
-
-/* Same reason as .actions above: the head's left column claims the row, and a
-   shrinkable aside gets squeezed to its narrowest column — here that is the
-   hint line under 编辑模式 broken across three. It drops under the title whole
-   instead. */
-.page__head .file-mode {
-  flex: 0 0 auto;
   max-width: 100%;
-}
-
-/* Beside a title the chips are the secondary half, so they wrap onto a second
-   row rather than pushing the lead paragraph down to a narrow column — which
-   is what plain max-content sizing does once a long path is among them. */
-.page__head .meta-chips {
-  flex: 0 1 auto;
-  justify-content: flex-end;
-  max-width: 50%;
 }
 
 .meta-chips > span {
@@ -5380,34 +5262,113 @@ details[open]::details-content {
   white-space: nowrap;
 }
 
-.welcome__lead {
-  color: var(--text-dim);
-  max-width: 640px;
-  margin: 0 0 24px;
-}
-
 .page__lead {
   color: var(--text-dim);
   max-width: 660px;
   margin: -8px 0 0;
 }
 
-.welcome__hint {
+/* ----------------------------------------------------------------- toolbar
+
+   The one row of controls above a list: search, then the filter chips, a
+   count or a note where the eye rests, the list's own tools at the far end.
+   A list gets at most one, directly above it. Toolbar.tsx.
+
+   Wrapping flex rather than a grid: on a phone the search takes the first
+   line and the chips the second, and nothing has to be told where to go. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.toolbar__search {
+  flex: 1 1 220px;
+  min-width: 160px;
+  max-width: 380px;
+  padding: 7px 11px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.toolbar__search:focus-visible {
+  border-color: var(--border-accent);
+  box-shadow: var(--ring);
+  outline: none;
+}
+
+/* The search at the far end of the row instead of its start — the file
+   listing's find box, which sits away from the buttons that act on the
+   listing so a hand reaching for 上传 does not land in it. */
+.toolbar__search--end {
+  flex: 0 1 260px;
+  margin-left: auto;
+}
+
+.toolbar__chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* A word before the chips — 时间范围 — for the rows where the chips alone do
+   not say what they narrow. */
+.toolbar__label {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* "12 / 40", or the one-line fact the list is judged against. Pushed to the
+   end so it stays put while the chips wrap. */
+.toolbar__count {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.toolbar__tools {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 12px 0 24px;
-  color: var(--text-dim);
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 
-/* The "nothing here yet" block: a dashed outline says the space is meant to
-   be filled, rather than looking like a rendering failure. */
-.welcome__empty {
+/* A count at the end of the row and the tools after it: the count gives up
+   its auto margin so the two sit together rather than at opposite ends. */
+.toolbar__count + .toolbar__tools {
+  margin-left: 0;
+}
+
+/* A placeholder standing in for a section's head: the title on the left, the
+   fact or the control at the far end, the same row .panel__head draws. */
+.skeleton-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ------------------------------------------------------------------- empty
+
+   "Nothing here yet", once. A dashed outline says the space is meant to be
+   filled, rather than looking like a rendering failure. EmptyState.tsx. */
+.empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 34px 20px;
+  gap: 6px;
+  padding: 30px 20px;
   background: var(--sunken);
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-lg);
@@ -5415,8 +5376,228 @@ details[open]::details-content {
   text-align: center;
 }
 
-.welcome__empty p {
+/* Inside a card the outline is already drawn by the card; a second one
+   inside it is a box in a box. The tint stays so the block still reads as a
+   placeholder. */
+.panel > .empty {
+  border-radius: var(--radius);
+}
+
+.empty__title {
   margin: 0;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.empty__note {
+  margin: 0;
+  max-width: 520px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* Callers pass prose, sometimes as their own paragraphs. They inherit the
+   note's measure; what they must not bring is a <p>'s default margin, which
+   would space them off the title the note sits under. */
+.empty__note p {
+  margin: 0;
+}
+
+.empty__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+/* In place of a list's rows, under its header: one quiet line, no box, so
+   the header stays where it was and the list does not change shape when the
+   filter finds nothing. */
+.empty--inline {
+  /* Left, not centred. The block form is a panel of its own and centres like
+     any placard; this one is standing in for rows or fields that would have
+     hung off the left edge, and a sentence floating in the middle of an
+     880px form reads as a stray caption rather than as the absent content. */
+  align-items: flex-start;
+  padding: 14px 2px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  gap: 4px;
+  text-align: left;
+}
+
+.empty--inline .empty__title {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.empty--inline .empty__note {
+  font-size: 12px;
+}
+
+/* ----------------------------------------------------------------- rowlist
+
+   Rows inside a card: an account, a paired device, a token, an index source,
+   one download. Each is a name with a few badges and its actions on one line,
+   and a line of context under it. Six pages had drawn this row six times
+   (.device-row, .acct-row, .tokenrow, .setting-row, .schemsource, .dlrow),
+   which is how a panel starts looking assembled rather than designed. */
+.rowlist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 11px 13px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.row:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+/* The one row that is chosen — a picked radio, an open item. The accent edge
+   rather than a tinted fill, so a list of five stays five rows and not four
+   rows and a button. */
+.row--on {
+  border-color: var(--border-accent);
+}
+
+.row--off {
+  opacity: 0.6;
+}
+
+/* Wrapping rather than scrolling: a long display name plus four actions does
+   not fit a phone, and the actions are the half you came for. */
+.row__main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.row__title {
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The one thing on the row that can be arbitrarily long. */
+.row__sub {
+  color: var(--text-dim);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row__spacer {
+  flex: 1;
+}
+
+/* The actions wrap as a block rather than one at a time. Letting them break
+   individually put "编辑" on one line and "重置密码 强制下线 删除" on the next,
+   differently for every row. As a group they are either beside the name or
+   under it. */
+.row__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.row__meta {
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+
+
+/* A count of dangerous capabilities on a role row, in the colour the role
+   editor uses for the same idea. Not red: this is a fact about the role, not
+   a failure. Was .acct-row__danger. */
+.row__danger {
+  color: var(--caution);
+}
+
+/* A row you choose *with* — a radio for one of five plugin mirrors. The row
+   itself is the line here rather than holding one, because there is only ever
+   one: the radio, the name, and the prefix. The whole row is the <label>, so
+   the cursor says so. Was .setting-row--pick. */
+.row--pick {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px 14px;
+  cursor: pointer;
+}
+
+.row--pick > input[type='radio'] {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* The chosen one takes the accent fill rather than only the edge .row--on
+   gives: this is a radio group, where which one is picked is the only thing
+   the list is saying. */
+.row--pick.row--on {
+  background: var(--accent-soft);
+}
+
+/* The name over its note. It claims the line, so the prefix at the end wraps
+   under it when the row is too narrow to hold both — flex-wrap in place of the
+   560px breakpoint .setting-row--pick used to need. */
+.row__label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.row__label > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.row__label small {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* The half that tells you whether a proxy is the one you set up. Allowed to be
+   cut short rather than to push the name out of the row: a self-hosted prefix
+   is long. */
+.row__control {
+  min-width: 0;
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cards {
@@ -5490,14 +5671,6 @@ details[open]::details-content {
   font-size: 12px;
 }
 
-.card__path {
-  color: var(--text-faint);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 /* ---------------------------------------------------------------- modals
 
@@ -5772,19 +5945,6 @@ details[open]::details-content {
   font-size: 12px;
 }
 
-/* The controls that belong to a card rather than to one thing inside it: the
-   download source a list of installable builds is read from, the link to the
-   page that changes it. Pushed to the far end so the title and its count stay
-   together at the start — .chart-head is space-between, which on three
-   children would otherwise strand the count in the middle. */
-.chart-head__tools {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-left: auto;
-}
-
 /* A second chart under the first inside one card — the two directions of
    network traffic. Quieter than the card's own title, because the card is the
    subject and these two are its halves. */
@@ -5804,20 +5964,6 @@ details[open]::details-content {
   color: var(--text-faint);
   font-size: 11px;
   line-height: 1.7;
-}
-
-/* Filters live in one row above the charts they scope. */
-.chart-filters {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.chart-filters__label {
-  color: var(--text-dim);
-  font-size: 12px;
-  margin-right: 4px;
 }
 
 .chip {
@@ -5845,11 +5991,19 @@ details[open]::details-content {
   transform: scale(0.94);
 }
 
-.chip--active {
+.chip--active,
+.chip--on {
   background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--text);
   font-weight: 500;
+}
+
+/* A count inside a chip: 全部 12. */
+.chip b {
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .chip--right {
@@ -6120,49 +6274,6 @@ details[open]::details-content {
   color: var(--text-faint);
 }
 
-.file-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-/* The filter box sits at the far end of the toolbar, away from the buttons
-   that change the directory: it only changes what is shown. */
-.file-toolbar__find {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  padding: 0 10px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-faint);
-  transition:
-    border-color var(--dur) var(--ease),
-    box-shadow var(--dur) var(--ease);
-}
-
-.file-toolbar__find:focus-within {
-  border-color: var(--border-accent);
-  box-shadow: var(--ring);
-}
-
-.file-toolbar__search {
-  width: 190px;
-  padding: 7px 0;
-  background: none;
-  border: none;
-  color: var(--text);
-  font-family: inherit;
-  font-size: 13px;
-}
-
-.file-toolbar__search:focus {
-  outline: none;
-}
-
 /* 编辑模式 used to be the fourth button in a row of four, and read as the
    third: same height, same border, same weight as 新建文件夹 beside it. It is
    not another thing to do to a file, it is what the screen is for — so it gets
@@ -6227,14 +6338,6 @@ details[open]::details-content {
 .file-mode__text small {
   color: var(--text-faint);
   font-size: 11px;
-}
-
-/* A sentence sitting in a row of buttons. .file-toolbar sets no type of its
-   own, so without this the hint came out at body size in body ink and read as
-   loud as the button beside it. */
-.file-toolbar__hint {
-  color: var(--text-dim);
-  font-size: 12px;
 }
 
 /* The bar that appears once something is ticked. Tinted rather than plain, so
@@ -6605,36 +6708,12 @@ details[open]::details-content {
 
 /* ---- the text editor -------------------------------------------------- */
 
-.editor__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.editor__title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
 .editor__path {
   margin: 2px 0 0;
   color: var(--text-faint);
   font-family: var(--font-mono);
   font-size: 11px;
   word-break: break-all;
-}
-
-.editor__facts {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--text-faint);
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
 }
 
 .editor__dot::before {
@@ -7117,27 +7196,6 @@ details[open]::details-content {
   gap: 12px;
 }
 
-.schemlib__bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.schemlib__bar .filters__search {
-  flex: 1 1 220px;
-  /* The search box is the flex child most likely to be handed a long value,
-     and without this it refuses to shrink past its content and pushes the
-     buttons off the row. */
-  min-width: 0;
-}
-
-.schemlib__bar-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .schemlib__failures {
   margin: 6px 0 0;
   padding-left: 18px;
@@ -7537,8 +7595,9 @@ small.field__bad {
 /* Two columns fit here, but not two comfortable ones. So the tree comes back
    *over* the editor instead of taking a quarter of a width that is already
    short — the editor keeps the row either way, and nothing reflows when the
-   tree opens and shuts. */
-@media (max-width: 1200px) {
+   tree opens and shuts. 1240 is the sheet's own step (the sidebar narrows
+   there too), not a number of this pane's own. */
+@media (max-width: 1240px) {
   .fm--editing {
     position: relative;
     grid-template-columns: minmax(0, 1fr);
@@ -8524,42 +8583,6 @@ small.field__bad {
   gap: 10px;
 }
 
-.dlqueue__title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  font-size: 14px;
-  font-weight: 650;
-}
-
-.dlqueue__count {
-  padding: 1px 8px;
-  background: var(--surface-3);
-  border-radius: var(--radius-pill);
-  font-size: 12px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-dim);
-}
-
-.dlqueue__count--bad {
-  background: var(--danger-soft);
-  color: var(--danger-ink);
-}
-
-.dlqueue__empty {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.dlqueue__rows {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
 /* One download, in every state. The same layout throughout on purpose: queued,
    running and failed are one download at three moments, and redrawing them in
    three shapes would hide that. */
@@ -8723,132 +8746,6 @@ small.field__bad {
   box-shadow: none;
 }
 
-/* ------------------------------------------------------------- device rows */
-
-.device-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.device-row {
-  padding: 11px 13px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  transition:
-    border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease);
-}
-
-.device-row:hover {
-  border-color: var(--border-strong);
-  background: var(--surface-2);
-}
-
-.device-row__main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.device-row__spacer {
-  flex: 1;
-}
-
-.device-row__meta {
-  margin-top: 5px;
-  font-size: 11px;
-  color: var(--text-faint);
-  overflow-wrap: anywhere;
-}
-
-/* A sentence rather than a fact — "this jar is the library's own download" —
-   so it gets its own line instead of trailing the dot-separated metadata. */
-.device-row__hint {
-  display: block;
-  margin-top: 3px;
-}
-
-/* ----------------------------------------------------------------- accounts
-
-   账号与角色. Rows rather than a table: the interesting part of an account is
-   a sentence — "可以管理 生存服、创造服 · 2 台配对设备" — and a sentence in a
-   table cell is a table with one wide column and several narrow ones.
-
-   Shaped like .device-row on purpose. They are the same kind of row (a name, a
-   few badges, some actions, a line of context underneath) on two pages of the
-   same settings scope, and two shapes for one idea is how a panel starts
-   looking assembled rather than designed. */
-
-.acct-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.acct-row {
-  padding: 11px 13px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  transition:
-    border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease);
-}
-
-.acct-row:hover {
-  border-color: var(--border-strong);
-  background: var(--surface-2);
-}
-
-/* Wrapping rather than scrolling: a long display name plus four actions does
-   not fit a phone, and the actions are the half you came for. */
-.acct-row__main {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-}
-
-.acct-row__alias {
-  color: var(--text-dim);
-  /* The one thing on the row that can be arbitrarily long. */
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.acct-row__spacer {
-  flex: 1;
-}
-
-/* The actions wrap as a block rather than one at a time. Letting them break
-   individually put "编辑" on one line and "重置密码 强制下线 删除" on the next,
-   differently for every row — four links in a ragged column that changed shape
-   per account. As a group they are either beside the name or under it. */
-.acct-row__actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.acct-row__meta {
-  margin-top: 5px;
-  font-size: 11px;
-  color: var(--text-faint);
-  overflow-wrap: anywhere;
-}
-
-/* A count of dangerous capabilities, in the colour the role editor uses for
-   the same idea. Not red: this is a fact about the role, not a failure. */
-.acct-row__danger {
-  color: var(--caution);
-}
-
 /* ------------------------------------------------------------- grant picker
 
    全部实例 is a radio rather than a checkbox in the list, because it is not a
@@ -9006,28 +8903,6 @@ small.field__bad {
 
 .field--check small {
   color: var(--text-faint);
-}
-
-/* -------------------------------------------------------------- panel heads
-
-   A title with an action on the same line. Wraps rather than squeezing the
-   button, which is the half that has to stay tappable. */
-
-.panel__head {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.panel__head .panel__title {
-  flex: 1;
-  min-width: 0;
-}
-
-.panel__lead {
-  margin: -6px 0 0;
-  color: var(--text-dim);
 }
 
 /* ------------------------------------------------------------------ assets
@@ -9477,118 +9352,6 @@ small.field__bad {
 
 .pick > .btn {
   flex: none;
-}
-
-/* ----------------------------------------------------------- setting rows
-
-   A switch with its own explanation, in a boxed list. The .field grammar puts
-   the label above the control, which is right for a form being filled in and
-   wrong for a page of settings that are already set: read down the left edge
-   and you get the list of things this page decides, with each answer on the
-   same line as its question. */
-.setting-list {
-  display: flex;
-  flex-direction: column;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.setting-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 6px 16px;
-  padding: 11px 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.setting-row:last-child {
-  border-bottom: none;
-}
-
-/* A row whose control is what you choose it *with* — a radio for one of five
-   mirrors — puts that control first, where a list of choices is read from. */
-.setting-row--pick {
-  /* The trailing track is minmax(0, auto) rather than auto: it holds a proxy
-     prefix, and a self-hosted one is long enough to push the name out of the
-     row if the track is allowed to size to its content. */
-  grid-template-columns: auto minmax(0, 1fr) minmax(0, auto);
-  cursor: pointer;
-}
-
-.setting-row--pick:hover {
-  background: var(--surface-2);
-}
-
-.setting-row--on {
-  background: var(--accent-soft);
-}
-
-.setting-row--on:hover {
-  background: var(--accent-soft);
-}
-
-.setting-row > input[type='radio'] {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-
-.setting-row__label {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.setting-row__label > span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.setting-row__label small {
-  color: var(--text-faint);
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.setting-row__label code {
-  font-size: 11px;
-}
-
-.setting-row__control {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  justify-self: end;
-}
-
-.setting-row__control code {
-  min-width: 0;
-  color: var(--text-faint);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* A stored credential is the same kind of list item as a mirror, so it goes in
-   the same box. Its own padding was vertical only, from when the rows sat
-   loose on the card with nothing to be inset from. */
-.setting-list > .tokenrow {
-  padding: 10px 14px;
-}
-
-.setting-list > .tokenrow:last-child {
-  border-bottom: none;
 }
 
 /* --------------------------------------------------------- database detail
@@ -10404,16 +10167,6 @@ input.input-slim:disabled {
   color: var(--danger-ink);
 }
 
-.chart-head__actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  /* Wraps rather than running off the edge: .main clips, so a fourth button on
-     a phone would not be reachable at all — and on 配置历史 the one that falls
-     off the end is 整树还原. */
-  flex-wrap: wrap;
-}
-
 /* --- instance cards ---------------------------------------------------- */
 
 /* Four characters at most, and never worth breaking: a name long enough to
@@ -10488,50 +10241,6 @@ input.input-slim:disabled {
 
 .card__why--bad {
   color: var(--danger-hover);
-}
-
-/* ------------------------------------------------------------- filter bar
-
-   One row above the content it scopes, in the same place on every list page,
-   and every value in it lives in the URL — so a filtered list survives a
-   reload and can be pasted to someone else. */
-
-.filters {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.filters__search {
-  flex: 0 1 260px;
-  min-width: 160px;
-  padding: 7px 11px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 13px;
-}
-
-.filters__search:focus-visible {
-  border-color: var(--border-accent);
-  box-shadow: var(--ring);
-  outline: none;
-}
-
-.filters__chips {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.filters__count {
-  margin-left: auto;
-  color: var(--text-faint);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
 }
 
 /* ----------------------------------------------------------------- rows
@@ -10717,14 +10426,6 @@ button.rows__name:hover strong {
 .rows__cell small {
   color: var(--text-faint);
   font-size: 11px;
-}
-
-.rows__empty {
-  margin: 0;
-  padding: 22px 14px;
-  color: var(--text-dim);
-  font-size: 13px;
-  text-align: center;
 }
 
 .rows__error {
@@ -11045,12 +10746,6 @@ button.rows__name:hover strong {
   background: var(--surface-2);
   color: var(--text-faint);
   font-size: 11px;
-}
-
-.dashboard__instances {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
 /* The clickable part of a card is a child, not the card — a card with its own
@@ -11482,10 +11177,6 @@ button.rows__name:hover strong {
     padding-bottom: max(16px, env(safe-area-inset-bottom));
   }
 
-  .actions__danger {
-    margin-left: 0;
-  }
-
   .power .btn,
   .modal__actions .btn {
     flex: 1;
@@ -11495,15 +11186,12 @@ button.rows__name:hover strong {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
 
-  /* The filter takes the whole of the second line rather than being squeezed
+  /* The search takes the whole of the second line rather than being squeezed
      to whatever is left beside four buttons. */
-  .file-toolbar__find {
+  .toolbar__search--end {
+    flex-basis: 100%;
+    max-width: none;
     margin-left: 0;
-    width: 100%;
-  }
-
-  .file-toolbar__search {
-    width: 100%;
   }
 
   /* 修改时间 is the first thing to go on a narrow screen: the name, the size
@@ -11635,111 +11323,10 @@ button.rows__name:hover strong {
   }
 }
 
-/* --------------------------------------------------------------- plugin list
-
-   The library page is a list, not a grid of cards: what an operator does here
-   is scan down twenty plugins looking for the ones that need attention, and a
-   row puts name, held version, upstream version and users on one line where
-   they can be compared. Everything you can do *to* a plugin is on its own page,
-   so a row needs no controls beyond "open" and the one action worth taking from
-   the list — downloading an update it just told you about. */
-
-.plugin-rows {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.plugin-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.plugin-row:last-child {
-  border-bottom: none;
-}
-
-.plugin-row:hover {
-  background: var(--surface-2);
-}
-
-/* The name is the target: the whole left half is one button, so opening a
-   plugin does not require finding a small link at the end of the row. */
-.plugin-row__main {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 2 1 220px;
-  min-width: 0;
-  padding: 0;
-  background: none;
-  border: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.plugin-row__title {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.plugin-row__title strong {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.plugin-row__title small,
-.plugin-row__facts small {
-  color: var(--text-faint);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.plugin-row__facts {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1 1 180px;
-  min-width: 0;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.plugin-row__users {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  flex: 1 1 140px;
-  min-width: 0;
-  font-size: 11px;
-}
-
-.plugin-row__actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: auto;
-  white-space: nowrap;
-}
-
-/* Below this the four columns stop fitting side by side, and a row that wraps
-   mid-column reads worse than one that stacks. */
-@media (max-width: 900px) {
+/* Below the drawer breakpoint every rail-and-body layout in the panel is one
+   column — this one, 配置历史, the file manager — so they all collapse at the
+   same number rather than each at a number of its own. */
+@media (max-width: 1024px) {
   /* The rail stops being a rail: two columns at this width leaves the form
      about 300px, and a select with 四个游戏模式 does not fit in that. It goes
      above the sections as a row of chips that wraps, which is the same jump
@@ -11762,21 +11349,18 @@ button.rows__name:hover strong {
     border: 1px solid var(--border);
   }
 
+  /* Sized to its own words rather than to the page. As a column heading it
+     filled the rail, which was the rail's width; on one column that same
+     stretch is a 1000px button saying 仅看已修改. */
+  .cfg__filter {
+    align-self: flex-start;
+  }
+
   /* Said once at the top of the page on this layout; repeating the path under
      a wrapped chip row pushes the first setting off the screen. */
   .cfg__note,
   .cfg__path {
     display: none;
-  }
-}
-
-@media (max-width: 900px) {
-  .plugin-row {
-    flex-wrap: wrap;
-  }
-
-  .plugin-row__main {
-    flex: 1 1 100%;
   }
 }
 
@@ -12025,7 +11609,6 @@ button.rows__name:hover strong {
   font-variant-numeric: tabular-nums;
 }
 
-
 /* ------------------------------------------------- versions and artifacts
 
    Releases outside, jars inside. The nesting is the correction: flattening a
@@ -12190,23 +11773,6 @@ button.rows__name:hover strong {
    about seventy. Stacked, each part gets the full measure — and the order is
    unchanged, so it still reads digest, file, then what you can do about it. */
 @media (max-width: 560px) {
-  /* The mirror's prefix drops under its name. Beside it on a 390px row the
-     name track is down to a third of the width and 「公共代理，速度看运气」
-     comes out one word per line — and the prefix is the half you read second,
-     after the name has already told you which proxy this is. */
-  .setting-row--pick {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .setting-row--pick > .setting-row__control {
-    grid-column: 2;
-    justify-self: start;
-  }
-
-  .setting-row--pick > .setting-row__control:empty {
-    display: none;
-  }
-
   .arow {
     grid-template-columns: minmax(0, 1fr) auto;
     row-gap: 4px;
@@ -12291,13 +11857,6 @@ button.rows__name:hover strong {
   color: var(--text-dim);
   font-size: 11px;
   line-height: 1.5;
-}
-
-
-/* The version picker sits inline in a row of buttons, so it has to line up
-   with them rather than with the full-width inputs in a form. */
-.device-row__main select.input-slim {
-  max-width: 190px;
 }
 
 /* A checkbox whose hint is a sentence rather than a few words. Side by side,
@@ -12633,24 +12192,6 @@ button.rows__name:hover strong {
   flex-direction: column;
   gap: 12px;
   min-width: 0;
-}
-
-/* The box and the button that fires it, on one line across the top of both
-   columns. The button is not a convenience — it is the page's contract:
-   nothing goes upstream until it is pressed, so it has to be beside the thing
-   being typed rather than at the foot of the rail. */
-.browse__search {
-  display: flex;
-  gap: 8px;
-}
-
-.browse__search .filters__search {
-  flex: 1;
-  min-width: 0;
-}
-
-.browse__search .btn {
-  flex: none;
 }
 
 /* The rail is ahead of the results. Said plainly rather than by dimming the
@@ -13063,6 +12604,17 @@ button.rows__name:hover strong {
   gap: 8px;
 }
 
+/* A drawer section's head: title on the left, its controls at the end. The
+   same row .panel__head draws, without the card — a drawer section has no
+   surface of its own, so it cannot use the class that assumes one. */
+.drawer__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .drawer__section h3 {
   margin: 0;
   color: var(--text-faint);
@@ -13410,11 +12962,6 @@ button.rows__name:hover strong {
   white-space: nowrap;
 }
 
-.plugin-table__empty {
-  padding: 18px 14px;
-  text-align: center;
-}
-
 .chip--danger.chip--active {
   background: var(--danger-soft);
   border-color: var(--danger);
@@ -13613,33 +13160,6 @@ button.rows__name:hover strong {
   color: var(--caution-ink);
 }
 
-/* The summary and the navigation, as one row. A count that filters to what it
-   counted is the same sentence doing the obvious next thing. */
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.chips .chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.chips .chip b {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-.chip--on {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--text);
-}
-
 .chip--drift.chip--on,
 .chip--missing.chip--on,
 .chip--foreign.chip--on {
@@ -13651,7 +13171,6 @@ button.rows__name:hover strong {
   color: var(--text-faint);
 }
 
-
 /* ------------------------------------------------------------- the table */
 
 /* The header and the rows are separate grid containers, so every track has to
@@ -13661,8 +13180,8 @@ button.rows__name:hover strong {
 .ptable__head,
 .ptable__row {
   grid-template-columns:
-    28px minmax(180px, 1.6fr) 156px 156px
-    minmax(160px, 1.4fr) 108px 116px;
+    28px minmax(168px, 1.6fr) 148px 148px
+    minmax(150px, 1.4fr) 104px 112px;
 }
 
 /* The ledger disagreeing with the disk, on the edge. A tinted row would read
@@ -13883,21 +13402,6 @@ button.rows__name:hover strong {
   border-radius: var(--radius);
 }
 
-.foreign__title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 4px;
-  font-size: 14px;
-}
-
-.foreign__lead {
-  margin: 0 0 12px;
-  color: var(--text-dim);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
 .foreign__rows {
   display: flex;
   flex-direction: column;
@@ -14046,7 +13550,7 @@ button.rows__name:hover strong {
 }
 
 /* The sidebar folds to icons; a meter with two numbers in it does not fold. */
-.sidebar--rail .apibudget {
+.app[data-rail='on'] .apibudget {
   display: none;
 }
 
@@ -14120,13 +13624,13 @@ button.rows__name:hover strong {
   line-height: 1.6;
 }
 
-/* 1300, not the 1100 this used to be. The row needs 976px for its seven tracks,
-   but it is not measuring against the window — it is measuring against what is
-   left of it after the 240px rail and the content padding, which is ~250px
-   less. At 1200 the row was 48px wider than the card holding it and the last
-   column hung off the edge. The number to compare against a breakpoint here is
-   always window minus rail. */
-@media (max-width: 1300px) {
+/* The row is not measuring against the window — it is measuring against what
+   is left of it after the 240px rail and the content padding, which is ~290px
+   less. The seven tracks' floors add up to what is left at 1241 (this used to
+   be 1300 with wider floors; the sheet has one step here, not two twenty
+   pixels apart). The number to compare against a breakpoint is always window
+   minus rail. */
+@media (max-width: 1240px) {
   /* Upstream and the deploy column are the two the row can lose first: the
      first is repeated in the status word, the second in the drawer. */
   .ptable__head,
@@ -14140,7 +13644,7 @@ button.rows__name:hover strong {
   }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 780px) {
   .ptable__head,
   .ptable__row {
     grid-template-columns: 28px minmax(0, 1fr) 132px auto;
@@ -14197,22 +13701,6 @@ button.rows__name:hover strong {
   }
 }
 
-
-/* The page's facts and its one action, on the same line beside the title. The
-   chips wrap among themselves; the button stays at the end of the line, which
-   is where the eye goes back to after reading them. */
-.page__actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.page__actions .meta-chips {
-  justify-content: flex-end;
-}
-
 .bulkbar {
   display: flex;
   align-items: center;
@@ -14258,10 +13746,6 @@ button.rows__name:hover strong {
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
-}
-
-.meta-chips__warn {
-  color: var(--caution-ink);
 }
 
 /* A badge in a stacked cell would otherwise take the column's full width: it
@@ -14708,7 +14192,6 @@ select.input-slim option {
   text-align: center;
 }
 
-
 /* ================================================================== toast
 
    Something that already happened, said in the corner and then gone.
@@ -14881,7 +14364,6 @@ select.input-slim option {
   cursor: pointer;
 }
 
-
 /* ------------------------------------------------------------ 配置历史
 
    Two panes: the timeline of what happened, and the files one snapshot
@@ -14901,7 +14383,8 @@ select.input-slim option {
   align-items: start;
 }
 
-@media (max-width: 900px) {
+/* Same number as the drawer and as .cfg: below it, one column. */
+@media (max-width: 1024px) {
   .chist {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -14937,7 +14420,7 @@ select.input-slim option {
   overscroll-behavior: contain;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
   .chist__rows {
     max-height: none;
   }
@@ -15006,12 +14489,6 @@ select.input-slim option {
 .chist__warn {
   color: var(--caution-ink);
   font-size: 11px;
-}
-
-.chist__none {
-  padding: 10px 4px;
-  color: var(--text-faint);
-  font-size: 12px;
 }
 
 /* The badge says where a snapshot came from, and the four sources are four

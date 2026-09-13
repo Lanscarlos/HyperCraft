@@ -185,35 +185,49 @@ function ruleNoSilentOverrides() {
   }
 }
 
-/** Rule: a .panel--form declares both a head and a body.
+/** Rule: a section's head and body are written by Section.tsx, nowhere else.
  *
- *  The head carries the section's title and one sentence of why; the body
- *  carries the fields and stops at the reading measure. A section that forgets
- *  the wrappers does not break — the fields lose their measure and run to the
- *  card's edge, which looks close enough to right that it survives review.
- *  That is the failure this layout set out to remove, so it is checked rather
- *  than remembered.
- *
- *  (These were two columns until the head moved above the body. The wrappers
- *  are what carry the rules either way, which is why the check outlived the
- *  layout it was written for.)
- *
- *  Counting occurrences per file rather than parsing JSX nesting: the files
- *  that use .panel--form write one aside and one body per section, so the
- *  counts match when every section is wrapped and diverge the moment one is
- *  missed. A nesting parser would catch more and cost far more. */
-function ruleFormPanelsHaveHeadAndBody() {
+ *  `.panel--form` carries the guarantee that a form's fields stop at the
+ *  reading measure; `.panel__head` / `.panel__body` are the two wrappers that
+ *  guarantee depends on. A section written by hand that forgets one does not
+ *  break — the fields lose their measure and run to the card's edge, which
+ *  looks close enough to right that it survives review. That is the failure
+ *  the shared shape exists to remove, so the classes are checked rather than
+ *  remembered: they live in one file, and a page asks for a section by calling
+ *  the component. */
+const SECTION_ONLY = ['panel--form', 'panel__head', 'panel__heading', 'panel__body', 'panel__tools']
+
+function ruleSectionsAreComponents() {
   for (const file of tsxFiles(SRC)) {
-    const src = fs.readFileSync(file, 'utf8')
-    const panels = (src.match(/panel--form/g) ?? []).length
-    if (panels === 0) continue
-    const asides = (src.match(/panel__aside/g) ?? []).length
-    const bodies = (src.match(/panel__body/g) ?? []).length
-    if (asides === panels && bodies === panels) continue
-    problems.push(
-      `${path.relative(SRC, file)} 有 ${panels} 个 .panel--form，` +
-        `但 ${asides} 个 .panel__aside、${bodies} 个 .panel__body —— 每个都要头和正文两层包裹`,
-    )
+    const rel = path.relative(SRC, file)
+    if (rel === 'components/Section.tsx') continue
+    const src = withoutComments(fs.readFileSync(file, 'utf8'))
+    for (const cls of SECTION_ONLY) {
+      if (new RegExp(`[\s"'\`]${cls}[\s"'\`]`).test(src)) {
+        problems.push(`${rel} 手写了 .${cls} —— 改用 <Section>`)
+      }
+    }
+  }
+}
+
+/** Rule: an empty state is the component, not a paragraph.
+ *
+ *  Six shapes used to say "nothing here" — a dashed box, a <p> inside a table,
+ *  a .muted paragraph, one with a glyph, and two per-page ones — and which you
+ *  got depended on the page. EmptyState.tsx is where the two that remain are
+ *  written (a block, or a line inside a list). */
+const EMPTY_ONLY = ['empty__title', 'empty__note', 'empty__actions', 'empty--inline']
+
+function ruleEmptyStatesAreComponents() {
+  for (const file of tsxFiles(SRC)) {
+    const rel = path.relative(SRC, file)
+    if (rel === 'components/EmptyState.tsx') continue
+    const src = withoutComments(fs.readFileSync(file, 'utf8'))
+    for (const cls of EMPTY_ONLY) {
+      if (new RegExp(`[\s"'\`]${cls}[\s"'\`]`).test(src)) {
+        problems.push(`${rel} 手写了 .${cls} —— 改用 <EmptyState>`)
+      }
+    }
   }
 }
 
@@ -356,7 +370,8 @@ const RULES = [
   ruleNoUndefinedClasses,
   ruleIconButtonsAreLabelled,
   ruleNoSilentOverrides,
-  ruleFormPanelsHaveHeadAndBody,
+  ruleSectionsAreComponents,
+  ruleEmptyStatesAreComponents,
   ruleDropdownsAreOurs,
   ruleBadgesAreComponents,
   rulePrimaryButtons,

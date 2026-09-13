@@ -7,9 +7,11 @@ import { isDownloadActive } from '../types'
 import type { DownloadController } from '../useDownloads'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { EmptyState } from './EmptyState'
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
 import { Page } from './Page'
+import { Section } from './Section'
 
 /**
  * 下载 — everything the panel is fetching, has fetched, or failed to fetch.
@@ -81,15 +83,13 @@ export function DownloadsPage({
       wide
       title="下载"
       lead="服务端核心、Java 环境、数据库引擎和插件都在这里排队。下载归守护进程管，关掉标签页、退出登录都不会中断它。装到哪台服是各自的库页和实例自己的事。"
-      aside={
-        <div className="page__actions">
-          <Button
-            disabled={downloads.busy || history.length === 0}
-            onClick={() => void downloads.clearFinished().then(() => toast('已清空下载记录'))}
-          >
-            清空记录
-          </Button>
-        </div>
+      actions={
+        <Button
+          disabled={downloads.busy || history.length === 0}
+          onClick={() => void downloads.clearFinished().then(() => toast('已清空下载记录'))}
+        >
+          清空记录
+        </Button>
       }
     >
       {downloads.error && <div className="alert alert--error">{downloads.error}</div>}
@@ -108,17 +108,13 @@ export function DownloadsPage({
         ))}
       </div>
 
-      <section className="panel dlqueue">
-        <h2 className="dlqueue__title">
-          进行中
-          {live.length > 0 && <span className="dlqueue__count">{live.length}</span>}
-        </h2>
+      <Section className="dlqueue" title="进行中" count={live.length > 0 ? live.length : undefined}>
         {live.length === 0 ? (
-          <p className="dlqueue__empty muted">
-            现在没有下载。去「服务端核心」「Java 环境」「数据库环境」或「插件市场」开始一个，任务就会出现在这里。
-          </p>
+          <EmptyState inline title="现在没有下载。">
+            去「服务端核心」「Java 环境」「数据库环境」或「插件市场」开始一个，任务就会出现在这里。
+          </EmptyState>
         ) : (
-          <div className="dlqueue__rows">
+          <div className="rowlist">
             {live.map((job) => (
               <JobRow
                 key={job.id}
@@ -129,22 +125,20 @@ export function DownloadsPage({
             ))}
           </div>
         )}
-      </section>
+      </Section>
 
       {history.length > 0 && (
-        <section className="panel dlqueue">
-          <h2 className="dlqueue__title">
-            历史
-            {failed > 0 && (
-              <span className="dlqueue__count dlqueue__count--bad">{failed} 个失败</span>
-            )}
-          </h2>
-          <div className="dlqueue__rows">
+        <Section
+          className="dlqueue"
+          title="历史"
+          meta={failed > 0 ? `${failed} 个失败` : undefined}
+        >
+          <div className="rowlist">
             {history.map((job) => (
               <JobRow key={job.id} job={job} busy={downloads.busy} />
             ))}
           </div>
-        </section>
+        </Section>
       )}
     </Page>
   )

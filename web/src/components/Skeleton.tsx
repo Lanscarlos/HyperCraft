@@ -71,19 +71,33 @@ export function SkeletonScreen({
   )
 }
 
-/** A card-shaped placeholder: the `.panel` chrome with a title and some lines. */
+/** A card-shaped placeholder: the `.panel` chrome with a title and some lines.
+ *
+ *  `head` stands in for a `<Section>`'s head — a title with a fact or a
+ *  control at the far end. The pages that needed one used to build it out of
+ *  `.chart-head`, which is a real head's class and not a placeholder's, so
+ *  every one of them had to be edited again when the head shape changed. */
 export function SkeletonPanel({
   title = true,
+  head,
   lines = 3,
   children,
 }: {
   title?: boolean
+  head?: boolean
   lines?: number
   children?: ReactNode
 }) {
   return (
     <section className="panel skeleton-panel">
-      {title && <Skeleton w="34%" h={15} />}
+      {head ? (
+        <div className="skeleton-panel__head">
+          <Skeleton w="34%" h={15} />
+          <Skeleton w="180px" h={12} />
+        </div>
+      ) : (
+        title && <Skeleton w="34%" h={15} />
+      )}
       {children ??
         Array.from({ length: lines }, (_, index) => (
           // Widths walk down rather than repeat, the way a paragraph's last

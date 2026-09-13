@@ -205,7 +205,7 @@ function SchematicBody({ data }: { data: Schematic }) {
       <div className="schem__controls">
         <div className="schem__modes" role="group" aria-label="视图">
           <button
-            className={`chip${view === 'solid' ? ' chip--active' : ''}`}
+            className={`chip${view === 'solid' ? ' chip--on' : ''}`}
             onClick={() => setView('solid')}
             disabled={!region}
             aria-pressed={view === 'solid'}
@@ -213,7 +213,7 @@ function SchematicBody({ data }: { data: Schematic }) {
             立体
           </button>
           <button
-            className={`chip${view === 'plan' ? ' chip--active' : ''}`}
+            className={`chip${view === 'plan' ? ' chip--on' : ''}`}
             onClick={() => setView('plan')}
             disabled={!region}
             aria-pressed={view === 'plan'}

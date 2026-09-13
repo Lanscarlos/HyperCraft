@@ -14,11 +14,14 @@ import type { SchematicController } from '../useSchematics'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Card } from './Card'
+import { EmptyState } from './EmptyState'
 import { Modal } from './Modal'
 import { Page } from './Page'
 import { SchematicDialog } from './SchematicPreview'
+import { Section } from './Section'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
+import { Toolbar, ToolbarSearch } from './Toolbar'
 
 /**
  * 建筑列表: the panel-wide shelf of .schem files.
@@ -120,32 +123,25 @@ export function SchematicLibraryPage({
       wide
       title="建筑库"
       lead="面板存着的 .schem 全在这里。入库时就已经解析过，尺寸、方块用量、存档版本都能直接读，装到哪台服也是从这里点。"
-      aside={
-        <p className="meta-chips">
+      facts={
+        <>
           <span>{entries.length > 0 ? `${entries.length} 个建筑` : '建筑库还是空的'}</span>
           {entries.length > 0 && <span>共 {formatBytes(library?.totalSize ?? 0)}</span>}
           {library?.root && <span title={library.root}>存放于 {library.root}</span>}
-        </p>
+        </>
       }
     >
       {error && <div className="alert alert--error">{error}</div>}
 
-      <section className="panel">
-        <div className="chart-head">
-          <h2 className="panel__title">建筑列表</h2>
-          <p className="chart-head__meta">把 .schem 丢进建筑库目录，扫描一下也会出现在这里</p>
-        </div>
-
-        <div className="schemlib__bar">
-          <input
-            className="filters__search"
-            type="search"
+      <Section title="建筑列表" note="把 .schem 丢进建筑库目录，扫描一下也会出现在这里">
+        <Toolbar>
+          <ToolbarSearch
             value={query}
             placeholder="搜名称、文件名、标签、作者"
             aria-label="搜索建筑"
             onChange={(event) => setQuery(event.target.value)}
           />
-          <div className="schemlib__bar-actions">
+          <div className="toolbar__tools">
             <Button
               variant="primary"
               onClick={() => picker.current?.click()}
@@ -169,18 +165,15 @@ export function SchematicLibraryPage({
               event.target.value = ''
             }}
           />
-        </div>
+        </Toolbar>
 
         {uploads && <UploadReport results={uploads} onDismiss={() => setUploads(null)} />}
 
         {entries.length === 0 ? (
-          <div className="welcome__empty">
-            <p>建筑库还是空的。</p>
-            <p className="muted">
-              上传几个 .schem，从「建筑市场」下载，或者在实例的文件管理器里预览一个 schematic
-              再点「加入建筑库」。
-            </p>
-          </div>
+          <EmptyState title="建筑库还是空的。">
+            上传几个 .schem，从「建筑市场」下载，或者在实例的文件管理器里预览一个 schematic
+            再点「加入建筑库」。
+          </EmptyState>
         ) : shown.length === 0 ? (
           <p className="muted">没有匹配「{query}」的建筑。</p>
         ) : (
@@ -198,7 +191,7 @@ export function SchematicLibraryPage({
             ))}
           </div>
         )}
-      </section>
+      </Section>
 
       {opened && <LibraryPreview entry={opened} onClose={() => onOpen(null)} />}
 

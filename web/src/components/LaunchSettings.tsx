@@ -23,6 +23,7 @@ import { useHostJars } from '../useHostJars'
 import { InstanceCorePicker } from './InstanceCorePicker'
 import { PageHead } from './Page'
 import { DirectoryField } from './PathPicker'
+import { Section } from './Section'
 import { Select } from './Select'
 
 interface Props {
@@ -456,8 +457,37 @@ export function LaunchSettings({
     javaOptions.unshift({ value: form.java, label: form.java, note: '未登记' })
   }
 
+  /* The Java choice is argv[0] in both modes. It is also exported into the
+     environment, which is what a server that shells out to a java of its own
+     picks up.
+
+     Only what the panel has been told about: there is no free-text path here
+     any more, and 「资源库 → Java 环境」 is the one way in. The server
+     enforces the same rule on save, so this select is a convenience, not the
+     guard.
+
+     A value rather than markup in place, because where it sits depends on the
+     mode: beside the jar it runs (they are one decision — 用哪个 Java、跑哪个
+     jar), or alone above an argument file, which has no jar to sit beside. */
+  const javaField = (
+    <label className="field field--md">
+      <span>Java 环境</span>
+      <Select
+        ariaLabel="Java 环境"
+        value={form.java}
+        options={javaOptions}
+        onChange={(next) => update('java', next)}
+      />
+      <small>
+        {runtimes.length > 0
+          ? 'Java 只能在「资源库 → Java 环境」里添加——装一个，或者登记本机已有的；添加过的在这里选。'
+          : '还没有可选的 Java。到「资源库 → Java 环境」装一个，或者登记本机已有的，之后这里就能选。'}
+      </small>
+    </label>
+  )
+
   return (
-    <form className="stack" onSubmit={save}>
+    <form className="stack stack--narrow" onSubmit={save}>
       <PageHead title="实例设置" lead="名称、目录、核心、Java 和内存，以及它怎么启动。" />
 
       <LaunchCheckPanel
@@ -466,14 +496,13 @@ export function LaunchSettings({
         onRecheck={() => setCheckRev((rev) => rev + 1)}
       />
 
-      <section className="panel panel--form">
-        <div className="panel__aside">
-          <h3 className="panel__title">基本信息</h3>
-          <p className="panel__note">这台服务器叫什么、文件放在哪、是什么服务端。</p>
-        </div>
-
-        <div className="panel__body">
-
+      <Section form title="基本信息" note="这台服务器叫什么、是什么服务端、文件放在哪。">
+      {/* Who it is, on one line: a name, a kind and a version are one answer,
+          and each of the three was a row of its own ending at a different
+          place. 服务端类型 is a short identifier (Paper, NeoForge,
+          CraftBukkit) rather than a name, so it takes the short measure and
+          the three fit the reading width together. */}
+      <div className="field-row">
         <label className="field field--md">
           <span>实例名称</span>
           <input
@@ -482,156 +511,132 @@ export function LaunchSettings({
             required
           />
         </label>
+        <label className="field field--sm">
+          <span>服务端类型</span>
+          <Select
+            ariaLabel="服务端类型"
+            value={form.loader}
+            options={LOADER_OPTIONS.map((entry) => ({
+              value: entry.value,
+              label: entry.label,
+              note: entry.note,
+            }))}
+            onChange={(next) => update('loader', next)}
+          />
+        </label>
+        <label className="field field--sm">
+          <span>游戏版本</span>
+          <input
+            value={form.gameVersion}
+            onChange={(e) => update('gameVersion', e.target.value)}
+            placeholder="1.20.1"
+            spellCheck={false}
+          />
+        </label>
+      </div>
 
-        <DirectoryField
-          value={form.directory}
-          onChange={(value) => update('directory', value)}
-          disabled={isLive(instance.state)}
-          hint={
-            <>
-              服务端 jar、存档和配置都放在这里。「浏览…」可以指到本机任意位置，
-              包括一个已经有服务端的目录。
-              {!directoryExists && ' 这个目录还不存在，保存后会在启动时创建。'}
-              {isLive(instance.state) && ' 服务器运行时无法修改。'}
-            </>
-          }
-        />
+      <p className="muted">
+        面板先从目录和 jar 名认，认不出来才用这里填的。
+        <FieldHelp summary="哪些认不出来？">
+          <strong>Forge 这类认不出来</strong> —— 没有 jar 名可读，
+          <code>version_history.json</code> 也只有 Paper 系才写。认不出来的后果很具体：
+          mod 会被装进 <code>plugins/</code> 而不是 <code>mods/</code>，插件市场里每一条也都标成「未知」。
+        </FieldHelp>
+      </p>
 
-        <div className="field-row">
-          <label className="field field--md">
-            <span>服务端类型</span>
-            <Select
-              ariaLabel="服务端类型"
-              value={form.loader}
-              options={LOADER_OPTIONS.map((entry) => ({
-                value: entry.value,
-                label: entry.label,
-                note: entry.note,
-              }))}
-              onChange={(next) => update('loader', next)}
-            />
-          </label>
-          <label className="field field--sm">
-            <span>游戏版本</span>
-            <input
-              value={form.gameVersion}
-              onChange={(e) => update('gameVersion', e.target.value)}
-              placeholder="1.20.1"
+      <DirectoryField
+        value={form.directory}
+        onChange={(value) => update('directory', value)}
+        disabled={isLive(instance.state)}
+        hint={
+          <>
+            服务端 jar、存档和配置都放在这里。「浏览…」可以指到本机任意位置，
+            包括一个已经有服务端的目录。
+            {!directoryExists && ' 这个目录还不存在，保存后会在启动时创建。'}
+            {isLive(instance.state) && ' 服务器运行时无法修改。'}
+          </>
+        }
+      />
+
+      </Section>
+
+      <Section form title="启动方式" note="面板拼出来的那条命令行：用哪个 Java、跑哪个 jar、给多少内存。">
+      <div className="segmented" role="group" aria-label="启动方式">
+        {[
+          {
+            value: false,
+            label: '核心 jar',
+            note: 'java -Xmx… -jar server.jar',
+          },
+          {
+            value: true,
+            label: '参数文件',
+            note: 'Forge / NeoForge 的 @user_jvm_args.txt',
+          },
+        ].map((entry) => (
+          <button
+            key={String(entry.value)}
+            type="button"
+            className={`segmented__option${
+              argFileMode === entry.value ? ' segmented__option--active' : ''
+            }`}
+            aria-pressed={argFileMode === entry.value}
+            onClick={() => setArgFileMode(entry.value)}
+          >
+            <strong>{entry.label}</strong>
+            <small>{entry.note}</small>
+          </button>
+        ))}
+      </div>
+
+      {argFileMode ? (
+        <>
+          {javaField}
+
+          <label className="field">
+            <span>参数文件</span>
+            <textarea
+              rows={3}
+              value={argFileText}
+              onChange={(e) => setArgFileText(e.target.value)}
+              placeholder={'user_jvm_args.txt\nlibraries/net/minecraftforge/forge/1.20.1-47.2.0/unix_args.txt'}
               spellCheck={false}
             />
+            <small>
+              一行一个，路径从实例目录算起，面板会按顺序拼成
+              <code> java @第一个 @第二个 …</code>。
+            </small>
+            <FieldHelp summary="为什么 Forge 没有 jar？">
+              Forge 和 NeoForge 从 1.17 起就没有可以
+              直接跑的 jar 了，安装器留下的就是这两个文件 —— 照 <code>run.sh</code> 里那行抄过来即可。
+            </FieldHelp>
           </label>
-        </div>
 
-        <p className="muted">
-          面板先从目录和 jar 名认，认不出来才用这里填的。
-          <FieldHelp summary="哪些认不出来？">
-            <strong>Forge 这类认不出来</strong> —— 没有 jar 名可读，
-            <code>version_history.json</code> 也只有 Paper 系才写。认不出来的后果很具体：
-            mod 会被装进 <code>plugins/</code> 而不是 <code>mods/</code>，插件市场里每一条也都标成「未知」。
-          </FieldHelp>
-        </p>
-        </div>
-      </section>
+          <div className="actions">
+            <Button type="button" onClick={() => setImporting(true)}>
+              从启动脚本读参数…
+            </Button>
+          </div>
 
-      <section className="panel panel--form">
-        <div className="panel__aside">
-          <h3 className="panel__title">启动方式</h3>
-          <p className="panel__note">面板拼出来的那条命令行：用哪个 Java、跑哪个 jar、给多少内存。</p>
-        </div>
-
-        <div className="panel__body">
-
-        <div className="segmented" role="group" aria-label="启动方式">
-          {[
-            {
-              value: false,
-              label: '核心 jar',
-              note: 'java -Xmx… -jar server.jar',
-            },
-            {
-              value: true,
-              label: '参数文件',
-              note: 'Forge / NeoForge 的 @user_jvm_args.txt',
-            },
-          ].map((entry) => (
-            <button
-              key={String(entry.value)}
-              type="button"
-              className={`segmented__option${
-                argFileMode === entry.value ? ' segmented__option--active' : ''
-              }`}
-              aria-pressed={argFileMode === entry.value}
-              onClick={() => setArgFileMode(entry.value)}
-            >
-              <strong>{entry.label}</strong>
-              <small>{entry.note}</small>
-            </button>
-          ))}
-        </div>
-
-        {/* The Java choice is argv[0] in both modes. It is also exported into
-            the environment, which is what a server that shells out to a java
-            of its own picks up.
-
-            Only what the panel has been told about: there is no free-text path
-            here any more, and 「资源库 → Java 环境」 is the one way in. The
-            server enforces the same rule on save, so this select is a
-            convenience, not the guard. */}
-        <label className="field field--md">
-          <span>Java 环境</span>
-          <Select
-            ariaLabel="Java 环境"
-            value={form.java}
-            options={javaOptions}
-            onChange={(next) => update('java', next)}
+          <ArgFileMemory
+            jvm={jvm}
+            min={jvmMin}
+            max={jvmMax}
+            busy={jvmBusy}
+            status={jvmStatus}
+            onMin={setJvmMin}
+            onMax={setJvmMax}
+            onSave={saveJVMArgs}
           />
-          <small>
-            {runtimes.length > 0
-              ? 'Java 只能在「资源库 → Java 环境」里添加——装一个，或者登记本机已有的；添加过的在这里选。'
-              : '还没有可选的 Java。到「资源库 → Java 环境」装一个，或者登记本机已有的，之后这里就能选。'}
-          </small>
-        </label>
+        </>
+      ) : (
+        <>
+          {/* 用哪个 Java、跑哪个 jar — one decision, one row. Stacked, each was
+              a 380px control ending at the same place three rows running, with
+              the rest of the line empty beside it. */}
+          <div className="field-row">
+            {javaField}
 
-        {argFileMode ? (
-          <>
-            <label className="field">
-              <span>参数文件</span>
-              <textarea
-                rows={3}
-                value={argFileText}
-                onChange={(e) => setArgFileText(e.target.value)}
-                placeholder={'user_jvm_args.txt\nlibraries/net/minecraftforge/forge/1.20.1-47.2.0/unix_args.txt'}
-                spellCheck={false}
-              />
-              <small>
-                一行一个，路径从实例目录算起，面板会按顺序拼成
-                <code> java @第一个 @第二个 …</code>。
-              </small>
-              <FieldHelp summary="为什么 Forge 没有 jar？">
-                Forge 和 NeoForge 从 1.17 起就没有可以
-                直接跑的 jar 了，安装器留下的就是这两个文件 —— 照 <code>run.sh</code> 里那行抄过来即可。
-              </FieldHelp>
-            </label>
-
-            <div className="actions">
-              <Button type="button" onClick={() => setImporting(true)}>
-                从启动脚本读参数…
-              </Button>
-            </div>
-
-            <ArgFileMemory
-              jvm={jvm}
-              min={jvmMin}
-              max={jvmMax}
-              busy={jvmBusy}
-              status={jvmStatus}
-              onMin={setJvmMin}
-              onMax={setJvmMax}
-              onSave={saveJVMArgs}
-            />
-          </>
-        ) : (
-          <>
             <label className="field field--md">
               <span>服务端 jar</span>
               <Select
@@ -652,234 +657,218 @@ export function LaunchSettings({
                   : '目录下暂时没有 jar 文件，从上面装一个核心，或自己传一个'}
               </small>
             </label>
+          </div>
 
-            <div className="field-row">
-              <label className="field field--num">
-                <span>最小内存 (MB)</span>
-                <input
-                  type="number"
-                  min={0}
-                  step={256}
-                  value={form.minMemoryMB}
-                  onChange={(e) => update('minMemoryMB', Number(e.target.value))}
-                />
-              </label>
-              <label className="field field--num">
-                <span>最大内存 (MB)</span>
-                <input
-                  type="number"
-                  min={0}
-                  step={256}
-                  value={form.maxMemoryMB}
-                  onChange={(e) => update('maxMemoryMB', Number(e.target.value))}
-                />
-              </label>
-            </div>
-
-            <div className="field">
-              <span>JVM 参数</span>
-              <JVMPresets
-                activeNote={presetNote}
-                rows={jvmRows}
-                onPick={(id) => void applyPreset(id)}
-                onImport={() => setImporting(true)}
-                onView={setJvmView}
+          <div className="field-row">
+            <label className="field field--num">
+              <span>最小内存 (MB)</span>
+              <input
+                type="number"
+                min={0}
+                step={256}
+                value={form.minMemoryMB}
+                onChange={(e) => update('minMemoryMB', Number(e.target.value))}
               />
-              {jvmRows ? (
-                <JVMArgsEditor value={jvmText} onChange={setJvmText} />
-              ) : (
-                <textarea
-                  rows={4}
-                  value={jvmText}
-                  onChange={(e) => setJvmText(e.target.value)}
-                  placeholder={'-XX:+UseG1GC\n-XX:MaxGCPauseMillis=200'}
-                  aria-label="JVM 参数"
-                />
-              )}
-              {aikarNeedsEqualHeap && (
-                <div className="alert alert--warn">
-                  这套参数的前提是最小内存和最大内存一样大，现在填的是 {form.minMemoryMB} /{' '}
-                  {form.maxMemoryMB} MB。把上面的最小内存也改成 {form.maxMemoryMB} 再保存。
-                </div>
-              )}
-              {!jvmRows && <small>一行一个参数，会放在 -jar 之前。</small>}
-            </div>
-
-            <div className="field">
-              <span>服务端参数</span>
-              {!proxy && (
-                <div className="presets">
-                  <div className="presets__row">
-                    <button
-                      className={`chip${hasNogui ? ' chip--active' : ''}`}
-                      type="button"
-                      aria-pressed={hasNogui}
-                      onClick={toggleNogui}
-                    >
-                      --nogui
-                    </button>
-                  </div>
-                </div>
-              )}
-              <textarea
-                rows={2}
-                value={serverText}
-                onChange={(e) => setServerText(e.target.value)}
-                placeholder={proxy ? '' : '--nogui'}
-                aria-label="服务端参数"
+            </label>
+            <label className="field field--num">
+              <span>最大内存 (MB)</span>
+              <input
+                type="number"
+                min={0}
+                step={256}
+                value={form.maxMemoryMB}
+                onChange={(e) => update('maxMemoryMB', Number(e.target.value))}
               />
-              <small>
-                一行一个参数，会放在 jar 之后。
-                {proxy
-                  ? ' Velocity 遇到不认识的参数会直接退出，一般这里留空。'
-                  : ' --nogui 关掉服务端自带的那个 Swing 窗口，无头机器上基本都要。'}
-              </small>
-            </div>
-          </>
-        )}
+            </label>
+          </div>
 
-        <InstanceCorePicker
-          instance={instance}
-          cores={cores}
-          onApplied={onCoreApplied}
-          onOpenLibrary={onOpenLibrary}
-          jarIgnored={argFileMode}
-        />
-
-        {importing && (
-          <ScriptImportDialog
-            instanceId={instance.id}
-            onApply={applyDraft}
-            onClose={() => setImporting(false)}
-          />
-        )}
-        </div>
-      </section>
-
-      <section className="panel panel--form">
-        <div className="panel__aside">
-          <h3 className="panel__title">控制台</h3>
-          <p className="panel__note">网页控制台怎么读服务端的输出、怎么把命令送回去。</p>
-        </div>
-
-        <div className="panel__body">
-
-        <label className="field field--md">
-          <span>输出编码</span>
-          <Select
-            ariaLabel="输出编码"
-            value={form.encoding}
-            options={ENCODING_OPTIONS.map((option) => ({
-              value: option.value,
-              label: option.label,
-            }))}
-            onChange={(next) => update('encoding', next)}
-          />
-          <small>控制台按这个编码解读服务器输出、并按同样的编码发送命令。</small>
-          <FieldHelp summary="乱码了怎么办？">
-            「自动」会让 JVM 用
-            UTF-8 输出，同时对不是 UTF-8 的行按系统编码兜底。用自己的脚本启动时，
-            「让 JVM 用 UTF-8」这半件事要靠上面那个 <code>JAVA_TOOL_OPTIONS</code> 开关；
-            那个关着、中文 Windows 上又乱码的话，这里改成 GBK 通常就好了。
-          </FieldHelp>
-        </label>
-
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={form.tty && ttySupported}
-            disabled={!ttySupported}
-            onChange={(e) => update('tty', e.target.checked)}
-          />
-          <div className="checkbox__text">
-            <span>使用终端模式（推荐）</span>
-            {ttySupported ? (
-              <>
-                <small>Tab 补全由正在运行的服务端回答，进度条不用等换行就能看到。</small>
-                <FieldHelp>
-                  把服务器跑在伪终端上，就像你自己在 SSH 里开着它一样。这样 Tab 补全由
-                  <strong>正在运行的服务端</strong>回答（插件命令、真实玩家名都算数），
-                  进度条不用等换行就能看到，颜色也不需要强制。代价是终端只有一条流，
-                  stderr 不再单独标红。关掉则回到管道模式。
-                </FieldHelp>
-              </>
+          <div className="field">
+            <span>JVM 参数</span>
+            <JVMPresets
+              activeNote={presetNote}
+              rows={jvmRows}
+              onPick={(id) => void applyPreset(id)}
+              onImport={() => setImporting(true)}
+              onView={setJvmView}
+            />
+            {jvmRows ? (
+              <JVMArgsEditor value={jvmText} onChange={setJvmText} />
             ) : (
-              <small>本系统没有可用的伪终端（Windows 需要 ConPTY），所有实例都以管道模式运行。</small>
+              <textarea
+                rows={4}
+                value={jvmText}
+                onChange={(e) => setJvmText(e.target.value)}
+                placeholder={'-XX:+UseG1GC\n-XX:MaxGCPauseMillis=200'}
+                aria-label="JVM 参数"
+              />
             )}
+            {aikarNeedsEqualHeap && (
+              <div className="alert alert--warn">
+                这套参数的前提是最小内存和最大内存一样大，现在填的是 {form.minMemoryMB} /{' '}
+                {form.maxMemoryMB} MB。把上面的最小内存也改成 {form.maxMemoryMB} 再保存。
+              </div>
+            )}
+            {!jvmRows && <small>一行一个参数，会放在 -jar 之前。</small>}
           </div>
-        </label>
 
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={form.forceColor}
-            disabled={form.tty && ttySupported}
-            onChange={(e) => update('forceColor', e.target.checked)}
-          />
-          <div className="checkbox__text">
-            <span>强制彩色输出（推荐）</span>
-            <small>仅在管道模式下有意义，终端模式下这两个参数不会被加上。</small>
-            <FieldHelp>
-              服务端只在检测到终端时才上色，所以管道模式会加上
-              <code> -Dterminal.jline=false -Dterminal.ansi=true</code>，让网页控制台和
-              cmd 里一样有颜色。终端模式下服务端本来就看得到终端，这两个参数不会被加上
-              —— <code>terminal.jline=false</code> 恰好会关掉终端模式想要的那个补全。
-              用自己的脚本启动时，这两个参数走
-              <code> JAVA_TOOL_OPTIONS</code> 送进去，要在上面把那个开关留着。
-            </FieldHelp>
+          <div className="field">
+            <span>服务端参数</span>
+            {!proxy && (
+              <div className="presets">
+                <div className="presets__row">
+                  <button
+                    className={`chip${hasNogui ? ' chip--on' : ''}`}
+                    type="button"
+                    aria-pressed={hasNogui}
+                    onClick={toggleNogui}
+                  >
+                    --nogui
+                  </button>
+                </div>
+              </div>
+            )}
+            <textarea
+              rows={2}
+              value={serverText}
+              onChange={(e) => setServerText(e.target.value)}
+              placeholder={proxy ? '' : '--nogui'}
+              aria-label="服务端参数"
+            />
+            <small>
+              一行一个参数，会放在 jar 之后。
+              {proxy
+                ? ' Velocity 遇到不认识的参数会直接退出，一般这里留空。'
+                : ' --nogui 关掉服务端自带的那个 Swing 窗口，无头机器上基本都要。'}
+            </small>
           </div>
-        </label>
+        </>
+      )}
+
+      <InstanceCorePicker
+        instance={instance}
+        cores={cores}
+        onApplied={onCoreApplied}
+        onOpenLibrary={onOpenLibrary}
+        jarIgnored={argFileMode}
+      />
+
+      {importing && (
+        <ScriptImportDialog
+          instanceId={instance.id}
+          onApply={applyDraft}
+          onClose={() => setImporting(false)}
+        />
+      )}
+      </Section>
+
+      <Section form title="控制台" note="网页控制台怎么读服务端的输出、怎么把命令送回去。">
+      <label className="field field--md">
+        <span>输出编码</span>
+        <Select
+          ariaLabel="输出编码"
+          value={form.encoding}
+          options={ENCODING_OPTIONS.map((option) => ({
+            value: option.value,
+            label: option.label,
+          }))}
+          onChange={(next) => update('encoding', next)}
+        />
+        <small>控制台按这个编码解读服务器输出、并按同样的编码发送命令。</small>
+        <FieldHelp summary="乱码了怎么办？">
+          「自动」会让 JVM 用
+          UTF-8 输出，同时对不是 UTF-8 的行按系统编码兜底。用自己的脚本启动时，
+          「让 JVM 用 UTF-8」这半件事要靠上面那个 <code>JAVA_TOOL_OPTIONS</code> 开关；
+          那个关着、中文 Windows 上又乱码的话，这里改成 GBK 通常就好了。
+        </FieldHelp>
+      </label>
+
+      <label className="checkbox">
+        <input
+          type="checkbox"
+          checked={form.tty && ttySupported}
+          disabled={!ttySupported}
+          onChange={(e) => update('tty', e.target.checked)}
+        />
+        <div className="checkbox__text">
+          <span>使用终端模式（推荐）</span>
+          {ttySupported ? (
+            <>
+              <small>Tab 补全由正在运行的服务端回答，进度条不用等换行就能看到。</small>
+              <FieldHelp>
+                把服务器跑在伪终端上，就像你自己在 SSH 里开着它一样。这样 Tab 补全由
+                <strong>正在运行的服务端</strong>回答（插件命令、真实玩家名都算数），
+                进度条不用等换行就能看到，颜色也不需要强制。代价是终端只有一条流，
+                stderr 不再单独标红。关掉则回到管道模式。
+              </FieldHelp>
+            </>
+          ) : (
+            <small>本系统没有可用的伪终端（Windows 需要 ConPTY），所有实例都以管道模式运行。</small>
+          )}
         </div>
-      </section>
+      </label>
 
-      <section className="panel panel--form">
-        <div className="panel__aside">
-          <h3 className="panel__title">进程管理</h3>
-          <p className="panel__note">面板什么时候替你开服、什么时候替你重启、怎么停。</p>
+      <label className="checkbox">
+        <input
+          type="checkbox"
+          checked={form.forceColor}
+          disabled={form.tty && ttySupported}
+          onChange={(e) => update('forceColor', e.target.checked)}
+        />
+        <div className="checkbox__text">
+          <span>强制彩色输出（推荐）</span>
+          <small>仅在管道模式下有意义，终端模式下这两个参数不会被加上。</small>
+          <FieldHelp>
+            服务端只在检测到终端时才上色，所以管道模式会加上
+            <code> -Dterminal.jline=false -Dterminal.ansi=true</code>，让网页控制台和
+            cmd 里一样有颜色。终端模式下服务端本来就看得到终端，这两个参数不会被加上
+            —— <code>terminal.jline=false</code> 恰好会关掉终端模式想要的那个补全。
+            用自己的脚本启动时，这两个参数走
+            <code> JAVA_TOOL_OPTIONS</code> 送进去，要在上面把那个开关留着。
+          </FieldHelp>
         </div>
+      </label>
+      </Section>
 
-        <div className="panel__body">
+      <Section form title="进程管理" note="面板什么时候替你开服、什么时候替你重启、怎么停。">
+      <label className="checkbox">
+        <input
+          type="checkbox"
+          checked={form.autoStart}
+          onChange={(e) => update('autoStart', e.target.checked)}
+        />
+        <span>面板启动时自动启动该服务器</span>
+      </label>
 
-        <label className="checkbox">
+      <label className="checkbox">
+        <input
+          type="checkbox"
+          checked={form.autoRestart}
+          onChange={(e) => update('autoRestart', e.target.checked)}
+        />
+        <span>崩溃后自动重启（连续失败 5 次后放弃）</span>
+      </label>
+
+      <div className="field-row">
+        <label className="field field--md">
+          <span>停服命令</span>
           <input
-            type="checkbox"
-            checked={form.autoStart}
-            onChange={(e) => update('autoStart', e.target.checked)}
+            value={form.stopCommand}
+            onChange={(e) => update('stopCommand', e.target.value)}
+            placeholder={proxy ? 'end' : 'stop'}
           />
-          <span>面板启动时自动启动该服务器</span>
         </label>
-
-        <label className="checkbox">
+        <label className="field field--num">
+          <span>停服超时 (秒)</span>
           <input
-            type="checkbox"
-            checked={form.autoRestart}
-            onChange={(e) => update('autoRestart', e.target.checked)}
+            type="number"
+            min={1}
+            value={form.stopTimeoutSec}
+            onChange={(e) => update('stopTimeoutSec', Number(e.target.value))}
           />
-          <span>崩溃后自动重启（连续失败 5 次后放弃）</span>
+          <small>超时后发送终止信号，再等 15 秒强制结束。</small>
         </label>
-
-        <div className="field-row">
-          <label className="field field--md">
-            <span>停服命令</span>
-            <input
-              value={form.stopCommand}
-              onChange={(e) => update('stopCommand', e.target.value)}
-              placeholder={proxy ? 'end' : 'stop'}
-            />
-          </label>
-          <label className="field field--num">
-            <span>停服超时 (秒)</span>
-            <input
-              type="number"
-              min={1}
-              value={form.stopTimeoutSec}
-              onChange={(e) => update('stopTimeoutSec', Number(e.target.value))}
-            />
-            <small>超时后发送终止信号，再等 15 秒强制结束。</small>
-          </label>
-        </div>
-        </div>
-      </section>
+      </div>
+      </Section>
 
       {error && <div className="alert alert--error">{error}</div>}
       {status && <div className="alert alert--ok">{status}</div>}
@@ -896,11 +885,11 @@ export function LaunchSettings({
         </div>
       )}
 
-      <section className="panel panel--danger">
-        <h3 className="panel__title">危险操作</h3>
-        <p className="muted">
-          这两个都不可撤销，面板没有为它们留回收站。服务器运行时都不可用。
-        </p>
+      <Section
+        tone="danger"
+        title="危险操作"
+        note="这两个都不可撤销，面板没有为它们留回收站。服务器运行时都不可用。"
+      >
         <div className="actions">
           <Button
             type="button"
@@ -918,7 +907,7 @@ export function LaunchSettings({
             删除实例及所有文件
           </Button>
         </div>
-      </section>
+      </Section>
     </form>
   )
 }
@@ -974,41 +963,34 @@ function LaunchCheckPanel({
   }
 
   return (
-    <section className="panel panel--form">
-      <div className="panel__aside">
-        <h3 className="panel__title">开服前检查</h3>
-        <p className="panel__note">按下「启动」之前，面板能先看出来的问题。</p>
-      </div>
+    <Section form title="开服前检查" note="按下「启动」之前，面板能先看出来的问题。">
+      <ul className="launchcheck">
+        {check.issues.map((issue) => (
+          <li
+            key={issue.code}
+            className={`launchcheck__item launchcheck__item--${issue.level}`}
+          >
+            <strong className="launchcheck__level">{LEVEL_LABELS[issue.level]}</strong>
+            <p className="launchcheck__text">{issue.message}</p>
+            {/* The retired argv, shown only where it is the answer to the
+                issue above: somebody has to retype it into the form, and
+                this is the only place it still exists. */}
+            {issue.code === 'needs-setup' &&
+              legacyCommand.map((arg, at) => (
+                <code className="launchcheck__line" key={`${at}-${arg}`}>
+                  {arg}
+                </code>
+              ))}
+          </li>
+        ))}
+      </ul>
 
-      <div className="panel__body">
-        <ul className="launchcheck">
-          {check.issues.map((issue) => (
-            <li
-              key={issue.code}
-              className={`launchcheck__item launchcheck__item--${issue.level}`}
-            >
-              <strong className="launchcheck__level">{LEVEL_LABELS[issue.level]}</strong>
-              <p className="launchcheck__text">{issue.message}</p>
-              {/* The retired argv, shown only where it is the answer to the
-                  issue above: somebody has to retype it into the form, and
-                  this is the only place it still exists. */}
-              {issue.code === 'needs-setup' &&
-                legacyCommand.map((arg, at) => (
-                  <code className="launchcheck__line" key={`${at}-${arg}`}>
-                    {arg}
-                  </code>
-                ))}
-            </li>
-          ))}
-        </ul>
-
-        <div className="actions">
-          <Button size="row" type="button" onClick={onRecheck}>
-            重新检查
-          </Button>
-        </div>
+      <div className="actions">
+        <Button size="row" type="button" onClick={onRecheck}>
+          重新检查
+        </Button>
       </div>
-    </section>
+    </Section>
   )
 }
 
@@ -1070,7 +1052,7 @@ function JVMPresets({
         </button>
         <div className="presets__view" role="group" aria-label="JVM 参数的显示方式">
           <button
-            className={`chip${rows ? ' chip--active' : ''}`}
+            className={`chip${rows ? ' chip--on' : ''}`}
             type="button"
             aria-pressed={rows}
             onClick={() => onView(true)}
@@ -1078,7 +1060,7 @@ function JVMPresets({
             卡片
           </button>
           <button
-            className={`chip${rows ? '' : ' chip--active'}`}
+            className={`chip${rows ? '' : ' chip--on'}`}
             type="button"
             aria-pressed={!rows}
             onClick={() => onView(false)}

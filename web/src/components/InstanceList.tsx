@@ -10,9 +10,11 @@ import { useUptime } from '../useUptime'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { DataTable, DataTableHead, DataTableRow } from './DataTable'
+import { EmptyState } from './EmptyState'
 import { Page } from './Page'
 import { PowerControls } from './PowerControls'
 import { StatusDot } from './StatusDot'
+import { Toolbar, ToolbarSearch } from './Toolbar'
 
 const FILTERS: { id: StateFilter; label: string }[] = [
   { id: 'all', label: '全部' },
@@ -71,39 +73,35 @@ export function InstanceList({
     <Page
       wide
       title="所有实例"
-      aside={
-        <div className="actions">
-          {/* Adopting is the rarer of the two and the one with a world at
-              stake, so it sits beside 新建 rather than inside it — but it is
-              here, on the list, because that is where someone who has just
-              realised the panel does not know about their server looks. */}
-          {can(CAP.panelCreate) && (
-            <>
-              <Button onClick={onImport}>
-                导入现有目录
-              </Button>
-              <Button variant="primary" onClick={onCreate}>
-                + 新建实例
-              </Button>
-            </>
-          )}
-        </div>
+      actions={
+        /* Adopting is the rarer of the two and the one with a world at
+           stake, so it sits beside 新建 rather than inside it — but it is
+           here, on the list, because that is where someone who has just
+           realised the panel does not know about their server looks. */
+        can(CAP.panelCreate) && (
+          <>
+            <Button onClick={onImport}>
+              导入现有目录
+            </Button>
+            <Button variant="primary" onClick={onCreate}>
+              + 新建实例
+            </Button>
+          </>
+        )
       }
     >
-      <div className="filters">
-        <input
-          className="filters__search"
-          type="search"
+      <Toolbar>
+        <ToolbarSearch
           value={query}
           onChange={(event) => onFilter({ query: event.target.value, state })}
           placeholder="按名称搜索"
           aria-label="按名称搜索实例"
         />
-        <div className="filters__chips" role="group" aria-label="按状态筛选">
+        <div className="toolbar__chips" role="group" aria-label="按状态筛选">
           {FILTERS.map((filter) => (
             <button
               key={filter.id}
-              className={`chip${state === filter.id ? ' chip--active' : ''}`}
+              className={`chip${state === filter.id ? ' chip--on' : ''}`}
               onClick={() => onFilter({ query, state: filter.id })}
               aria-pressed={state === filter.id}
             >
@@ -111,10 +109,10 @@ export function InstanceList({
             </button>
           ))}
         </div>
-        <span className="filters__count">
+        <span className="toolbar__count">
           {shown.length} / {instances.length}
         </span>
-      </div>
+      </Toolbar>
 
       <DataTable className="rows" role="table" aria-label="实例列表">
         <DataTableHead className="rows__head" role="row">
@@ -124,21 +122,18 @@ export function InstanceList({
           <span role="columnheader">核心 / Java</span>
           <span role="columnheader">操作</span>
         </DataTableHead>
-        {shown.length === 0 && (
-          <p className="rows__empty">
-            {instances.length === 0 ? (
-              <>
-                还没有实例，先新建一个吧 —— 机器上已经有服务端目录的话，
-                <button className="link" onClick={onImport}>
-                  直接导入它
-                </button>
-                。
-              </>
-            ) : (
-              '没有符合条件的实例。'
-            )}
-          </p>
-        )}
+        {shown.length === 0 &&
+          (instances.length === 0 ? (
+            <EmptyState inline title="还没有实例，先新建一个吧。">
+              机器上已经有服务端目录的话，
+              <button className="link" onClick={onImport}>
+                直接导入它
+              </button>
+              。
+            </EmptyState>
+          ) : (
+            <EmptyState inline title="没有符合条件的实例。" />
+          ))}
         {shown.map((item) => (
           <Row
             key={item.id}

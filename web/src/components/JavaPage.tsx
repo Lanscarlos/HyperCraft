@@ -8,7 +8,9 @@ import { jobMeta } from '../types'
 import type { JavaController } from '../useJava'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { EmptyState } from './EmptyState'
 import { Page } from './Page'
+import { Section } from './Section'
 import { Select } from './Select'
 import { Shelf } from './Shelf'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
@@ -143,22 +145,14 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
     return (
       <Page wide title="Java 环境" lead={JAVA_LEAD}>
         <SkeletonScreen inPage label="正在读取已装的 Java…">
-          <SkeletonPanel title={false}>
-            <div className="chart-head">
-              <Skeleton w="64px" h={15} />
-              <Skeleton w="180px" h={12} />
-            </div>
+          <SkeletonPanel head>
             {/* 已安装 is a list of runtime rows, and how many there are is
                 exactly what is being fetched — so this is the system Java plus
                 one install, the commonest case on a machine that has been set
                 up. */}
             <SkeletonRows rows={2} />
           </SkeletonPanel>
-          <SkeletonPanel title={false}>
-            <div className="chart-head">
-              <Skeleton w="96px" h={15} />
-              <Skeleton w="220px" h={12} />
-            </div>
+          <SkeletonPanel head>
             <Skeleton w="100%" h={34} />
             <Skeleton w="60%" h={34} />
           </SkeletonPanel>
@@ -202,8 +196,8 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
       wide
       title="Java 环境"
       lead={JAVA_LEAD}
-      aside={
-        <p className="meta-chips">
+      facts={
+        <>
           {/* One fact, not four. The head used to carry os/arch, a count, a
               total and the distribution's name as four separate chips, none of
               which is the thing you came to read. What is worth a glance is
@@ -218,7 +212,7 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
               {overview.platform.os}/{overview.platform.arch}
             </span>
           )}
-        </p>
+        </>
       }
     >
       {overview.platform.warning && (
@@ -230,21 +224,19 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
           at the top of the page rather than inside the card that started it. */}
       {job && <InstallStatus job={job} distributions={distributions} />}
 
-      <section className="panel">
-        <div className="chart-head">
-          <h2 className="panel__title">可用的 Java</h2>
-          <p className="chart-head__meta">
-            {runtimes.length > 0
-              ? `${runtimes.length} 个可选，面板自己装的占用 ${formatBytes(totalSize)}`
-              : '还没有可选的 Java'}
-          </p>
-          <div className="chart-head__tools">
-            <button className="link" type="button" onClick={() => setAdding((on) => !on)}>
-              {adding ? '取消' : '添加本机 Java'}
-            </button>
-          </div>
-        </div>
-
+      <Section
+        title="可用的 Java"
+        meta={
+          runtimes.length > 0
+            ? `${runtimes.length} 个可选，面板自己装的占用 ${formatBytes(totalSize)}`
+            : '还没有可选的 Java'
+        }
+        tools={
+          <button className="link" type="button" onClick={() => setAdding((on) => !on)}>
+            {adding ? '取消' : '添加本机 Java'}
+          </button>
+        }
+      >
         {adding && (
           <form className="java-add" onSubmit={submitPath}>
             <input
@@ -268,13 +260,10 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
         )}
 
         {runtimes.length === 0 && !detected ? (
-          <div className="welcome__empty">
-            <p>还没有可选的 Java，实例的启动设置里会是空的。</p>
-            <p className="muted">
-              下面挑一个版本装上，几十秒的事，全程不动系统环境；已经有 Java 的话，上面「添加本机
-              Java」填路径登记进来。
-            </p>
-          </div>
+          <EmptyState title="还没有可选的 Java，实例的启动设置里会是空的。">
+            下面挑一个版本装上，几十秒的事，全程不动系统环境；已经有 Java 的话，上面「添加本机
+            Java」填路径登记进来。
+          </EmptyState>
         ) : (
           <Shelf head={['Java', '完整版本', '体积', '装入 / 登记于', '使用中的实例', '']}>
             {detected && (
@@ -295,19 +284,85 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
             ))}
           </Shelf>
         )}
-      </section>
+      </Section>
 
       {/* 可安装 used to be a page of its own, and 下载设置 another. Both are on
           this one now: the catalogue is a line per build rather than a screen
           of chooser tiles, and where those builds come from is two selects in
           this card's head — which is where a property of the download belongs,
           rather than behind a second navigation step. */}
-      <section className="panel">
+      <Section
+        title="可安装"
+        tools={
+          majors.length > 0 && (
+            <>
+              {distributions.length > 1 && (
+                <Select
+                  value={distribution ?? ''}
+                  onChange={(id) => {
+                    setDistribution(id)
+                    // The two source lists share nothing but auto and
+                    // official, so a mirror picked for the other
+                    // distribution cannot carry over.
+                    setSource(null)
+                  }}
+                  disabled={installing}
+                  ariaLabel="发行版"
+                  className="input-slim"
+                  options={distributions.map((entry) => ({
+                    value: entry.id,
+                    label: entry.name,
+                    note: entry.note,
+                  }))}
+                />
+              )}
+              {sources.length > 0 && (
+                <Select
+                  value={source ?? ''}
+                  onChange={setSource}
+                  disabled={installing}
+                  ariaLabel="下载源"
+                  className="input-slim"
+                  placeholder="下载源"
+                  options={sources.map((entry) => ({
+                    value: entry.id,
+                    label: entry.name,
+                    note: entry.note,
+                  }))}
+                />
+              )}
+              <div className="segmented segmented--inline" role="group" aria-label="镜像类型">
+                {IMAGE_TYPES.map((entry) => (
+                  <button
+                    key={entry.value}
+                    type="button"
+                    className={`segmented__option${
+                      imageType === entry.value ? ' segmented__option--active' : ''
+                    }`}
+                    aria-pressed={imageType === entry.value}
+                    title={entry.note}
+                    disabled={installing}
+                    onClick={() => setImageType(entry.value)}
+                  >
+                    <strong>{entry.label}</strong>
+                  </button>
+                ))}
+              </div>
+              {(hiddenMajors > 0 || showAllMajors) && (
+                <button
+                  className="link"
+                  type="button"
+                  onClick={() => setShowAllMajors((on) => !on)}
+                >
+                  {showAllMajors ? '只看 LTS' : `全部 ${majors.length} 个`}
+                </button>
+              )}
+            </>
+          )
+        }
+      >
         {majors.length === 0 ? (
           <>
-            <div className="chart-head">
-              <h2 className="panel__title">可安装</h2>
-            </div>
             <p className="muted">
               没能从 {distributionName} 取到可安装的版本列表 —— 通常是这台机器连不上外网。
               已装的 Java 不受影响，仍然可以正常启动服务器。
@@ -315,77 +370,6 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
           </>
         ) : (
           <>
-            <div className="chart-head">
-              <h2 className="panel__title">可安装</h2>
-              <div className="chart-head__tools">
-                {distributions.length > 1 && (
-                  <Select
-                    value={distribution ?? ''}
-                    onChange={(id) => {
-                      setDistribution(id)
-                      // The two source lists share nothing but auto and
-                      // official, so a mirror picked for the other
-                      // distribution cannot carry over.
-                      setSource(null)
-                    }}
-                    disabled={installing}
-                    ariaLabel="发行版"
-                    className="input-slim"
-                    options={distributions.map((entry) => ({
-                      value: entry.id,
-                      label: entry.name,
-                      note: entry.note,
-                    }))}
-                  />
-                )}
-                {sources.length > 0 && (
-                  <Select
-                    value={source ?? ''}
-                    onChange={setSource}
-                    disabled={installing}
-                    ariaLabel="下载源"
-                    className="input-slim"
-                    placeholder="下载源"
-                    options={sources.map((entry) => ({
-                      value: entry.id,
-                      label: entry.name,
-                      note: entry.note,
-                    }))}
-                  />
-                )}
-                <div
-                  className="segmented segmented--inline"
-                  role="group"
-                  aria-label="镜像类型"
-                >
-                  {IMAGE_TYPES.map((entry) => (
-                    <button
-                      key={entry.value}
-                      type="button"
-                      className={`segmented__option${
-                        imageType === entry.value ? ' segmented__option--active' : ''
-                      }`}
-                      aria-pressed={imageType === entry.value}
-                      title={entry.note}
-                      disabled={installing}
-                      onClick={() => setImageType(entry.value)}
-                    >
-                      <strong>{entry.label}</strong>
-                    </button>
-                  ))}
-                </div>
-                {(hiddenMajors > 0 || showAllMajors) && (
-                  <button
-                    className="link"
-                    type="button"
-                    onClick={() => setShowAllMajors((on) => !on)}
-                  >
-                    {showAllMajors ? '只看 LTS' : `全部 ${majors.length} 个`}
-                  </button>
-                )}
-              </div>
-            </div>
-
             <div className="pick-grid">
               {visibleMajors.map((entry) => {
                 const running = installing && job !== null && Number(jobMeta(job, 'major')) === entry.major
@@ -465,7 +449,7 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
             </p>
           </>
         )}
-      </section>
+      </Section>
 
       <p className="chart-note">
         服务端 jar 本身不在这里 —— 那在

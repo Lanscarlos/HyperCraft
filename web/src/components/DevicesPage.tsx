@@ -4,7 +4,9 @@ import { api } from '../api'
 import { ask } from '../confirm'
 import type { Device } from '../types'
 import { Badge } from './Badge'
+import { EmptyState } from './EmptyState'
 import { Page } from './Page'
+import { Section } from './Section'
 
 /**
  * The native clients holding a device token.
@@ -60,24 +62,21 @@ export function DevicesPage() {
       title="已配对设备"
       lead="桌面端和手机 App 用设备令牌登录，不像浏览器会话那样面板一重启就失效，所以自动更新不会把你从 App 里登出。配对方法见 README；改密码会解除所有设备的配对。"
     >
+      {error && <div className="alert alert--error">{error}</div>}
 
-      <section className="panel">
-        <h3 className="panel__title">设备</h3>
-
-        {error && <div className="alert alert--error">{error}</div>}
-
+      <Section title="设备">
         {devices === null ? (
           <p className="muted">正在读取…</p>
         ) : devices.length === 0 ? (
-          <p className="muted">还没有配对过任何设备。</p>
+          <EmptyState inline title="还没有配对过任何设备。" />
         ) : (
-          <div className="device-list">
+          <div className="rowlist">
             {devices.map((device) => (
-              <div className="device-row" key={device.id}>
-                <div className="device-row__main">
-                  <strong>{device.name}</strong>
+              <div className="row" key={device.id}>
+                <div className="row__main">
+                  <span className="row__title">{device.name}</span>
                   {device.current && <Badge>当前设备</Badge>}
-                  <span className="device-row__spacer" />
+                  <span className="row__spacer" />
                   <button
                     className="link link--danger"
                     onClick={() => void unpair(device)}
@@ -86,7 +85,7 @@ export function DevicesPage() {
                     {busyID === device.id ? '解除中…' : '解除配对'}
                   </button>
                 </div>
-                <div className="device-row__meta">
+                <div className="row__meta">
                   配对于 {formatDay(device.createdAt)}
                   {' · '}
                   {device.lastUsed
@@ -97,7 +96,7 @@ export function DevicesPage() {
             ))}
           </div>
         )}
-      </section>
+      </Section>
     </Page>
   )
 }

@@ -15,8 +15,12 @@ import type {
   SnapshotTrigger,
 } from '../types'
 import { Button } from './Button'
+import { EmptyState } from './EmptyState'
+import { Menu } from './Menu'
 import { Modal } from './Modal'
 import { PageHead } from './Page'
+import { Section } from './Section'
+import { Toolbar } from './Toolbar'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
 /**
@@ -376,8 +380,12 @@ export function ConfigHistory({
           </>
         }
         lead={lead}
-        aside={
-        <div className="page__actions">
+        actions={
+        <>
+          {/* Two buttons and an overflow. This head carried four, one of them
+              destructive, in a row where the eye had to read all four to find
+              the one it came for — and the one it came for is almost always
+              打快照. The other two are rare enough to be a click deeper. */}
           <Button
             onClick={() => void refresh()}
             disabled={busy}
@@ -388,34 +396,38 @@ export function ConfigHistory({
           <Button variant="primary" onClick={() => setSnapshotting(true)} disabled={busy}>
             打快照
           </Button>
-          <Button
-            onClick={compareWithFactory}
-            disabled={busy || !initial}
-            title="与最早记录的出厂状态比较"
+          <Menu
+            className="btn btn--icon"
+            ariaLabel="更多操作"
+            title="更多操作"
+            items={[
+              {
+                label: '与出厂对比',
+                disabled: busy || !initial,
+                onSelect: compareWithFactory,
+              },
+              {
+                label: '整树还原（高级）',
+                danger: true,
+                disabled: busy || !current || data.running,
+                onSelect: () => current && void previewRestore(current.ref),
+              },
+            ]}
           >
-            与出厂对比
-          </Button>
-          <Button
-            variant="danger"
-            onClick={() => current && void previewRestore(current.ref)}
-            disabled={busy || !current || data.running}
-            title={data.running ? '整树还原要求服务器处于停止状态' : '把整棵配置树切回这个快照'}
-          >
-            整树还原（高级）
-          </Button>
-        </div>
-        }
+            ⋯
+          </Menu>
+        </>
+      }
       />
 
       {error && <div className="alert alert--error">{error}</div>}
 
       {oversized.length > 0 && (
-        <div className="panel panel--warn">
-          <h2 className="panel__title">{oversized.length} 个文件超过单文件上限，快照已中止</h2>
-          <p className="chist__note">
-            上限是 {formatBytes(data.settings.limits.fileBytes)}。这通常说明收录规则碰到了一个
-            数据文件；也可能是正当的大配置（例如 WorldGuard 的 regions.yml）。逐个决定后才会继续记录。
-          </p>
+        <Section
+          tone="warn"
+          title={`${oversized.length} 个文件超过单文件上限，快照已中止`}
+          note={`上限是 ${formatBytes(data.settings.limits.fileBytes)}。这通常说明收录规则碰到了一个数据文件；也可能是正当的大配置（例如 WorldGuard 的 regions.yml）。逐个决定后才会继续记录。`}
+        >
           <ul className="chist__gate">
             {oversized.map((file) => (
               <li key={file.path}>
@@ -434,7 +446,7 @@ export function ConfigHistory({
               </li>
             ))}
           </ul>
-        </div>
+        </Section>
       )}
 
       {pending.length > 0 && (
@@ -454,9 +466,8 @@ export function ConfigHistory({
       )}
 
       {timeline.length === 0 ? (
-        <div className="panel">
-          <h2 className="panel__title">还没有任何快照</h2>
-          <p className="chist__note">
+        <EmptyState title="还没有任何快照">
+          <span className="chist__note">
             按现在的收录规则会记录 {data.coverage.files} 个文件、共 {formatBytes(data.coverage.bytes)}。
             {(data.coverage.worlds?.length ?? 0) > 0 && (
               <>
@@ -464,24 +475,26 @@ export function ConfigHistory({
                 识别为世界目录并已跳过：{data.coverage.worlds?.join('、')}。
               </>
             )}
-          </p>
-          <p className="chist__note">启服、停服、插件升级和在面板里保存配置时都会自动记录。</p>
-        </div>
+          </span>{' '}
+          <span className="chist__note">启服、停服、插件升级和在面板里保存配置时都会自动记录。</span>
+        </EmptyState>
       ) : (
         <div className="chist">
           <section className="chist__timeline panel" aria-label="快照时间线">
-            <div className="chist__filters" role="group" aria-label="筛选快照">
-              {FILTERS.map((entry) => (
-                <button
-                  key={entry.id}
-                  className={`chip${filter === entry.id ? ' chip--active' : ''}`}
-                  onClick={() => setFilter(entry.id)}
-                  aria-pressed={filter === entry.id}
-                >
-                  {entry.label}
-                </button>
-              ))}
-            </div>
+            <Toolbar>
+              <div className="toolbar__chips" role="group" aria-label="筛选快照">
+                {FILTERS.map((entry) => (
+                  <button
+                    key={entry.id}
+                    className={`chip${filter === entry.id ? ' chip--on' : ''}`}
+                    onClick={() => setFilter(entry.id)}
+                    aria-pressed={filter === entry.id}
+                  >
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+            </Toolbar>
 
             <ol className="chist__rows">
               {/* 当前改动 sits above the snapshots and outside the filters: it
@@ -548,7 +561,11 @@ export function ConfigHistory({
                 </li>
               ))}
               {rows.length === 0 && (
-                <li className="chist__none">这个筛选下没有快照。切到「全部」看看自动快照。</li>
+                <li>
+                  <EmptyState inline title="这个筛选下没有快照。">
+                    切到「全部」看看自动快照。
+                  </EmptyState>
+                </li>
               )}
             </ol>
           </section>

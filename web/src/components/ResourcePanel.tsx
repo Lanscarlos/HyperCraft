@@ -8,8 +8,10 @@ import type { InstanceMetrics, InstanceStatus } from '../types'
 import { isLive } from '../types'
 import { Card } from './Card'
 import { PageHead } from './Page'
-import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
+import { Section } from './Section'
+import { Skeleton, SkeletonScreen } from './Skeleton'
 import { CHART_HEIGHT, TimeSeriesChart, type Point } from './TimeSeriesChart'
+import { Toolbar } from './Toolbar'
 
 // Named rather than literal: each theme steps the pair for its own chart
 // surface, and both steps are validated where they are defined (styles.css).
@@ -141,20 +143,26 @@ export function ResourcePanel({ instance, active }: Props) {
       <div className="stack">
         {head}
         <SkeletonScreen inPage label="正在读取监控数据…">
-        <div className="chart-filters">
-          <Skeleton w="56px" h={24} pill />
-          <Skeleton w="56px" h={24} pill />
-          <Skeleton w="56px" h={24} pill />
-        </div>
+        <Toolbar>
+          <div className="toolbar__chips">
+            <Skeleton w="56px" h={24} pill />
+            <Skeleton w="56px" h={24} pill />
+            <Skeleton w="56px" h={24} pill />
+          </div>
+        </Toolbar>
+        {/* The real card's own head — a bar where the title goes and one where
+            the peak/mean line goes — so the chart lands in a card that is
+            already the right height. */}
         {['cpu', 'memory'].map((key) => (
-          <SkeletonPanel key={key} title={false}>
-            <div className="chart-head">
-              <Skeleton w="88px" h={15} />
-              <Skeleton w="42%" h={12} />
-            </div>
+          <Section
+            key={key}
+            className="skeleton-panel"
+            title={<Skeleton w="88px" h={15} />}
+            meta={<Skeleton w="42%" h={12} />}
+          >
             <Skeleton w="100%" h={CHART_HEIGHT} />
             <Skeleton w="70%" h={12} />
-          </SkeletonPanel>
+          </Section>
         ))}
         </SkeletonScreen>
       </div>
@@ -166,27 +174,32 @@ export function ResourcePanel({ instance, active }: Props) {
   return (
     <div className="stack">
       {head}
-      {/* Filters sit in one row above everything they scope. */}
-      <div className="chart-filters">
-        <span className="chart-filters__label">时间范围</span>
-        {RANGES.map((range) => (
+      {/* Filters sit in one row above everything they scope; the table
+          toggle is the row's tool, at the far end away from the ranges. */}
+      <Toolbar>
+        <span className="toolbar__label">时间范围</span>
+        <div className="toolbar__chips" role="group" aria-label="时间范围">
+          {RANGES.map((range) => (
+            <button
+              key={range.ms}
+              type="button"
+              className={`chip${rangeMs === range.ms ? ' chip--on' : ''}`}
+              onClick={() => setRangeMs(range.ms)}
+            >
+              {range.label}
+            </button>
+          ))}
+        </div>
+        <div className="toolbar__tools">
           <button
-            key={range.ms}
             type="button"
-            className={`chip${rangeMs === range.ms ? ' chip--active' : ''}`}
-            onClick={() => setRangeMs(range.ms)}
+            className={`chip${showTable ? ' chip--on' : ''}`}
+            onClick={() => setShowTable((prev) => !prev)}
           >
-            {range.label}
+            数据表
           </button>
-        ))}
-        <button
-          type="button"
-          className={`chip chip--right${showTable ? ' chip--active' : ''}`}
-          onClick={() => setShowTable((prev) => !prev)}
-        >
-          数据表
-        </button>
-      </div>
+        </div>
+      </Toolbar>
 
       {/* The conclusion first, the curve under it. Reading a number off a chart
           still leaves "and is that bad?" unanswered, and that question has a
@@ -229,14 +242,15 @@ export function ResourcePanel({ instance, active }: Props) {
       <div className="metrics">
         <div className="metrics__charts">
 
-      <section className="panel">
-        <div className="chart-head">
-          <h3 className="panel__title">CPU 占用</h3>
-          <p className="chart-head__meta">
+      <Section
+        title="CPU 占用"
+        meta={
+          <>
             峰值 {formatPercent(stats.cpuPeak)} · 平均 {formatPercent(stats.cpuMean)} ·
             本机 {data.cpuCores} 核
-          </p>
-        </div>
+          </>
+        }
+      >
         <TimeSeriesChart
           points={windowed.cpu}
           color={CPU_COLOR}
@@ -252,16 +266,17 @@ export function ResourcePanel({ instance, active }: Props) {
           按单核计算，100% 表示占满一个核心。Minecraft 主线程基本是单线程的，
           所以接近 100% 通常意味着主线程已经跑满，加核心不会有帮助。
         </p>
-      </section>
+      </Section>
 
-      <section className="panel">
-        <div className="chart-head">
-          <h3 className="panel__title">内存占用</h3>
-          <p className="chart-head__meta">
+      <Section
+        title="内存占用"
+        meta={
+          <>
             峰值 {formatBytes(stats.memPeak)} · 平均 {formatBytes(stats.memMean)}
             {xmxBytes > 0 && ` · 上限 ${formatBytes(xmxBytes)}`}
-          </p>
-        </div>
+          </>
+        }
+      >
         <TimeSeriesChart
           points={windowed.memory}
           color={MEMORY_COLOR}
@@ -277,7 +292,7 @@ export function ResourcePanel({ instance, active }: Props) {
         <p className="chart-note">
           统计的是进程树的物理内存 (RSS)，含 JVM 堆外开销，所以会比 -Xmx 略高一些。
         </p>
-      </section>
+      </Section>
 
         </div>
 
@@ -298,8 +313,7 @@ export function ResourcePanel({ instance, active }: Props) {
       </div>
 
       {showTable && (
-        <section className="panel">
-          <h3 className="panel__title">采样数据</h3>
+        <Section title="采样数据">
           <div className="table-scroll">
             <table className="data-table">
               <thead>
@@ -325,7 +339,7 @@ export function ResourcePanel({ instance, active }: Props) {
           {windowed.samples.length > 60 && (
             <p className="chart-note">仅显示最近 60 条，共 {windowed.samples.length} 条。</p>
           )}
-        </section>
+        </Section>
       )}
     </div>
   )

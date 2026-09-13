@@ -22,6 +22,7 @@ import type { PluginController } from '../usePlugins'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { DataTable, DataTableHead, DataTableRow } from './DataTable'
+import { EmptyState } from './EmptyState'
 import { Menu } from './Menu'
 import { Modal } from './Modal'
 import { Page } from './Page'
@@ -31,7 +32,9 @@ import { PluginImportDialog } from './PluginImportDialog'
 import { PluginInstallDialog } from './PluginInstallDialog'
 import { PluginLibraryDrawer } from './PluginLibraryDrawer'
 import { PluginSourceDialog } from './PluginSourceDialog'
+import { Section } from './Section'
 import { StatusDot } from './StatusDot'
+import { Toolbar } from './Toolbar'
 
 /**
  * 插件列表 — every plugin the panel holds, and what is actually running.
@@ -194,48 +197,48 @@ export function PluginLibraryPage({
       wide
       title="插件列表"
       lead="按插件看，而不是按服务器看：哪个插件在哪几台服上、版本对不对得上、账本和实例目录里的文件是不是同一份。单台服的增删启停在实例自己的「插件」页里。"
-      aside={
-        <div className="page__actions">
-          {/* The one button on this page whose whole result is "nothing
-              changed" most of the time. Without something said out loud, a
-              check that found no new releases and a check that never ran look
-              identical from in front of the screen — which is how it came to
-              be pressed three times in a row. */}
-          <Button
-            disabled={plugins.busy || rows.length === 0}
-            title="逐个问上游有没有新版本。要花 GitHub API 配额 —— 匿名一小时 60 次。"
-            onClick={() =>
-              void plugins.checkAll().then(async (library) => {
-                await refresh()
-                if (library) toast(checkSummary(library.plugins))
-              })
-            }
-          >
-            检查全部更新
-          </Button>
-          {/* Every way a plugin gets into the library, in one place. They were
-              scattered across three pages and a settings tab, which meant the
-              answer to "how do I add this jar" depended on where the jar came
-              from — a distinction that matters to the panel and to nobody
-              standing in front of it. */}
-          <Menu
-            className="btn btn--primary"
-            title="添加插件"
-            ariaLabel="添加插件"
-            items={[
-              { label: '从市场搜索…', onSelect: () => onOpenView('browse') },
-              { label: '从 GitHub 仓库…', onSelect: () => setAddingSource(true) },
-              { label: '导入本地 jar…', onSelect: () => setImporting(true) },
-              {
-                label: '扫描库外来源…',
-                onSelect: () => void reconcileAll(),
-                disabled: busy || instances.length === 0,
-              },
-            ]}
-          >
-            + 添加插件 ▾
-          </Menu>
-        </div>
+      actions={
+        <>
+        {/* The one button on this page whose whole result is "nothing
+            changed" most of the time. Without something said out loud, a
+            check that found no new releases and a check that never ran look
+            identical from in front of the screen — which is how it came to
+            be pressed three times in a row. */}
+        <Button
+          disabled={plugins.busy || rows.length === 0}
+          title="逐个问上游有没有新版本。要花 GitHub API 配额 —— 匿名一小时 60 次。"
+          onClick={() =>
+            void plugins.checkAll().then(async (library) => {
+              await refresh()
+              if (library) toast(checkSummary(library.plugins))
+            })
+          }
+        >
+          检查全部更新
+        </Button>
+        {/* Every way a plugin gets into the library, in one place. They were
+            scattered across three pages and a settings tab, which meant the
+            answer to "how do I add this jar" depended on where the jar came
+            from — a distinction that matters to the panel and to nobody
+            standing in front of it. */}
+        <Menu
+          className="btn btn--primary"
+          title="添加插件"
+          ariaLabel="添加插件"
+          items={[
+            { label: '从市场搜索…', onSelect: () => onOpenView('browse') },
+            { label: '从 GitHub 仓库…', onSelect: () => setAddingSource(true) },
+            { label: '导入本地 jar…', onSelect: () => setImporting(true) },
+            {
+              label: '扫描库外来源…',
+              onSelect: () => void reconcileAll(),
+              disabled: busy || instances.length === 0,
+            },
+          ]}
+        >
+          + 添加插件 ▾
+        </Menu>
+        </>
       }
     >
       {error && <div className="alert alert--error">{error}</div>}
@@ -570,7 +573,8 @@ function FilterChips({
   const live = CHIPS.filter((status) => counts[status] > 0)
 
   return (
-    <div className="chips" role="group" aria-label="按状态筛选">
+    <Toolbar>
+      <div className="toolbar__chips" role="group" aria-label="按状态筛选">
       <button
         className={`chip${filter === 'all' ? ' chip--on' : ''}`}
         aria-pressed={filter === 'all'}
@@ -589,7 +593,8 @@ function FilterChips({
           {statusLabel(status)} <b>{counts[status]}</b>
         </button>
       ))}
-    </div>
+      </div>
+    </Toolbar>
   )
 }
 
@@ -936,17 +941,18 @@ function ForeignSection({
   onOpenInstance: (id: string) => void
 }) {
   return (
-    <section className="foreign">
-      <h2 className="foreign__title">
-        <span className="pdot pdot--foreign" aria-hidden="true" />
-        库外来源 · {jars.length} 个 jar
-      </h2>
-      <p className="foreign__lead">
-        这些文件在实例的插件目录里，但库里没有它们的记录 —— 手动传上去的，或者从备份还原来的。
-        面板读了它们的 plugin.yml 才知道是什么；收编进库之后就跟别的插件一样能装到别的服、能比版本、能回滚。
-        库里没见过的 jar 会原样存一份进去当成一个版本，文件不动；它没有上游，所以不会有更新提示。
-      </p>
-
+    <Section
+      className="foreign"
+      tone="warn"
+      title={
+        <>
+          <span className="pdot pdot--foreign" aria-hidden="true" />
+          库外来源
+        </>
+      }
+      count={`${jars.length} 个 jar`}
+      note="这些文件在实例的插件目录里，但库里没有它们的记录 —— 手动传上去的，或者从备份还原来的。面板读了它们的 plugin.yml 才知道是什么；收编进库之后就跟别的插件一样能装到别的服、能比版本、能回滚。库里没见过的 jar 会原样存一份进去当成一个版本，文件不动；它没有上游，所以不会有更新提示。"
+    >
       <div className="foreign__rows">
         {jars.map((jar) => (
           <div className="foreign__row" key={`${jar.instanceId}:${jar.dir}/${jar.fileName}`}>
@@ -982,7 +988,7 @@ function ForeignSection({
           </div>
         ))}
       </div>
-    </section>
+    </Section>
   )
 }
 
@@ -1069,28 +1075,27 @@ function EmptyLibrary({
   onAddSource: () => void
 }) {
   return (
-    <div className="welcome__empty">
-      <p>插件库还是空的。</p>
-      <p className="muted">
+    <EmptyState title="插件库还是空的。">
+      <p>
         这里是面板的公共缓存：一个 jar 下载一次，想装几台服就复制几份，
         于是「同一个插件在五台服上」是一份文件一个校验和，而不是五份谁也认不出彼此的下载。
       </p>
-      <p className="muted">
+      <p>
         去
-        <button className="link" onClick={onBrowse}>
-          插件市场
-        </button>
-        找一个，
-        <button className="link" onClick={onImport}>
-          导入一个本地 jar
-        </button>
-        ，或者
-        <button className="link" onClick={onAddSource}>
-          加个 GitHub 仓库
-        </button>
+      <button className="link" onClick={onBrowse}>
+        插件市场
+      </button>
+      找一个，
+      <button className="link" onClick={onImport}>
+        导入一个本地 jar
+      </button>
+      ，或者
+      <button className="link" onClick={onAddSource}>
+        加个 GitHub 仓库
+      </button>
         跟着它的 Release 走 —— 私有仓库也行。
       </p>
-    </div>
+    </EmptyState>
   )
 }
 
@@ -1118,7 +1123,7 @@ function BulkBar({
   return (
     <div className="bulkbar">
       <span>已选 {picked.length} 项</span>
-      <span className="device-row__spacer" />
+      <span className="row__spacer" />
       <Button
         variant="primary"
         disabled={busy || bulkable.length === 0}

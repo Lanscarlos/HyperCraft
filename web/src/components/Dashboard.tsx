@@ -12,8 +12,11 @@ import type { LiveMetric } from '../useLiveMetrics'
 import { useUptime } from '../useUptime'
 import { Button } from './Button'
 import { Card } from './Card'
+import { EmptyState } from './EmptyState'
 import { Page } from './Page'
 import { PowerControls } from './PowerControls'
+import { Section } from './Section'
+import { StatusDot } from './StatusDot'
 
 interface Props {
   instances: InstanceStatus[]
@@ -60,21 +63,19 @@ export function Dashboard({
       wide
       title="概览"
       lead="这台机器上的每台服务器：在不在跑、吃了多少内存、磁盘还剩多少，以及要处理的告警。"
-      aside={
+      actions={
+        /* Solid only while there is a list to stand beside. With no
+           instances the empty state below carries the same onCreate, and
+           two filled buttons for one action is the shape this rule
+           exists to stop — the one that is where the eye already is
+           wins. */
         can(CAP.panelCreate) && (
-          <div className="actions">
-            {/* Solid only while there is a list to stand beside. With no
-                instances the empty state below carries the same onCreate, and
-                two filled buttons for one action is the shape this rule
-                exists to stop — the one that is where the eye already is
-                wins. */}
-            <Button
-              variant={instances.length === 0 ? 'default' : 'primary'}
-              onClick={onCreate}
-            >
-              + 新建实例
-            </Button>
-          </div>
+          <Button
+            variant={instances.length === 0 ? 'default' : 'primary'}
+            onClick={onCreate}
+          >
+            + 新建实例
+          </Button>
         )
       }
     >
@@ -143,40 +144,40 @@ export function Dashboard({
         </section>
       )}
 
-      <section className="dashboard__instances">
-        <div className="chart-head">
-          <h2 className="panel__title">实例</h2>
-          {/* The create button used to sit here too. It is in the page head now,
-              where every other page keeps its one primary action, so this row
-              is only the way to the long list. */}
-          <div className="chart-head__actions">
-            {instances.length > 6 && (
-              <button
-                className="link"
-                onClick={() => onNavigate({ kind: 'instances', query: '', state: 'all' })}
-              >
-                所有实例
-              </button>
-            )}
-          </div>
-        </div>
-
+      {/* The create button used to sit in this head too. It is in the page
+          head now, where every other page keeps its one primary action, so
+          the section's only tool is the way to the long list. */}
+      <Section
+        title="实例"
+        tools={
+          instances.length > 6 && (
+            <button
+              className="link"
+              onClick={() => onNavigate({ kind: 'instances', query: '', state: 'all' })}
+            >
+              所有实例
+            </button>
+          )
+        }
+      >
         {instances.length === 0 ? (
-          <div className="welcome__empty">
-            {can(CAP.panelCreate) ? (
-              <>
-                <p>还没有任何实例。</p>
+          can(CAP.panelCreate) ? (
+            <EmptyState
+              title="还没有任何实例。"
+              action={
                 <Button variant="primary" onClick={onCreate}>
                   新建第一个服务器
                 </Button>
-              </>
-            ) : (
-              // Not "create one" for somebody who cannot: the empty state has
-              // to say what is actually true for them, which is that nobody
-              // has given them a server yet.
-              <p>还没有分配给你的实例。找管理员在「面板设置 → 账号与角色」里授权。</p>
-            )}
-          </div>
+              }
+            />
+          ) : (
+            // Not "create one" for somebody who cannot: the empty state has
+            // to say what is actually true for them, which is that nobody
+            // has given them a server yet.
+            <EmptyState title="还没有分配给你的实例。">
+              找管理员在「面板设置 → 账号与角色」里授权。
+            </EmptyState>
+          )
         ) : (
           <div className="cards">
             {ordered.map((item) => (
@@ -190,7 +191,7 @@ export function Dashboard({
             ))}
           </div>
         )}
-      </section>
+      </Section>
     </Page>
   )
 }
@@ -254,7 +255,7 @@ function InstanceCard({
     <Card className={`card--${instance.state}`}>
       <button className="card__open" onClick={onOpen}>
         <div className="card__head">
-          <span className={`status__dot status__dot--${instance.state}`} />
+          <StatusDot state={instance.state} />
           <strong>{instance.name}</strong>
           <span className="card__state">{STATE_LABELS[instance.state]}</span>
         </div>

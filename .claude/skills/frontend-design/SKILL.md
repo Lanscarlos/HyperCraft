@@ -15,6 +15,24 @@ description: HyperCraft 面板（web/）的界面布局与视觉改动指南。�
 
 ## 布局硬规则
 
+### 页面语法
+
+每个页面读起来都是同一句话，顺序固定：
+
+```
+Page(wide?)                     ← 面板级页面；实例 section 用 div.stack + <PageHead>
+  PageHead  title [count] / lead / facts / actions
+  .alert--error?                ← 错误永远紧贴页头，上面不放别的
+  .tabs?                        ← 一页最多一条切换
+  Toolbar?                      ← 一个列表最多一条，就贴在它上面
+  Section*                      ← 每一个有标题的内容块
+  EmptyState | SkeletonScreen   ← 空 / 加载只有这两种
+```
+
+`Section` / `Toolbar` / `EmptyState` / `.rowlist > .row` 的用法、各自替掉了哪几套旧写法、
+以及守卫卡哪些类名，写在 `docs/design-system.md` 第 3 节。**不要再造第二种段头、第二条
+工具行、第七种空状态** —— 这份代码库刚从那个状态里爬出来。
+
 ### 页面骨架
 
 - 每个面板级页面都套 `web/src/components/Page.tsx`，**不要再造一个页面框**。历史上有过三个页面框、三种最大宽度、两套滚动条归属，改错一个看起来「差不多对」——这是最糟的错误形态。

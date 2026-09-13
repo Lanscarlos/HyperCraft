@@ -26,6 +26,7 @@ import { Modal } from './Modal'
 import { PageHead } from './Page'
 import { SchematicPreview } from './SchematicPreview'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
+import { Toolbar, ToolbarSearch } from './Toolbar'
 
 interface EditorState {
   path: string
@@ -838,7 +839,7 @@ export function FileManager({
           {/* 实例根目录, the toolbar, then the listing — the same three bands
               the real panel is, in the same order and at the same heights. */}
           <Skeleton w="88px" h={15} />
-          <div className="file-toolbar">
+          <div className="toolbar">
             <Skeleton w="82px" h={30} />
             <Skeleton w="96px" h={30} />
             <Skeleton w="60px" h={30} />
@@ -889,7 +890,7 @@ export function FileManager({
              mode nobody finds stays a mode nobody finds. Beside the title is
              where every other page in the panel keeps the thing it does, and
              on this page that corner was empty. */
-          aside={
+          actions={
             roomy ? (
               <button
                 type="button"
@@ -1038,7 +1039,7 @@ export function FileManager({
             <Breadcrumb dir={dir} onNavigate={(next) => void load(next)} />
           </div>
 
-          <div className="file-toolbar">
+          <Toolbar>
             {/* A confined role can walk through the folders on the way to the one
                 it may edit, but not write in them. Offering the buttons there
                 would be offering a request the panel refuses. */}
@@ -1089,21 +1090,20 @@ export function FileManager({
               <Glyph name="refresh" className={pending ? 'spin' : undefined} />
             </Button>
 
-            <div className="file-toolbar__find">
-              <Glyph name="search" />
-              <input
-                className="file-toolbar__search"
-                type="search"
-                value={query}
-                placeholder="在当前目录中查找"
-                aria-label="在当前目录中查找"
-                onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape') setQuery('')
-                }}
-              />
-            </div>
-          </div>
+            {/* At the far end, away from the four buttons that act on the
+                listing: a hand reaching for 上传 must not land in the box that
+                filters it. */}
+            <ToolbarSearch
+              className="toolbar__search--end"
+              value={query}
+              placeholder="在当前目录中查找"
+              aria-label="在当前目录中查找"
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setQuery('')
+              }}
+            />
+          </Toolbar>
 
           {selectedEntries.length > 0 && (
             <div className="file-bulk">
