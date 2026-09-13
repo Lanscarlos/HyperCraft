@@ -115,7 +115,7 @@ export function CommandPalette({
       })
     }
     for (const section of LIBRARY_SECTIONS.filter((entry) => can(entry.cap))) {
-      // Every second-level page too: 插件源 and 下载核心 are exactly the kind
+      // Every second-level page too: 插件市场 and 索引源 are exactly the kind
       // of destination you reach for by name rather than by remembering which
       // entry they were filed under.
       for (const view of LIBRARY_VIEWS[section.id]) {
