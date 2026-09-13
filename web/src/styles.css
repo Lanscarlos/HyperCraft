@@ -1011,7 +1011,6 @@ a:hover {
    warning is the one thing that should not wait its turn. */
 :is(
   .cards,
-  .dashboard__instances,
   .summary,
   .asset-list,
   .choice-grid,
@@ -3974,11 +3973,6 @@ a:hover {
   flex-wrap: wrap;
 }
 
-.actions__danger {
-  display: flex;
-  gap: 8px;
-  margin-left: auto;
-}
 
 /* The save bar, which exists only while there is something to save. Sticky
    against .instance__pane--scroll (overflow-y: auto, so it is the scrollport)
@@ -5490,12 +5484,6 @@ details[open]::details-content {
   overflow-wrap: anywhere;
 }
 
-/* A sentence rather than a fact — "this jar is the library's own download" —
-   so it gets its own line instead of trailing the dot-separated metadata. */
-.row__hint {
-  display: block;
-  margin-top: 2px;
-}
 
 /* A count of dangerous capabilities on a role row, in the colour the role
    editor uses for the same idea. Not red: this is a fact about the role, not
@@ -5640,14 +5628,6 @@ details[open]::details-content {
   font-size: 12px;
 }
 
-.card__path {
-  color: var(--text-faint);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 /* ---------------------------------------------------------------- modals
 
@@ -11074,10 +11054,6 @@ button.rows__name:hover strong {
     padding-bottom: max(16px, env(safe-area-inset-bottom));
   }
 
-  .actions__danger {
-    margin-left: 0;
-  }
-
   .power .btn,
   .modal__actions .btn {
     flex: 1;
@@ -11087,15 +11063,12 @@ button.rows__name:hover strong {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
 
-  /* The filter takes the whole of the second line rather than being squeezed
+  /* The search takes the whole of the second line rather than being squeezed
      to whatever is left beside four buttons. */
-  .file-toolbar__find {
+  .toolbar__search--end {
+    flex-basis: 100%;
+    max-width: none;
     margin-left: 0;
-    width: 100%;
-  }
-
-  .file-toolbar__search {
-    width: 100%;
   }
 
   /* 修改时间 is the first thing to go on a narrow screen: the name, the size
@@ -11677,23 +11650,6 @@ button.rows__name:hover strong {
    about seventy. Stacked, each part gets the full measure — and the order is
    unchanged, so it still reads digest, file, then what you can do about it. */
 @media (max-width: 560px) {
-  /* The mirror's prefix drops under its name. Beside it on a 390px row the
-     name track is down to a third of the width and 「公共代理，速度看运气」
-     comes out one word per line — and the prefix is the half you read second,
-     after the name has already told you which proxy this is. */
-  .setting-row--pick {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .setting-row--pick > .setting-row__control {
-    grid-column: 2;
-    justify-self: start;
-  }
-
-  .setting-row--pick > .setting-row__control:empty {
-    display: none;
-  }
-
   .arow {
     grid-template-columns: minmax(0, 1fr) auto;
     row-gap: 4px;
@@ -12525,6 +12481,17 @@ button.rows__name:hover strong {
   gap: 8px;
 }
 
+/* A drawer section's head: title on the left, its controls at the end. The
+   same row .panel__head draws, without the card — a drawer section has no
+   surface of its own, so it cannot use the class that assumes one. */
+.drawer__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .drawer__section h3 {
   margin: 0;
   color: var(--text-faint);
@@ -12870,11 +12837,6 @@ button.rows__name:hover strong {
   justify-content: flex-end;
   gap: 6px;
   white-space: nowrap;
-}
-
-.plugin-table__empty {
-  padding: 18px 14px;
-  text-align: center;
 }
 
 .chip--danger.chip--active {

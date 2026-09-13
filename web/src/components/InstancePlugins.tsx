@@ -528,9 +528,7 @@ export function InstancePlugins({
               }}
             />
           ))}
-          {shown.length === 0 && (
-            <p className="plugin-table__empty muted">这个筛选下没有插件。</p>
-          )}
+          {shown.length === 0 && <EmptyState inline title="这个筛选下没有插件。" />}
         </DataTable>
       )}
 

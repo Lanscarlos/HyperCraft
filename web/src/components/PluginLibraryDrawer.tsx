@@ -680,7 +680,10 @@ function VersionsTab({
 
   return (
     <section className="drawer__section">
-      <div className="chart-head">
+      {/* A drawer section is not a page section — it has no card around it —
+          so it keeps its own head rather than borrowing .panel__head. What it
+          does share is the shape: title on the left, controls at the end. */}
+      <div className="drawer__section-head">
         <h3>
           版本
           <span className="muted">
