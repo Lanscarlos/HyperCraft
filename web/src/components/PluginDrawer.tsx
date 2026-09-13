@@ -12,6 +12,7 @@ import type {
 } from '../types'
 import { isLive } from '../types'
 import { useDismiss } from '../useDismiss'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { CompatBadge } from './PluginCompat'
 import { PluginIcon } from './PluginIcon'
@@ -310,9 +311,9 @@ export function PluginDrawer({
                     {version.dependencies.map((dep) => (
                       <li key={dep.name}>
                         <span>{dep.name}</span>
-                        <span className={`badge ${dep.required ? 'badge--warn' : ''}`}>
+                        <Badge tone={dep.required ? 'warn' : 'neutral'}>
                           {dep.required ? '必需' : '可选'}
-                        </span>
+                        </Badge>
                       </li>
                     ))}
                   </ul>
@@ -426,12 +427,12 @@ function VersionRow({
     >
       <span className="drawer__version-head">
         <strong>{version.version}</strong>
-        {version.prerelease && <span className="badge badge--warn">预发布</span>}
+        {version.prerelease && <Badge tone="warn">预发布</Badge>}
         <CompatBadge compat={version.compat} />
         {version.unverified && (
-          <span className="badge badge--muted" title="来源只公布了插件当前的兼容版本，不是这个版本的">
+          <Badge tone="muted" title="来源只公布了插件当前的兼容版本，不是这个版本的">
             兼容性未逐版本标注
-          </span>
+          </Badge>
         )}
       </span>
       <span className="drawer__version-meta">

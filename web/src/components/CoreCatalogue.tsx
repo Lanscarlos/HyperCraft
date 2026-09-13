@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
 import { formatBytes, formatDate } from '../format'
 import type { CoreBuild, CoreProject, CoreVersion } from '../types'
+import { Badge } from './Badge'
 
 export const SUPPORT_LABELS: Record<string, string> = {
   SUPPORTED: '官方支持中',
@@ -199,7 +200,7 @@ export function CoreCatalogue({
             >
               <span className="choice__label">
                 {item.name}
-                {item.kind === 'proxy' && <span className="badge">代理端</span>}
+                {item.kind === 'proxy' && <Badge>代理端</Badge>}
               </span>
               <span className="choice__note">{item.description}</span>
             </button>
@@ -279,9 +280,9 @@ export function CoreCatalogue({
         <div className="build-summary">
           <div className="build-summary__file">
             <code>{build.fileName}</code>
-            <span className="badge">构建 #{build.build}</span>
+            <Badge>构建 #{build.build}</Badge>
             {!isRecommended(build.channel) && (
-              <span className="badge badge--warn">{build.channel}</span>
+              <Badge tone="warn">{build.channel}</Badge>
             )}
           </div>
           <dl className="asset__facts">

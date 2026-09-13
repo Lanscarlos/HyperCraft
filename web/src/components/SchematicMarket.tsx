@@ -6,6 +6,7 @@ import { formatBytes, formatSince } from '../format'
 import { toast } from '../toast'
 import type { SchematicItem, SchematicMarketResult, SchematicSource } from '../types'
 import type { SchematicController } from '../useSchematics'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Card } from './Card'
 import { Page } from './Page'
@@ -223,7 +224,7 @@ function MarketCard({
       <div className="schemcard__open schemcard__open--static">
         <span className="schemcard__title">
           <strong title={item.name}>{item.name}</strong>
-          <span className="badge">{item.source}</span>
+          <Badge>{item.source}</Badge>
         </span>
         <span className="schemcard__file">
           <code title={item.fileName}>{item.fileName}</code>
@@ -260,9 +261,9 @@ function MarketCard({
       {(item.tags?.length ?? 0) > 0 && (
         <p className="schemcard__tags">
           {item.tags?.map((tag) => (
-            <span className="badge" key={tag}>
+            <Badge key={tag}>
               {tag}
-            </span>
+            </Badge>
           ))}
         </p>
       )}
@@ -435,8 +436,8 @@ function SourcesPage({
                 <div className="schemsource__title">
                   <span className="schemsource__name">
                     <strong>{source.name}</strong>
-                    {source.builtin && <span className="badge">面板自带</span>}
-                    {source.disabled && <span className="badge">已关闭</span>}
+                    {source.builtin && <Badge>面板自带</Badge>}
+                    {source.disabled && <Badge>已关闭</Badge>}
                   </span>
                   <code className="schemsource__url" title={source.url}>
                     {source.url}

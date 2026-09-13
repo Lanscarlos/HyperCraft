@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { ask } from '../confirm'
 import type { PluginTokenInfo } from '../types'
 import type { PluginController } from '../usePlugins'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Page } from './Page'
 
@@ -102,7 +103,7 @@ function GitHubTokenPanel({
     <section className="panel">
       <div className="chart-head">
         <h2 className="panel__title">GitHub 访问令牌</h2>
-        {tokens.length > 0 && <span className="badge badge--ok">{tokens.length} 个</span>}
+        {tokens.length > 0 && <Badge tone="ok">{tokens.length} 个</Badge>}
       </div>
       <p className="chart-note">
         自己写的插件发在私有仓库里时，面板得先能证明「我是你」才看得见它。可以存好几个 ——
@@ -223,7 +224,7 @@ function TokenRow({
         />
         {token.hint && <span className="muted">···{token.hint}</span>}
         {token.default ? (
-          <span className="badge badge--ok">默认</span>
+          <Badge tone="ok">默认</Badge>
         ) : (
           <button
             className="link"
@@ -238,9 +239,9 @@ function TokenRow({
         {/* The number the argument for a token actually rests on, rather than
             the argument. "60 次一小时" is abstract until it is 7 左右. */}
         {budget && budget.limit > 0 && (
-          <span className={`badge${low ? ' badge--warn' : ''}`}>
+          <Badge tone={low ? 'warn' : 'neutral'}>
             API 余额 {budget.remaining} / {budget.limit}
-          </span>
+          </Badge>
         )}
         <span className="tokenrow__used muted">
           {token.usedBy > 0 ? `${token.usedBy} 个插件在用` : '暂时没有插件在用'}

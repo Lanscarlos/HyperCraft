@@ -259,6 +259,38 @@ function ruleDropdownsAreOurs() {
   }
 }
 
+/** Rule: a badge is the component, not a hand-written class.
+ *
+ *  `.badge` and its nine `--tone` modifiers were spread across 23 files as bare
+ *  strings. That is how `.badge--warn` came to be declared twice with the second
+ *  block dropping its border-color — the warning badge lost its tinted edge and
+ *  nobody noticed, because there was no one place the tone vocabulary lived.
+ *  Now there is, and the point of Badge is that the vocabulary is a union type
+ *  the compiler checks rather than a string anyone can misspell.
+ *
+ *  A <span> is what Badge renders, so a <span> wearing these classes is always
+ *  a Badge that has not been written as one. Any other element is not: 插件列表
+ *  的升级键 is a <button> painted as a badge, and Badge cannot be a button —
+ *  the same exception `<a className="btn">` has from Button, for the same
+ *  reason. Badge.tsx itself is where the strings are supposed to be. */
+function ruleBadgesAreComponents() {
+  for (const file of tsxFiles(SRC)) {
+    const rel = path.relative(SRC, file)
+    if (rel === 'components/Badge.tsx') continue
+    const src = withoutComments(fs.readFileSync(file, 'utf8'))
+    for (const m of src.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
+      // Interpolations out first, so `badge${TONE[x]}` still reads as the token
+      // `badge`. Without this the one in Sidebar walked straight past.
+      const tokens = (m[1] ?? m[2] ?? '').replace(/\$\{[^}]*\}/g, ' ').split(/\s+/)
+      if (!tokens.some((t) => t === 'badge' || t.startsWith('badge--'))) continue
+      const open = src.lastIndexOf('<', m.index)
+      if (!/^<span[\s>]/.test(src.slice(open, open + 6))) continue
+      const line = src.slice(0, open).split('\n').length
+      problems.push(`${rel}:${line} 手写了 .badge —— 改用 <Badge tone="…">`)
+    }
+  }
+}
+
 /** Advisory: one filled button per screen.
  *
  *  Not an error yet — a dozen components exceed it, and each needs a
@@ -281,6 +313,7 @@ const RULES = [
   ruleNoSilentOverrides,
   ruleFormPanelsHaveColumns,
   ruleDropdownsAreOurs,
+  ruleBadgesAreComponents,
 ]
 
 for (const rule of RULES) rule()

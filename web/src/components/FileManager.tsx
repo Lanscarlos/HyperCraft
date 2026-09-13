@@ -15,6 +15,7 @@ import { highlight, langOf } from '../highlight'
 import { toast } from '../toast'
 import { useMediaQuery } from '../useMediaQuery'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { FileIcon, extensionOf } from './FileIcon'
 import { FileTree } from './FileTree'
@@ -1354,7 +1355,7 @@ function FileRow({
           >
             {entry.name}
           </button>
-          {entry.symlink && <span className="badge">符号链接</span>}
+          {entry.symlink && <Badge>符号链接</Badge>}
         </div>
       </td>
       <td className="num">{entry.isDir ? '—' : formatBytes(entry.size)}</td>

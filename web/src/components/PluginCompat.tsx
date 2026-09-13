@@ -1,4 +1,5 @@
 import type { PluginCompat } from '../types'
+import { Badge } from './Badge'
 
 /**
  * The compatibility verdict, as a badge.
@@ -22,11 +23,8 @@ export function CompatBadge({ compat }: { compat?: PluginCompat }) {
   if (!compat || compat.state === 'unknown') return null
 
   return (
-    <span
-      className={`badge ${compat.state === 'ok' ? 'badge--ok' : 'badge--warn'}`}
-      title={compat.detail || compat.label}
-    >
+    <Badge tone={compat.state === 'ok' ? 'ok' : 'warn'} title={compat.detail || compat.label}>
       {compat.label}
-    </span>
+    </Badge>
   )
 }

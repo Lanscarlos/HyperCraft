@@ -4,6 +4,7 @@ import { api } from '../api'
 import { formatBytes, formatDate } from '../format'
 import type { PluginTokenInfo, SourcePreview } from '../types'
 import type { PluginInput } from '../usePlugins'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Modal } from './Modal'
 import { Select } from './Select'
@@ -255,8 +256,8 @@ function Preview({
   return (
     <div className="preview">
       <p className="preview__head">
-        <span className="badge badge--ok">能访问</span>
-        {preview.private && <span className="badge">私有仓库</span>}
+        <Badge tone="ok">能访问</Badge>
+        {preview.private && <Badge>私有仓库</Badge>}
         <span>
           {preview.releases} 个可用 Release，最新是 <b>{preview.version}</b>
         </span>
@@ -274,7 +275,7 @@ function Preview({
           <li key={asset.name} className={asset.name === preview.picked ? 'preview__pick' : undefined}>
             <span>{asset.name}</span>
             <span className="muted">{formatBytes(asset.size)}</span>
-            {asset.name === preview.picked && <span className="badge badge--ok">会挑这个</span>}
+            {asset.name === preview.picked && <Badge tone="ok">会挑这个</Badge>}
           </li>
         ))}
       </ul>
