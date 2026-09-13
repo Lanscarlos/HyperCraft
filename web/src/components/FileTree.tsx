@@ -38,7 +38,9 @@ interface Props {
   openPath?: string | null
   /** Open files with unsaved changes, marked the way the tabs mark them. */
   dirtyPaths?: Set<string>
-  onOpenFile?: (path: string) => void
+  /** `pin` is a double click: the file pane opens a single click as a preview
+   *  tab that the next single click reuses. */
+  onOpenFile?: (path: string, pin?: boolean) => void
   /**
    * Filters names — but only among what has already been read. Walking every
    * unopened directory to answer a keystroke is a request storm, not a search,
@@ -198,7 +200,7 @@ interface BranchProps {
   loaded: (dir: string) => boolean
   onToggle: (dir: string) => void
   onOpen: (dir: string) => void
-  onOpenFile?: (path: string) => void
+  onOpenFile?: (path: string, pin?: boolean) => void
   menuFor?: (node: TreeNode) => MenuItem[]
 }
 
@@ -228,6 +230,9 @@ function Branch({ dirs, depth, ...rest }: BranchProps) {
             label={node.name}
             onToggle={() => onToggle(node.path)}
             onOpen={() => (node.isDir ? onOpen(node.path) : onOpenFile?.(node.path))}
+            // Directories have nothing to pin: the second click of a double
+            // one lands on a listing that the first click already moved.
+            onPin={node.isDir ? undefined : () => onOpenFile?.(node.path, true)}
           />
           {node.isDir && open.has(node.path) && (
             <Branch dirs={visible(node.path)} depth={depth + 1} {...rest} />
@@ -250,6 +255,7 @@ function Row({
   label,
   onToggle,
   onOpen,
+  onPin,
 }: {
   node: TreeNode
   depth: number
@@ -264,6 +270,8 @@ function Row({
   label?: string
   onToggle: () => void
   onOpen: () => void
+  /** Double click, where that means something: see onOpenFile. */
+  onPin?: () => void
 }) {
   return (
     <div
@@ -287,7 +295,13 @@ function Row({
       >
         {hasChildren && <Icon name="expand" />}
       </button>
-      <button type="button" className="ftree__name" onClick={onOpen} title={node.path || '/'}>
+      <button
+        type="button"
+        className="ftree__name"
+        onClick={onOpen}
+        onDoubleClick={onPin}
+        title={node.path || '/'}
+      >
         <FileIcon name={node.name} dir={node.isDir} />
         <span className="ftree__label">{node.name}</span>
         {dirty && <span className="ftree__dot" aria-label="有未保存的修改" />}
