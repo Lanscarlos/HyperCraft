@@ -15,6 +15,7 @@ import { Badge } from './Badge'
 import { Button } from './Button'
 import { Page } from './Page'
 import { RoleDialog } from './RoleDialog'
+import { Section } from './Section'
 
 interface Props {
   /** The servers this administrator can see, for the grant picker. */
@@ -141,30 +142,30 @@ export function UsersPage({ instances, me }: Props) {
     >
       {error && <div className="alert alert--error">{error}</div>}
 
-      <section className="panel">
-        <div className="panel__head">
-          <h3 className="panel__title">账号</h3>
-          <Button variant="primary" size="row" onClick={() => setEditing('new')}>
+      <Section
+        title="账号"
+        tools={
+          <Button variant="primary" size="small" onClick={() => setEditing('new')}>
             新建账号
           </Button>
-        </div>
-
+        }
+      >
         {accounts === null ? (
           <p className="muted">正在读取…</p>
         ) : (
-          <div className="acct-list">
+          <div className="rowlist">
             {accounts.map((account) => (
-              <div className="acct-row" key={account.id}>
-                <div className="acct-row__main">
-                  <strong>{account.username}</strong>
+              <div className="row" key={account.id}>
+                <div className="row__main">
+                  <span className="row__title">{account.username}</span>
                   {account.displayName && (
-                    <span className="acct-row__alias">{account.displayName}</span>
+                    <span className="row__sub">{account.displayName}</span>
                   )}
                   <Badge>{account.roleName}</Badge>
                   {account.disabled && <Badge tone="warn">已停用</Badge>}
                   {account.username === me && <Badge tone="muted">这是你</Badge>}
-                  <span className="acct-row__spacer" />
-                  <span className="acct-row__actions">
+                  <span className="row__spacer" />
+                  <div className="row__actions">
                     <button
                       className="link"
                       onClick={() => setEditing(account)}
@@ -193,9 +194,9 @@ export function UsersPage({ instances, me }: Props) {
                     >
                       删除
                     </button>
-                  </span>
+                  </div>
                 </div>
-                <div className="acct-row__meta">
+                <div className="row__meta">
                   {describeGrant(account.instances, names)}
                   {' · '}
                   {account.devices > 0 ? `${account.devices} 台配对设备` : '没有配对设备'}
@@ -204,30 +205,28 @@ export function UsersPage({ instances, me }: Props) {
             ))}
           </div>
         )}
-      </section>
+      </Section>
 
-      <section className="panel">
-        <div className="panel__head">
-          <h3 className="panel__title">角色</h3>
-          <Button size="row" onClick={() => setEditingRole('new')}>
+      <Section
+        title="角色"
+        note="管理员是内置角色，恒等于全部能力 —— 以后版本新增一条能力，管理员自动就有。它改不了也删不掉。"
+        tools={
+          <Button size="small" onClick={() => setEditingRole('new')}>
             新建角色
           </Button>
-        </div>
-        <p className="panel__lead">
-          管理员是内置角色，恒等于全部能力 —— 以后版本新增一条能力，管理员自动就有。它改不了也删不掉。
-        </p>
-
+        }
+      >
         {roles === null ? (
           <p className="muted">正在读取…</p>
         ) : (
-          <div className="acct-list">
+          <div className="rowlist">
             {roles.map((role) => (
-              <div className="acct-row" key={role.id}>
-                <div className="acct-row__main">
-                  <strong>{role.name}</strong>
+              <div className="row" key={role.id}>
+                <div className="row__main">
+                  <span className="row__title">{role.name}</span>
                   {role.builtIn && <Badge tone="muted">内置</Badge>}
-                  <span className="acct-row__spacer" />
-                  <span className="acct-row__actions">
+                  <span className="row__spacer" />
+                  <div className="row__actions">
                     <button
                       className="link"
                       onClick={() => setEditingRole(role)}
@@ -245,9 +244,9 @@ export function UsersPage({ instances, me }: Props) {
                         删除
                       </button>
                     )}
-                  </span>
+                  </div>
                 </div>
-                <div className="acct-row__meta">
+                <div className="row__meta">
                   {role.builtIn ? '全部能力' : `${role.capabilities.length} 项能力`}
                   {' · '}
                   {role.users > 0 ? `${role.users} 个账号在用` : '没有账号在用'}
@@ -260,7 +259,7 @@ export function UsersPage({ instances, me }: Props) {
                   {dangerCount(role, caps) > 0 && (
                     <>
                       {' · '}
-                      <span className="acct-row__danger">
+                      <span className="row__danger">
                         含 {dangerCount(role, caps)} 项高危能力
                       </span>
                     </>
@@ -270,7 +269,7 @@ export function UsersPage({ instances, me }: Props) {
             ))}
           </div>
         )}
-      </section>
+      </Section>
 
       {editing && roles && (
         <AccountDialog

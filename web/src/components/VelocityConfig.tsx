@@ -10,9 +10,12 @@ import type {
   VelocitySetting,
 } from '../types'
 import { Button } from './Button'
+import { EmptyState } from './EmptyState'
 import { PageHead } from './Page'
+import { Section } from './Section'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
+import { Toolbar } from './Toolbar'
 
 /** A row of the sub-server table. `inTry` is this server's membership of the
  *  try list, which is not a table of its own in velocity.toml — it is an array
@@ -215,7 +218,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
   const taken = new Set(rows.map((row) => row.address.trim()))
 
   return (
-    <form className="stack" onSubmit={save}>
+    <form className="stack stack--narrow" onSubmit={save}>
       {head}
 
       {!data.exists && (
@@ -225,18 +228,20 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
         </div>
       )}
 
-      <section className="panel">
-        <h3 className="panel__title">子服务器</h3>
-        <p className="muted">
-          玩家用 <code>/server &lt;名称&gt;</code> 切换过去。地址要写成
-          <code> 主机:端口</code>，端口是子服 <code>server.properties</code> 里的{' '}
-          <code>server-port</code>。勾上「登录顺序」的会按下面的排列依次尝试。
-        </p>
-
+      <Section
+        title="子服务器"
+        note={
+          <>
+            玩家用 <code>/server &lt;名称&gt;</code> 切换过去。地址要写成
+            <code> 主机:端口</code>，端口是子服 <code>server.properties</code> 里的{' '}
+            <code>server-port</code>。勾上「登录顺序」的会按下面的排列依次尝试。
+          </>
+        }
+      >
         {rows.length === 0 ? (
-          <div className="alert">
-            还没有子服。代理端后面一个服务器都没有的话，玩家连上来会立刻被踢。
-          </div>
+          <EmptyState inline title="还没有子服。">
+            代理端后面一个服务器都没有的话，玩家连上来会立刻被踢。
+          </EmptyState>
         ) : (
           <ul className="subservers">
             {rows.map((row, index) => (
@@ -313,41 +318,47 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
             its own port into its own server.properties. Making the operator go
             and read them off five other pages is the errand this saves. */}
         {data.suggests.length > 0 && (
-          <div className="subserver-picks">
-            <span className="subserver-picks__label">从本机实例添加</span>
-            {data.suggests.map((suggest) => {
-              const already = taken.has(suggest.address)
-              return (
-                <button
-                  className="chip"
-                  type="button"
-                  key={suggest.instanceId}
-                  disabled={already}
-                  title={suggest.address}
-                  onClick={() => addRow({ name: suggest.name, address: suggest.address })}
-                >
-                  {suggest.instance}
-                  <small> · {suggest.address}</small>
-                </button>
-              )
-            })}
-          </div>
+          <Toolbar className="subserver-picks">
+            <span className="toolbar__label">从本机实例添加</span>
+            <div className="toolbar__chips">
+              {data.suggests.map((suggest) => {
+                const already = taken.has(suggest.address)
+                return (
+                  <button
+                    className="chip"
+                    type="button"
+                    key={suggest.instanceId}
+                    disabled={already}
+                    title={suggest.address}
+                    onClick={() => addRow({ name: suggest.name, address: suggest.address })}
+                  >
+                    {suggest.instance}
+                    <small> · {suggest.address}</small>
+                  </button>
+                )
+              })}
+            </div>
+          </Toolbar>
         )}
-      </section>
+      </Section>
 
       {/* Right under the sub-servers, because it is about them: a forced host
           is a name for a route into that list, and it is unreadable — and
           unsavable — without the list above it. */}
-      <section className="panel">
-        <h3 className="panel__title">域名映射</h3>
-        <p className="muted">
-          玩家从哪个域名连进来，就直接落到哪个子服。
-          <code> creative.example.com</code> 进创造服，主域名进大厅 ——
-          对玩家来说像两个服务器，其实是同一个代理端。域名的 DNS 要先指到这台机器。
-        </p>
-
+      <Section
+        title="域名映射"
+        note={
+          <>
+            玩家从哪个域名连进来，就直接落到哪个子服。
+            <code> creative.example.com</code> 进创造服，主域名进大厅 ——
+            对玩家来说像两个服务器，其实是同一个代理端。域名的 DNS 要先指到这台机器。
+          </>
+        }
+      >
         {hosts.length === 0 ? (
-          <p className="muted">还没有映射。不填的话所有域名都走上面的登录顺序。</p>
+          <EmptyState inline title="还没有映射。">
+            不填的话所有域名都走上面的登录顺序。
+          </EmptyState>
         ) : (
           <ul className="subservers">
             {hosts.map((row) => (
@@ -418,16 +429,10 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
             + 添加域名
           </Button>
         </div>
-      </section>
+      </Section>
 
-      <section className="panel panel--form">
-        <div className="panel__aside">
-          <h3 className="panel__title">基本设置</h3>
-          <p className="panel__note">代理端监听在哪、对外显示什么。</p>
-          <p className="panel__path">{data.path}</p>
-        </div>
-
-        <div className="panel__body">
+      <Section form title="基本设置" note="代理端监听在哪、对外显示什么。">
+        <p className="panel__path">{data.path}</p>
         {grouped.basic.map((setting) => (
           <SettingField
             key={setting.key}
@@ -437,16 +442,9 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
             onChange={(value) => set(setting.key, value)}
           />
         ))}
-        </div>
-      </section>
+      </Section>
 
-      <section className="panel panel--form">
-        <div className="panel__aside">
-          <h3 className="panel__title">玩家信息转发</h3>
-          <p className="panel__note">子服看到的 IP 和 UUID 从哪来。</p>
-        </div>
-
-        <div className="panel__body">
+      <Section form title="玩家信息转发" note="子服看到的 IP 和 UUID 从哪来。">
         <p className="muted">
           用 <code>modern</code> 的话，每个子服的{' '}
           <code>paper-global.yml</code> 里要打开 <code>velocity.enabled</code>{' '}
@@ -508,16 +506,9 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
             密钥为空时 Velocity 会拒绝启动。
           </div>
         )}
-        </div>
-      </section>
+      </Section>
 
-      <section className="panel panel--form">
-        <div className="panel__aside">
-          <h3 className="panel__title">高级设置</h3>
-          <p className="panel__note">默认值适用于绝大多数服。</p>
-        </div>
-
-        <div className="panel__body">
+      <Section form title="高级设置" note="默认值适用于绝大多数服。">
         <p className="muted">不清楚作用的就别动。</p>
         {grouped.advanced.map((setting) => (
           <SettingField
@@ -528,16 +519,9 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
             onChange={(value) => set(setting.key, value)}
           />
         ))}
-        </div>
-      </section>
+      </Section>
 
-      <section className="panel panel--form">
-        <div className="panel__aside">
-          <h3 className="panel__title">Query</h3>
-          <p className="panel__note">给服务器列表查询用的那个端口。</p>
-        </div>
-
-        <div className="panel__body">
+      <Section form title="Query" note="给服务器列表查询用的那个端口。">
         {grouped.query.map((setting) => (
           <SettingField
             key={setting.key}
@@ -547,8 +531,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
             onChange={(value) => set(setting.key, value)}
           />
         ))}
-        </div>
-      </section>
+      </Section>
 
       {error && <div className="alert alert--error">{error}</div>}
       {status && <div className="alert alert--ok">{status}</div>}

@@ -14,6 +14,7 @@ import { Badge } from './Badge'
 import { Button } from './Button'
 import { FieldHelp } from './FieldHelp'
 import { Page } from './Page'
+import { Section } from './Section'
 import { Select } from './Select'
 import { Shelf } from './Shelf'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
@@ -582,126 +583,118 @@ function CreateForm({
   }
 
   return (
-    <section className="panel panel--form">
-      <div className="panel__aside">
-        <h3 className="panel__title">新建数据库</h3>
-        <p className="panel__note">建一个库和它自己的账号，留空的都会用默认值。</p>
-      </div>
+    <Section form title="新建数据库" note="建一个库和它自己的账号，留空的都会用默认值。">
+    <div className="field field--md">
+      <span>用哪个引擎</span>
+      <Select
+        value={installId}
+        onChange={setInstallId}
+        ariaLabel="用哪个引擎"
+        className="select--block"
+        options={installs.map((entry) => ({
+          value: entry.id,
+          label: `${engines.find((candidate) => candidate.id === entry.engine)?.name ?? entry.engine} ${entry.version}`,
+        }))}
+      />
+      {engine && <small>{engine.note}</small>}
+    </div>
 
-      <div className="panel__body">
+    <div className="field field--md">
+      <span>库名</span>
+      <input
+        value={database}
+        onChange={(event) => setDatabase(event.target.value)}
+        placeholder="minecraft"
+        spellCheck={false}
+      />
+      <small>字母开头，只能用字母、数字和下划线。</small>
+      <FieldHelp summary="几个服务器可以共用一个库吗？">
+        可以，但默认一台服一个库。共用时两边插件的表名是一样的，数据就混在一张表里 ——
+        确实要共享（比如整个群组共用一套权限）的时候这正是你要的，其余情况下它只会让
+        「这一行是哪台服写的」变成一个需要查的问题。分开建，备份和迁走某一台服也简单。
+      </FieldHelp>
+    </div>
 
-      <div className="field field--md">
-        <span>用哪个引擎</span>
-        <Select
-          value={installId}
-          onChange={setInstallId}
-          ariaLabel="用哪个引擎"
-          className="select--block"
-          options={installs.map((entry) => ({
-            value: entry.id,
-            label: `${engines.find((candidate) => candidate.id === entry.engine)?.name ?? entry.engine} ${entry.version}`,
-          }))}
-        />
-        {engine && <small>{engine.note}</small>}
-      </div>
+    <div className="field field--md">
+      <span>显示名（可选）</span>
+      <input
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        placeholder={install ? `${engine?.name ?? ''} ${install.version}` : ''}
+      />
+    </div>
 
-      <div className="field field--md">
-        <span>库名</span>
-        <input
-          value={database}
-          onChange={(event) => setDatabase(event.target.value)}
-          placeholder="minecraft"
-          spellCheck={false}
-        />
-        <small>字母开头，只能用字母、数字和下划线。</small>
-        <FieldHelp summary="几个服务器可以共用一个库吗？">
-          可以，但默认一台服一个库。共用时两边插件的表名是一样的，数据就混在一张表里 ——
-          确实要共享（比如整个群组共用一套权限）的时候这正是你要的，其余情况下它只会让
-          「这一行是哪台服写的」变成一个需要查的问题。分开建，备份和迁走某一台服也简单。
-        </FieldHelp>
-      </div>
-
-      <div className="field field--md">
-        <span>显示名（可选）</span>
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder={install ? `${engine?.name ?? ''} ${install.version}` : ''}
-        />
-      </div>
-
-      {/* One account, so one line: a username without its password is half a
-          credential, and reading them down a column puts the pair on two
-          separate rows of a form that is mostly optional fields. */}
-      {needsAccount && (
-        <div className="field-row">
-          <div className="field field--md">
-            <span>用户名</span>
-            <input
-              value={user}
-              onChange={(event) => setUser(event.target.value)}
-              spellCheck={false}
-            />
-          </div>
-          <div className="field field--md">
-            <span>密码（可选）</span>
-            <input
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="留空则自动生成一个"
-              spellCheck={false}
-            />
-            <small>至少 8 位，不能有引号、反斜杠和空格。</small>
-            <FieldHelp summary="为什么不能有这几个字符？">
-              插件的配置文件多是 YAML，密码里一个引号就能把那一行断开，服务端启动时报的却是
-              别的错。面板建库时还要拼一条语句把这个账号建出来，反斜杠和空格在那里同样是语法。
-              留空让面板自动生成一个，这些都不用操心。
-            </FieldHelp>
-          </div>
+    {/* One account, so one line: a username without its password is half a
+        credential, and reading them down a column puts the pair on two
+        separate rows of a form that is mostly optional fields. */}
+    {needsAccount && (
+      <div className="field-row">
+        <div className="field field--md">
+          <span>用户名</span>
+          <input
+            value={user}
+            onChange={(event) => setUser(event.target.value)}
+            spellCheck={false}
+          />
         </div>
-      )}
-
-      <div className="field">
-        <label className="check">
+        <div className="field field--md">
+          <span>密码（可选）</span>
           <input
-            type="checkbox"
-            checked={autoStart}
-            onChange={(event) => setAutoStart(event.target.checked)}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="留空则自动生成一个"
+            spellCheck={false}
           />
-          <span>面板启动时自动开</span>
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={remote}
-            disabled={!needsAccount}
-            onChange={(event) => setRemote(event.target.checked)}
-          />
-          <span>允许别的机器连接</span>
-        </label>
-        <small>
-          {needsAccount
-            ? '不勾选就只监听本机，同一台机器上的服务端照样能连 —— 绝大多数情况这样就够，也最安全。勾选之后请自行确认防火墙规则。'
-            : '这个引擎没法由面板设置账号密码，只能监听本机。'}
-        </small>
+          <small>至少 8 位，不能有引号、反斜杠和空格。</small>
+          <FieldHelp summary="为什么不能有这几个字符？">
+            插件的配置文件多是 YAML，密码里一个引号就能把那一行断开，服务端启动时报的却是
+            别的错。面板建库时还要拼一条语句把这个账号建出来，反斜杠和空格在那里同样是语法。
+            留空让面板自动生成一个，这些都不用操心。
+          </FieldHelp>
+        </div>
       </div>
+    )}
 
-      <div className="actions">
-        <Button
-          variant="primary"
-          type="button"
-          disabled={databases.busy || installId === '' || database.trim() === ''}
-          onClick={() => void submit()}
-        >
-          {databases.busy ? '正在初始化…' : '创建'}
-        </Button>
-        <Button type="button" disabled={databases.busy} onClick={onDone}>
-          取消
-        </Button>
-        <span className="muted">初始化要几秒到几十秒，建好后不会自动启动。</span>
-      </div>
-      </div>
-    </section>
+    <div className="field">
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={autoStart}
+          onChange={(event) => setAutoStart(event.target.checked)}
+        />
+        <span>面板启动时自动开</span>
+      </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={remote}
+          disabled={!needsAccount}
+          onChange={(event) => setRemote(event.target.checked)}
+        />
+        <span>允许别的机器连接</span>
+      </label>
+      <small>
+        {needsAccount
+          ? '不勾选就只监听本机，同一台机器上的服务端照样能连 —— 绝大多数情况这样就够，也最安全。勾选之后请自行确认防火墙规则。'
+          : '这个引擎没法由面板设置账号密码，只能监听本机。'}
+      </small>
+    </div>
+
+    <div className="actions">
+      <Button
+        variant="primary"
+        type="button"
+        disabled={databases.busy || installId === '' || database.trim() === ''}
+        onClick={() => void submit()}
+      >
+        {databases.busy ? '正在初始化…' : '创建'}
+      </Button>
+      <Button type="button" disabled={databases.busy} onClick={onDone}>
+        取消
+      </Button>
+      <span className="muted">初始化要几秒到几十秒，建好后不会自动启动。</span>
+    </div>
+    </Section>
   )
 }
 

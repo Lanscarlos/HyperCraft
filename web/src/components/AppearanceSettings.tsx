@@ -9,6 +9,7 @@ import {
 import { applyPref, current, type PixelFontPref } from '../pixelfont'
 import { current as currentTheme, onThemeChange } from '../theme'
 import { Page } from './Page'
+import { Section } from './Section'
 
 /**
  * 外观 — the switches that decide what the panel looks like.
@@ -57,14 +58,17 @@ export function AppearanceSettings() {
       title="外观"
       lead="面板长什么样。改了立刻生效，只存在这台设备的浏览器里，不跟着账号走，也不影响别人看到的面板。"
     >
-      <section className="panel">
-        <h2 className="panel__title">配色</h2>
-        {/* JSX turns every newline into a space, so the breaks fall after 。
-            and nowhere else — one after a ，shows up as a gap in the sentence. */}
-        <p className="panel__lead">
-          四套配色，每套都有浅色和深色两份。
-          换配色不动明暗，侧栏那个开关照旧管深浅，跟随系统也照旧。
-        </p>
+      {/* JSX turns every newline into a space, so the note's breaks fall after
+          。 and nowhere else — one after a ，shows up as a gap in the sentence. */}
+      <Section
+        title="配色"
+        note={
+          <>
+            四套配色，每套都有浅色和深色两份。
+            换配色不动明暗，侧栏那个开关照旧管深浅，跟随系统也照旧。
+          </>
+        }
+      >
         <div className="palettes">
           {PALETTES.map((item) => (
             <label
@@ -98,10 +102,9 @@ export function AppearanceSettings() {
           两块终端在任何配色下都保持深色、而且互相不同色，这是防止把危险命令敲进另一块终端的那道屏障。
           「运行中」「启动中」这类状态色同理 —— 它们要在扫一眼的时候还认得出来。
         </p>
-      </section>
+      </Section>
 
-      <section className="panel">
-        <h2 className="panel__title">像素字体</h2>
+      <Section title="像素字体">
         <label className="checkbox checkbox--stacked">
           <input
             type="checkbox"
@@ -119,7 +122,7 @@ export function AppearanceSettings() {
             不跟着变 —— 那些是一个字符一个字符去认的东西，换成点阵只会更难读。
           </small>
         </label>
-      </section>
+      </Section>
     </Page>
   )
 }
