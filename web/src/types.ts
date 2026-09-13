@@ -672,7 +672,16 @@ export interface JavaRuntime {
   imageType: string
   size: number
   installedAt: string
-  /** Instances whose launch config points into this runtime. */
+  /** Where this Java came from: unpacked under the runtimes root, or a path
+   *  the operator registered. Named origin, not source: the panel already has
+   *  a java "source", and that one means the download mirror. */
+  origin: 'managed' | 'external'
+  /** False when the launcher is no longer where the entry says it is. The
+   *  entry is kept and marked rather than dropped — an instance still points
+   *  at it, and a dropdown that silently loses the selected option is worse
+   *  than one that says why. */
+  valid: boolean
+  /** Instances whose launch config points at this Java. */
   usedBy: string[]
   /** True while one of those instances is running on it. */
   live: boolean

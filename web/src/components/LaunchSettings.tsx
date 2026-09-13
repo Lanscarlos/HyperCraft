@@ -10,7 +10,6 @@ import type {
   LaunchCheck,
   LaunchDraft,
   LaunchIssue,
-  SystemJava,
 } from '../types'
 import { ENCODING_OPTIONS, isLive, LOADER_OPTIONS } from '../types'
 import { JVM_PRESETS } from '../jvmPresets'
@@ -56,9 +55,6 @@ function toInput(instance: InstanceStatus): InstanceInput {
   }
 }
 
-/** Sentinel for the "type a path yourself" option in the Java picker. */
-const CUSTOM_JAVA = '__custom__'
-
 /** Where the JVM 参数 view preference is kept. */
 const JVM_VIEW_KEY = 'hc.jvmargs.view'
 
@@ -86,9 +82,7 @@ export function LaunchSettings({
     toLines(instance.argFiles ?? []),
   )
   const [runtimes, setRuntimes] = useState<JavaRuntime[]>([])
-  const [systemJava, setSystemJava] = useState<SystemJava | null>(null)
   const [javaLoaded, setJavaLoaded] = useState(false)
-  const [customJava, setCustomJava] = useState(false)
   // Bumped after a core is copied in so the jar list picks up the new file.
   const [jarsRev, setJarsRev] = useState(0)
   const [status, setStatus] = useState<string | null>(null)
@@ -194,10 +188,7 @@ export function LaunchSettings({
   useEffect(() => {
     api
       .javaOverview()
-      .then((overview) => {
-        setRuntimes(overview.runtimes)
-        setSystemJava(overview.system)
-      })
+      .then((overview) => setRuntimes(overview.runtimes))
       .catch(() => undefined)
       .finally(() => setJavaLoaded(true))
   }, [instance.id])
@@ -438,10 +429,31 @@ export function LaunchSettings({
     }
   }
 
-  // Anything that is not the system java or a managed runtime is a path the
-  // operator typed, so the text box stays visible for it.
-  const knownJava = form.java === 'java' || runtimes.some((r) => r.javaPath === form.java)
-  const showCustomJava = customJava || (javaLoaded && !knownJava)
+  // The Java dropdown, and the one patch that keeps it honest.
+  //
+  // An instance can point at a path that is not in the list: one the startup
+  // migration could not probe, or one whose runtime has since been deleted.
+  // Without a row for it the select would render blank and the first save
+  // would silently rewrite java to whichever option happens to be first — a
+  // change to what the server executes that nobody asked for and nobody sees.
+  // So the current value always has a row, marked for what it is.
+  //
+  // Guarded on javaLoaded: before the list arrives every value looks unknown,
+  // and a row that says 未登记 for half a second is a lie that flickers.
+  const javaOptions = [
+    ...runtimes.map((runtime) => ({
+      value: runtime.javaPath,
+      label: `Java ${runtime.major || '?'} · ${runtime.version || '版本未知'}`,
+      note: runtime.valid
+        ? runtime.origin === 'external'
+          ? '本机路径'
+          : `${runtime.imageType.toUpperCase()}（面板安装）`
+        : '路径已失效',
+    })),
+  ]
+  if (javaLoaded && form.java !== '' && !runtimes.some((r) => r.javaPath === form.java)) {
+    javaOptions.unshift({ value: form.java, label: form.java, note: '未登记' })
+  }
 
   return (
     <form className="stack" onSubmit={save}>
@@ -558,48 +570,24 @@ export function LaunchSettings({
 
         {/* The Java choice is argv[0] in both modes. It is also exported into
             the environment, which is what a server that shells out to a java
-            of its own picks up. */}
+            of its own picks up.
+
+            Only what the panel has been told about: there is no free-text path
+            here any more, and 「资源库 → Java 环境」 is the one way in. The
+            server enforces the same rule on save, so this select is a
+            convenience, not the guard. */}
         <label className="field field--md">
           <span>Java 环境</span>
           <Select
             ariaLabel="Java 环境"
-            value={showCustomJava ? CUSTOM_JAVA : form.java}
-            options={[
-              {
-                value: 'java',
-                label: '系统 java（PATH）',
-                note: systemJava?.major ? `Java ${systemJava.major}` : undefined,
-              },
-              ...runtimes.map((runtime) => ({
-                value: runtime.javaPath,
-                label: `Java ${runtime.major} · ${runtime.version}`,
-                note: `${runtime.imageType.toUpperCase()}（面板安装）`,
-              })),
-              { value: CUSTOM_JAVA, label: '自定义路径…' },
-            ]}
-            onChange={(next) => {
-              if (next === CUSTOM_JAVA) {
-                setCustomJava(true)
-                return
-              }
-              setCustomJava(false)
-              update('java', next)
-            }}
+            value={form.java}
+            options={javaOptions}
+            onChange={(next) => update('java', next)}
           />
-          {showCustomJava && (
-            <input
-              value={form.java}
-              onChange={(e) => update('java', e.target.value)}
-              placeholder="/usr/lib/jvm/java-21-openjdk/bin/java"
-              spellCheck={false}
-            />
-          )}
           <small>
-            {runtimes.length > 0 ? (
-              '面板装的 Java 在这里直接选；「资源库 → Java 环境」可以再装别的版本。'
-            ) : (
-              '「资源库 → Java 环境」可以一键装一个，装完这里就能选。'
-            )}
+            {runtimes.length > 0
+              ? 'Java 只能在「资源库 → Java 环境」里添加——装一个，或者登记本机已有的；添加过的在这里选。'
+              : '还没有可选的 Java。到「资源库 → Java 环境」装一个，或者登记本机已有的，之后这里就能选。'}
           </small>
         </label>
 

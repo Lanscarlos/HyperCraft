@@ -11,6 +11,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -499,5 +501,201 @@ func TestInstallRefusesAnUnknownDistribution(t *testing.T) {
 	})
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400 for an unknown distribution, got %d", resp.StatusCode)
+	}
+}
+
+// pointInstanceAt creates an instance and sets its java, whitelisting the path
+// first so this helper keeps working once the instance form checks the list.
+func (e *testEnv) pointInstanceAt(name, javaPath string) instance.Status {
+	e.t.Helper()
+	e.allowJava(javaPath)
+	created := e.createInstance(name)
+	resp := e.do(http.MethodPut, "/api/instances/"+created.ID, instanceRequest{
+		Name: created.Name, Directory: created.Directory, Java: javaPath,
+	})
+	var updated instance.Status
+	decodeBody(e.t, resp, &updated)
+	if updated.Java != javaPath {
+		e.t.Fatalf("instance java is %q, want %q", updated.Java, javaPath)
+	}
+	return updated
+}
+
+func TestUsersOfMatchesExternalEntryByExactPath(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	// A registered path has no directory tree, so prefix matching must not
+	// fall back to "every absolute path starts with a separator".
+	env.pointInstanceAt("match", "/opt/jdk21/bin/java")
+	env.pointInstanceAt("other", "/opt/jdk17/bin/java")
+
+	entry := javaruntime.Available{
+		JavaPath: "/opt/jdk21/bin/java",
+		Origin:   javaruntime.OriginExternal,
+	}
+	users := usersOf(env.mgr.List(), entry)
+	if len(users) != 1 {
+		t.Fatalf("want exactly the matching instance, got %d", len(users))
+	}
+	if got := users[0].Config().Java; got != "/opt/jdk21/bin/java" {
+		t.Fatalf("matched the wrong instance, java = %q", got)
+	}
+}
+
+func TestUsersOfIgnoresEntriesWithNoPath(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	env.pointInstanceAt("other", "/opt/jdk17/bin/java")
+
+	entry := javaruntime.Available{JavaPath: "java", Origin: javaruntime.OriginExternal}
+	if users := usersOf(env.mgr.List(), entry); len(users) != 0 {
+		t.Fatalf("a blank Path must not prefix-match everything, got %d", len(users))
+	}
+}
+
+// fakeJavaLauncher writes a script that answers `java -version` the way a real
+// JVM does, which is the one thing the register endpoint insists on.
+func fakeJavaLauncher(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the launcher is a posix shell script")
+	}
+	path := filepath.Join(t.TempDir(), "fake-java")
+	body := "#!/bin/sh\n" +
+		"echo 'openjdk version \"21.0.12\" 2026-07-21' >&2\n" +
+		"echo 'OpenJDK Runtime Environment Test-21.0.12+8' >&2\n"
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		t.Fatalf("write fake java: %v", err)
+	}
+	return path
+}
+
+func TestRegisterJavaRejectsAPathThatIsNotJava(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	resp := env.do(http.MethodPost, "/api/java/registry",
+		registerJavaRequest{Path: filepath.Join(t.TempDir(), "not-java")})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400 for an unprobeable path, got %d", resp.StatusCode)
+	}
+	if got := env.api.java.Registry().List(); len(got) != 0 {
+		t.Fatalf("a rejected path must not be written: %+v", got)
+	}
+}
+
+func TestRegisterJavaRejectsABlankPath(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	resp := env.do(http.MethodPost, "/api/java/registry", registerJavaRequest{Path: "   "})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestRegisterJavaRecordsTheProbedVersion(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	launcher := fakeJavaLauncher(t)
+
+	resp := env.do(http.MethodPost, "/api/java/registry", registerJavaRequest{Path: launcher})
+	var entry javaruntime.Entry
+	decodeBody(t, resp, &entry)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("want 201, got %d", resp.StatusCode)
+	}
+	if entry.Major != 21 {
+		t.Fatalf("major = %d, want the probed 21 (entry: %+v)", entry.Major, entry)
+	}
+	if entry.AddedBy != javaruntime.AddedManual {
+		t.Fatalf("addedBy = %q, want manual", entry.AddedBy)
+	}
+}
+
+func TestRegisterJavaRejectsADuplicate(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	launcher := fakeJavaLauncher(t)
+
+	first := env.do(http.MethodPost, "/api/java/registry", registerJavaRequest{Path: launcher})
+	first.Body.Close()
+	if first.StatusCode != http.StatusCreated {
+		t.Fatalf("first register: %d", first.StatusCode)
+	}
+
+	second := env.do(http.MethodPost, "/api/java/registry", registerJavaRequest{Path: launcher})
+	defer second.Body.Close()
+	if second.StatusCode != http.StatusConflict {
+		t.Fatalf("want 409 for a duplicate, got %d", second.StatusCode)
+	}
+}
+
+func TestUnregisterJavaRefusesWhileAnInstanceRuns(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	// A launcher that stays up, so the instance is genuinely running.
+	dir := t.TempDir()
+	script := filepath.Join(dir, "fake-java.sh")
+	body := "#!/bin/sh\nwhile IFS= read -r line; do :; done\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatalf("write fake java: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "server.jar"), []byte("jar"), 0o644); err != nil {
+		t.Fatalf("write jar: %v", err)
+	}
+	env.allowJava(script)
+
+	resp := env.do(http.MethodPost, "/api/instances", instanceRequest{
+		Name: "live-server", Directory: dir, Java: script, Jar: "server.jar",
+	})
+	var created instance.Status
+	decodeBody(t, resp, &created)
+
+	started := env.do(http.MethodPost, "/api/instances/"+created.ID+"/start", nil)
+	started.Body.Close()
+	t.Cleanup(func() {
+		inst := env.mgr.List()[0]
+		_ = inst.Kill()
+		// Wait for it to actually be gone. Kill only signals, and t.TempDir's
+		// RemoveAll otherwise races a dying process still writing into the
+		// instance directory — which fails the test with "directory not empty".
+		waitFor(t, func() bool { return !inst.State().Running() })
+	})
+	waitFor(t, func() bool { return env.mgr.List()[0].State().Running() })
+
+	got := env.do(http.MethodDelete, "/api/java/registry/"+javaruntime.EntryID(script), nil)
+	defer got.Body.Close()
+	if got.StatusCode != http.StatusConflict {
+		t.Fatalf("want 409 while an instance runs on it, got %d", got.StatusCode)
+	}
+	if !strings.Contains(readAll(t, got), "live-server") {
+		t.Fatal("the refusal should name the instance")
+	}
+}
+
+// Same rule as deleting an installed runtime: a stopped user does not block it,
+// and the page is told who was pointing at it.
+func TestUnregisterJavaAllowsStoppedUsers(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	env.pointInstanceAt("idle-server", "/opt/jdk21/bin/java")
+
+	got := env.do(http.MethodDelete,
+		"/api/java/registry/"+javaruntime.EntryID("/opt/jdk21/bin/java"), nil)
+	var out deleteJavaResponse
+	decodeBody(t, got, &out)
+	if got.StatusCode != http.StatusOK {
+		t.Fatalf("a stopped user must not block the delete, got %d", got.StatusCode)
+	}
+	if len(out.UsedBy) != 1 || out.UsedBy[0] != "idle-server" {
+		t.Fatalf("usedBy = %+v, want the instance that pointed at it", out.UsedBy)
+	}
+	if len(env.api.java.Registry().List()) != 0 {
+		t.Fatal("the entry should be gone")
 	}
 }

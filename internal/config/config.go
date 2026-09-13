@@ -298,6 +298,15 @@ func (p Paths) DatabaseEnginesRoot() string { return filepath.Join(p.DatabaseRoo
 // is one of the files written 0600.
 func (p Paths) DatabasesFile() string { return filepath.Join(p.Root, "databases.json") }
 
+// JavaRegistryFile is the list of Java installations the operator pointed the
+// panel at, as opposed to the ones it downloaded into JavaRoot.
+//
+// Beside the java directory rather than inside it, for the reason DatabasesFile
+// sits beside the database root: an entry id could otherwise collide with a
+// runtime directory name, and Store.List would have to learn to skip a file
+// that is none of its business.
+func (p Paths) JavaRegistryFile() string { return filepath.Join(p.Root, "java-registry.json") }
+
 // CoresRoot is the panel-wide library of server jars. A core is downloaded once
 // and copied into as many instances as needed, so a new server can be created
 // offline; a jar dropped in here by hand is listed too.

@@ -87,7 +87,8 @@ func newTestInstaller(t *testing.T, fake *fakeAdoptium) (*Installer, string) {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "java")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewInstaller(newTestClient(DistTemurin, fake.URL), NewStore(root), logger), root
+	registry := NewRegistry(filepath.Join(t.TempDir(), "java-registry.json"), logger)
+	return NewInstaller(newTestClient(DistTemurin, fake.URL), NewStore(root), registry, logger), root
 }
 
 func awaitInstall(t *testing.T, installer *Installer) Job {
@@ -193,7 +194,9 @@ func TestUnpackMovesRuntimeIntoPlace(t *testing.T) {
 	staging := filepath.Join(root, ".installing-temurin-21.0.1-12-jre")
 	release := Release{Distribution: DistTemurin, Version: "21.0.1+12", ImageType: ImageJRE, FileName: "jre.tar.gz"}
 
-	installer := NewInstaller(nil, NewStore(root), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	// No registry: unpack never looks at one, and a nil is the honest way to
+	// say this test is not about the registry at all.
+	installer := NewInstaller(nil, NewStore(root), nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	err := installer.unpack(context.Background(), staging, release, openArchive(t, buildTarGz(t, jdkEntriesForThisOS())))
 	if err != nil {
 		t.Fatalf("unpack: %v", err)

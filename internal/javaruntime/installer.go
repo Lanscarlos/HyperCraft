@@ -70,7 +70,11 @@ type Job struct {
 type Installer struct {
 	client *Client
 	store  *Store
-	log    *slog.Logger
+	// registry is the operator's own Java paths. It rides on the installer
+	// rather than beside it so that the API keeps one nil check for "this
+	// panel does Java management" instead of one per feature.
+	registry *Registry
+	log      *slog.Logger
 
 	mu     sync.Mutex
 	job    *Job
@@ -78,8 +82,8 @@ type Installer struct {
 	done   chan struct{}
 }
 
-func NewInstaller(client *Client, store *Store, logger *slog.Logger) *Installer {
-	return &Installer{client: client, store: store, log: logger}
+func NewInstaller(client *Client, store *Store, registry *Registry, logger *slog.Logger) *Installer {
+	return &Installer{client: client, store: store, registry: registry, log: logger}
 }
 
 // Client exposes the API client for the metadata handlers.
@@ -87,6 +91,9 @@ func (i *Installer) Client() *Client { return i.client }
 
 // Store exposes the runtimes directory.
 func (i *Installer) Store() *Store { return i.store }
+
+// Registry is the list of Java paths the operator registered by hand.
+func (i *Installer) Registry() *Registry { return i.registry }
 
 // Start resolves a build and begins installing it in the background.
 //

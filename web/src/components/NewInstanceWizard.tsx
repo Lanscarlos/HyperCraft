@@ -29,9 +29,6 @@ type StepId = 'core' | 'java' | 'basics' | 'server' | 'proxy' | 'confirm'
 /** How the core for this instance is being obtained. */
 type CoreMode = 'library' | 'download' | 'none'
 
-/** Sentinel for "type a java path yourself", matching LaunchSettings. */
-const CUSTOM_JAVA = '__custom__'
-
 const EULA_URL = 'https://aka.ms/MinecraftEULA'
 
 /**
@@ -194,8 +191,10 @@ export function NewInstanceWizard({
   const [step, setStep] = useState<StepId>('core')
   const [coreMode, setCoreMode] = useState<CoreMode>('library')
   const [coreId, setCoreId] = useState('')
-  const [javaPath, setJavaPath] = useState('java')
-  const [customJava, setCustomJava] = useState(false)
+  // Empty rather than "java": nothing is picked until something registered is
+  // there to pick, and a default pointing at an unregistered path would be
+  // refused on save.
+  const [javaPath, setJavaPath] = useState('')
   const [installMajor, setInstallMajor] = useState<number | null>(null)
   const [name, setName] = useState('')
   const [directory, setDirectory] = useState('')
@@ -259,6 +258,13 @@ export function NewInstanceWizard({
 
   const runtimes = java.overview?.runtimes ?? []
   const systemJava = java.overview?.system ?? null
+  // A Java on PATH the panel has not been told it may use. Offering it is the
+  // whole reason a first-run wizard is not a dead end: the operator has a
+  // Java, and one click both records it and picks it.
+  const unregisteredSystem =
+    systemJava && !runtimes.some((runtime) => runtime.javaPath === systemJava.path)
+      ? systemJava
+      : null
 
   // A finished download is a core in the library, which is what this step was
   // asking for — so it is selected rather than merely announced.
@@ -279,10 +285,7 @@ export function NewInstanceWizard({
     setAwaitingJava(false)
     if (job.runtimeId) {
       const installed = runtimes.find((runtime) => runtime.id === job.runtimeId)
-      if (installed) {
-        setJavaPath(installed.javaPath)
-        setCustomJava(false)
-      }
+      if (installed) setJavaPath(installed.javaPath)
     }
   }, [awaitingJava, java.job, runtimes])
 
@@ -307,14 +310,16 @@ export function NewInstanceWizard({
    * things that number themselves that way are the modern ones.
    */
   const bestJava = useMemo(() => {
-    const candidates = [
-      ...runtimes.map((runtime) => ({
+    // Only what is registered. A path the panel has not been told about would
+    // be refused on save, so pre-selecting one would hand the wizard a value
+    // its own last step cannot use.
+    const candidates = runtimes
+      .map((runtime) => ({
         value: runtime.javaPath,
         major: runtime.major,
-        managed: true,
-      })),
-      ...(systemJava ? [{ value: 'java', major: systemJava.major, managed: false }] : []),
-    ].filter((entry) => entry.major > 0)
+        managed: runtime.origin === 'managed',
+      }))
+      .filter((entry) => entry.major > 0)
 
     const qualifying = required > 0 ? candidates.filter((e) => e.major >= required) : []
     // A tie goes to the panel's own runtime: it is the one the panel can
@@ -325,8 +330,8 @@ export function NewInstanceWizard({
         (qualifying.length > 0 ? a.major - b.major : b.major - a.major) ||
         Number(b.managed) - Number(a.managed),
     )
-    return ranked[0]?.value ?? 'java'
-  }, [runtimes, systemJava, required])
+    return ranked[0]?.value ?? ''
+  }, [runtimes, required])
 
   const javaTouched = useRef(false)
   useEffect(() => {
@@ -340,12 +345,7 @@ export function NewInstanceWizard({
     setInstallMajor((current) => current ?? required)
   }, [required])
 
-  const chosenMajor =
-    javaPath === 'java'
-      ? (systemJava?.major ?? 0)
-      : (runtimes.find((runtime) => runtime.javaPath === javaPath)?.major ?? 0)
-  // A custom path is a path the panel has never run; it cannot say which Java
-  // is at the end of it, so it does not pretend to.
+  const chosenMajor = runtimes.find((runtime) => runtime.javaPath === javaPath)?.major ?? 0
   const javaTooOld = required > 0 && chosenMajor > 0 && chosenMajor < required
   // The other direction, and the one nobody expects: 1.16 and older were built
   // before Java 17 removed what they call into, so a *newer* Java is just as
@@ -381,7 +381,7 @@ export function NewInstanceWizard({
   }
   const valid: Record<StepId, boolean> = {
     core: coreMode === 'none' || core !== undefined,
-    java: !customJava || javaPath.trim() !== '',
+    java: javaPath !== '',
     basics: name.trim() !== '',
     server: validPort(props['server-port']),
     proxy: validPort(proxyPort),
@@ -464,7 +464,7 @@ export function NewInstanceWizard({
         kind: proxy ? 'proxy' : 'server',
         name: name.trim(),
         directory: directory.trim(),
-        java: customJava ? javaPath.trim() : javaPath,
+        java: javaPath,
         jar: core?.fileName ?? jar.trim(),
         maxMemoryMB,
         minMemoryMB: Math.min(1024, maxMemoryMB),
@@ -625,9 +625,8 @@ export function NewInstanceWizard({
             <JavaStep
               java={java}
               runtimes={runtimes}
-              systemJava={systemJava}
+              systemJava={unregisteredSystem}
               value={javaPath}
-              custom={customJava}
               required={required}
               tooOld={javaTooOld}
               tooNew={javaTooNew}
@@ -636,14 +635,16 @@ export function NewInstanceWizard({
               awaiting={awaitingJava}
               onPick={(next) => {
                 javaTouched.current = true
-                if (next === CUSTOM_JAVA) {
-                  setCustomJava(true)
-                  return
-                }
-                setCustomJava(false)
                 setJavaPath(next)
               }}
-              onCustom={setJavaPath}
+              onRegisterSystem={async (path) => {
+                javaTouched.current = true
+                await java.register(path, true)
+                // Registered or not, this is what they asked to use. A refusal
+                // shows up as java.error and the step stays put — it does not
+                // silently pick something else.
+                setJavaPath(path)
+              }}
               onInstallMajor={setInstallMajor}
               onInstall={(major) => {
                 setAwaitingJava(true)
@@ -709,14 +710,10 @@ export function NewInstanceWizard({
               core={core}
               jar={jar}
               javaPath={javaPath}
-              javaLabel={
-                javaPath === 'java'
-                  ? `系统 java${systemJava?.major ? `（Java ${systemJava.major}）` : ''}`
-                  : (() => {
-                      const picked = runtimes.find((runtime) => runtime.javaPath === javaPath)
-                      return picked ? `Java ${picked.major} · ${picked.version}` : javaPath
-                    })()
-              }
+              javaLabel={(() => {
+                const picked = runtimes.find((runtime) => runtime.javaPath === javaPath)
+                return picked ? `Java ${picked.major} · ${picked.version}` : javaPath
+              })()}
               javaTooOld={javaTooOld}
               required={required}
               name={name}
@@ -970,7 +967,6 @@ function JavaStep({
   runtimes,
   systemJava,
   value,
-  custom,
   required,
   tooOld,
   tooNew,
@@ -978,15 +974,16 @@ function JavaStep({
   installMajor,
   awaiting,
   onPick,
-  onCustom,
+  onRegisterSystem,
   onInstallMajor,
   onInstall,
 }: {
   java: JavaController
   runtimes: JavaRuntime[]
+  /** The Java on PATH that is not registered yet, or null when there is none
+   *  to offer — either nothing was detected, or it is already in runtimes. */
   systemJava: { path: string; version: string; major: number; source: string } | null
   value: string
-  custom: boolean
   required: number
   tooOld: boolean
   tooNew: boolean
@@ -994,7 +991,7 @@ function JavaStep({
   installMajor: number | null
   awaiting: boolean
   onPick: (value: string) => void
-  onCustom: (value: string) => void
+  onRegisterSystem: (path: string) => void
   onInstallMajor: (major: number) => void
   onInstall: (major: number) => void
 }) {
@@ -1018,6 +1015,9 @@ function JavaStep({
     required === 0 ||
     runtimes.some((runtime) => runtime.major >= required) ||
     (systemJava?.major ?? 0) >= required
+  // Nothing registered at all — a fresh install. Whether that is a dead end
+  // depends on there being a Java on PATH to offer, which is the tile below.
+  const empty = runtimes.length === 0
 
   // LTS only, plus whatever is installed or picked. The rest of the
   // list is not something a Minecraft server has any use for.
@@ -1046,19 +1046,23 @@ function JavaStep({
       <div className="field">
         <span>启动用的 Java</span>
         <div className="choice-grid choice-grid--wide">
+          {/* The one tile that is not a choice but an action. On a fresh panel
+              the list below is empty, and sending somebody to the Java page to
+              register a Java and then back through this wizard is a bad first
+              five minutes. One click records it and picks it. */}
           {systemJava && (
             <button
               type="button"
-              className={`choice${value === 'java' && !custom ? ' choice--active' : ''}`}
-              aria-pressed={value === 'java' && !custom}
-              onClick={() => onPick('java')}
+              className="choice"
+              disabled={java.busy}
+              onClick={() => onRegisterSystem(systemJava.path)}
             >
               <span className="choice__label">
-                系统 java
+                用这个系统 Java
                 {systemJava.major > 0 && <span className="badge">Java {systemJava.major}</span>}
                 <Verdict of={verdict(systemJava.major)} />
               </span>
-              <span className="choice__note">{systemJava.path}</span>
+              <span className="choice__note">{systemJava.path} · 点一下登记进面板并选中</span>
             </button>
           )}
 
@@ -1066,42 +1070,30 @@ function JavaStep({
             <button
               key={runtime.id}
               type="button"
-              className={`choice${value === runtime.javaPath && !custom ? ' choice--active' : ''}`}
-              aria-pressed={value === runtime.javaPath && !custom}
+              className={`choice${value === runtime.javaPath ? ' choice--active' : ''}`}
+              aria-pressed={value === runtime.javaPath}
               onClick={() => onPick(runtime.javaPath)}
             >
               <span className="choice__label">
-                Java {runtime.major}
-                <span className="badge">{runtime.imageType.toUpperCase()}</span>
+                Java {runtime.major || '?'}
+                <span className="badge">
+                  {runtime.origin === 'external' ? '本机路径' : runtime.imageType.toUpperCase()}
+                </span>
                 <Verdict of={verdict(runtime.major)} />
               </span>
               <span className="choice__note">
-                {runtime.version} · 面板安装
+                {runtime.version || '版本未知'} ·{' '}
+                {runtime.origin === 'external' ? '已登记' : '面板安装'}
               </span>
             </button>
           ))}
-
-          <button
-            type="button"
-            className={`choice${custom ? ' choice--active' : ''}`}
-            aria-pressed={custom}
-            onClick={() => onPick(CUSTOM_JAVA)}
-          >
-            <span className="choice__label">自定义路径</span>
-            <span className="choice__note">机器上别处装的 Java，自己填 java 可执行文件</span>
-          </button>
         </div>
 
-        {custom && (
-          <input
-            value={value}
-            onChange={(e) => onCustom(e.target.value)}
-            placeholder="/usr/lib/jvm/java-21-openjdk/bin/java"
-            spellCheck={false}
-          />
-        )}
-        {!systemJava && runtimes.length === 0 && (
-          <small>这台机器上还没有任何 Java —— 下面装一个，不然服务端起不来。</small>
+        {empty && !systemJava && (
+          <small>
+            这台机器上还没有面板能用的 Java —— 下面装一个，或者到「资源库 → Java
+            环境」登记一个本机已有的。
+          </small>
         )}
       </div>
 
