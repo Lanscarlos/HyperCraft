@@ -12,11 +12,11 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 )
 
-// runtimeView is an installed runtime plus what the panel knows about how it
-// is being used, which is what makes deleting one a safe decision.
+// runtimeView is an available Java plus what the panel knows about how it is
+// being used, which is what makes deleting one a safe decision.
 type runtimeView struct {
-	javaruntime.Runtime
-	// UsedBy names the instances whose launch config points into this runtime.
+	javaruntime.Available
+	// UsedBy names the instances whose launch config points at this Java.
 	UsedBy []string `json:"usedBy"`
 	// Live is true while one of those instances is running on it.
 	Live bool `json:"live"`
@@ -181,7 +181,7 @@ func (s *Server) handleJavaOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	runtimes, err := s.java.Store().List()
+	runtimes, err := javaruntime.AvailableList(s.java.Store(), s.java.Registry())
 	if err != nil {
 		s.writeJavaError(w, err)
 		return
@@ -207,7 +207,7 @@ func (s *Server) handleJavaOverview(w http.ResponseWriter, r *http.Request) {
 
 	instances := s.visibleInstances(r)
 	for _, runtime := range runtimes {
-		view := runtimeView{Runtime: runtime, UsedBy: []string{}}
+		view := runtimeView{Available: runtime, UsedBy: []string{}}
 		for _, inst := range usersOf(instances, runtime) {
 			view.UsedBy = append(view.UsedBy, inst.Config().Name)
 			if inst.State().Running() {
@@ -245,21 +245,24 @@ func (s *Server) systemJava(ctx context.Context) (javaruntime.SystemJava, bool) 
 	return detected, ok
 }
 
-// usersOf returns the instances launched with a runtime. An instance points at
-// the binary, but a custom command could name anything under the directory, so
-// the whole tree counts as "in use".
-func usersOf(instances []*instance.Instance, runtime javaruntime.Runtime) []*instance.Instance {
-	prefix := runtime.Path + string(filepath.Separator)
-
+// usersOf returns the instances launched with this Java.
+//
+// A managed runtime is a directory tree and an instance may point anywhere
+// under it — a custom command could name anything in there — so that one
+// matches by prefix. A registered path is a single launcher with no tree, and
+// its Path is blank, which is exactly why the prefix branch is guarded: ""
+// plus a separator is a prefix of every absolute path on the machine.
+func usersOf(instances []*instance.Instance, entry javaruntime.Available) []*instance.Instance {
 	var users []*instance.Instance
 	for _, inst := range instances {
-		cfg := inst.Config()
-		for _, candidate := range []string{cfg.Java} {
-			if candidate == runtime.JavaPath || candidate == runtime.Path ||
-				strings.HasPrefix(candidate, prefix) {
-				users = append(users, inst)
-				break
-			}
+		candidate := inst.Config().Java
+		matched := candidate != "" && candidate == entry.JavaPath
+		if !matched && entry.Path != "" {
+			matched = candidate == entry.Path ||
+				strings.HasPrefix(candidate, entry.Path+string(filepath.Separator))
+		}
+		if matched {
+			users = append(users, inst)
 		}
 	}
 	return users
@@ -389,7 +392,11 @@ func (s *Server) handleDeleteJava(w http.ResponseWriter, r *http.Request) {
 	}
 	// Every instance: deleting a runtime a server is running on breaks that
 	// server whether or not the caller can see it. See allInstances.
-	for _, inst := range usersOf(s.allInstances(), runtime) {
+	entry := javaruntime.Available{
+		ID: runtime.ID, JavaPath: runtime.JavaPath, Path: runtime.Path,
+		Origin: javaruntime.OriginManaged,
+	}
+	for _, inst := range usersOf(s.allInstances(), entry) {
 		if inst.State().Running() {
 			writeError(w, http.StatusConflict,
 				"实例「"+inst.Config().Name+"」正在用这个 Java 运行，先停掉它再删除")

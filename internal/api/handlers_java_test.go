@@ -501,3 +501,53 @@ func TestInstallRefusesAnUnknownDistribution(t *testing.T) {
 		t.Errorf("expected 400 for an unknown distribution, got %d", resp.StatusCode)
 	}
 }
+
+// pointInstanceAt creates an instance and sets its java, whitelisting the path
+// first so this helper keeps working once the instance form checks the list.
+func (e *testEnv) pointInstanceAt(name, javaPath string) instance.Status {
+	e.t.Helper()
+	e.allowJava(javaPath)
+	created := e.createInstance(name)
+	resp := e.do(http.MethodPut, "/api/instances/"+created.ID, instanceRequest{
+		Name: created.Name, Directory: created.Directory, Java: javaPath,
+	})
+	var updated instance.Status
+	decodeBody(e.t, resp, &updated)
+	if updated.Java != javaPath {
+		e.t.Fatalf("instance java is %q, want %q", updated.Java, javaPath)
+	}
+	return updated
+}
+
+func TestUsersOfMatchesExternalEntryByExactPath(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	// A registered path has no directory tree, so prefix matching must not
+	// fall back to "every absolute path starts with a separator".
+	env.pointInstanceAt("match", "/opt/jdk21/bin/java")
+	env.pointInstanceAt("other", "/opt/jdk17/bin/java")
+
+	entry := javaruntime.Available{
+		JavaPath: "/opt/jdk21/bin/java",
+		Origin:   javaruntime.OriginExternal,
+	}
+	users := usersOf(env.mgr.List(), entry)
+	if len(users) != 1 {
+		t.Fatalf("want exactly the matching instance, got %d", len(users))
+	}
+	if got := users[0].Config().Java; got != "/opt/jdk21/bin/java" {
+		t.Fatalf("matched the wrong instance, java = %q", got)
+	}
+}
+
+func TestUsersOfIgnoresEntriesWithNoPath(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	env.pointInstanceAt("other", "/opt/jdk17/bin/java")
+
+	entry := javaruntime.Available{JavaPath: "java", Origin: javaruntime.OriginExternal}
+	if users := usersOf(env.mgr.List(), entry); len(users) != 0 {
+		t.Fatalf("a blank Path must not prefix-match everything, got %d", len(users))
+	}
+}
