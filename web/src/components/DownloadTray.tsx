@@ -55,12 +55,20 @@ export function DownloadTray({
   const anchor = useAnchor(open, button, (rect) => ({
     ...placeVertically(rect, MAX_HEIGHT),
     // Right-aligned with the trigger, which sits in the top bar's right-hand
-    // cluster: a sheet growing rightwards from there grows off the page. On a
-    // narrow screen it takes the width it can get instead.
-    box: {
-      right: Math.max(EDGE, window.innerWidth - rect.right),
-      width: Math.min(WIDTH, window.innerWidth - EDGE * 2),
-    } as CSSProperties,
+    // cluster: a sheet growing rightwards from there grows off the page.
+    //
+    // But the trigger is the *leftmost* of that cluster, not the last thing on
+    // the row — so on a phone a 360px sheet hung off its right edge runs off
+    // the *left* of the screen instead. (It did: x was -106 at 390px, and no
+    // overflow check catches it, because a negative offset does not lengthen
+    // the page.) So the right offset is clamped to whatever still leaves the
+    // sheet a margin on the left.
+    box: (() => {
+      const width = Math.min(WIDTH, window.innerWidth - EDGE * 2)
+      const wanted = window.innerWidth - rect.right
+      const most = window.innerWidth - width - EDGE
+      return { right: Math.min(Math.max(EDGE, wanted), Math.max(EDGE, most)), width }
+    })() as CSSProperties,
   }))
 
   useEffect(() => {
@@ -148,7 +156,6 @@ export function DownloadTray({
               }}
             >
               查看全部
-              <Icon name="chart" />
             </button>
           </div>,
           document.body,
