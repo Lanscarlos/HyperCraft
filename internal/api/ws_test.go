@@ -178,6 +178,11 @@ func TestTerminalConsoleStreamsBinaryFrames(t *testing.T) {
 		t.Fatalf("write jar: %v", err)
 	}
 
+	// Straight into the registry rather than through the register endpoint:
+	// this launcher prints Minecraft log lines, not `java -version`, so the
+	// endpoint's probe would refuse it. What the instance form needs is the
+	// path on the whitelist, not a real JVM behind it.
+	env.allowJava(script)
 	resp := env.do(http.MethodPost, "/api/instances", instanceRequest{
 		Name:      "terminal",
 		Directory: dir,

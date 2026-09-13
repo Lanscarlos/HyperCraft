@@ -137,6 +137,7 @@ func TestDeviceTokenExemptFromCSRF(t *testing.T) {
 	env := newTestEnv(t)
 	device := env.pair("phone")
 
+	env.allowJava("java")
 	resp := env.bearer(http.MethodPost, "/api/instances", device.Token, instanceRequest{
 		Name: "csrf-free", Java: "java", Jar: "server.jar",
 	})

@@ -9,6 +9,7 @@ import (
 
 	"github.com/lanscarlos/hypercraft/internal/authz"
 	"github.com/lanscarlos/hypercraft/internal/instance"
+	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/plugin"
 )
 
@@ -96,6 +97,44 @@ func (req instanceRequest) toConfig() instance.Config {
 	}
 }
 
+// javaAllowed reports whether an instance may be saved pointing at next.
+//
+// It checks the CHANGE, not the state. The settings page reads the whole config
+// into a form and PUTs the whole thing back, so an instance whose java is not
+// in the list — one the startup migration could not probe, or one whose runtime
+// has been deleted since — would otherwise be unable to have its name changed.
+// A Java problem blocking a rename is an absurd failure.
+//
+// Unlike the capability check in handleUpdateInstance, "unchanged" here is not
+// a claim the client makes: the server is holding the current config and
+// compares it itself.
+func (s *Server) javaAllowed(current, next string) (bool, string) {
+	next = strings.TrimSpace(next)
+	// Blank is "I did not choose"; applyDefaults turns it into "java".
+	if next == "" || next == strings.TrimSpace(current) {
+		return true, ""
+	}
+	if s.java == nil {
+		// A panel with Java management switched off has no list to check
+		// against, and refusing every path would make it unusable.
+		return true, ""
+	}
+
+	available, err := javaruntime.AvailableList(s.java.Store(), s.java.Registry())
+	if err != nil {
+		// Refusing the save because the panel could not read its own list
+		// would turn a bad disk read into an unusable settings page.
+		s.log.Error("could not read the java list to validate an instance save", "err", err)
+		return true, ""
+	}
+	for _, entry := range available {
+		if entry.JavaPath == next {
+			return true, ""
+		}
+	}
+	return false, "这个 Java 没有登记在面板里。先到「资源库 → Java 环境」把它装上或登记进来，再回到这里选它。"
+}
+
 // cleanArgs drops blank entries so an empty textarea line does not become an
 // empty argv element, which some launchers choke on.
 func cleanArgs(in []string) []string {
@@ -157,6 +196,11 @@ func (s *Server) handleCreateInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if ok, reason := s.javaAllowed("", req.Java); !ok {
+		writeError(w, http.StatusBadRequest, reason)
+		return
+	}
+
 	inst, err := s.mgr.Create(req.toConfig())
 	if err != nil {
 		s.writeDomainError(w, err)
@@ -212,13 +256,22 @@ func (s *Server) handleUpdateInstance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := req.toConfig()
-	// Whether this instance is a proxy is decided when it is created and when
-	// a core is applied to it, not by whoever last saved the launch settings.
-	// An omitted kind keeps the one on record.
-	if cfg.Kind == "" {
-		if current, err := s.mgr.Get(r.PathValue("id")); err == nil {
-			cfg.Kind = current.Config().Kind
+	currentJava := ""
+	if current, err := s.mgr.Get(r.PathValue("id")); err == nil {
+		stored := current.Config()
+		currentJava = stored.Java
+		// Whether this instance is a proxy is decided when it is created and
+		// when a core is applied to it, not by whoever last saved the launch
+		// settings. An omitted kind keeps the one on record.
+		if cfg.Kind == "" {
+			cfg.Kind = stored.Kind
 		}
+	}
+	// Compared against what is on record, not against what the client says
+	// changed. See javaAllowed.
+	if ok, reason := s.javaAllowed(currentJava, cfg.Java); !ok {
+		writeError(w, http.StatusBadRequest, reason)
+		return
 	}
 
 	inst, err := s.mgr.Update(r.PathValue("id"), cfg)
