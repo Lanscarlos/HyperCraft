@@ -5356,6 +5356,15 @@ details[open]::details-content {
   flex-wrap: nowrap;
 }
 
+/* Same reason as .actions above: the head's left column claims the row, and a
+   shrinkable aside gets squeezed to its narrowest column — here that is the
+   hint line under 编辑模式 broken across three. It drops under the title whole
+   instead. */
+.page__head .file-mode {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
 /* Beside a title the chips are the secondary half, so they wrap onto a second
    row rather than pushing the lead paragraph down to a narrow column — which
    is what plain max-content sizing does once a long path is among them. */
@@ -6164,14 +6173,16 @@ details[open]::details-content {
 /* 编辑模式 used to be the fourth button in a row of four, and read as the
    third: same height, same border, same weight as 新建文件夹 beside it. It is
    not another thing to do to a file, it is what the screen is for — so it gets
-   a shape none of the buttons have, a line saying what it does, and a row of
-   its own to sit at the end of. Still not filled: 上传文件 is this screen's one
-   solid button, and a second one would be two first things to press. */
+   a shape none of the buttons have and a line saying what it does, and it sits
+   beside the page title, where the panel keeps what a page does. Still not
+   filled: 上传文件 is this screen's one solid button, and a second one would be
+   two first things to press. */
 .file-mode {
   display: flex;
   align-items: center;
-  /* The end of the path row, which is the one line of this panel with room to
-     spare at every width the mode is offered at. */
+  /* Keeps it against the right edge on the row it ends up on — the head's own
+     space-between already does that on the title's row, but once the head
+     wraps this is the only thing holding it there. */
   margin-left: auto;
   gap: 8px;
   padding: 5px 10px 5px 8px;
