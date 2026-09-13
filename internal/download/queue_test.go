@@ -177,6 +177,117 @@ func stateOf(q *Queue, id string) State {
 	return ""
 }
 
+// CancelAll's kind filter is new: the single-kind plugin.Downloader this was
+// extracted from had no such concept, so nothing in the original suite could
+// have caught a reversed or ignored filter.
+func TestCancelAllOnlyStopsTheGivenKinds(t *testing.T) {
+	h := newHeld()
+	q := NewQueue(slog.New(slog.DiscardHandler))
+	t.Cleanup(q.Close)
+	q.SetLimit(KindPlugin, 3)
+	q.SetLimit(KindJava, 3)
+
+	plugin, _ := q.Submit(req(q, h, KindPlugin, "jar"))
+	java, _ := q.Submit(req(q, h, KindJava, "jdk"))
+	waitFor(t, func() bool { return h.inFlight.Load() == 2 })
+
+	if n := q.CancelAll(KindPlugin); n != 1 {
+		t.Fatalf("CancelAll(KindPlugin) stopped %d, want 1", n)
+	}
+	waitFor(t, func() bool { return stateOf(q, plugin.ID) == StateCancelled })
+	if got := stateOf(q, java.ID); got != StateDownloading {
+		t.Fatalf("java job state = %q, want downloading (filter must not touch other kinds)", got)
+	}
+	close(h.release)
+}
+
+// The no-kinds form is "cancel everything", and it has to actually reach
+// every kind rather than, say, only the zero value of Kind.
+func TestCancelAllWithNoKindsStopsEveryKind(t *testing.T) {
+	h := newHeld()
+	q := NewQueue(slog.New(slog.DiscardHandler))
+	t.Cleanup(q.Close)
+	q.SetLimit(KindPlugin, 3)
+	q.SetLimit(KindJava, 3)
+
+	plugin, _ := q.Submit(req(q, h, KindPlugin, "jar2"))
+	java, _ := q.Submit(req(q, h, KindJava, "jdk2"))
+	waitFor(t, func() bool { return h.inFlight.Load() == 2 })
+
+	if n := q.CancelAll(); n != 2 {
+		t.Fatalf("CancelAll() stopped %d, want 2", n)
+	}
+	waitFor(t, func() bool { return stateOf(q, plugin.ID) == StateCancelled })
+	waitFor(t, func() bool { return stateOf(q, java.ID) == StateCancelled })
+	close(h.release)
+}
+
+func TestCancelUnknownIDReturnsErrNotFound(t *testing.T) {
+	q := NewQueue(slog.New(slog.DiscardHandler))
+	t.Cleanup(q.Close)
+
+	if err := q.Cancel("no-such-id"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Cancel(unknown) = %v, want ErrNotFound", err)
+	}
+}
+
+// Cancelling a job that already finished must be rejected, and — this is the
+// case finish()'s re-entrancy guard exists for — must not rewrite the
+// recorded outcome of a job that is done.
+func TestCancelOnAFinishedJobErrorsAndLeavesItAlone(t *testing.T) {
+	done := newHeld()
+	close(done.release)
+	q := NewQueue(slog.New(slog.DiscardHandler))
+	t.Cleanup(q.Close)
+	q.SetLimit(KindPlugin, 1)
+
+	job, err := q.Submit(req(q, done, KindPlugin, "already-done"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return stateOf(q, job.ID) == StateDone })
+
+	if err := q.Cancel(job.ID); err == nil {
+		t.Fatal("Cancel on a finished job returned nil, want an error")
+	}
+	if got := stateOf(q, job.ID); got != StateDone {
+		t.Fatalf("Cancel on a finished job changed its state to %q, want done", got)
+	}
+}
+
+// A job still in StateQueued has no worker to interrupt: Cancel must finish
+// it inline, and — the point of this test — it must never reach
+// StateDownloading afterwards even once its kind's slot frees up.
+func TestCancelOnAQueuedJobFinishesItWithoutEverDispatching(t *testing.T) {
+	occupied := newHeld()
+	q := NewQueue(slog.New(slog.DiscardHandler))
+	t.Cleanup(q.Close)
+	q.SetLimit(KindPlugin, 1)
+
+	first, _ := q.Submit(req(q, occupied, KindPlugin, "first"))
+	waitFor(t, func() bool { return stateOf(q, first.ID) == StateDownloading })
+
+	waiting, _ := q.Submit(req(q, occupied, KindPlugin, "waiting"))
+	if got := stateOf(q, waiting.ID); got != StateQueued {
+		t.Fatalf("second job state = %q, want queued (limit is 1 and the first is still running)", got)
+	}
+
+	if err := q.Cancel(waiting.ID); err != nil {
+		t.Fatalf("cancel queued job: %v", err)
+	}
+	if got := stateOf(q, waiting.ID); got != StateCancelled {
+		t.Fatalf("queued job state after Cancel = %q, want cancelled", got)
+	}
+
+	// Free the slot the first job holds and give the queue a moment to
+	// dispatch whatever it thinks is next — it must not be the cancelled job.
+	close(occupied.release)
+	waitFor(t, func() bool { return activeCount(q) == 0 })
+	if got := stateOf(q, waiting.ID); got != StateCancelled {
+		t.Fatalf("cancelled job was dispatched after all: state = %q", got)
+	}
+}
+
 func TestCancelStopsOneJobAndLeavesTheRest(t *testing.T) {
 	h := newHeld()
 	q := NewQueue(slog.New(slog.DiscardHandler))
