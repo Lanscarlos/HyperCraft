@@ -676,12 +676,7 @@ export default function App() {
                     />
                   )
                 ) : route.section === 'cores' ? (
-                  <CoreLibraryPage
-                    cores={cores}
-                    view={route.view}
-                    onOpenView={(view) => openLibrary('cores', view)}
-                    onOpenJava={() => openLibrary('java', 'installed')}
-                  />
+                  <CoreLibraryPage cores={cores} onOpenJava={() => openLibrary('java', 'installed')} />
                 ) : route.view === 'queue' ? (
                   // A page of its own rather than a block on 插件列表: five
                   // downloads at once is a list, and a list that appears and
