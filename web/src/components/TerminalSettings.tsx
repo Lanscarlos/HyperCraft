@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import type { TerminalController } from '../useTerminal'
 import { Button } from './Button'
+import { Section } from './Section'
 
 interface Props {
   terminal: TerminalController
@@ -29,22 +30,22 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
   // One card, like 本机 above it. It used to be a loose heading and paragraph
   // on the page with a card of facts under them and nothing to say the three
   // belonged together; on this page every other fact is inside a card with
-  // its own title, and the terminal is not a different kind of fact.
-  const title = <h2 className="panel__title">SSH 终端</h2>
+  // its own title, and the terminal is not a different kind of fact. The
+  // title and the sentence under it are the Section's head, the same head
+  // every other card on the page opens with.
+  const title = 'SSH 终端'
   const lead = (
-    <p className="muted">
+    <>
       在面板里直接开一个本机 shell。它跑在面板所在的这台机器上，权限和面板进程完全一样 ——
       和游戏控制台不是一个量级的东西：后者最多影响一个 Minecraft 进程，前者是整机。
-    </p>
+    </>
   )
 
   if (!status) {
     return (
-      <section className="panel">
-        {title}
-        {lead}
+      <Section title={title} note={lead}>
         <p className="muted">正在读取终端设置…</p>
-      </section>
+      </Section>
     )
   }
 
@@ -54,10 +55,7 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
   }
 
   return (
-    <section className="panel">
-      {title}
-      {lead}
-
+    <Section title={title} note={lead}>
       {error && <div className="alert alert--error">{error}</div>}
 
       {!status.supported ? (
@@ -142,6 +140,6 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
           )}
         </>
       )}
-    </section>
+    </Section>
   )
 }

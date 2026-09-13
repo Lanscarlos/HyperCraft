@@ -14,9 +14,12 @@ import type {
 import { useMediaQuery } from '../useMediaQuery'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { EmptyState } from './EmptyState'
 import { Page, PageHead } from './Page'
+import { Section } from './Section'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
+import { StatusDot } from './StatusDot'
 
 /**
  * 代理连线 — which proxy stands in front of which servers.
@@ -127,16 +130,14 @@ export function NetworkPage({ instances, onOpenInstance, onCreate, focus, embed 
 
   const side = sideOf(data, focus)
   const reload = (
-    <div className="actions">
-      <Button type="button" onClick={() => void load()} disabled={busy}>
-        重新读取
-      </Button>
-    </div>
+    <Button type="button" onClick={() => void load()} disabled={busy}>
+      重新读取
+    </Button>
   )
 
   if (!data) {
     return (
-      <Frame embed={embed} title={headingOf()} lead={leadOf(side, canvas)} aside={reload}>
+      <Frame embed={embed} title={headingOf()} lead={leadOf(side, canvas)} actions={reload}>
         {error ? (
           <div className="alert alert--error">{error}</div>
         ) : (
@@ -159,7 +160,7 @@ export function NetworkPage({ instances, onOpenInstance, onCreate, focus, embed 
   const empty = view.proxies.length === 0
 
   return (
-    <Frame embed={embed} title={headingOf()} lead={leadOf(side, canvas)} aside={reload}>
+    <Frame embed={embed} title={headingOf()} lead={leadOf(side, canvas)} actions={reload}>
       {error && <div className="alert alert--error">{error}</div>}
 
       {notes.length > 0 && (
@@ -174,19 +175,18 @@ export function NetworkPage({ instances, onOpenInstance, onCreate, focus, embed 
       )}
 
       {empty ? (
-        <section className="panel">
-          <h3 className="panel__title">还没有代理端</h3>
-          <p className="muted">
-            代理端（Velocity）站在所有服务端前面：玩家只连它一个地址，
-            再由它把人送到大厅、生存、创造去 —— 玩家在服务器之间跳的时候不用退出重连。
-            新建实例时选一个 Velocity 核心就有了。
-          </p>
-          <div className="actions">
+        <EmptyState
+          title="还没有代理端"
+          action={
             <Button variant="primary" type="button" onClick={onCreate}>
               新建代理端
             </Button>
-          </div>
-        </section>
+          }
+        >
+          代理端（Velocity）站在所有服务端前面：玩家只连它一个地址，
+          再由它把人送到大厅、生存、创造去 —— 玩家在服务器之间跳的时候不用退出重连。
+          新建实例时选一个 Velocity 核心就有了。
+        </EmptyState>
       ) : canvas ? (
         <NetworkCanvas
           data={view}
@@ -296,25 +296,25 @@ function Frame({
   embed,
   title,
   lead,
-  aside,
+  actions,
   children,
 }: {
   embed: boolean | undefined
   title: string
   lead: string
-  aside: ReactNode
+  actions: ReactNode
   children: ReactNode
 }) {
   if (!embed) {
     return (
-      <Page title={title} lead={lead} wide aside={aside}>
+      <Page title={title} lead={lead} wide actions={actions}>
         {children}
       </Page>
     )
   }
   return (
     <div className="stack">
-      <PageHead title={title} lead={lead} aside={aside} />
+      <PageHead title={title} lead={lead} actions={actions} />
       {children}
     </div>
   )
@@ -696,7 +696,7 @@ function ProxyCard({
       data-node={`proxy:${proxy.id}`}
     >
       <header className="netcard__head">
-        <span className={`status__dot status__dot--${proxy.state}`} />
+        <StatusDot state={proxy.state} />
         <button className="netcard__name" type="button" onClick={() => onOpenInstance(proxy.id)}>
           {proxy.name}
         </button>
@@ -835,7 +835,7 @@ function ServerCard({
       />
 
       <header className="netcard__head">
-        <span className={`status__dot status__dot--${server.state}`} />
+        <StatusDot state={server.state} />
         <button className="netcard__name" type="button" onClick={() => onOpenInstance(server.id)}>
           {server.name}
         </button>
@@ -892,19 +892,24 @@ function NetworkList({
         // side the only thing this picker may offer is that server.
         const free = data.servers.filter((server) => !linked.has(server.id))
         return (
-          <section className="panel" key={proxy.id}>
-            <h3 className="panel__title">
-              <span className={`status__dot status__dot--${proxy.state}`} /> {proxy.name}
-            </h3>
-            <p className="netcard__meta">
-              <span>{proxy.bind || '0.0.0.0:25577'}</span>
-              <Badge tone={proxy.forwarding === 'none' ? 'warn' : 'neutral'}>
-                {forwardingLabel(proxy.forwarding)}
-              </Badge>
-            </p>
-
+          <Section
+            key={proxy.id}
+            title={
+              <>
+                <StatusDot state={proxy.state} /> {proxy.name}
+              </>
+            }
+            note={
+              <>
+                <span>{proxy.bind || '0.0.0.0:25577'}</span>{' '}
+                <Badge tone={proxy.forwarding === 'none' ? 'warn' : 'neutral'}>
+                  {forwardingLabel(proxy.forwarding)}
+                </Badge>
+              </>
+            }
+          >
             {links.length === 0 ? (
-              <p className="muted">还没有子服。玩家连上来会立刻被踢。</p>
+              <EmptyState inline title="还没有子服。">玩家连上来会立刻被踢。</EmptyState>
             ) : (
               <ul className="netlinks">
                 {links.map((link) => {
@@ -963,7 +968,7 @@ function NetworkList({
             )}
 
             <AddServer proxy={proxy} servers={free} side={side} busy={busy} onLink={onLink} />
-          </section>
+          </Section>
         )
       })}
     </div>

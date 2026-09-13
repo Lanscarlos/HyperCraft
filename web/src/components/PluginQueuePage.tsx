@@ -6,7 +6,9 @@ import type { PluginDownloadJob } from '../types'
 import { isJobActive } from '../types'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { EmptyState } from './EmptyState'
 import { Page } from './Page'
+import { Section } from './Section'
 import type { PluginController } from '../usePlugins'
 
 /**
@@ -51,40 +53,36 @@ export function PluginQueuePage({ plugins }: { plugins: PluginController }) {
       wide
       title="下载队列"
       lead={`插件库最多同时下 ${MAX_CONCURRENT} 个 jar，多出来的排队等。下载归守护进程管，关掉标签页也会下完。这里下到的都是面板插件库，装到哪台服是「插件列表」和实例自己的「插件」页上的事。`}
-      aside={
-        <div className="page__actions">
-          <Button
-            disabled={plugins.busy || history.length === 0}
-            onClick={() => void plugins.clearFinished().then(() => toast('已清空下载记录'))}
-          >
-            清空记录
-          </Button>
-          <Button
-            variant="danger"
-            disabled={plugins.busy || live.length === 0}
-            title="停掉正在下和排队中的全部任务"
-            onClick={() =>
-              void plugins.cancel().then(() => toast(`已取消 ${live.length} 个下载`))
-            }
-          >
-            全部取消
-          </Button>
-        </div>
+      actions={
+        <>
+        <Button
+          disabled={plugins.busy || history.length === 0}
+          onClick={() => void plugins.clearFinished().then(() => toast('已清空下载记录'))}
+        >
+          清空记录
+        </Button>
+        <Button
+          variant="danger"
+          disabled={plugins.busy || live.length === 0}
+          title="停掉正在下和排队中的全部任务"
+          onClick={() =>
+            void plugins.cancel().then(() => toast(`已取消 ${live.length} 个下载`))
+          }
+        >
+          全部取消
+        </Button>
+        </>
       }
     >
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
 
-      <section className="panel dlqueue">
-        <h2 className="dlqueue__title">
-          进行中
-          {live.length > 0 && <span className="dlqueue__count">{live.length}</span>}
-        </h2>
+      <Section className="dlqueue" title="进行中" count={live.length > 0 ? live.length : undefined}>
         {live.length === 0 ? (
-          <p className="dlqueue__empty muted">
-            现在没有下载。在「插件列表」按更新入库，或者在「插件市场」里挑一个，任务就会出现在这里。
-          </p>
+          <EmptyState inline title="现在没有下载。">
+            在「插件列表」按更新入库，或者在「插件市场」里挑一个，任务就会出现在这里。
+          </EmptyState>
         ) : (
-          <div className="dlqueue__rows">
+          <div className="rowlist">
             {live.map((job) => (
               <JobRow
                 key={job.id}
@@ -95,20 +93,20 @@ export function PluginQueuePage({ plugins }: { plugins: PluginController }) {
             ))}
           </div>
         )}
-      </section>
+      </Section>
 
       {history.length > 0 && (
-        <section className="panel dlqueue">
-          <h2 className="dlqueue__title">
-            历史
-            {failed > 0 && <span className="dlqueue__count dlqueue__count--bad">{failed} 个失败</span>}
-          </h2>
-          <div className="dlqueue__rows">
+        <Section
+          className="dlqueue"
+          title="历史"
+          meta={failed > 0 ? `${failed} 个失败` : undefined}
+        >
+          <div className="rowlist">
             {history.map((job) => (
               <JobRow key={job.id} job={job} busy={plugins.busy} />
             ))}
           </div>
-        </section>
+        </Section>
       )}
     </Page>
   )

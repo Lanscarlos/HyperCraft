@@ -203,7 +203,11 @@ export function HostTerminal({ terminal, onOpenSettings }: Props) {
   const restart = useCallback(() => setAttempt((n) => n + 1), [])
 
   if (!status) {
-    return <Page>正在读取终端设置…</Page>
+    return (
+      <Page title="SSH 终端">
+        <p className="muted">正在读取终端设置…</p>
+      </Page>
+    )
   }
 
   if (!available) {
@@ -217,7 +221,7 @@ export function HostTerminal({ terminal, onOpenSettings }: Props) {
         }
       >
         {status.supported && (
-          <div>
+          <div className="actions">
             <Button variant="primary" onClick={onOpenSettings}>
               去「主机 → 节点配置」开启
             </Button>
@@ -227,49 +231,54 @@ export function HostTerminal({ terminal, onOpenSettings }: Props) {
     )
   }
 
+  // A full-bleed workspace rather than a content page: the shell is one canvas
+  // that takes every pixel it is given, and .hostterm already claims the
+  // page's remaining height (flex: 1; min-height: 0).
   return (
-    <div className="hostterm">
-      {/* The identity strip is permanent and it is the loudest thing on the
-          page. Everything below it is a root-adjacent shell on the machine
-          itself, and the failure this prevents is an operator typing a server
-          command — or worse, a shell command — into the wrong terminal because
-          the two looked alike. */}
-      <div className="hostterm__bar">
-        <div className="hostterm__where">
-          <Icon name="lock" />
-          <strong>
-            {status.user || 'unknown'}@{window.location.hostname}
-          </strong>
-          <span>
-            {status.shell} · {status.cwd}
-          </span>
+    <Page full title="SSH 终端">
+      <div className="hostterm">
+        {/* The identity strip is permanent and it is the loudest thing on the
+            page. Everything below it is a root-adjacent shell on the machine
+            itself, and the failure this prevents is an operator typing a server
+            command — or worse, a shell command — into the wrong terminal because
+            the two looked alike. */}
+        <div className="hostterm__bar">
+          <div className="hostterm__where">
+            <Icon name="lock" />
+            <strong>
+              {status.user || 'unknown'}@{window.location.hostname}
+            </strong>
+            <span>
+              {status.shell} · {status.cwd}
+            </span>
+          </div>
+          <div className="hostterm__actions">
+            <span className={`hostterm__dot hostterm__dot--${phase}`} />
+            <span className="hostterm__phase">
+              {phase === 'open' ? '已连接' : phase === 'connecting' ? '连接中…' : '已断开'}
+            </span>
+            <Button onClick={restart}>
+              {phase === 'closed' ? '重新连接' : '重开会话'}
+            </Button>
+          </div>
         </div>
-        <div className="hostterm__actions">
-          <span className={`hostterm__dot hostterm__dot--${phase}`} />
-          <span className="hostterm__phase">
-            {phase === 'open' ? '已连接' : phase === 'connecting' ? '连接中…' : '已断开'}
-          </span>
-          <Button onClick={restart}>
-            {phase === 'closed' ? '重新连接' : '重开会话'}
-          </Button>
-        </div>
+
+        {notice && (
+          <div className="hostterm__notice">
+            {notice}
+            <button className="link" onClick={restart}>
+              开一个新会话
+            </button>
+          </div>
+        )}
+
+        <div className="hostterm__screen" ref={hostRef} />
+
+        <small className="hostterm__hint">
+          关掉这个页面就会挂断当前会话（连同它启动的程序）。要让命令活得比标签页久，
+          请用 systemd 或者在里面开 tmux / screen。
+        </small>
       </div>
-
-      {notice && (
-        <div className="hostterm__notice">
-          {notice}
-          <button className="link" onClick={restart}>
-            开一个新会话
-          </button>
-        </div>
-      )}
-
-      <div className="hostterm__screen" ref={hostRef} />
-
-      <small className="hostterm__hint">
-        关掉这个页面就会挂断当前会话（连同它启动的程序）。要让命令活得比标签页久，
-        请用 systemd 或者在里面开 tmux / screen。
-      </small>
-    </div>
+    </Page>
   )
 }

@@ -186,7 +186,7 @@ export function InstanceCorePicker({
                 {busy ? '复制中…' : '复制到实例'}
               </Button>
               {selected?.kind !== 'proxy' && (
-                <span className="file-toolbar__hint">
+                <span className="muted">
                   别忘了去「服务器配置」同意 EULA，否则服务端启动后会立刻退出。
                 </span>
               )}

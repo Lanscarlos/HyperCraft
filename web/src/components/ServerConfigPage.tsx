@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api'
 import type { InstanceStatus, ServerConfigFile } from '../types'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { ConfigLayout, ConfigRow, ConfigSaveBar, changedKeys } from './ConfigLayout'
 import { PageHead } from './Page'
 import { PropertiesEditor } from './PropertiesEditor'
+import { Section } from './Section'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
 /** The first tab is not a file the daemon lists — it is server.properties,
@@ -66,6 +68,7 @@ export function ServerConfigPage({ instance }: { instance: InstanceStatus }) {
     })),
   ]
   const current = (files ?? []).find((file) => file.id === open)
+  const currentTab = tabs.find((tab) => tab.id === open)
 
   return (
     <div className="stack">
@@ -77,32 +80,30 @@ export function ServerConfigPage({ instance }: { instance: InstanceStatus }) {
       {/* Rendered even while the list is loading, so the page does not shift
           under the pointer the moment it arrives.
 
-          Cards rather than chips: five filenames in a row of pills is five
-          things that look alike and read as one long word, and the question
-          people arrive with is not "which file is called what" but "which file
-          holds the thing I want". The line under the name answers that, and it
-          needs a card to sit on. */}
-      <div className="filecards" role="tablist" aria-label="配置文件">
+          The panel's one tab bar, with the selected file's blurb on the line
+          under it rather than a line under every tab: the question people
+          arrive with is not "which file is called what" but "which file holds
+          the thing I want", and one line for the open file answers it without
+          five cards' worth of small print in a row. */}
+      <div className="tabs" role="tablist" aria-label="配置文件">
         {tabs.map((tab) => (
           <button
-            className={`filecard${open === tab.id ? ' filecard--on' : ''}`}
+            className={`tabs__tab${open === tab.id ? ' tabs__tab--on' : ''}`}
             type="button"
             key={tab.id}
             role="tab"
             aria-selected={open === tab.id}
             onClick={() => setOpen(tab.id)}
           >
-            <span className="filecard__name">
-              {tab.label}
-              {/* The server writes these on first boot. Saying so is the
-                  difference between "this file is empty" and "this panel is
-                  broken". */}
-              {!tab.exists && <span className="filecard__new">未创建</span>}
-            </span>
-            <span className="filecard__blurb">{tab.blurb}</span>
+            {tab.label}
+            {/* The server writes these on first boot. Saying so is the
+                difference between "this file is empty" and "this panel is
+                broken". */}
+            {!tab.exists && <> <Badge tone="muted">未创建</Badge></>}
           </button>
         ))}
       </div>
+      {currentTab && <p className="muted">{currentTab.blurb}</p>}
 
       {error && <div className="alert alert--error">{error}</div>}
 
@@ -272,9 +273,7 @@ function ServerConfigForm({
           )
           if (rows.length === 0) return null
           return (
-            <section className="panel cfg__group" data-group={group.id} key={group.id}>
-              <h3 className="panel__title">{group.label}</h3>
-              {group.hint && <p className="muted">{group.hint}</p>}
+            <Section className="cfg__group" data-group={group.id} key={group.id} title={group.label} note={group.hint}>
               {rows.map((setting) => (
                 <ConfigRow
                   key={setting.key}
@@ -286,7 +285,7 @@ function ServerConfigForm({
                   onChange={(value) => set(setting.key, value)}
                 />
               ))}
-            </section>
+            </Section>
           )
         })}
 

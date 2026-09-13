@@ -12,11 +12,13 @@ import type {
 import type { DatabaseController } from '../useDatabases'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { EmptyState } from './EmptyState'
 import { FieldHelp } from './FieldHelp'
 import { Page } from './Page'
+import { Section } from './Section'
 import { Select } from './Select'
 import { Shelf } from './Shelf'
-import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
+import { SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
 /** Named because the page renders it before its data arrives as well as after,
  *  and the two have to be the same string or the page moves when it loads. */
@@ -65,11 +67,7 @@ export function DatabasePage({ databases }: { databases: DatabaseController }) {
     return (
       <Page wide title="数据库环境" lead={DB_LEAD}>
         <SkeletonScreen inPage label="正在读取数据库…">
-          <SkeletonPanel title={false}>
-            <div className="chart-head">
-              <Skeleton w="72px" h={15} />
-              <Skeleton w="180px" h={12} />
-            </div>
+          <SkeletonPanel head title={false}>
             <SkeletonRows rows={2} />
           </SkeletonPanel>
         </SkeletonScreen>
@@ -86,8 +84,8 @@ export function DatabasePage({ databases }: { databases: DatabaseController }) {
       wide
       title="数据库环境"
       lead={DB_LEAD}
-      aside={
-        <p className="meta-chips">
+      facts={
+        <>
           {/* The count and how many of them are up, in one chip. The other
               three — os/arch, engine total — are facts about the machine and
               the disk, not about the thing you came to look at. */}
@@ -102,7 +100,7 @@ export function DatabasePage({ databases }: { databases: DatabaseController }) {
               {platform.os}/{platform.arch}
             </span>
           )}
-        </p>
+        </>
       }
     >
       {platform.warning && <div className="alert alert--error">{platform.warning}</div>}
@@ -186,37 +184,26 @@ function ServiceList({
        empty state. */
     <div className={current ? 'dbsplit' : undefined}>
       <div className="dbsplit__main">
-        <section className="panel">
-          <div className="chart-head">
-            <h2 className="panel__title">我的数据库</h2>
-            <p className="chart-head__meta">
-              {services.length > 0 ? `面板管理 ${services.length} 个` : '还没有建过数据库'}
-            </p>
-          </div>
+        <Section
+          title="我的数据库"
+          meta={services.length > 0 ? `面板管理 ${services.length} 个` : '还没有建过数据库'}
+        >
 
           {services.length === 0 ? (
-            <div className="welcome__empty">
-              {usable.length === 0 ? (
-                <>
-                  <p>还没有装数据库引擎，建不了数据库。</p>
-                  {/* No link: 安装引擎 is the last card on this page now, so
-                      pointing at it is pointing down. */}
-                  <p className="muted">
-                    先在下面装一个引擎，MySQL 的精简包只有 60 MB 左右，装完就能建库。
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p>引擎装好了，还没有建过数据库。</p>
-                  <p className="muted">
-                    <button className="link" type="button" onClick={() => setCreating(true)}>
-                      建一个
-                    </button>
-                    ，端口、账号、密码面板都会给默认值，建完直接复制连接串。
-                  </p>
-                </>
-              )}
-            </div>
+            usable.length === 0 ? (
+              /* No link: 安装引擎 is the last card on this page now, so
+                 pointing at it is pointing down. */
+              <EmptyState title="还没有装数据库引擎，建不了数据库。">
+                先在下面装一个引擎，MySQL 的精简包只有 60 MB 左右，装完就能建库。
+              </EmptyState>
+            ) : (
+              <EmptyState title="引擎装好了，还没有建过数据库。">
+                <button className="link" type="button" onClick={() => setCreating(true)}>
+                  建一个
+                </button>
+                ，端口、账号、密码面板都会给默认值，建完直接复制连接串。
+              </EmptyState>
+            )
           ) : (
             <Shelf head={['数据库', '监听', '库名', '建于', '状态', '']}>
               {services.map((service) => (
@@ -251,7 +238,7 @@ function ServiceList({
               </span>
             </div>
           )}
-        </section>
+        </Section>
 
         {creating && (
           <CreateForm
@@ -582,126 +569,118 @@ function CreateForm({
   }
 
   return (
-    <section className="panel panel--form">
-      <div className="panel__aside">
-        <h3 className="panel__title">新建数据库</h3>
-        <p className="panel__note">建一个库和它自己的账号，留空的都会用默认值。</p>
-      </div>
+    <Section form title="新建数据库" note="建一个库和它自己的账号，留空的都会用默认值。">
+    <div className="field field--md">
+      <span>用哪个引擎</span>
+      <Select
+        value={installId}
+        onChange={setInstallId}
+        ariaLabel="用哪个引擎"
+        className="select--block"
+        options={installs.map((entry) => ({
+          value: entry.id,
+          label: `${engines.find((candidate) => candidate.id === entry.engine)?.name ?? entry.engine} ${entry.version}`,
+        }))}
+      />
+      {engine && <small>{engine.note}</small>}
+    </div>
 
-      <div className="panel__body">
+    <div className="field field--md">
+      <span>库名</span>
+      <input
+        value={database}
+        onChange={(event) => setDatabase(event.target.value)}
+        placeholder="minecraft"
+        spellCheck={false}
+      />
+      <small>字母开头，只能用字母、数字和下划线。</small>
+      <FieldHelp summary="几个服务器可以共用一个库吗？">
+        可以，但默认一台服一个库。共用时两边插件的表名是一样的，数据就混在一张表里 ——
+        确实要共享（比如整个群组共用一套权限）的时候这正是你要的，其余情况下它只会让
+        「这一行是哪台服写的」变成一个需要查的问题。分开建，备份和迁走某一台服也简单。
+      </FieldHelp>
+    </div>
 
-      <div className="field field--md">
-        <span>用哪个引擎</span>
-        <Select
-          value={installId}
-          onChange={setInstallId}
-          ariaLabel="用哪个引擎"
-          className="select--block"
-          options={installs.map((entry) => ({
-            value: entry.id,
-            label: `${engines.find((candidate) => candidate.id === entry.engine)?.name ?? entry.engine} ${entry.version}`,
-          }))}
-        />
-        {engine && <small>{engine.note}</small>}
-      </div>
+    <div className="field field--md">
+      <span>显示名（可选）</span>
+      <input
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        placeholder={install ? `${engine?.name ?? ''} ${install.version}` : ''}
+      />
+    </div>
 
-      <div className="field field--md">
-        <span>库名</span>
-        <input
-          value={database}
-          onChange={(event) => setDatabase(event.target.value)}
-          placeholder="minecraft"
-          spellCheck={false}
-        />
-        <small>字母开头，只能用字母、数字和下划线。</small>
-        <FieldHelp summary="几个服务器可以共用一个库吗？">
-          可以，但默认一台服一个库。共用时两边插件的表名是一样的，数据就混在一张表里 ——
-          确实要共享（比如整个群组共用一套权限）的时候这正是你要的，其余情况下它只会让
-          「这一行是哪台服写的」变成一个需要查的问题。分开建，备份和迁走某一台服也简单。
-        </FieldHelp>
-      </div>
-
-      <div className="field field--md">
-        <span>显示名（可选）</span>
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder={install ? `${engine?.name ?? ''} ${install.version}` : ''}
-        />
-      </div>
-
-      {/* One account, so one line: a username without its password is half a
-          credential, and reading them down a column puts the pair on two
-          separate rows of a form that is mostly optional fields. */}
-      {needsAccount && (
-        <div className="field-row">
-          <div className="field field--md">
-            <span>用户名</span>
-            <input
-              value={user}
-              onChange={(event) => setUser(event.target.value)}
-              spellCheck={false}
-            />
-          </div>
-          <div className="field field--md">
-            <span>密码（可选）</span>
-            <input
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="留空则自动生成一个"
-              spellCheck={false}
-            />
-            <small>至少 8 位，不能有引号、反斜杠和空格。</small>
-            <FieldHelp summary="为什么不能有这几个字符？">
-              插件的配置文件多是 YAML，密码里一个引号就能把那一行断开，服务端启动时报的却是
-              别的错。面板建库时还要拼一条语句把这个账号建出来，反斜杠和空格在那里同样是语法。
-              留空让面板自动生成一个，这些都不用操心。
-            </FieldHelp>
-          </div>
+    {/* One account, so one line: a username without its password is half a
+        credential, and reading them down a column puts the pair on two
+        separate rows of a form that is mostly optional fields. */}
+    {needsAccount && (
+      <div className="field-row">
+        <div className="field field--md">
+          <span>用户名</span>
+          <input
+            value={user}
+            onChange={(event) => setUser(event.target.value)}
+            spellCheck={false}
+          />
         </div>
-      )}
-
-      <div className="field">
-        <label className="check">
+        <div className="field field--md">
+          <span>密码（可选）</span>
           <input
-            type="checkbox"
-            checked={autoStart}
-            onChange={(event) => setAutoStart(event.target.checked)}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="留空则自动生成一个"
+            spellCheck={false}
           />
-          <span>面板启动时自动开</span>
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={remote}
-            disabled={!needsAccount}
-            onChange={(event) => setRemote(event.target.checked)}
-          />
-          <span>允许别的机器连接</span>
-        </label>
-        <small>
-          {needsAccount
-            ? '不勾选就只监听本机，同一台机器上的服务端照样能连 —— 绝大多数情况这样就够，也最安全。勾选之后请自行确认防火墙规则。'
-            : '这个引擎没法由面板设置账号密码，只能监听本机。'}
-        </small>
+          <small>至少 8 位，不能有引号、反斜杠和空格。</small>
+          <FieldHelp summary="为什么不能有这几个字符？">
+            插件的配置文件多是 YAML，密码里一个引号就能把那一行断开，服务端启动时报的却是
+            别的错。面板建库时还要拼一条语句把这个账号建出来，反斜杠和空格在那里同样是语法。
+            留空让面板自动生成一个，这些都不用操心。
+          </FieldHelp>
+        </div>
       </div>
+    )}
 
-      <div className="actions">
-        <Button
-          variant="primary"
-          type="button"
-          disabled={databases.busy || installId === '' || database.trim() === ''}
-          onClick={() => void submit()}
-        >
-          {databases.busy ? '正在初始化…' : '创建'}
-        </Button>
-        <Button type="button" disabled={databases.busy} onClick={onDone}>
-          取消
-        </Button>
-        <span className="muted">初始化要几秒到几十秒，建好后不会自动启动。</span>
-      </div>
-      </div>
-    </section>
+    <div className="field">
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={autoStart}
+          onChange={(event) => setAutoStart(event.target.checked)}
+        />
+        <span>面板启动时自动开</span>
+      </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={remote}
+          disabled={!needsAccount}
+          onChange={(event) => setRemote(event.target.checked)}
+        />
+        <span>允许别的机器连接</span>
+      </label>
+      <small>
+        {needsAccount
+          ? '不勾选就只监听本机，同一台机器上的服务端照样能连 —— 绝大多数情况这样就够，也最安全。勾选之后请自行确认防火墙规则。'
+          : '这个引擎没法由面板设置账号密码，只能监听本机。'}
+      </small>
+    </div>
+
+    <div className="actions">
+      <Button
+        variant="primary"
+        type="button"
+        disabled={databases.busy || installId === '' || database.trim() === ''}
+        onClick={() => void submit()}
+      >
+        {databases.busy ? '正在初始化…' : '创建'}
+      </Button>
+      <Button type="button" disabled={databases.busy} onClick={onDone}>
+        取消
+      </Button>
+      <span className="muted">初始化要几秒到几十秒，建好后不会自动启动。</span>
+    </div>
+    </Section>
   )
 }
 
@@ -733,27 +712,19 @@ function EngineList({
 
   if (installs.length === 0) {
     return (
-      <section className="panel">
-        <div className="chart-head">
-          <h2 className="panel__title">已装引擎</h2>
-          <p className="chart-head__meta">引擎是数据库程序本身，一个可以给多个数据库共用</p>
-        </div>
+      <Section title="已装引擎" note="引擎是数据库程序本身，一个可以给多个数据库共用">
         <p className="muted">
           还没有装过。下面挑一个装上 —— 全程不动系统里的服务，也不需要 root 之外的额外配置。
         </p>
-      </section>
+      </Section>
     )
   }
 
   return (
-    <section className="panel">
-      <div className="chart-head">
-        <h2 className="panel__title">已装引擎</h2>
-        <p className="chart-head__meta">
-          共 {formatBytes(installs.reduce((sum, entry) => sum + entry.size, 0))} · 删掉引擎不会动数据，
-          但跑在上面的数据库会起不来
-        </p>
-      </div>
+    <Section
+      title="已装引擎"
+      note={`共 ${formatBytes(installs.reduce((sum, entry) => sum + entry.size, 0))} · 删掉引擎不会动数据，但跑在上面的数据库会起不来`}
+    >
 
       <Shelf head={['引擎', '', '体积', '安装于', '使用中的数据库', '']}>
         {installs.map((install) => (
@@ -838,7 +809,7 @@ function EngineList({
           </article>
         ))}
       </Shelf>
-    </section>
+    </Section>
   )
 }
 
@@ -880,41 +851,36 @@ function InstallEngine({
   const engineInfo = engines.find((entry) => entry.id === selected)
 
   return (
-    <section className="panel">
-      {/* Which of the three, in the card's head. It is one choice out of three
-          and it scopes everything below it, which is the shape of a tab strip
-          rather than of a grid of tiles the size of the versions underneath. */}
-      <div className="chart-head">
-        <h2 className="panel__title">安装引擎</h2>
-        <p className="chart-head__meta">
-          {engineInfo ? `二进制来自 ${engineInfo.vendor}` : '从官方渠道下载'} ·
-          下载走服务器自己的网络，关掉网页也会继续
-        </p>
-        <div className="chart-head__tools">
-          <div className="segmented segmented--inline" role="group" aria-label="选择数据库">
-            {engines.map((entry) => (
-              <button
-                key={entry.id}
-                type="button"
-                className={`segmented__option${
-                  entry.id === engine ? ' segmented__option--active' : ''
-                }`}
-                aria-pressed={entry.id === engine}
-                title={entry.note}
-                disabled={installing}
-                onClick={() => {
-                  setEngine(entry.id)
-                  setVersion(null)
-                  setCustom('')
-                }}
-              >
-                <strong>{entry.name}</strong>
-              </button>
-            ))}
-          </div>
+    <Section
+      title="安装引擎"
+      note={`${engineInfo ? `二进制来自 ${engineInfo.vendor}` : '从官方渠道下载'} · 下载走服务器自己的网络，关掉网页也会继续`}
+      /* Which of the three, in the card's head. It is one choice out of three
+         and it scopes everything below it, which is the shape of a tab strip
+         rather than of a grid of tiles the size of the versions underneath. */
+      tools={
+        <div className="segmented segmented--inline" role="group" aria-label="选择数据库">
+          {engines.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              className={`segmented__option${
+                entry.id === engine ? ' segmented__option--active' : ''
+              }`}
+              aria-pressed={entry.id === engine}
+              title={entry.note}
+              disabled={installing}
+              onClick={() => {
+                setEngine(entry.id)
+                setVersion(null)
+                setCustom('')
+              }}
+            >
+              <strong>{entry.name}</strong>
+            </button>
+          ))}
         </div>
-      </div>
-
+      }
+    >
       {list === undefined ? (
         <p className="muted">正在读取可安装的版本…</p>
       ) : list.length === 0 ? (
@@ -1009,7 +975,7 @@ function InstallEngine({
         )}
         <span className="muted">装完还要建一个数据库才能用。</span>
       </div>
-    </section>
+    </Section>
   )
 }
 

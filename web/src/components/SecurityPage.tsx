@@ -4,7 +4,9 @@ import { api } from '../api'
 import type { AuthEvent, AuthEventKind, User } from '../types'
 import type { BadgeTone } from './Badge'
 import { Badge } from './Badge'
+import { EmptyState } from './EmptyState'
 import { Page } from './Page'
+import { Section } from './Section'
 
 /**
  * Who has been touching the panel's credentials, and from where.
@@ -54,9 +56,7 @@ export function SecurityPage() {
     >
       {error && <div className="alert alert--error">{error}</div>}
 
-      <section className="panel">
-        <h3 className="panel__title">当前连接</h3>
-
+      <Section title="当前连接">
         {me === null ? (
           <p className="muted">正在读取…</p>
         ) : (
@@ -95,20 +95,20 @@ export function SecurityPage() {
             )}
           </>
         )}
-      </section>
+      </Section>
 
-      <section className="panel">
-        <div className="chart-head">
-          <h3 className="panel__title">最近事件</h3>
+      <Section
+        title="最近事件"
+        tools={
           <button className="link" onClick={() => void load()} disabled={refreshing}>
             {refreshing ? '刷新中…' : '刷新'}
           </button>
-        </div>
-
+        }
+      >
         {events === null ? (
           <p className="muted">正在读取…</p>
         ) : events.length === 0 ? (
-          <p className="muted">面板启动后还没有发生过登录相关的事件。</p>
+          <EmptyState inline title="面板启动后还没有发生过登录相关的事件。" />
         ) : (
           <div className="table-scroll">
             <table className="data-table auth-events">
@@ -146,7 +146,7 @@ export function SecurityPage() {
           失败的登录里显示的用户名是对方<strong>输入</strong>的，不代表这个账号存在。
           连续重复的同类事件会折叠成一行并标出次数 —— 否则一次限流就能把其他记录挤出这份列表。
         </small>
-      </section>
+      </Section>
     </Page>
   )
 }

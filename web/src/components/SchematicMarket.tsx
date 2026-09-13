@@ -9,9 +9,12 @@ import type { SchematicController } from '../useSchematics'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Card } from './Card'
+import { EmptyState } from './EmptyState'
 import { Page } from './Page'
+import { Section } from './Section'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
+import { Toolbar, ToolbarSearch } from './Toolbar'
 
 /**
  * 建筑市场 and 索引源: where builds come from when they do not come from disk.
@@ -126,27 +129,25 @@ export function SchematicMarket({
       wide
       title="建筑市场"
       lead="从索引源和 GitHub 仓库里找建筑，一键下到建筑库。下载走服务器自己的网络，文件在存进库之前会先解析一遍——读不出来的直接不收。"
-      aside={
-        <p className="meta-chips">
+      facts={
+        <>
           <span>{`${enabled.length} 个源`}</span>
           <span>{result ? `${result.total} 个建筑` : '还没读到'}</span>
           {result?.fetchedAt && <span>更新于 {formatSince(result.fetchedAt)}</span>}
-        </p>
+        </>
       }
     >
       {error && <div className="alert alert--error">{error}</div>}
 
       <section className="panel">
-        <div className="schemlib__bar">
-          <input
-            className="filters__search"
-            type="search"
+        <Toolbar>
+          <ToolbarSearch
             value={query}
             placeholder="搜名称、简介、标签"
             aria-label="搜索建筑市场"
             onChange={(event) => setQuery(event.target.value)}
           />
-          <div className="schemlib__bar-actions">
+          <div className="toolbar__tools">
             <Select
               ariaLabel="按来源筛选"
               value={source}
@@ -163,7 +164,7 @@ export function SchematicMarket({
               管理索引源
             </Button>
           </div>
-        </div>
+        </Toolbar>
 
         {/* One source failing is not the market failing: the others answered,
             and saying so under the results is the difference between "this
@@ -175,16 +176,15 @@ export function SchematicMarket({
         ))}
 
         {items.length === 0 ? (
-          <div className="welcome__empty">
-            <p>{result && result.total > 0 ? '没有匹配的建筑。' : '这些源里还没有建筑。'}</p>
-            <p className="muted">
+          <EmptyState title={<>{result && result.total > 0 ? '没有匹配的建筑。' : '这些源里还没有建筑。'}</>}>
+            <p>
               建筑市场读的是你添加的源。
               <button className="link" type="button" onClick={() => onOpenView('source')}>
                 加一个 GitHub 仓库或索引地址
               </button>
               ，仓库里的每个 .schem 都会出现在这里。
             </p>
-          </div>
+          </EmptyState>
         ) : (
           <div className="schemlib__grid" role="list">
             {items.map((item) => (
@@ -351,11 +351,11 @@ function SourcesPage({
       wide
       title="索引源"
       lead="建筑市场读哪些地方。schematic 没有 Modrinth 那样的中央仓库，所以这里是你自己攒的书架：一个 GitHub 仓库，或者一份别人发布的索引。"
-      aside={
-        <p className="meta-chips">
+      facts={
+        <>
           <span>{`${sources.length} 个源`}</span>
           <span>{`${sources.filter((source) => !source.disabled).length} 个启用`}</span>
-        </p>
+        </>
       }
     >
       <section className="panel">
@@ -414,12 +414,7 @@ function SourcesPage({
         </div>
       </section>
 
-      <section className="panel">
-        <div className="chart-head">
-          <h2 className="panel__title">已添加的源</h2>
-          <p className="chart-head__meta">关掉的源不参与搜索，也不会被读取</p>
-        </div>
-
+      <Section title="已添加的源" note="关掉的源不参与搜索，也不会被读取">
         {/* Its own row rather than .asset: that one is a six-column grid built
             for the fixed facts a core or a runtime has, and a source has a
             name, an address and — when it failed — a sentence about why. */}
@@ -459,7 +454,7 @@ function SourcesPage({
             </article>
           ))}
         </div>
-      </section>
+      </Section>
 
       <section className="panel">
         <h2 className="panel__title">索引长什么样</h2>

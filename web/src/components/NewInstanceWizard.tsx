@@ -9,8 +9,10 @@ import type { JavaController } from '../useJava'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { CoreCatalogue, useCoreCatalogue } from './CoreCatalogue'
+import { EmptyState } from './EmptyState'
 import { Page } from './Page'
 import { DirectoryField } from './PathPicker'
+import { Section } from './Section'
 import { Select } from './Select'
 import { randomSecret } from './VelocityConfig'
 
@@ -811,12 +813,7 @@ function CoreStep({
   const { job, downloading, busy } = cores
 
   return (
-    <section className="panel">
-      <div className="chart-head">
-        <h2 className="panel__title">这台服务器跑什么</h2>
-        <p className="chart-head__meta">核心决定版本，版本决定后面要哪个 Java</p>
-      </div>
-
+    <Section title="这台服务器跑什么" note="核心决定版本，版本决定后面要哪个 Java">
       <div className="segmented" role="group" aria-label="核心来源">
         {[
           { value: 'library' as const, label: '从核心库选', note: `已有 ${stored.length} 个，秒装` },
@@ -843,15 +840,12 @@ function CoreStep({
         (!loaded ? (
           <p className="muted">正在读取核心库…</p>
         ) : stored.length === 0 ? (
-          <div className="welcome__empty">
-            <p>核心库还是空的。</p>
-            <p className="muted">
-              <button className="link" type="button" onClick={() => onMode('download')}>
-                下载一个
-              </button>
-              ，几十兆的事；下完就留在核心库里，以后再开服直接用。
-            </p>
-          </div>
+          <EmptyState title="核心库还是空的。">
+            <button className="link" type="button" onClick={() => onMode('download')}>
+              下载一个
+            </button>
+            ，几十兆的事；下完就留在核心库里，以后再开服直接用。
+          </EmptyState>
         ) : (
           <div className="field">
             <span>核心库里的核心</span>
@@ -917,7 +911,7 @@ function CoreStep({
                     下载 {catalogue.project?.name ?? ''} {catalogue.versionId}
                   </Button>
                 )}
-                <span className="file-toolbar__hint">
+                <span className="muted">
                   下载走服务器自己的网络，关掉网页也会继续。
                 </span>
               </div>
@@ -933,7 +927,7 @@ function CoreStep({
           Forge、Fabric、整合包服务端走的都是这条路。
         </p>
       )}
-    </section>
+    </Section>
   )
 }
 
@@ -1029,16 +1023,14 @@ function JavaStep({
   )
 
   return (
-    <section className="panel">
-      <div className="chart-head">
-        <h2 className="panel__title">用哪个 Java 跑</h2>
-        <p className="chart-head__meta">
-          {required > 0
-            ? `${core ? coreLabel(core) : '这个版本'} 需要 Java ${required} 或更高`
-            : '服务端是个 jar，得有 Java 才能跑起来'}
-        </p>
-      </div>
-
+    <Section
+      title="用哪个 Java 跑"
+      note={
+        required > 0
+          ? `${core ? coreLabel(core) : '这个版本'} 需要 Java ${required} 或更高`
+          : '服务端是个 jar，得有 Java 才能跑起来'
+      }
+    >
       {required > 0 && !covered && (
         <div className="alert alert--warn">
           机器上还没有能跑这个版本的 Java。下面装一个 Java {required}，几十秒的事，
@@ -1166,12 +1158,12 @@ function JavaStep({
                   安装 Java {installMajor ?? ''} JRE
                 </Button>
               )}
-              <span className="file-toolbar__hint">装好会自动选上，不用回头改。</span>
+              <span className="muted">装好会自动选上，不用回头改。</span>
             </div>
           </>
         )}
       </div>
-    </section>
+    </Section>
   )
 }
 
@@ -1256,12 +1248,7 @@ function BasicsStep({
   const tooMuch = total > 0 && maxMemoryMB * 1024 * 1024 > total * 0.8
 
   return (
-    <section className="panel">
-      <div className="chart-head">
-        <h2 className="panel__title">叫什么，放在哪</h2>
-        <p className="chart-head__meta">名字随时能改，目录建好之后就不方便动了</p>
-      </div>
-
+    <Section title="叫什么，放在哪" note="名字随时能改，目录建好之后就不方便动了">
       <label className="field">
         <span>实例名称</span>
         <input
@@ -1372,7 +1359,7 @@ function BasicsStep({
         <span>崩溃后自动重启</span>
         <small>连续失败 5 次后放弃，不会无限重启一个起不来的服务端。</small>
       </label>
-    </section>
+    </Section>
   )
 }
 
@@ -1389,13 +1376,7 @@ function ServerStep({
 }) {
   return (
     <>
-      <section className="panel panel--form">
-        <div className="panel__aside">
-          <h2 className="panel__title">服务器设置</h2>
-          <p className="panel__note">开服前要先定下来的几项。</p>
-        </div>
-
-        <div className="panel__body">
+      <Section form title="服务器设置" note="开服前要先定下来的几项。">
         <p className="chart-note">
           这些写进 <code>server.properties</code>，之后在「服务器配置」页随时能改 ——
           除了存档名和种子：世界一旦生成，改它们等于换一个世界。
@@ -1479,11 +1460,9 @@ function ServerStep({
           <span>正版验证</span>
           <small>关掉才能让离线账号进服，同时也意味着任何人都能顶着别人的名字进来。</small>
         </label>
-        </div>
-      </section>
+      </Section>
 
-      <section className={eula ? 'panel' : 'panel panel--warn'}>
-        <h2 className="panel__title">Minecraft EULA</h2>
+      <Section tone={eula ? 'default' : 'warn'} title="Minecraft EULA">
         <label className="checkbox checkbox--stacked">
           <input type="checkbox" checked={eula} onChange={(e) => onEula(e.target.checked)} />
           <span>
@@ -1497,7 +1476,7 @@ function ServerStep({
             不同意也能建实例，但服务端启动后会立刻退出 —— 这是 Mojang 定的，不是面板。
           </small>
         </label>
-      </section>
+      </Section>
     </>
   )
 }
@@ -1530,13 +1509,7 @@ function ProxyStep({
 }) {
   return (
     <>
-      <section className="panel panel--form">
-        <div className="panel__aside">
-          <h2 className="panel__title">代理端设置</h2>
-          <p className="panel__note">代理端和普通服务端要填的不是一套。</p>
-        </div>
-
-        <div className="panel__body">
+      <Section form title="代理端设置" note="代理端和普通服务端要填的不是一套。">
         <p className="chart-note">
           这些写进 <code>velocity.toml</code>，之后在「代理配置」页随时能改。
           子服务器留到那一页添加 —— 那时候它们才存在。
@@ -1573,25 +1546,27 @@ function ProxyStep({
             这类标签会生效，和服务端的 <code>§</code> 颜色码不是一套。
           </small>
         </label>
-        </div>
-      </section>
+      </Section>
 
-      <section className="panel">
-        <h2 className="panel__title">转发密钥</h2>
-        <p className="chart-note">
-          面板会把它写进实例目录的 <code>forwarding.secret</code>。
-          {(forwarding === 'modern' || forwarding === 'bungeeguard') && (
-            <>
-              {' '}
-              每个子服也要填同一个值 —— Paper 是{' '}
-              <code>config/paper-global.yml</code> 里的 <code>proxies.velocity</code>：
-              打开 <code>enabled</code>、粘贴 <code>secret</code>，同时把子服自己的
-              <code> online-mode</code> 关掉。
-            </>
-          )}
-        </p>
+      <Section
+        title="转发密钥"
+        note={
+          <>
+            面板会把它写进实例目录的 <code>forwarding.secret</code>。
+            {(forwarding === 'modern' || forwarding === 'bungeeguard') && (
+              <>
+                {' '}
+                每个子服也要填同一个值 —— Paper 是{' '}
+                <code>config/paper-global.yml</code> 里的 <code>proxies.velocity</code>：
+                打开 <code>enabled</code>、粘贴 <code>secret</code>，同时把子服自己的
+                <code> online-mode</code> 关掉。
+              </>
+            )}
+          </>
+        }
+      >
         <code className="asset__conn">{secret}</code>
-      </section>
+      </Section>
     </>
   )
 }
@@ -1640,12 +1615,7 @@ function ConfirmStep({
     .join(' · ')
 
   return (
-    <section className="panel">
-      <div className="chart-head">
-        <h2 className="panel__title">确认一下</h2>
-        <p className="chart-head__meta">按下创建之前，磁盘上什么都还没变</p>
-      </div>
-
+    <Section title="确认一下" note="按下创建之前，磁盘上什么都还没变">
       <dl className="wizard-summary">
         <div>
           <dt>名称</dt>
@@ -1747,7 +1717,7 @@ function ConfirmStep({
       )}
 
       {error && <div className="alert alert--error">{error}</div>}
-    </section>
+    </Section>
   )
 }
 
@@ -1777,8 +1747,7 @@ function Finished({
   const ready = hasCore && (proxy || eula) && failed.length === 0
 
   return (
-    <section className="panel">
-      <h2 className="panel__title">「{instance.name}」建好了</h2>
+    <Section title={`「${instance.name}」建好了`}>
       {/* The directory is the one fact worth repeating here: it is where the
           world will be, and for an auto-generated path this is the first time
           anyone sees it. */}
@@ -1824,6 +1793,6 @@ function Finished({
           {busy ? '启动中…' : '立即开服'}
         </Button>
       </div>
-    </section>
+    </Section>
   )
 }

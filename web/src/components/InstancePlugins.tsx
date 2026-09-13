@@ -15,6 +15,7 @@ import type { PluginController } from '../usePlugins'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { DataTable, DataTableHead, DataTableRow } from './DataTable'
+import { EmptyState } from './EmptyState'
 import { InstancePluginDrawer } from './InstancePluginDrawer'
 import { Menu } from './Menu'
 import type { MenuItem } from './Menu'
@@ -24,7 +25,8 @@ import { PluginBrowse, loaderLabel } from './PluginBrowse'
 import { CompatBadge } from './PluginCompat'
 import { PluginInstallDialog, loaderNote } from './PluginInstallDialog'
 import { Select } from './Select'
-import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
+import { SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
+import { Toolbar } from './Toolbar'
 
 /** Which rows the status chips are showing, inside 已安装. */
 type StatusFilter = 'all' | 'broken' | 'duplicate'
@@ -169,33 +171,19 @@ export function InstancePlugins({
         </>
       }
       lead="这台服务器目录里的插件：哪些能更新、哪些出了问题。「市场」按这台服的核心和版本判兼容性，不过下载来的东西进的是面板插件库。"
-      aside={
+      actions={
         !loading && (
-          <div className="page__actions">
-            {/* Every version number on this page comes out of the panel's own
-                records. This is the button that checks the records still
-                describe the directory — see plugin/reconcile.go. */}
-            <Button
-              disabled={busy}
-              title="把插件目录逐个文件算 SHA-256，跟面板的账本比一遍"
-              onClick={() =>
-                void act(async () => {
-                  const report = await api.reconcileInstancePlugins(instance.id)
-                  const bad = report.drift + report.missing + report.foreign
-                  return bad === 0
-                    ? `对完了 ${report.checked} 条记录，账本和目录一致`
-                    : `对完了 ${report.checked} 条记录，${bad} 处对不上`
-                })
-              }
-            >
-              对账
-            </Button>
+          <>
+            {/* Two buttons and an overflow, like every other page head. This
+                one carried four actions and a link in a row, which is five
+                claims on the same glance — and the two that matter are the
+                two ways a plugin gets onto this server. */}
             <Button onClick={() => onOpenSection('files', listing?.entries[0]?.dir)}>
               上传 jar
             </Button>
             {/* Two different acts, and the panel keeps them apart. This one
-                copies something the library already holds; the link beside it
-                goes off to acquire one. */}
+                copies something the library already holds; the menu item
+                beside it goes off to acquire one. */}
             <Button
               variant="primary"
               disabled={available.length === 0}
@@ -204,13 +192,38 @@ export function InstancePlugins({
             >
               从插件库安装
             </Button>
-            {/* 市场 is a tab on this page now, so the link out is to the
-                shelf the downloads land on — which is the half of the trip
-                this page cannot do. */}
-            <button className="link" onClick={onOpenLibraryList}>
-              去插件库
-            </button>
-          </div>
+            <Menu
+              className="btn btn--icon"
+              ariaLabel="更多操作"
+              title="更多操作"
+              items={[
+                {
+                  /* Every version number on this page comes out of the
+                     panel's own records. This checks the records still
+                     describe the directory — see plugin/reconcile.go. */
+                  label: '对账',
+                  disabled: busy,
+                  onSelect: () =>
+                    void act(async () => {
+                      const report = await api.reconcileInstancePlugins(instance.id)
+                      const bad = report.drift + report.missing + report.foreign
+                      return bad === 0
+                        ? `对完了 ${report.checked} 条记录，账本和目录一致`
+                        : `对完了 ${report.checked} 条记录，${bad} 处对不上`
+                    }),
+                },
+                {
+                  /* 市场 is a tab on this page now, so the way out is to the
+                     shelf the downloads land on — which is the half of the
+                     trip this page cannot do. */
+                  label: '去插件库',
+                  onSelect: onOpenLibraryList,
+                },
+              ]}
+            >
+              ⋯
+            </Menu>
+          </>
         )
       }
     />
@@ -221,11 +234,7 @@ export function InstancePlugins({
       <div className="stack">
         {head}
         <SkeletonScreen inPage label="正在读取插件…">
-          <SkeletonPanel title={false}>
-            <div className="chart-head">
-              <Skeleton w="72px" h={15} />
-              <Skeleton w="52%" h={12} />
-            </div>
+          <SkeletonPanel head title={false}>
             <SkeletonRows rows={5} />
           </SkeletonPanel>
         </SkeletonScreen>
@@ -338,28 +347,38 @@ export function InstancePlugins({
       ) : (
         <>
 
-      <TargetLine listing={listing} />
-
-      {tab === 'installed' && entries.length > 0 && (
-        <div className="filters__chips">
-          <Chip active={filter === 'all'} onClick={() => setFilter('all')}>
-            全部 {entries.length}
-          </Chip>
-          <Chip active={filter === 'broken'} onClick={() => setFilter('broken')} tone="danger">
-            异常 {broken}
-          </Chip>
-          {duplicate > 0 && (
-            <Chip active={filter === 'duplicate'} onClick={() => setFilter('duplicate')} tone="warn">
-              重名 {duplicate}
+      {/* Why the 兼容 column reads the way it does. It is a fact about the
+          list below, so it rides the list's own toolbar rather than standing
+          as a paragraph of its own above the filters — two lines of context
+          over a three-chip row was most of the air on this pane. */}
+      {tab === 'installed' && entries.length > 0 ? (
+        <Toolbar>
+          <div className="toolbar__chips">
+            <Chip active={filter === 'all'} onClick={() => setFilter('all')}>
+              全部 {entries.length}
             </Chip>
-          )}
-        </div>
+            <Chip active={filter === 'broken'} onClick={() => setFilter('broken')} tone="danger">
+              异常 {broken}
+            </Chip>
+            {duplicate > 0 && (
+              <Chip
+                active={filter === 'duplicate'}
+                onClick={() => setFilter('duplicate')}
+                tone="warn"
+              >
+                重名 {duplicate}
+              </Chip>
+            )}
+          </div>
+          <TargetLine listing={listing} />
+        </Toolbar>
+      ) : (
+        <TargetLine listing={listing} />
       )}
 
       {entries.length === 0 ? (
-        <div className="welcome__empty">
-          <p>这台服务器还没有插件。</p>
-          <p className="muted">
+        <EmptyState title="这台服务器还没有插件。">
+          <p>
             {available.length > 0 ? (
               <>
                 插件库里有 {available.length} 个可以装的，用上面的「从插件库安装」挑一个。
@@ -375,7 +394,7 @@ export function InstancePlugins({
             )}
             也可以把 jar 直接传进 <code>plugins/</code>，面板会认出来。
           </p>
-        </div>
+        </EmptyState>
       ) : (
         <DataTable className="plugin-table" role="table" aria-label="已装插件">
           {/* 版本 sits next to 插件 because they are one fact — which build of
@@ -509,9 +528,7 @@ export function InstancePlugins({
               }}
             />
           ))}
-          {shown.length === 0 && (
-            <p className="plugin-table__empty muted">这个筛选下没有插件。</p>
-          )}
+          {shown.length === 0 && <EmptyState inline title="这个筛选下没有插件。" />}
         </DataTable>
       )}
 
@@ -605,7 +622,7 @@ function LibraryPicker({
         </p>
 
         <input
-          className="filters__search"
+          className="toolbar__search"
           value={query}
           placeholder="按名称筛选"
           onChange={(event) => setQuery(event.target.value)}
@@ -684,6 +701,10 @@ function RestartBanner({
 /** What the compatibility badges on this page were judged against. Worth
  *  saying: 未知兼容性 caused by the panel not recognising the server jar looks
  *  identical to 未知兼容性 caused by a plugin publishing nothing. */
+/** What the 兼容 column is judged against, as the trailing fact on the
+ *  listing's toolbar. The unknown case is a sentence rather than a fact, so
+ *  it keeps its own line — it is explaining a whole column, not labelling
+ *  one. */
 function TargetLine({ listing }: { listing: InstancePluginList | null }) {
   const target = listing?.target
   if (!target?.loader && !target?.mcVersion) {
@@ -695,10 +716,10 @@ function TargetLine({ listing }: { listing: InstancePluginList | null }) {
     )
   }
   return (
-    <p className="chart-note">
+    <span className="toolbar__count">
       按 {loaderLabel(target.loader)} {target.mcVersion} 判断兼容性
       {target.source === 'jar-name' && '（从核心文件名猜的，可能不准）'}
-    </p>
+    </span>
   )
 }
 
@@ -715,7 +736,7 @@ function Chip({
 }) {
   return (
     <button
-      className={`chip${active ? ' chip--active' : ''}${tone ? ` chip--${tone}` : ''}`}
+      className={`chip${active ? ' chip--on' : ''}${tone ? ` chip--${tone}` : ''}`}
       onClick={onClick}
     >
       {children}

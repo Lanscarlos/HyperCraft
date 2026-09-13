@@ -6,6 +6,7 @@ import type { PluginController } from '../usePlugins'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Page } from './Page'
+import { Section } from './Section'
 
 /**
  * The credentials private repositories are read with, and the proxy their jars
@@ -100,11 +101,10 @@ function GitHubTokenPanel({
   }
 
   return (
-    <section className="panel">
-      <div className="chart-head">
-        <h2 className="panel__title">GitHub 访问令牌</h2>
-        {tokens.length > 0 && <Badge tone="ok">{tokens.length} 个</Badge>}
-      </div>
+    <Section
+      title="GitHub 访问令牌"
+      tools={tokens.length > 0 && <Badge tone="ok">{tokens.length} 个</Badge>}
+    >
       <p className="chart-note">
         自己写的插件发在私有仓库里时，面板得先能证明「我是你」才看得见它。可以存好几个 ——
         自己号一个、公司 org 一个 —— 添加插件时挑用哪个，不用为了让一把钥匙开两把锁去开
@@ -114,7 +114,7 @@ function GitHubTokenPanel({
       </p>
 
       {tokens.length > 0 && (
-        <div className="setting-list">
+        <div className="rowlist">
           {tokens.map((entry) => (
             <TokenRow
               key={entry.id}
@@ -162,7 +162,7 @@ function GitHubTokenPanel({
           </Button>
         </div>
       </form>
-    </section>
+    </Section>
   )
 }
 
@@ -212,8 +212,8 @@ function TokenRow({
   }
 
   return (
-    <div className="tokenrow">
-      <div className="tokenrow__head">
+    <div className="row tokenrow">
+      <div className="row__main">
         <input
           className="tokenrow__name"
           value={name}
@@ -322,11 +322,7 @@ function MirrorPanel({
   const selection = editing ? 'custom' : current
 
   return (
-    <section className="panel">
-      <div className="chart-head">
-        <h2 className="panel__title">下载源</h2>
-        <p className="chart-head__meta">{mirrors.length + 1} 个可选，一次用一个</p>
-      </div>
+    <Section title="下载源" meta={<>{mirrors.length + 1} 个可选，一次用一个</>}>
       <p className="chart-note">
         只影响 jar 的下载速度：版本列表、更新检查始终直连 api.github.com（这些代理不代理它），
         私有仓库的 jar 也只走认证过的 API，不会经过任何第三方。
@@ -336,12 +332,10 @@ function MirrorPanel({
           answers to one question, and a bordered list is what says so. The
           prefix goes in a column of its own — it is the half that tells you
           whether a proxy is the one you set up. */}
-      <div className="setting-list">
+      <div className="rowlist">
         {mirrors.map((mirror) => (
           <label
-            className={`setting-row setting-row--pick${
-              selection === mirror.id ? ' setting-row--on' : ''
-            }`}
+            className={`row row--pick${selection === mirror.id ? ' row--on' : ''}`}
             key={mirror.id}
           >
             <input
@@ -354,20 +348,18 @@ function MirrorPanel({
                 void onChange(mirror.id)
               }}
             />
-            <span className="setting-row__label">
+            <span className="row__label">
               <span>{mirror.name}</span>
               <small>{mirror.note}</small>
             </span>
-            <span className="setting-row__control">
+            <span className="row__control">
               {mirror.prefix && <code>{mirror.prefix}</code>}
             </span>
           </label>
         ))}
 
         <label
-          className={`setting-row setting-row--pick${
-            selection === 'custom' ? ' setting-row--on' : ''
-          }`}
+          className={`row row--pick${selection === 'custom' ? ' row--on' : ''}`}
         >
           <input
             type="radio"
@@ -376,11 +368,11 @@ function MirrorPanel({
             disabled={busy}
             onChange={() => setEditing(true)}
           />
-          <span className="setting-row__label">
+          <span className="row__label">
             <span>自定义</span>
             <small>自己搭的代理，填前缀，GitHub 链接会拼在它后面</small>
           </span>
-          <span className="setting-row__control" />
+          <span className="row__control" />
         </label>
       </div>
 
@@ -406,6 +398,6 @@ function MirrorPanel({
         选定某一个源时，它不通会自动回落到 GitHub 直连 —— 代理挂掉该是重试一次，而不是装不上插件。
         「直连 GitHub」则不会绕道任何第三方。下载完成后，任务条会写明这一次实际是从哪里下的。
       </p>
-    </section>
+    </Section>
   )
 }

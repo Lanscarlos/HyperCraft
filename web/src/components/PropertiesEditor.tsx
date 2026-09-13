@@ -9,6 +9,7 @@ import type {
 } from '../types'
 import { Button } from './Button'
 import { ConfigLayout, ConfigRow, ConfigSaveBar, changedKeys } from './ConfigLayout'
+import { Section } from './Section'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
 /**
@@ -172,8 +173,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
   return (
     <form className="stack" onSubmit={save}>
       {eula && !eula.accepted && (
-        <section className="panel panel--warn">
-          <h3 className="panel__title">还没有同意 EULA</h3>
+        <Section tone="warn" title="还没有同意 EULA">
           <p>
             Minecraft 服务端在 <code>eula.txt</code> 里写入{' '}
             <code>eula=true</code> 之前不会启动。请先阅读{' '}
@@ -189,7 +189,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
           <Button variant="primary" type="button" onClick={acceptEula}>
             我已阅读并同意 EULA
           </Button>
-        </section>
+        </Section>
       )}
 
       {!data.exists && (
@@ -218,8 +218,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
           const rows = group.props.filter((prop) => !onlyChanged || changed.has(prop.key))
           if (rows.length === 0) return null
           return (
-            <section className="panel cfg__group" data-group={group.id} key={group.id}>
-              <h3 className="panel__title">{group.label}</h3>
+            <Section className="cfg__group" data-group={group.id} key={group.id} title={group.label}>
               {rows.map((prop) => (
                 <ConfigRow
                   key={prop.key}
@@ -231,16 +230,18 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
                   onChange={(v) => set(prop.key, v)}
                 />
               ))}
-            </section>
+            </Section>
           )
         })}
 
         {extras.length > 0 && (!onlyChanged || extras.some((key) => changed.has(key))) && (
-          <section className="panel cfg__group" data-group="cfg-extras">
-            <h3 className="panel__title">未分类 ({extras.length})</h3>
-            <p className="muted">
-              面板不认识的键 —— 模组、插件或者更新的服务端加的。原样可编辑，保存时不会丢。
-            </p>
+          <Section
+            className="cfg__group"
+            data-group="cfg-extras"
+            title="未分类"
+            count={extras.length}
+            note="面板不认识的键 —— 模组、插件或者更新的服务端加的。原样可编辑，保存时不会丢。"
+          >
             <div className="props-grid">
               {extras
                 .filter((key) => !onlyChanged || changed.has(key))
@@ -258,7 +259,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
                   </label>
                 ))}
             </div>
-          </section>
+          </Section>
         )}
 
         {error && <div className="alert alert--error">{error}</div>}

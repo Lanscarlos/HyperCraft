@@ -13,6 +13,7 @@ import {
   type KnownFlag,
 } from '../jvmFlags'
 import { Card } from './Card'
+import { EmptyState } from './EmptyState'
 import { Select } from './Select'
 
 /**
@@ -105,9 +106,9 @@ export function JVMArgsEditor({
   return (
     <div className="jvmargs">
       {rows.length === 0 && (
-        <p className="jvmargs__empty">
-          还没有 JVM 参数。上面的预设可以一次填好一套，也可以自己加。
-        </p>
+        <EmptyState inline title="还没有 JVM 参数。">
+          上面的预设可以一次填好一套，也可以自己加。
+        </EmptyState>
       )}
 
       <div className="jvmargs__grid">

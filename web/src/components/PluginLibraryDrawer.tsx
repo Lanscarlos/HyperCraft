@@ -680,14 +680,17 @@ function VersionsTab({
 
   return (
     <section className="drawer__section">
-      <div className="chart-head">
+      {/* A drawer section is not a page section — it has no card around it —
+          so it keeps its own head rather than borrowing .panel__head. What it
+          does share is the shape: title on the left, controls at the end. */}
+      <div className="drawer__section-head">
         <h3>
           版本
           <span className="muted">
             {releases ? ` 上游 ${rows.length} 个 · 库里 ${item.versions.length} 个` : ` 库里 ${item.versions.length} 个`}
           </span>
         </h3>
-        <div className="chart-head__actions">
+        <div className="actions">
           <Button
             icon
             disabled={busy || loading || item.source.kind === 'local'}
