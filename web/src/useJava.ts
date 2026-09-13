@@ -32,6 +32,12 @@ export interface JavaController {
   ) => Promise<void>
   cancel: () => Promise<void>
   remove: (id: string) => Promise<void>
+  /** Registers a Java already on this machine. detected marks one the panel
+   *  proposed off PATH and the operator accepted, rather than typed. */
+  register: (path: string, detected?: boolean) => Promise<void>
+  unregister: (id: string) => Promise<void>
+  /** Re-reads the version of a registered path, for a JDK upgraded in place. */
+  reprobe: (id: string) => Promise<void>
 }
 
 /**
@@ -136,6 +142,33 @@ export function useJava(enabled: boolean): JavaController {
     [act, refresh, refreshMajors],
   )
 
+  const register = useCallback(
+    (path: string, detected = false) =>
+      act(async () => {
+        await api.registerJava(path, detected)
+        await refresh()
+      }, '登记失败'),
+    [act, refresh],
+  )
+
+  const unregister = useCallback(
+    (id: string) =>
+      act(async () => {
+        await api.unregisterJava(id)
+        await refresh()
+      }, '删除失败'),
+    [act, refresh],
+  )
+
+  const reprobe = useCallback(
+    (id: string) =>
+      act(async () => {
+        await api.probeJava(id)
+        await refresh()
+      }, '重新检测失败'),
+    [act, refresh],
+  )
+
   return {
     overview,
     majors,
@@ -148,5 +181,8 @@ export function useJava(enabled: boolean): JavaController {
     install,
     cancel,
     remove,
+    register,
+    unregister,
+    reprobe,
   }
 }

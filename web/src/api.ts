@@ -31,6 +31,7 @@ import type {
   JavaMajor,
   JavaOverview,
   JavaInstallJob,
+  JavaRuntime,
   InstanceInput,
   FileListing,
   InstanceMetrics,
@@ -631,6 +632,17 @@ export const api = {
   cancelJavaInstall: () => request<void>('POST', '/api/java/install/cancel'),
   deleteJavaRuntime: (id: string) =>
     request<void>('DELETE', `/api/java/${encodeURIComponent(id)}`),
+  /** Registers a Java already on this machine. The panel probes the path
+   *  before recording it, so a path that will not answer `java -version`
+   *  comes back as an error rather than as an entry nobody can reason about. */
+  registerJava: (path: string, detected = false) =>
+    request<JavaRuntime>('POST', '/api/java/registry', { path, detected }),
+  /** Drops a registered path. Refused while a server is running on it; the
+   *  response names the stopped instances that were pointing at it. */
+  unregisterJava: (id: string) =>
+    request<{ usedBy: string[] }>('DELETE', `/api/java/registry/${encodeURIComponent(id)}`),
+  probeJava: (id: string) =>
+    request<JavaRuntime>('POST', `/api/java/registry/${encodeURIComponent(id)}/probe`),
 
   databaseOverview: () => request<DatabaseOverview>('GET', '/api/databases'),
   databaseVersions: (engine: string) =>

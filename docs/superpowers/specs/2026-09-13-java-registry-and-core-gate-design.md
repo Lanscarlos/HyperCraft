@@ -139,8 +139,10 @@ type Entry struct {
 
 `Store` 之上加一层，输出统一形状，每条带：
 
-- `source`：`managed`（面板安装）/ `external`（登记的路径）
+- `origin`：`managed`（面板安装）/ `external`（登记的路径）
 - `valid`：List 时 `stat` 算出；`JavaPath == "java"` 走 `exec.LookPath`
+
+字段叫 `origin` 而不是 `source`：`javaruntime` 包里已经有 `Source` 了——`SourceAuto` / `SourceOfficial` 是**下载镜像**（`source.go:26-29`），还有一个 `Source` 结构体类型。两个都叫 Source 的枚举，一个讲 CDN 一个讲这个 JDK 是不是面板自己解压的，会被当成同一个。
 
 版本信息在**登记那一刻**用 `probe`（`store.go:261`，现在只服务 `DetectSystem`）探一次存下，之后不重探，除非用户点「重新检测」。
 
