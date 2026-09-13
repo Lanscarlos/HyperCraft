@@ -8,6 +8,7 @@ import type { JavaController } from '../useJava'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Page } from './Page'
+import { Section } from './Section'
 import { Select } from './Select'
 import { Shelf } from './Shelf'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
@@ -201,8 +202,8 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
       wide
       title="Java 环境"
       lead={JAVA_LEAD}
-      aside={
-        <p className="meta-chips">
+      facts={
+        <>
           {/* One fact, not four. The head used to carry os/arch, a count, a
               total and the distribution's name as four separate chips, none of
               which is the thing you came to read. What is worth a glance is
@@ -217,7 +218,7 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
               {overview.platform.os}/{overview.platform.arch}
             </span>
           )}
-        </p>
+        </>
       }
     >
       {overview.platform.warning && (
@@ -229,21 +230,19 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
           at the top of the page rather than inside the card that started it. */}
       {job && <InstallStatus job={job} distributions={distributions} />}
 
-      <section className="panel">
-        <div className="chart-head">
-          <h2 className="panel__title">可用的 Java</h2>
-          <p className="chart-head__meta">
-            {runtimes.length > 0
-              ? `${runtimes.length} 个可选，面板自己装的占用 ${formatBytes(totalSize)}`
-              : '还没有可选的 Java'}
-          </p>
-          <div className="chart-head__tools">
-            <button className="link" type="button" onClick={() => setAdding((on) => !on)}>
-              {adding ? '取消' : '添加本机 Java'}
-            </button>
-          </div>
-        </div>
-
+      <Section
+        title="可用的 Java"
+        meta={
+          runtimes.length > 0
+            ? `${runtimes.length} 个可选，面板自己装的占用 ${formatBytes(totalSize)}`
+            : '还没有可选的 Java'
+        }
+        tools={
+          <button className="link" type="button" onClick={() => setAdding((on) => !on)}>
+            {adding ? '取消' : '添加本机 Java'}
+          </button>
+        }
+      >
         {adding && (
           <form className="java-add" onSubmit={submitPath}>
             <input
@@ -294,19 +293,16 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
             ))}
           </Shelf>
         )}
-      </section>
+      </Section>
 
       {/* 可安装 used to be a page of its own, and 下载设置 another. Both are on
           this one now: the catalogue is a line per build rather than a screen
           of chooser tiles, and where those builds come from is two selects in
           this card's head — which is where a property of the download belongs,
           rather than behind a second navigation step. */}
-      <section className="panel">
+      <Section title="可安装">
         {majors.length === 0 ? (
           <>
-            <div className="chart-head">
-              <h2 className="panel__title">可安装</h2>
-            </div>
             <p className="muted">
               没能从 {distributionName} 取到可安装的版本列表 —— 通常是这台机器连不上外网。
               已装的 Java 不受影响，仍然可以正常启动服务器。
@@ -314,9 +310,12 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
           </>
         ) : (
           <>
-            <div className="chart-head">
-              <h2 className="panel__title">可安装</h2>
-              <div className="chart-head__tools">
+            {/* The tools ride the list rather than the section head: with no
+                versions to install there is nothing for a mirror picker to
+                pick for, and a head that changes shape between the two states
+                reads as two different cards. */}
+            <div className="toolbar">
+              <div className="toolbar__tools">
                 {distributions.length > 1 && (
                   <Select
                     value={distribution ?? ''}
@@ -464,7 +463,7 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
             </p>
           </>
         )}
-      </section>
+      </Section>
 
       <p className="chart-note">
         服务端 jar 本身不在这里 —— 那在

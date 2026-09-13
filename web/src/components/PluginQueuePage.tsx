@@ -51,25 +51,25 @@ export function PluginQueuePage({ plugins }: { plugins: PluginController }) {
       wide
       title="下载队列"
       lead={`插件库最多同时下 ${MAX_CONCURRENT} 个 jar，多出来的排队等。下载归守护进程管，关掉标签页也会下完。这里下到的都是面板插件库，装到哪台服是「插件列表」和实例自己的「插件」页上的事。`}
-      aside={
-        <div className="page__actions">
-          <Button
-            disabled={plugins.busy || history.length === 0}
-            onClick={() => void plugins.clearFinished().then(() => toast('已清空下载记录'))}
-          >
-            清空记录
-          </Button>
-          <Button
-            variant="danger"
-            disabled={plugins.busy || live.length === 0}
-            title="停掉正在下和排队中的全部任务"
-            onClick={() =>
-              void plugins.cancel().then(() => toast(`已取消 ${live.length} 个下载`))
-            }
-          >
-            全部取消
-          </Button>
-        </div>
+      actions={
+        <>
+        <Button
+          disabled={plugins.busy || history.length === 0}
+          onClick={() => void plugins.clearFinished().then(() => toast('已清空下载记录'))}
+        >
+          清空记录
+        </Button>
+        <Button
+          variant="danger"
+          disabled={plugins.busy || live.length === 0}
+          title="停掉正在下和排队中的全部任务"
+          onClick={() =>
+            void plugins.cancel().then(() => toast(`已取消 ${live.length} 个下载`))
+          }
+        >
+          全部取消
+        </Button>
+        </>
       }
     >
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}

@@ -6,6 +6,7 @@ import type { PluginController } from '../usePlugins'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Page } from './Page'
+import { Section } from './Section'
 
 /**
  * The credentials private repositories are read with, and the proxy their jars
@@ -322,11 +323,7 @@ function MirrorPanel({
   const selection = editing ? 'custom' : current
 
   return (
-    <section className="panel">
-      <div className="chart-head">
-        <h2 className="panel__title">下载源</h2>
-        <p className="chart-head__meta">{mirrors.length + 1} 个可选，一次用一个</p>
-      </div>
+    <Section title="下载源" meta={<>{mirrors.length + 1} 个可选，一次用一个</>}>
       <p className="chart-note">
         只影响 jar 的下载速度：版本列表、更新检查始终直连 api.github.com（这些代理不代理它），
         私有仓库的 jar 也只走认证过的 API，不会经过任何第三方。
@@ -406,6 +403,6 @@ function MirrorPanel({
         选定某一个源时，它不通会自动回落到 GitHub 直连 —— 代理挂掉该是重试一次，而不是装不上插件。
         「直连 GitHub」则不会绕道任何第三方。下载完成后，任务条会写明这一次实际是从哪里下的。
       </p>
-    </section>
+    </Section>
   )
 }

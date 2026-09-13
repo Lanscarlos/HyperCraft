@@ -889,7 +889,7 @@ export function FileManager({
              mode nobody finds stays a mode nobody finds. Beside the title is
              where every other page in the panel keeps the thing it does, and
              on this page that corner was empty. */
-          aside={
+          actions={
             roomy ? (
               <button
                 type="button"

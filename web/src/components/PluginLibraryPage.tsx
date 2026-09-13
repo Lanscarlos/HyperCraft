@@ -191,48 +191,48 @@ export function PluginLibraryPage({
       wide
       title="插件列表"
       lead="按插件看，而不是按服务器看：哪个插件在哪几台服上、版本对不对得上、账本和实例目录里的文件是不是同一份。单台服的增删启停在实例自己的「插件」页里。"
-      aside={
-        <div className="page__actions">
-          {/* The one button on this page whose whole result is "nothing
-              changed" most of the time. Without something said out loud, a
-              check that found no new releases and a check that never ran look
-              identical from in front of the screen — which is how it came to
-              be pressed three times in a row. */}
-          <Button
-            disabled={plugins.busy || rows.length === 0}
-            title="逐个问上游有没有新版本。要花 GitHub API 配额 —— 匿名一小时 60 次。"
-            onClick={() =>
-              void plugins.checkAll().then(async (library) => {
-                await refresh()
-                if (library) toast(checkSummary(library.plugins))
-              })
-            }
-          >
-            检查全部更新
-          </Button>
-          {/* Every way a plugin gets into the library, in one place. They were
-              scattered across three pages and a settings tab, which meant the
-              answer to "how do I add this jar" depended on where the jar came
-              from — a distinction that matters to the panel and to nobody
-              standing in front of it. */}
-          <Menu
-            className="btn btn--primary"
-            title="添加插件"
-            ariaLabel="添加插件"
-            items={[
-              { label: '从市场搜索…', onSelect: () => onOpenView('browse') },
-              { label: '从 GitHub 仓库…', onSelect: () => setAddingSource(true) },
-              { label: '导入本地 jar…', onSelect: () => setImporting(true) },
-              {
-                label: '扫描库外来源…',
-                onSelect: () => void reconcileAll(),
-                disabled: busy || instances.length === 0,
-              },
-            ]}
-          >
-            + 添加插件 ▾
-          </Menu>
-        </div>
+      actions={
+        <>
+        {/* The one button on this page whose whole result is "nothing
+            changed" most of the time. Without something said out loud, a
+            check that found no new releases and a check that never ran look
+            identical from in front of the screen — which is how it came to
+            be pressed three times in a row. */}
+        <Button
+          disabled={plugins.busy || rows.length === 0}
+          title="逐个问上游有没有新版本。要花 GitHub API 配额 —— 匿名一小时 60 次。"
+          onClick={() =>
+            void plugins.checkAll().then(async (library) => {
+              await refresh()
+              if (library) toast(checkSummary(library.plugins))
+            })
+          }
+        >
+          检查全部更新
+        </Button>
+        {/* Every way a plugin gets into the library, in one place. They were
+            scattered across three pages and a settings tab, which meant the
+            answer to "how do I add this jar" depended on where the jar came
+            from — a distinction that matters to the panel and to nobody
+            standing in front of it. */}
+        <Menu
+          className="btn btn--primary"
+          title="添加插件"
+          ariaLabel="添加插件"
+          items={[
+            { label: '从市场搜索…', onSelect: () => onOpenView('browse') },
+            { label: '从 GitHub 仓库…', onSelect: () => setAddingSource(true) },
+            { label: '导入本地 jar…', onSelect: () => setImporting(true) },
+            {
+              label: '扫描库外来源…',
+              onSelect: () => void reconcileAll(),
+              disabled: busy || instances.length === 0,
+            },
+          ]}
+        >
+          + 添加插件 ▾
+        </Menu>
+        </>
       }
     >
       {error && <div className="alert alert--error">{error}</div>}

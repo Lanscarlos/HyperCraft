@@ -169,33 +169,19 @@ export function InstancePlugins({
         </>
       }
       lead="这台服务器目录里的插件：哪些能更新、哪些出了问题。「市场」按这台服的核心和版本判兼容性，不过下载来的东西进的是面板插件库。"
-      aside={
+      actions={
         !loading && (
-          <div className="page__actions">
-            {/* Every version number on this page comes out of the panel's own
-                records. This is the button that checks the records still
-                describe the directory — see plugin/reconcile.go. */}
-            <Button
-              disabled={busy}
-              title="把插件目录逐个文件算 SHA-256，跟面板的账本比一遍"
-              onClick={() =>
-                void act(async () => {
-                  const report = await api.reconcileInstancePlugins(instance.id)
-                  const bad = report.drift + report.missing + report.foreign
-                  return bad === 0
-                    ? `对完了 ${report.checked} 条记录，账本和目录一致`
-                    : `对完了 ${report.checked} 条记录，${bad} 处对不上`
-                })
-              }
-            >
-              对账
-            </Button>
+          <>
+            {/* Two buttons and an overflow, like every other page head. This
+                one carried four actions and a link in a row, which is five
+                claims on the same glance — and the two that matter are the
+                two ways a plugin gets onto this server. */}
             <Button onClick={() => onOpenSection('files', listing?.entries[0]?.dir)}>
               上传 jar
             </Button>
             {/* Two different acts, and the panel keeps them apart. This one
-                copies something the library already holds; the link beside it
-                goes off to acquire one. */}
+                copies something the library already holds; the menu item
+                beside it goes off to acquire one. */}
             <Button
               variant="primary"
               disabled={available.length === 0}
@@ -204,13 +190,38 @@ export function InstancePlugins({
             >
               从插件库安装
             </Button>
-            {/* 市场 is a tab on this page now, so the link out is to the
-                shelf the downloads land on — which is the half of the trip
-                this page cannot do. */}
-            <button className="link" onClick={onOpenLibraryList}>
-              去插件库
-            </button>
-          </div>
+            <Menu
+              className="btn btn--icon"
+              ariaLabel="更多操作"
+              title="更多操作"
+              items={[
+                {
+                  /* Every version number on this page comes out of the
+                     panel's own records. This checks the records still
+                     describe the directory — see plugin/reconcile.go. */
+                  label: '对账',
+                  disabled: busy,
+                  onSelect: () =>
+                    void act(async () => {
+                      const report = await api.reconcileInstancePlugins(instance.id)
+                      const bad = report.drift + report.missing + report.foreign
+                      return bad === 0
+                        ? `对完了 ${report.checked} 条记录，账本和目录一致`
+                        : `对完了 ${report.checked} 条记录，${bad} 处对不上`
+                    }),
+                },
+                {
+                  /* 市场 is a tab on this page now, so the way out is to the
+                     shelf the downloads land on — which is the half of the
+                     trip this page cannot do. */
+                  label: '去插件库',
+                  onSelect: onOpenLibraryList,
+                },
+              ]}
+            >
+              ⋯
+            </Menu>
+          </>
         )
       }
     />

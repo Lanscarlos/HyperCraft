@@ -87,8 +87,8 @@ export function DatabasePage({ databases }: { databases: DatabaseController }) {
       wide
       title="数据库环境"
       lead={DB_LEAD}
-      aside={
-        <p className="meta-chips">
+      facts={
+        <>
           {/* The count and how many of them are up, in one chip. The other
               three — os/arch, engine total — are facts about the machine and
               the disk, not about the thing you came to look at. */}
@@ -103,7 +103,7 @@ export function DatabasePage({ databases }: { databases: DatabaseController }) {
               {platform.os}/{platform.arch}
             </span>
           )}
-        </p>
+        </>
       }
     >
       {platform.warning && <div className="alert alert--error">{platform.warning}</div>}
@@ -726,15 +726,11 @@ function EngineList({
 
   if (installs.length === 0) {
     return (
-      <section className="panel">
-        <div className="chart-head">
-          <h2 className="panel__title">已装引擎</h2>
-          <p className="chart-head__meta">引擎是数据库程序本身，一个可以给多个数据库共用</p>
-        </div>
+      <Section title="已装引擎" note="引擎是数据库程序本身，一个可以给多个数据库共用">
         <p className="muted">
           还没有装过。下面挑一个装上 —— 全程不动系统里的服务，也不需要 root 之外的额外配置。
         </p>
-      </section>
+      </Section>
     )
   }
 

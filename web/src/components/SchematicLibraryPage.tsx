@@ -17,6 +17,7 @@ import { Card } from './Card'
 import { Modal } from './Modal'
 import { Page } from './Page'
 import { SchematicDialog } from './SchematicPreview'
+import { Section } from './Section'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
@@ -120,22 +121,17 @@ export function SchematicLibraryPage({
       wide
       title="建筑库"
       lead="面板存着的 .schem 全在这里。入库时就已经解析过，尺寸、方块用量、存档版本都能直接读，装到哪台服也是从这里点。"
-      aside={
-        <p className="meta-chips">
+      facts={
+        <>
           <span>{entries.length > 0 ? `${entries.length} 个建筑` : '建筑库还是空的'}</span>
           {entries.length > 0 && <span>共 {formatBytes(library?.totalSize ?? 0)}</span>}
           {library?.root && <span title={library.root}>存放于 {library.root}</span>}
-        </p>
+        </>
       }
     >
       {error && <div className="alert alert--error">{error}</div>}
 
-      <section className="panel">
-        <div className="chart-head">
-          <h2 className="panel__title">建筑列表</h2>
-          <p className="chart-head__meta">把 .schem 丢进建筑库目录，扫描一下也会出现在这里</p>
-        </div>
-
+      <Section title="建筑列表" note="把 .schem 丢进建筑库目录，扫描一下也会出现在这里">
         <div className="schemlib__bar">
           <input
             className="filters__search"
@@ -198,7 +194,7 @@ export function SchematicLibraryPage({
             ))}
           </div>
         )}
-      </section>
+      </Section>
 
       {opened && <LibraryPreview entry={opened} onClose={() => onOpen(null)} />}
 

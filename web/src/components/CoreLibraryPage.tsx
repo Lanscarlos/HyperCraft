@@ -8,6 +8,7 @@ import { Badge } from './Badge'
 import { Button } from './Button'
 import { CoreCatalogue, isRecommended, useCoreCatalogue } from './CoreCatalogue'
 import { Page } from './Page'
+import { Section } from './Section'
 import { Shelf } from './Shelf'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
@@ -71,12 +72,12 @@ export function CoreLibraryPage({
       wide
       title="服务端核心"
       lead="面板下载的服务端 jar 都在这里存一份。创建实例时直接从这里挑一个复制过去，同一个核心开十个服也只下载一次。"
-      aside={
-        <p className="meta-chips">
+      facts={
+        <>
           <span>{stored.length > 0 ? `${stored.length} 个核心` : '核心库还是空的'}</span>
           {stored.length > 0 && <span>共 {formatBytes(totalSize)}</span>}
           {library?.root && <span title={library.root}>存放于 {library.root}</span>}
-        </p>
+        </>
       }
     >
       {/* A download keeps going after you navigate away, so it is reported at
@@ -85,12 +86,7 @@ export function CoreLibraryPage({
       {job && <JobStatus job={job} />}
       {cores.error && <div className="alert alert--error">{cores.error}</div>}
 
-      <section className="panel">
-        <div className="chart-head">
-          <h2 className="panel__title">核心库</h2>
-          <p className="chart-head__meta">把自己的 jar 丢进核心库目录，也会出现在这里</p>
-        </div>
-
+      <Section title="核心库" note="把自己的 jar 丢进核心库目录，也会出现在这里">
         {stored.length === 0 ? (
           <div className="welcome__empty">
             <p>核心库还是空的。</p>
@@ -105,7 +101,7 @@ export function CoreLibraryPage({
             ))}
           </Shelf>
         )}
-      </section>
+      </Section>
 
       {/* The list of downloadable projects comes from upstream, so this card
           is the one thing on the page that waits on the network — and it used
