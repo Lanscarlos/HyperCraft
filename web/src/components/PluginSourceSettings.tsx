@@ -114,7 +114,7 @@ function GitHubTokenPanel({
       </p>
 
       {tokens.length > 0 && (
-        <div className="setting-list">
+        <div className="rowlist">
           {tokens.map((entry) => (
             <TokenRow
               key={entry.id}
@@ -212,8 +212,8 @@ function TokenRow({
   }
 
   return (
-    <div className="tokenrow">
-      <div className="tokenrow__head">
+    <div className="row tokenrow">
+      <div className="row__main">
         <input
           className="tokenrow__name"
           value={name}
@@ -332,12 +332,10 @@ function MirrorPanel({
           answers to one question, and a bordered list is what says so. The
           prefix goes in a column of its own — it is the half that tells you
           whether a proxy is the one you set up. */}
-      <div className="setting-list">
+      <div className="rowlist">
         {mirrors.map((mirror) => (
           <label
-            className={`setting-row setting-row--pick${
-              selection === mirror.id ? ' setting-row--on' : ''
-            }`}
+            className={`row row--pick${selection === mirror.id ? ' row--on' : ''}`}
             key={mirror.id}
           >
             <input
@@ -350,20 +348,18 @@ function MirrorPanel({
                 void onChange(mirror.id)
               }}
             />
-            <span className="setting-row__label">
+            <span className="row__label">
               <span>{mirror.name}</span>
               <small>{mirror.note}</small>
             </span>
-            <span className="setting-row__control">
+            <span className="row__control">
               {mirror.prefix && <code>{mirror.prefix}</code>}
             </span>
           </label>
         ))}
 
         <label
-          className={`setting-row setting-row--pick${
-            selection === 'custom' ? ' setting-row--on' : ''
-          }`}
+          className={`row row--pick${selection === 'custom' ? ' row--on' : ''}`}
         >
           <input
             type="radio"
@@ -372,11 +368,11 @@ function MirrorPanel({
             disabled={busy}
             onChange={() => setEditing(true)}
           />
-          <span className="setting-row__label">
+          <span className="row__label">
             <span>自定义</span>
             <small>自己搭的代理，填前缀，GitHub 链接会拼在它后面</small>
           </span>
-          <span className="setting-row__control" />
+          <span className="row__control" />
         </label>
       </div>
 

@@ -4,6 +4,7 @@ import { api } from '../api'
 import type { HostListing } from '../types'
 import { Button } from './Button'
 import { Modal } from './Modal'
+import { Toolbar } from './Toolbar'
 
 interface Props {
   /** Where to open. Empty starts at the panel's own servers directory. */
@@ -80,20 +81,22 @@ export function PathPicker({ initialPath, onPick, onCancel }: Props) {
         </form>
 
         {listing && listing.shortcuts.length > 0 && (
-          <div className="chart-filters">
-            <span className="chart-filters__label">快捷位置</span>
-            {listing.shortcuts.map((shortcut) => (
-              <button
-                key={shortcut.path}
-                type="button"
-                className={`chip${shortcut.path === current ? ' chip--active' : ''}`}
-                onClick={() => setPath(shortcut.path)}
-                title={shortcut.path}
-              >
-                {shortcut.label}
-              </button>
-            ))}
-          </div>
+          <Toolbar>
+            <span className="toolbar__label">快捷位置</span>
+            <div className="toolbar__chips">
+              {listing.shortcuts.map((shortcut) => (
+                <button
+                  key={shortcut.path}
+                  type="button"
+                  className={`chip${shortcut.path === current ? ' chip--on' : ''}`}
+                  onClick={() => setPath(shortcut.path)}
+                  title={shortcut.path}
+                >
+                  {shortcut.label}
+                </button>
+              ))}
+            </div>
+          </Toolbar>
         )}
 
         {error && <div className="alert alert--error">{error}</div>}

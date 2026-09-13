@@ -14,6 +14,7 @@ import { Page } from './Page'
 import { Section } from './Section'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
+import { Toolbar, ToolbarSearch } from './Toolbar'
 
 /**
  * 建筑市场 and 索引源: where builds come from when they do not come from disk.
@@ -139,16 +140,14 @@ export function SchematicMarket({
       {error && <div className="alert alert--error">{error}</div>}
 
       <section className="panel">
-        <div className="schemlib__bar">
-          <input
-            className="filters__search"
-            type="search"
+        <Toolbar>
+          <ToolbarSearch
             value={query}
             placeholder="搜名称、简介、标签"
             aria-label="搜索建筑市场"
             onChange={(event) => setQuery(event.target.value)}
           />
-          <div className="schemlib__bar-actions">
+          <div className="toolbar__tools">
             <Select
               ariaLabel="按来源筛选"
               value={source}
@@ -165,7 +164,7 @@ export function SchematicMarket({
               管理索引源
             </Button>
           </div>
-        </div>
+        </Toolbar>
 
         {/* One source failing is not the market failing: the others answered,
             and saying so under the results is the difference between "this

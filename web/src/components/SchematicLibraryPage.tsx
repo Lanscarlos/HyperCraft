@@ -21,6 +21,7 @@ import { SchematicDialog } from './SchematicPreview'
 import { Section } from './Section'
 import { Select } from './Select'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
+import { Toolbar, ToolbarSearch } from './Toolbar'
 
 /**
  * 建筑列表: the panel-wide shelf of .schem files.
@@ -133,16 +134,14 @@ export function SchematicLibraryPage({
       {error && <div className="alert alert--error">{error}</div>}
 
       <Section title="建筑列表" note="把 .schem 丢进建筑库目录，扫描一下也会出现在这里">
-        <div className="schemlib__bar">
-          <input
-            className="filters__search"
-            type="search"
+        <Toolbar>
+          <ToolbarSearch
             value={query}
             placeholder="搜名称、文件名、标签、作者"
             aria-label="搜索建筑"
             onChange={(event) => setQuery(event.target.value)}
           />
-          <div className="schemlib__bar-actions">
+          <div className="toolbar__tools">
             <Button
               variant="primary"
               onClick={() => picker.current?.click()}
@@ -166,7 +165,7 @@ export function SchematicLibraryPage({
               event.target.value = ''
             }}
           />
-        </div>
+        </Toolbar>
 
         {uploads && <UploadReport results={uploads} onDismiss={() => setUploads(null)} />}
 

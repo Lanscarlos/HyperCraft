@@ -32,7 +32,9 @@ import { PluginImportDialog } from './PluginImportDialog'
 import { PluginInstallDialog } from './PluginInstallDialog'
 import { PluginLibraryDrawer } from './PluginLibraryDrawer'
 import { PluginSourceDialog } from './PluginSourceDialog'
+import { Section } from './Section'
 import { StatusDot } from './StatusDot'
+import { Toolbar } from './Toolbar'
 
 /**
  * 插件列表 — every plugin the panel holds, and what is actually running.
@@ -568,7 +570,8 @@ function FilterChips({
   const live = CHIPS.filter((status) => counts[status] > 0)
 
   return (
-    <div className="chips" role="group" aria-label="按状态筛选">
+    <Toolbar>
+      <div className="toolbar__chips" role="group" aria-label="按状态筛选">
       <button
         className={`chip${filter === 'all' ? ' chip--on' : ''}`}
         aria-pressed={filter === 'all'}
@@ -587,7 +590,8 @@ function FilterChips({
           {statusLabel(status)} <b>{counts[status]}</b>
         </button>
       ))}
-    </div>
+      </div>
+    </Toolbar>
   )
 }
 
@@ -934,17 +938,18 @@ function ForeignSection({
   onOpenInstance: (id: string) => void
 }) {
   return (
-    <section className="foreign">
-      <h2 className="foreign__title">
-        <span className="pdot pdot--foreign" aria-hidden="true" />
-        库外来源 · {jars.length} 个 jar
-      </h2>
-      <p className="foreign__lead">
-        这些文件在实例的插件目录里，但库里没有它们的记录 —— 手动传上去的，或者从备份还原来的。
-        面板读了它们的 plugin.yml 才知道是什么；收编进库之后就跟别的插件一样能装到别的服、能比版本、能回滚。
-        库里没见过的 jar 会原样存一份进去当成一个版本，文件不动；它没有上游，所以不会有更新提示。
-      </p>
-
+    <Section
+      className="foreign"
+      tone="warn"
+      title={
+        <>
+          <span className="pdot pdot--foreign" aria-hidden="true" />
+          库外来源
+        </>
+      }
+      count={`${jars.length} 个 jar`}
+      note="这些文件在实例的插件目录里，但库里没有它们的记录 —— 手动传上去的，或者从备份还原来的。面板读了它们的 plugin.yml 才知道是什么；收编进库之后就跟别的插件一样能装到别的服、能比版本、能回滚。库里没见过的 jar 会原样存一份进去当成一个版本，文件不动；它没有上游，所以不会有更新提示。"
+    >
       <div className="foreign__rows">
         {jars.map((jar) => (
           <div className="foreign__row" key={`${jar.instanceId}:${jar.dir}/${jar.fileName}`}>
@@ -980,7 +985,7 @@ function ForeignSection({
           </div>
         ))}
       </div>
-    </section>
+    </Section>
   )
 }
 
@@ -1115,7 +1120,7 @@ function BulkBar({
   return (
     <div className="bulkbar">
       <span>已选 {picked.length} 项</span>
-      <span className="device-row__spacer" />
+      <span className="row__spacer" />
       <Button
         variant="primary"
         disabled={busy || bulkable.length === 0}

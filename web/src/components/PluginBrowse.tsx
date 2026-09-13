@@ -17,6 +17,7 @@ import { CompatBadge } from './PluginCompat'
 import { PluginDrawer } from './PluginDrawer'
 import { PluginIcon } from './PluginIcon'
 import { Select } from './Select'
+import { Toolbar, ToolbarSearch } from './Toolbar'
 
 /**
  * 插件市场 — searching the registries, and downloading into the panel library.
@@ -272,23 +273,25 @@ export function PluginBrowse({
           The button is not a convenience — it is the page's contract: nothing
           goes upstream until it is pressed, and that holds for the rail too. */}
       <form
-        className="browse__search"
         onSubmit={(event) => {
           event.preventDefault()
           apply()
         }}
       >
-        <input
-          ref={box}
-          className="filters__search"
-          value={draft.q}
-          placeholder="搜索插件名称，比如 EssentialsX、LuckPerms —— 按 / 直接聚焦"
-          onChange={(event) => edit({ q: event.target.value })}
-          aria-label="搜索插件"
-        />
-        <Button variant="primary" type="submit" disabled={loading || !dirty}>
-          {loading ? '搜索中…' : '搜索'}
-        </Button>
+        <Toolbar>
+          <ToolbarSearch
+            ref={box}
+            value={draft.q}
+            placeholder="搜索插件名称，比如 EssentialsX、LuckPerms —— 按 / 直接聚焦"
+            onChange={(event) => edit({ q: event.target.value })}
+            aria-label="搜索插件"
+          />
+          <div className="toolbar__tools">
+            <Button variant="primary" type="submit" disabled={loading || !dirty}>
+              {loading ? '搜索中…' : '搜索'}
+            </Button>
+          </div>
+        </Toolbar>
       </form>
 
       <div className="browse__body">

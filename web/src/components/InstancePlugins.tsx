@@ -26,6 +26,7 @@ import { CompatBadge } from './PluginCompat'
 import { PluginInstallDialog, loaderNote } from './PluginInstallDialog'
 import { Select } from './Select'
 import { SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
+import { Toolbar } from './Toolbar'
 
 /** Which rows the status chips are showing, inside 已安装. */
 type StatusFilter = 'all' | 'broken' | 'duplicate'
@@ -346,22 +347,33 @@ export function InstancePlugins({
       ) : (
         <>
 
-      <TargetLine listing={listing} />
-
-      {tab === 'installed' && entries.length > 0 && (
-        <div className="filters__chips">
-          <Chip active={filter === 'all'} onClick={() => setFilter('all')}>
-            全部 {entries.length}
-          </Chip>
-          <Chip active={filter === 'broken'} onClick={() => setFilter('broken')} tone="danger">
-            异常 {broken}
-          </Chip>
-          {duplicate > 0 && (
-            <Chip active={filter === 'duplicate'} onClick={() => setFilter('duplicate')} tone="warn">
-              重名 {duplicate}
+      {/* Why the 兼容 column reads the way it does. It is a fact about the
+          list below, so it rides the list's own toolbar rather than standing
+          as a paragraph of its own above the filters — two lines of context
+          over a three-chip row was most of the air on this pane. */}
+      {tab === 'installed' && entries.length > 0 ? (
+        <Toolbar>
+          <div className="toolbar__chips">
+            <Chip active={filter === 'all'} onClick={() => setFilter('all')}>
+              全部 {entries.length}
             </Chip>
-          )}
-        </div>
+            <Chip active={filter === 'broken'} onClick={() => setFilter('broken')} tone="danger">
+              异常 {broken}
+            </Chip>
+            {duplicate > 0 && (
+              <Chip
+                active={filter === 'duplicate'}
+                onClick={() => setFilter('duplicate')}
+                tone="warn"
+              >
+                重名 {duplicate}
+              </Chip>
+            )}
+          </div>
+          <TargetLine listing={listing} />
+        </Toolbar>
+      ) : (
+        <TargetLine listing={listing} />
       )}
 
       {entries.length === 0 ? (
@@ -612,7 +624,7 @@ function LibraryPicker({
         </p>
 
         <input
-          className="filters__search"
+          className="toolbar__search"
           value={query}
           placeholder="按名称筛选"
           onChange={(event) => setQuery(event.target.value)}
@@ -691,6 +703,10 @@ function RestartBanner({
 /** What the compatibility badges on this page were judged against. Worth
  *  saying: 未知兼容性 caused by the panel not recognising the server jar looks
  *  identical to 未知兼容性 caused by a plugin publishing nothing. */
+/** What the 兼容 column is judged against, as the trailing fact on the
+ *  listing's toolbar. The unknown case is a sentence rather than a fact, so
+ *  it keeps its own line — it is explaining a whole column, not labelling
+ *  one. */
 function TargetLine({ listing }: { listing: InstancePluginList | null }) {
   const target = listing?.target
   if (!target?.loader && !target?.mcVersion) {
@@ -702,10 +718,10 @@ function TargetLine({ listing }: { listing: InstancePluginList | null }) {
     )
   }
   return (
-    <p className="chart-note">
+    <span className="toolbar__count">
       按 {loaderLabel(target.loader)} {target.mcVersion} 判断兼容性
       {target.source === 'jar-name' && '（从核心文件名猜的，可能不准）'}
-    </p>
+    </span>
   )
 }
 
@@ -722,7 +738,7 @@ function Chip({
 }) {
   return (
     <button
-      className={`chip${active ? ' chip--active' : ''}${tone ? ` chip--${tone}` : ''}`}
+      className={`chip${active ? ' chip--on' : ''}${tone ? ` chip--${tone}` : ''}`}
       onClick={onClick}
     >
       {children}

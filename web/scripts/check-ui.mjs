@@ -17,14 +17,9 @@ const CSS = path.join(SRC, 'styles.css')
 
 /** Every class name that appears anywhere in a selector. */
 function definedClasses() {
-  // styles.migrate-*.css are the per-group scratch sheets of the layout
-  // migration; they are folded into styles.css when it lands. Temporary.
-  const sheets = [CSS, ...fs.readdirSync(SRC).filter((f) => /^styles\.migrate-.*\.css$/.test(f)).map((f) => path.join(SRC, f))]
+  const css = fs.readFileSync(CSS, 'utf8')
   const out = new Set()
-  for (const sheet of sheets) {
-    const css = fs.readFileSync(sheet, 'utf8')
-    for (const m of css.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) out.add(m[1])
-  }
+  for (const m of css.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) out.add(m[1])
   return out
 }
 
