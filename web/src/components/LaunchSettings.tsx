@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '../api'
 import { ask } from '../confirm'
+import { formatBytes } from '../format'
 import type {
   InstanceInput,
   InstanceStatus,
@@ -633,17 +634,18 @@ export function LaunchSettings({
           <>
             <label className="field field--md">
               <span>服务端 jar</span>
-              <input
+              <Select
+                allowCustom
+                ariaLabel="服务端 jar"
                 value={form.jar}
-                onChange={(e) => update('jar', e.target.value)}
                 placeholder="server.jar"
-                list={`jars-${instance.id}`}
+                options={jars.map((jar) => ({
+                  value: jar.name,
+                  label: jar.name,
+                  note: formatBytes(jar.size),
+                }))}
+                onChange={(next) => update('jar', next)}
               />
-              <datalist id={`jars-${instance.id}`}>
-                {jars.map((jar) => (
-                  <option key={jar.name} value={jar.name} />
-                ))}
-              </datalist>
               <small>
                 {jars.length > 0
                   ? `上面这个目录下找到 ${jars.length} 个 jar 文件，点输入框可以直接选`

@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import type { ReactNode } from 'react'
 
 import { reducedMotion } from '../motion'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Select } from './Select'
 
@@ -209,7 +210,7 @@ export function ConfigRow({
           the file by hand know the key and not the label, and people who have
           not need the key the moment they search the wiki for it. */}
       <code className="cfg__key">{setting.key}</code>
-      {changed && <span className="badge badge--changed">已修改</span>}
+      {changed && <Badge tone="changed">已修改</Badge>}
     </span>
   )
 

@@ -20,9 +20,11 @@ import type {
 import { pluginArtifacts, statusLabel, versionSize } from '../types'
 import { useDismiss } from '../useDismiss'
 import type { PluginController } from '../usePlugins'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { loaderLabel, sourceLabel } from './PluginBrowse'
 import { PluginIcon } from './PluginIcon'
+import { Select } from './Select'
 
 /**
  * One plugin's detail, over the list rather than instead of it.
@@ -496,9 +498,9 @@ function MatrixRow({
           {use.name}
         </button>
         {use.present && !use.enabled && (
-          <span className="badge badge--muted" title="jar 被改名成 .disabled，服务端不会加载">
+          <Badge tone="muted" title="jar 被改名成 .disabled，服务端不会加载">
             已停用
-          </span>
+          </Badge>
         )}
       </span>
 
@@ -539,9 +541,12 @@ function MatrixRow({
           truth, which is what a plugin that legitimately updated itself needs
           and the only way to clear that finding without overwriting a jar
           somebody wanted. */}
+      {/* None of these is filled. They are row actions in a matrix — a row
+          can carry both a repair and an upgrade at once, and a column of
+          filled buttons is a column with no emphasis in it. */}
       <span className="matrix__act">
         {trouble === 'missing' && (
-          <Button size="small" variant="primary" disabled={busy} onClick={onRepush}>
+          <Button size="small" disabled={busy} onClick={onRepush}>
             重新推送
           </Button>
         )}
@@ -550,7 +555,7 @@ function MatrixRow({
             <Button size="small" disabled={busy} onClick={onAccept}>
               以文件为准
             </Button>
-            <Button size="small" variant="primary" disabled={busy} onClick={onRepush}>
+            <Button size="small" disabled={busy} onClick={onRepush}>
               恢复库内版本
             </Button>
           </>
@@ -564,7 +569,7 @@ function MatrixRow({
           </button>
         )}
         {use.update && (
-          <Button size="small" variant="primary" disabled={busy} onClick={onUpgrade}>
+          <Button size="small" disabled={busy} onClick={onUpgrade}>
             升到 {use.update.version}
           </Button>
         )}
@@ -819,14 +824,14 @@ function VersionGroup({
           {open ? '▾' : '▸'}
         </span>
         <span className="ptable__num vgroup__ver">{entry.version}</span>
-        {entry.prerelease && <span className="badge badge--warn">预发布</span>}
-        {pinned && <span className="badge">已锁定</span>}
+        {entry.prerelease && <Badge tone="warn">预发布</Badge>}
+        {pinned && <Badge>已锁定</Badge>}
         {entry.held ? (
-          <span className="badge badge--ok">
+          <Badge tone="ok">
             库里已有{artifacts.length > 1 && ` · ${artifacts.length} 个 jar`}
-          </span>
+          </Badge>
         ) : (
-          <span className="badge badge--muted">未下载</span>
+          <Badge tone="muted">未下载</Badge>
         )}
         <span className="vgroup__meta">
           {formatDate(entry.publishedAt)}
@@ -867,9 +872,9 @@ function VersionGroup({
               {offered.map((asset) => (
                 <div className="offers__row" key={asset.name}>
                   {asset.platform ? (
-                    <span className="badge">{loaderLabel(asset.platform)}</span>
+                    <Badge>{loaderLabel(asset.platform)}</Badge>
                   ) : (
-                    <span className="badge badge--muted">未标平台</span>
+                    <Badge tone="muted">未标平台</Badge>
                   )}
                   <code className="offers__file" title={asset.name}>
                     {asset.name}
@@ -969,13 +974,13 @@ function ArtifactRow({
         </span>
       </span>
       <span className="arow__tags">
-        {artifact.platform && <span className="badge">{loaderLabel(artifact.platform)}</span>}
+        {artifact.platform && <Badge>{loaderLabel(artifact.platform)}</Badge>}
         {artifact.loaders
           ?.filter((loader) => loader !== artifact.platform)
           .map((loader) => (
-            <span className="badge" key={loader}>
+            <Badge key={loader}>
               {loaderLabel(loader)}
-            </span>
+            </Badge>
           ))}
         <span className="arow__size">{formatBytes(artifact.size)}</span>
       </span>
@@ -1132,20 +1137,24 @@ function SettingsTab({
         {item.source.kind === 'github' && (tokens.length > 1 || missingToken) && (
           <label className="field">
             <span>用哪个令牌读</span>
-            <select
+            <Select
+              ariaLabel="用哪个令牌读"
               value={tokenId}
               disabled={busy || saving}
-              onChange={(event) => setTokenId(event.target.value)}
-            >
-              <option value="">默认{tokens.length > 0 ? `（${tokens[0].name}）` : ''}</option>
-              {tokens.map((token) => (
-                <option key={token.id} value={token.id}>
-                  {token.name}
-                  {token.hint ? ` ···${token.hint}` : ''}
-                </option>
-              ))}
-              {missingToken && <option value={tokenId}>已删除的令牌</option>}
-            </select>
+              options={[
+                { value: '', label: `默认${tokens.length > 0 ? `（${tokens[0].name}）` : ''}` },
+                ...tokens.map((token) => ({
+                  value: token.id,
+                  label: token.name,
+                  // The tail of the token, on its own line now rather than run
+                  // onto the name — which is the only way to tell two tokens
+                  // from the same account apart.
+                  note: token.hint ? `···${token.hint}` : undefined,
+                })),
+                ...(missingToken ? [{ value: tokenId, label: '已删除的令牌' }] : []),
+              ]}
+              onChange={setTokenId}
+            />
             <small>
               {missingToken ? (
                 <>这个插件指定的令牌已经不在了，检查更新和下载都会失败 —— 挑一个现有的。</>
@@ -1183,18 +1192,19 @@ function SettingsTab({
         <div className="field-row">
           <label className="field">
             <span>版本锁定</span>
-            <select
+            <Select
+              ariaLabel="版本锁定"
               value={pin}
               disabled={busy || saving}
-              onChange={(event) => setPin(event.target.value)}
-            >
-              <option value="">不锁定</option>
-              {item.versions.map((version) => (
-                <option value={version.tag} key={version.tag}>
-                  {version.version}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: '', label: '不锁定' },
+                ...item.versions.map((version) => ({
+                  value: version.tag,
+                  label: version.version,
+                })),
+              ]}
+              onChange={setPin}
+            />
             <small>
               锁上之后这个插件不再报「有更新」，批量升级也会跳过它 ——
               给「5.4.2 是最后一个能配我们那套改动的版本」用的。
@@ -1310,13 +1320,13 @@ function DependencyTab({
             {declared.depend.map((name) => (
               <li key={name}>
                 <span>{name}</span>
-                <span className="badge badge--warn">必需</span>
+                <Badge tone="warn">必需</Badge>
               </li>
             ))}
             {declared.softDepend.map((name) => (
               <li key={name}>
                 <span>{name}</span>
-                <span className="badge badge--muted">可选</span>
+                <Badge tone="muted">可选</Badge>
               </li>
             ))}
           </ul>
@@ -1340,9 +1350,9 @@ function DependencyTab({
                 ) : (
                   <span>{dep.name}</span>
                 )}
-                <span className={`badge ${dep.required ? 'badge--warn' : 'badge--muted'}`}>
+                <Badge tone={dep.required ? 'warn' : 'muted'}>
                   {dep.required ? '必需' : '可选'}
-                </span>
+                </Badge>
               </li>
             ))}
           </ul>

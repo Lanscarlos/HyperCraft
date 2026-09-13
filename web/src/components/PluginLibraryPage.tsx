@@ -872,14 +872,13 @@ function PrimaryAction({
     case 'drift':
     case 'missing':
       return (
-        <Button variant="primary" size="small" disabled={busy} onClick={onOpen}>
+        <Button size="small" disabled={busy} onClick={onOpen}>
           处理
         </Button>
       )
     case 'update':
       return (
         <Button
-          variant="primary"
           size="small"
           disabled={busy}
           title={`把 ${row.upstream} 下载到库里。装到实例是下一步。`}
@@ -891,7 +890,6 @@ function PrimaryAction({
     case 'behind':
       return (
         <Button
-          variant="primary"
           size="small"
           disabled={busy}
           title={`把落后的实例升到库内最新的 ${row.newest}`}

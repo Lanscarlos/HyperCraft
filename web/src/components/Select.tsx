@@ -34,6 +34,20 @@ interface Props {
   /** Shown when `value` matches no option. */
   placeholder?: string
   title?: string
+  /**
+   * The value may also be typed, not only picked — the box becomes a text
+   * input and the list becomes a suggestion under it.
+   *
+   * This is what the three 服务端 jar fields used a `<datalist>` for, and a
+   * datalist's popup is the platform's: it cannot read a single token, so it
+   * arrived in the panel's pixel face and left in the browser's — the same
+   * complaint this component was written to answer for `<select>`, one field
+   * further down the same form.
+   *
+   * Free text stays free: what is typed is the value, whether or not the list
+   * has a row for it. A jar that has not been downloaded yet still has a name.
+   */
+  allowCustom?: boolean
 }
 
 /** Roughly eight rows. Past that the list scrolls rather than growing: a
@@ -46,6 +60,14 @@ const MIN_WIDTH = 168
 const PAGE = 8
 /** How long a typed prefix stays a prefix. */
 const TYPE_AHEAD = 700
+
+/** Whether a row is worth still showing for what has been typed so far. The
+ *  note counts as well as the label: a jar is picked by its version as often
+ *  as by its name, and the version is what the second line carries. */
+function hints(option: SelectOption, query: string) {
+  const text = `${option.label} ${option.note ?? ''} ${option.value}`.toLowerCase()
+  return text.includes(query.trim().toLowerCase())
+}
 
 /** Where the sheet goes horizontally: as wide as the trigger, never narrower
  *  than a readable list, and never hanging off either edge. The vertical half
@@ -100,11 +122,29 @@ export function Select({
   ariaLabel,
   placeholder,
   title,
+  allowCustom,
 }: Props) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
+  /**
+   * Whether what is in the box was typed since the list was opened.
+   *
+   * Only then does the text narrow the list. Opening a picker that already
+   * holds a value must show the other values — that is what opening it is
+   * for — and filtering on the value it already holds narrows the list to the
+   * row you are standing on, so the only way to reach the rest would be to
+   * empty the box first. A <datalist> does not make you do that and neither
+   * does this.
+   */
+  const [typing, setTyping] = useState(false)
 
-  const button = useRef<HTMLButtonElement | null>(null)
+  // One ref for both triggers — a callback because the button branch and the
+  // input branch are different element types and a single RefObject cannot be
+  // handed to both.
+  const anchorEl = useRef<HTMLElement | null>(null)
+  const hold = useCallback((el: HTMLElement | null) => {
+    anchorEl.current = el
+  }, [])
   const sheet = useRef<HTMLDivElement | null>(null)
   const typed = useRef({ text: '', at: 0 })
 
@@ -119,43 +159,63 @@ export function Select({
   const hide = useCallback(() => setOpen(false), [])
   const { leaving, close } = useDismiss(hide)
 
-  const selected = options.findIndex((option) => option.value === value)
-  const current = selected >= 0 ? options[selected] : null
+  /**
+   * The rows the sheet is showing.
+   *
+   * Under `allowCustom` the box is also the query: what has been typed narrows
+   * the list, which is the behaviour the datalist was there for. Everywhere
+   * else this is the whole list and nothing below it changes.
+   */
+  const shown =
+    allowCustom && typing && value.trim() !== ''
+      ? options.filter((option) => hints(option, value))
+      : options
+
+  const selected = shown.findIndex((option) => option.value === value)
+  const current = selected >= 0 ? shown[selected] : null
 
   /** The first option that can actually be landed on, walking `step` at a time
    *  from `from`. Disabled entries are passed over rather than stopped at, and
    *  the ends do not wrap — same as the control this replaces. */
   const reachable = useCallback(
     (from: number, step: number) => {
-      for (let i = from; i >= 0 && i < options.length; i += step) {
-        if (!options[i].disabled) return i
+      for (let i = from; i >= 0 && i < shown.length; i += step) {
+        if (!shown[i].disabled) return i
       }
       return -1
     },
-    [options],
+    [shown],
   )
 
   const show = useCallback(() => {
-    if (disabled || options.length === 0) return
-    const start = selected >= 0 && !options[selected].disabled ? selected : reachable(0, 1)
-    setActive(Math.max(start, 0))
+    if (disabled || shown.length === 0) return
+    // Nothing is highlighted when the value can be typed, so Enter still
+    // belongs to the form until an arrow key says otherwise — a datalist
+    // never stole the key that saves the page, and neither does this.
+    if (allowCustom) {
+      setActive(-1)
+      setTyping(false)
+    } else {
+      const start = selected >= 0 && !shown[selected].disabled ? selected : reachable(0, 1)
+      setActive(Math.max(start, 0))
+    }
     setOpen(true)
-  }, [disabled, options, selected, reachable])
+  }, [disabled, shown, selected, reachable, allowCustom])
 
   const commit = useCallback(
     (index: number) => {
-      const option = options[index]
+      const option = shown[index]
       if (!option || option.disabled) return
       // Closed first, then the change — the same order the menus use. A sheet
       // still on screen while the page reflows underneath it reads as a glitch.
       close()
       if (option.value !== value) onChange(option.value)
     },
-    [options, close, onChange, value],
+    [shown, close, onChange, value],
   )
 
   // Stuck to the trigger for as long as it is open; see useAnchor.ts.
-  const anchor = useAnchor(open, button, place)
+  const anchor = useAnchor(open, anchorEl, place)
 
   // Keep the highlighted row on screen, including the one highlighted on open:
   // opening a hundred-version list scrolled to the top, with the version you
@@ -171,7 +231,7 @@ export function Select({
     if (!open) return
     const onDown = (event: PointerEvent) => {
       const target = event.target as Node
-      if (button.current?.contains(target)) return
+      if (anchorEl.current?.contains(target)) return
       if (sheet.current?.contains(target)) return
       close()
     }
@@ -191,19 +251,19 @@ export function Select({
       const prefix = text.toLowerCase()
       // Start after the current row so repeating one letter cycles.
       const from = text.length === 1 ? active + 1 : active
-      for (let step = 0; step < options.length; step += 1) {
-        const index = (from + step) % options.length
-        const option = options[index]
+      for (let step = 0; step < shown.length; step += 1) {
+        const index = (from + step) % shown.length
+        const option = shown[index]
         if (!option.disabled && option.label.toLowerCase().startsWith(prefix)) {
           setActive(index)
           return
         }
       }
     },
-    [active, options],
+    [active, shown],
   )
 
-  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     const { key } = event
 
     /**
@@ -223,7 +283,12 @@ export function Select({
     }
 
     if (!open) {
-      if (key === 'ArrowDown' || key === 'ArrowUp' || key === 'Enter' || key === ' ') {
+      // Space and Enter open a button. In a text box they are a space and a
+      // save, so an arrow is the only key that reopens a closed list there.
+      const opens = allowCustom
+        ? key === 'ArrowDown' || key === 'ArrowUp'
+        : key === 'ArrowDown' || key === 'ArrowUp' || key === 'Enter' || key === ' '
+      if (opens) {
         take()
         show()
       }
@@ -233,7 +298,7 @@ export function Select({
     const step = (delta: number) => {
       take()
       const next = reachable(
-        Math.min(Math.max(active + delta, 0), options.length - 1),
+        Math.min(Math.max(active + delta, 0), shown.length - 1),
         Math.sign(delta),
       )
       // Nothing reachable that way (a run of disabled entries at the end):
@@ -251,13 +316,21 @@ export function Select({
       case 'PageUp':
         return step(-PAGE)
       case 'Home':
-        take()
-        return setActive(Math.max(reachable(0, 1), 0))
       case 'End':
+        // The caret's, in a text box. Only the list's when there is no caret.
+        if (allowCustom) return
         take()
-        return setActive(Math.max(reachable(options.length - 1, -1), 0))
-      case 'Enter':
+        return setActive(
+          key === 'Home' ? Math.max(reachable(0, 1), 0) : Math.max(reachable(shown.length - 1, -1), 0),
+        )
       case ' ':
+        if (allowCustom) return
+        take()
+        return commit(active)
+      case 'Enter':
+        // Nothing highlighted means nothing was picked: the key goes back to
+        // the form, which is where a datalist always left it.
+        if (allowCustom && active < 0) return
         take()
         return commit(active)
       case 'Escape':
@@ -269,6 +342,9 @@ export function Select({
         // the reader on a control they have already finished with.
         return setOpen(false)
       default:
+        // Type-ahead is how a list without a text box is searched. With one,
+        // the typing is the search already.
+        if (allowCustom) return
         if (key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
           take()
           typeAhead(key)
@@ -278,63 +354,9 @@ export function Select({
 
   const trigger = ['select', className].filter(Boolean).join(' ')
 
-  if (coarse) {
-    return (
-      <select
-        className={trigger}
-        value={value}
-        disabled={disabled}
-        aria-label={ariaLabel}
-        title={title}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {!current && <option value={value}>{placeholder ?? value}</option>}
-        {options.map((option) => (
-          <option key={option.value} value={option.value} disabled={option.disabled}>
-            {option.note ? `${option.label} · ${option.note}` : option.label}
-          </option>
-        ))}
-      </select>
-    )
-  }
-
-  return (
-    <>
-      <button
-        ref={button}
-        type="button"
-        className={trigger}
-        disabled={disabled || options.length === 0}
-        title={title}
-        role="combobox"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? listId : undefined}
-        aria-activedescendant={open ? optionId(active) : undefined}
-        aria-label={ariaLabel}
-        onClick={() => (open ? close() : show())}
-        onKeyDown={onKeyDown}
-      >
-        <span className="select__value">{current?.label ?? placeholder ?? value}</span>
-        <svg
-          className="select__chevron"
-          width="12"
-          height="12"
-          viewBox="0 0 12 12"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="m2.5 4.5 3.5 3.5 3.5-3.5" />
-        </svg>
-      </button>
-
-      {open &&
-        anchor &&
-        createPortal(
+  const list =
+    open && anchor && shown.length > 0
+      ? createPortal(
           <div
             ref={sheet}
             id={listId}
@@ -354,7 +376,7 @@ export function Select({
             // non-focusable row would otherwise dump focus on <body>.
             onMouseDown={(event) => event.preventDefault()}
           >
-            {options.map((option, index) => (
+            {shown.map((option, index) => (
               <div
                 key={option.value}
                 id={optionId(index)}
@@ -391,7 +413,122 @@ export function Select({
             ))}
           </div>,
           document.body,
-        )}
+        )
+      : null
+
+  /**
+   * The typed branch. No native fallback on a phone, unlike the one below: a
+   * `<select>` cannot hold a name that is not in its list, and holding one is
+   * the entire reason this mode exists. The sheet is what a thumb gets too,
+   * and its rows are already the size a thumb needs.
+   */
+  if (allowCustom) {
+    return (
+      <>
+        <div className="combo" data-open={open || undefined}>
+          <input
+            ref={hold}
+            type="text"
+            className={trigger}
+            value={value}
+            disabled={disabled}
+            title={title}
+            placeholder={placeholder}
+            aria-label={ariaLabel}
+            autoComplete="off"
+            spellCheck={false}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={open}
+            aria-controls={open ? listId : undefined}
+            aria-activedescendant={open && active >= 0 ? optionId(active) : undefined}
+            onChange={(event) => {
+              onChange(event.target.value)
+              setTyping(true)
+              // Back to nothing highlighted: the list has just been re-filtered
+              // under the old index, and Enter must not commit whatever row
+              // happens to have slid into that slot.
+              setActive(-1)
+              setOpen(true)
+            }}
+            onFocus={show}
+            onClick={show}
+            onKeyDown={onKeyDown}
+          />
+          <svg
+            className="select__chevron combo__chevron"
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m2.5 4.5 3.5 3.5 3.5-3.5" />
+          </svg>
+        </div>
+        {list}
+      </>
+    )
+  }
+
+  if (coarse) {
+    return (
+      <select
+        className={trigger}
+        value={value}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        title={title}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {!current && <option value={value}>{placeholder ?? value}</option>}
+        {options.map((option) => (
+          <option key={option.value} value={option.value} disabled={option.disabled}>
+            {option.note ? `${option.label} · ${option.note}` : option.label}
+          </option>
+        ))}
+      </select>
+    )
+  }
+
+  return (
+    <>
+      <button
+        ref={hold}
+        type="button"
+        className={trigger}
+        disabled={disabled || options.length === 0}
+        title={title}
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={open ? optionId(active) : undefined}
+        aria-label={ariaLabel}
+        onClick={() => (open ? close() : show())}
+        onKeyDown={onKeyDown}
+      >
+        <span className="select__value">{current?.label ?? placeholder ?? value}</span>
+        <svg
+          className="select__chevron"
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m2.5 4.5 3.5 3.5 3.5-3.5" />
+        </svg>
+      </button>
+      {list}
     </>
   )
 }

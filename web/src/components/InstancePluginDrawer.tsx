@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { formatBytes, formatDate } from '../format'
 import type { InstancePlugin } from '../types'
 import { useDismiss } from '../useDismiss'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { loaderLabel } from './PluginBrowse'
 import { CompatBadge } from './PluginCompat'
@@ -292,9 +293,9 @@ function DependencySection({
           return (
             <li key={name}>
               <span>{name}</span>
-              <span className={`badge ${here ? 'badge--live' : required ? 'badge--danger' : 'badge--muted'}`}>
+              <Badge tone={here ? 'live' : required ? 'danger' : 'muted'}>
                 {here ? '已装' : '没装'}
-              </span>
+              </Badge>
             </li>
           )
         })}

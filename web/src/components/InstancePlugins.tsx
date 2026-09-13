@@ -12,6 +12,7 @@ import type {
   PendingPluginChange,
 } from '../types'
 import type { PluginController } from '../usePlugins'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { DataTable, DataTableHead, DataTableRow } from './DataTable'
 import { InstancePluginDrawer } from './InstancePluginDrawer'
@@ -622,7 +623,7 @@ function LibraryPicker({
                   {item.usedBy.length > 0 && ` · ${item.usedBy.join('、')} 在用`}
                 </small>
               </span>
-              <span className="badge">{item.versions[0]?.version}</span>
+              <Badge>{item.versions[0]?.version}</Badge>
             </button>
           ))}
           {shown.length === 0 && <p className="muted">没有匹配的插件。</p>}
@@ -669,7 +670,11 @@ function RestartBanner({
           {pending.length > 4 && ` 等 ${pending.length} 项`}
         </p>
       </div>
-      <Button variant="primary" disabled={busy} onClick={onRestart}>
+      {/* Plain inside a coloured alert. The banner already is the emphasis —
+          it has a warn surface, a border and the top of the pane. A filled
+          button on top of that is the same claim made twice, and it would be
+          the second filled button on a screen whose first one is 从插件库安装. */}
+      <Button disabled={busy} onClick={onRestart}>
         立即重启
       </Button>
     </div>
@@ -785,14 +790,14 @@ function PluginRow({
         )}
         {(!entry.managed || clashes.length > 0) && (
           <span className="plugin-table__tags">
-            {!entry.managed && <span className="badge">自行放入</span>}
+            {!entry.managed && <Badge>自行放入</Badge>}
             {clashes.length > 0 && (
-              <span
-                className="badge badge--warn"
+              <Badge
+                tone="warn"
                 title={`跟这些文件声明了同一个插件名：${clashes.join('、')}`}
               >
                 重名 {clashes.length + 1}
-              </span>
+              </Badge>
             )}
           </span>
         )}
@@ -968,18 +973,18 @@ function short(sha?: string): string {
 
 function StatusCell({ entry, live }: { entry: InstancePlugin; live: boolean }) {
   if (entry.missing) {
-    return <span className="badge badge--danger">文件不见了</span>
+    return <Badge tone="danger">文件不见了</Badge>
   }
   if (entry.failure) {
-    return <span className="badge badge--danger">加载失败</span>
+    return <Badge tone="danger">加载失败</Badge>
   }
   // The books and the file disagree. Above every other state on this row: what
   // is loaded is not what the record says is loaded, so "运行中 2.3.66" would
   // be a version number about a different file.
   if (entry.recon === 'drift') {
     return (
-      <span
-        className={`badge ${entry.selfUpdate ? 'badge--muted' : 'badge--danger'}`}
+      <Badge
+        tone={entry.selfUpdate ? 'muted' : 'danger'}
         title={
           entry.selfUpdate
             ? `这个插件被允许自更新，所以只记录不告警。磁盘上是 ${short(entry.sha256)}，账本里是 ${short(entry.recordSha)}。`
@@ -987,7 +992,7 @@ function StatusCell({ entry, live }: { entry: InstancePlugin; live: boolean }) {
         }
       >
         {entry.selfUpdate ? '已自更新' : '哈希不匹配'}
-      </span>
+      </Badge>
     )
   }
   // A change the running process has not seen. Never "已停用" on its own while
@@ -995,22 +1000,22 @@ function StatusCell({ entry, live }: { entry: InstancePlugin; live: boolean }) {
   // tell.
   if (entry.pendingAction && live) {
     return (
-      <span className="badge badge--warn" title="这台服务器启动之后改的，进程还没看到">
+      <Badge tone="warn" title="这台服务器启动之后改的，进程还没看到">
         {entry.enabled ? '已启用' : '已禁用'} · 待重启
-      </span>
+      </Badge>
     )
   }
   if (!entry.enabled) {
-    return <span className="badge badge--warn">已停用</span>
+    return <Badge tone="warn">已停用</Badge>
   }
   if (!live) {
-    return <span className="badge">未运行</span>
+    return <Badge>未运行</Badge>
   }
   return (
-    <span className="badge badge--live">
+    <Badge tone="live">
       <span className="status__dot status__dot--running" />
       运行中
-    </span>
+    </Badge>
   )
 }
 

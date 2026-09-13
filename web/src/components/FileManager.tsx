@@ -15,6 +15,7 @@ import { highlight, langOf } from '../highlight'
 import { toast } from '../toast'
 import { useMediaQuery } from '../useMediaQuery'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { FileIcon, extensionOf } from './FileIcon'
 import { FileTree } from './FileTree'
@@ -882,6 +883,28 @@ export function FileManager({
         <PageHead
           title="文件"
           lead="服务器目录里的东西：jar、存档、配置和日志。点一个文件直接打开，可以同时开着几个对照。"
+          /* Not one more button in the listing's toolbar: 上传 / 新建 / 刷新 all
+             do something to a file, and this one changes what the screen is
+             for. It sat among them looking like one of them, which is how a
+             mode nobody finds stays a mode nobody finds. Beside the title is
+             where every other page in the panel keeps the thing it does, and
+             on this page that corner was empty. */
+          aside={
+            roomy ? (
+              <button
+                type="button"
+                className="file-mode"
+                onClick={() => setEditing(true)}
+                title="把这一屏交给编辑器：列表让位，目录树带上文件"
+              >
+                <Glyph name="doc" className="file-mode__glyph" />
+                <span className="file-mode__text">
+                  <b>编辑模式</b>
+                  <small>列表让位，目录树带上文件</small>
+                </span>
+              </button>
+            ) : undefined
+          }
         />
       )}
 
@@ -1013,35 +1036,16 @@ export function FileManager({
               <Glyph name="up" />
             </button>
             <Breadcrumb dir={dir} onNavigate={(next) => void load(next)} />
-
-            {/* Not one more button in the toolbar below: 上传 / 新建 / 刷新 all
-                do something to the files, and this one changes what the screen
-                is for. It sat fourth among them looking like the third, which
-                is how a mode nobody finds stays a mode nobody finds. Up here it
-                has a shape of its own, a line saying what it does, and a row
-                that does not wrap it away when the column narrows. */}
-            {roomy && (
-              <button
-                type="button"
-                className="file-mode"
-                onClick={() => setEditing(true)}
-                title="把这一屏交给编辑器：列表让位，目录树带上文件"
-              >
-                <Glyph name="doc" className="file-mode__glyph" />
-                <span className="file-mode__text">
-                  <b>编辑模式</b>
-                  <small>列表让位，目录树带上文件</small>
-                </span>
-              </button>
-            )}
           </div>
 
           <div className="file-toolbar">
             {/* A confined role can walk through the folders on the way to the one
                 it may edit, but not write in them. Offering the buttons there
                 would be offering a request the panel refuses. */}
+            {/* Plain: with a file open beside it the editor's 保存 is the
+                filled one, and a toolbar that is filled whether or not you
+                came here to upload competes with it on every screen. */}
             <Button
-              variant="primary"
               onClick={() => fileInput.current?.click()}
               disabled={busy || !listing.writable}
               title={listing.writable ? undefined : readOnlyHere}
@@ -1354,7 +1358,7 @@ function FileRow({
           >
             {entry.name}
           </button>
-          {entry.symlink && <span className="badge">符号链接</span>}
+          {entry.symlink && <Badge>符号链接</Badge>}
         </div>
       </td>
       <td className="num">{entry.isDir ? '—' : formatBytes(entry.size)}</td>

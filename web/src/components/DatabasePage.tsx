@@ -13,6 +13,7 @@ import { jobMeta } from '../types'
 import type { DatabaseController } from '../useDatabases'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { FieldHelp } from './FieldHelp'
 import { Page } from './Page'
 import { Select } from './Select'
 import { Shelf } from './Shelf'
@@ -235,8 +236,11 @@ function ServiceList({
 
           {usable.length > 0 && (
             <div className="actions">
+              {/* Hands the emphasis over the moment the form opens: 创建 is
+                  then the thing being asked for, and this one is a disabled
+                  copy of a decision already made. */}
               <Button
-                variant="primary"
+                variant={creating ? 'default' : 'primary'}
                 type="button"
                 disabled={databases.busy || creating}
                 onClick={() => setCreating(true)}
@@ -579,13 +583,15 @@ function CreateForm({
   }
 
   return (
-    <section className="panel">
-      <div className="chart-head">
-        <h2 className="panel__title">新建数据库</h2>
-        <p className="chart-head__meta">留空的都会用默认值</p>
+    <section className="panel panel--form">
+      <div className="panel__aside">
+        <h3 className="panel__title">新建数据库</h3>
+        <p className="panel__note">建一个库和它自己的账号，留空的都会用默认值。</p>
       </div>
 
-      <div className="field">
+      <div className="panel__body">
+
+      <div className="field field--md">
         <span>用哪个引擎</span>
         <Select
           value={installId}
@@ -600,7 +606,7 @@ function CreateForm({
         {engine && <small>{engine.note}</small>}
       </div>
 
-      <div className="field">
+      <div className="field field--md">
         <span>库名</span>
         <input
           value={database}
@@ -608,12 +614,15 @@ function CreateForm({
           placeholder="minecraft"
           spellCheck={false}
         />
-        <small>
-          字母开头，只能用字母、数字和下划线。给每个服务器一个库比共用一个更好排查问题。
-        </small>
+        <small>字母开头，只能用字母、数字和下划线。</small>
+        <FieldHelp summary="几个服务器可以共用一个库吗？">
+          可以，但默认一台服一个库。共用时两边插件的表名是一样的，数据就混在一张表里 ——
+          确实要共享（比如整个群组共用一套权限）的时候这正是你要的，其余情况下它只会让
+          「这一行是哪台服写的」变成一个需要查的问题。分开建，备份和迁走某一台服也简单。
+        </FieldHelp>
       </div>
 
-      <div className="field">
+      <div className="field field--md">
         <span>显示名（可选）</span>
         <input
           value={name}
@@ -622,9 +631,12 @@ function CreateForm({
         />
       </div>
 
+      {/* One account, so one line: a username without its password is half a
+          credential, and reading them down a column puts the pair on two
+          separate rows of a form that is mostly optional fields. */}
       {needsAccount && (
-        <>
-          <div className="field">
+        <div className="field-row">
+          <div className="field field--md">
             <span>用户名</span>
             <input
               value={user}
@@ -632,7 +644,7 @@ function CreateForm({
               spellCheck={false}
             />
           </div>
-          <div className="field">
+          <div className="field field--md">
             <span>密码（可选）</span>
             <input
               value={password}
@@ -640,11 +652,14 @@ function CreateForm({
               placeholder="留空则自动生成一个"
               spellCheck={false}
             />
-            <small>
-              至少 8 位，不能有引号、反斜杠和空格 —— 这些字符会破坏插件配置文件和面板生成的初始化语句。
-            </small>
+            <small>至少 8 位，不能有引号、反斜杠和空格。</small>
+            <FieldHelp summary="为什么不能有这几个字符？">
+              插件的配置文件多是 YAML，密码里一个引号就能把那一行断开，服务端启动时报的却是
+              别的错。面板建库时还要拼一条语句把这个账号建出来，反斜杠和空格在那里同样是语法。
+              留空让面板自动生成一个，这些都不用操心。
+            </FieldHelp>
           </div>
-        </>
+        </div>
       )}
 
       <div className="field">
@@ -685,6 +700,7 @@ function CreateForm({
           取消
         </Button>
         <span className="muted">初始化要几秒到几十秒，建好后不会自动启动。</span>
+      </div>
       </div>
     </section>
   )
@@ -983,8 +999,9 @@ function InstallEngine({
             取消安装
           </Button>
         ) : (
+          // The escape hatch, not the main path — that is the 安装 on each
+          // row of the list above, and those are plain.
           <Button
-            variant="primary"
             disabled={busy || custom.trim() === ''}
             onClick={() => void databases.install(engine, custom.trim())}
           >

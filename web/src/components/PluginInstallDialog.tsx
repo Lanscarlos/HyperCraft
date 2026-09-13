@@ -10,6 +10,7 @@ import type {
   PluginInstallTargets,
 } from '../types'
 import { artifactKey, isLive, pluginArtifacts } from '../types'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Modal } from './Modal'
 import { CompatBadge } from './PluginCompat'
@@ -232,16 +233,16 @@ export function PluginInstallDialog({
                   <span className={`status__dot status__dot--${instance.state}`} />
                   <span className="pick-list__name">{instance.name}</span>
                   {item.usedBy.includes(instance.name) && (
-                    <span className="badge">已装，会换成这个版本</span>
+                    <Badge>已装，会换成这个版本</Badge>
                   )}
                   {/* The verdict for the jar *this* server would get, which
                       on a multi-jar release is not the same jar its neighbour
                       gets. Absent when the source published nothing to judge
                       by, which is not a green light — see CompatBadge. */}
                   {jars.length > 1 && jarFor(instance.id)?.platform && (
-                    <span className="badge badge--muted">
+                    <Badge tone="muted">
                       {loaderLabel(jarFor(instance.id)!.platform!)} 构建
-                    </span>
+                    </Badge>
                   )}
                   <CompatBadge compat={verdictOn(instance.id) ?? undefined} />
                 </label>

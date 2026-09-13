@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { ask } from '../confirm'
 import type { Device } from '../types'
+import { Badge } from './Badge'
 import { Page } from './Page'
 
 /**
@@ -75,7 +76,7 @@ export function DevicesPage() {
               <div className="device-row" key={device.id}>
                 <div className="device-row__main">
                   <strong>{device.name}</strong>
-                  {device.current && <span className="badge">当前设备</span>}
+                  {device.current && <Badge>当前设备</Badge>}
                   <span className="device-row__spacer" />
                   <button
                     className="link link--danger"

@@ -185,20 +185,24 @@ function ruleNoSilentOverrides() {
   }
 }
 
-/** Rule: a .panel--form declares both of its columns.
+/** Rule: a .panel--form declares both a head and a body.
  *
- *  The panel is a two-column flex box — an aside carrying the section's title
- *  and one sentence of why, and a body carrying the fields. A section that
- *  forgets the wrappers does not break: it degrades into one flat column of
- *  full-width controls, which looks close enough to right that it survives
- *  review. That is exactly the failure this layout set out to remove, so it is
- *  checked rather than remembered.
+ *  The head carries the section's title and one sentence of why; the body
+ *  carries the fields and stops at the reading measure. A section that forgets
+ *  the wrappers does not break — the fields lose their measure and run to the
+ *  card's edge, which looks close enough to right that it survives review.
+ *  That is the failure this layout set out to remove, so it is checked rather
+ *  than remembered.
+ *
+ *  (These were two columns until the head moved above the body. The wrappers
+ *  are what carry the rules either way, which is why the check outlived the
+ *  layout it was written for.)
  *
  *  Counting occurrences per file rather than parsing JSX nesting: the files
  *  that use .panel--form write one aside and one body per section, so the
  *  counts match when every section is wrapped and diverge the moment one is
  *  missed. A nesting parser would catch more and cost far more. */
-function ruleFormPanelsHaveColumns() {
+function ruleFormPanelsHaveHeadAndBody() {
   for (const file of tsxFiles(SRC)) {
     const src = fs.readFileSync(file, 'utf8')
     const panels = (src.match(/panel--form/g) ?? []).length
@@ -208,24 +212,143 @@ function ruleFormPanelsHaveColumns() {
     if (asides === panels && bodies === panels) continue
     problems.push(
       `${path.relative(SRC, file)} 有 ${panels} 个 .panel--form，` +
-        `但 ${asides} 个 .panel__aside、${bodies} 个 .panel__body —— 每个都要两栏包裹`,
+        `但 ${asides} 个 .panel__aside、${bodies} 个 .panel__body —— 每个都要头和正文两层包裹`,
     )
   }
 }
 
-/** Advisory: one filled button per screen.
+/** Rule: dropdowns are the panel's, not the platform's.
  *
- *  Not an error yet — a dozen components exceed it, and each needs a
- *  judgement about which of its buttons is the primary one. Printed so the
- *  number goes down over time rather than up. */
-function adviseOnePrimaryPerFile() {
-  const over = []
+ *  A native `<select>` is two controls in one: a box the page draws and a
+ *  popup the *platform* draws. `appearance: none` and the rules in styles.css
+ *  win the box; nothing wins the popup. So choosing a Java runtime used to end
+ *  in a Windows 95 list dropping out of a control styled to the millimetre,
+ *  and Select.tsx exists to answer exactly that.
+ *
+ *  `<datalist>` is the same bug wearing the other hat, and it outlived the fix
+ *  by a year in the three 服务端 jar fields — one field below a Select, in the
+ *  same form, in the same screenshot. Neither can read a token, neither fades
+ *  the way every other surface in the panel fades, and neither has anywhere to
+ *  put the second line that is most of why a list is worth offering.
+ *
+ *  Select.tsx is exempt: it owns both branches, including the real `<select>`
+ *  it falls back to on a touch screen, where the platform's picker is the
+ *  better one. */
+const DROPDOWN_EXEMPT = new Set(['components/Select.tsx'])
+
+/** Source with its comments blanked out.
+ *
+ *  Needed because this codebase's comments are prose about the code, so they
+ *  talk about `<select>` and `<datalist>` constantly — InstancePlugins and
+ *  JVMArgsEditor each explain at length why they do *not* use one, and both
+ *  read as violations until the comments are gone. Line comments are only
+ *  taken when the `//` does not follow a `:`, which is what a URL looks like.
+ */
+function withoutComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
+}
+
+function ruleDropdownsAreOurs() {
   for (const file of tsxFiles(SRC)) {
-    const n = (fs.readFileSync(file, 'utf8').match(/variant="primary"/g) ?? []).length
-    if (n > 1) over.push(`${path.relative(SRC, file)} (${n})`)
+    const rel = path.relative(SRC, file)
+    if (DROPDOWN_EXEMPT.has(rel)) continue
+    const src = withoutComments(fs.readFileSync(file, 'utf8'))
+    for (const [tag, hint] of [
+      ['<select', '改用 <Select>'],
+      ['<datalist', '改用 <Select allowCustom>'],
+    ]) {
+      const n = (src.match(new RegExp(`${tag}[\\s>]`, 'g')) ?? []).length
+      if (n > 0) problems.push(`${rel} 用了 ${n} 处原生 ${tag}> —— ${hint}`)
+    }
   }
-  if (over.length > 0) {
-    console.warn(`check-ui 提示: ${over.length} 个组件有多于一个实心按钮 — ${over.join('、')}`)
+}
+
+/** Rule: a badge is the component, not a hand-written class.
+ *
+ *  `.badge` and its nine `--tone` modifiers were spread across 23 files as bare
+ *  strings. That is how `.badge--warn` came to be declared twice with the second
+ *  block dropping its border-color — the warning badge lost its tinted edge and
+ *  nobody noticed, because there was no one place the tone vocabulary lived.
+ *  Now there is, and the point of Badge is that the vocabulary is a union type
+ *  the compiler checks rather than a string anyone can misspell.
+ *
+ *  A <span> is what Badge renders, so a <span> wearing these classes is always
+ *  a Badge that has not been written as one. Any other element is not: 插件列表
+ *  的升级键 is a <button> painted as a badge, and Badge cannot be a button —
+ *  the same exception `<a className="btn">` has from Button, for the same
+ *  reason. Badge.tsx itself is where the strings are supposed to be. */
+function ruleBadgesAreComponents() {
+  for (const file of tsxFiles(SRC)) {
+    const rel = path.relative(SRC, file)
+    if (rel === 'components/Badge.tsx') continue
+    const src = withoutComments(fs.readFileSync(file, 'utf8'))
+    for (const m of src.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
+      // Interpolations out first, so `badge${TONE[x]}` still reads as the token
+      // `badge`. Without this the one in Sidebar walked straight past.
+      const tokens = (m[1] ?? m[2] ?? '').replace(/\$\{[^}]*\}/g, ' ').split(/\s+/)
+      if (!tokens.some((t) => t === 'badge' || t.startsWith('badge--'))) continue
+      const open = src.lastIndexOf('<', m.index)
+      if (!/^<span[\s>]/.test(src.slice(open, open + 6))) continue
+      const line = src.slice(0, open).split('\n').length
+      problems.push(`${rel}:${line} 手写了 .badge —— 改用 <Badge tone="…">`)
+    }
+  }
+}
+
+/** How many filled buttons a file may declare, and why more than one of them
+ *  is still not more than one *screen*.
+ *
+ *  The count is per file because a script cannot see a screen. Most of the time
+ *  that is the same thing; these are the places where it is not — a dialog is
+ *  its own screen, and two branches of a ternary are never both on one. Every
+ *  entry is a promise that someone looked.
+ *
+ *  A file not listed here gets one. Going over fails; coming under only prints,
+ *  because a build that breaks when you remove a filled button is a build that
+ *  argues for keeping it. */
+const PRIMARY_ALLOWED = new Map([
+  ['components/ConfigHistory.tsx', [2, '页面上的「打快照」，和二次确认对话框里的那一下']],
+  ['components/FileManager.tsx', [3, '编辑器的保存，加上重命名与图片预览两个对话框']],
+  ['components/NewInstanceWizard.tsx', [3, '页脚的「下一步」与「创建实例」互斥，加上完成页的「进入控制台」']],
+  ['components/PluginImportDialog.tsx', [2, '同一个对话框的两个状态：导入前与导入后']],
+  ['components/PluginLibraryPage.tsx', [3, '批量条，加上批量安装与批量升级两个确认对话框']],
+  ['components/SchematicLibraryPage.tsx', [3, '页面的「上传建筑」，加上编辑与安装两个对话框']],
+  ['components/ScriptImportDialog.tsx', [2, '同一个对话框的两个状态：读脚本前与读出来之后']],
+  ['components/TerminalSettings.tsx', [3, '终端已开、确认中、未开三种互斥状态各一个']],
+  ['components/UpdatePanel.tsx', [2, '面板上的「立即更新」，和二次确认对话框里的那一下']],
+])
+
+/** Rule: one filled button per screen.
+ *
+ *  A filled button is a claim that this is the thing to do here. Two of them on
+ *  one screen is two claims, and the reader checks both — which is the cost the
+ *  quiet palette was bought to avoid. The rule bites hardest on lists: a row
+ *  action that is filled is filled once per row, and a page where every row is
+ *  filled has no filled button at all.
+ *
+ *  Where a screen has two candidates, the one that stays is what the screen is
+ *  asking for right now — a form's submit, a wizard footer's next, an empty
+ *  state's call to action, the pending item in a banner. The standing entrance
+ *  in a page or card head is not it, and neither is an escape hatch beside the
+ *  main path. */
+function rulePrimaryButtons() {
+  for (const file of tsxFiles(SRC)) {
+    const rel = path.relative(SRC, file)
+    const n = (withoutComments(fs.readFileSync(file, 'utf8')).match(/variant="primary"/g) ?? [])
+      .length
+    const [allowed, why] = PRIMARY_ALLOWED.get(rel) ?? [1, '']
+    if (n > allowed) {
+      problems.push(
+        `${rel} 有 ${n} 个实心按钮，最多 ${allowed} 个` +
+          (why ? `（${why}）` : '') +
+          ' —— 一屏只留那个「此刻要你做的事」，其余降成描边',
+      )
+    } else if (allowed > 1 && n < allowed) {
+      console.warn(
+        `check-ui 提示: ${rel} 只剩 ${n} 个实心按钮了，` +
+          `PRIMARY_ALLOWED 里那条可以改成 ${n} 或删掉`,
+      )
+    }
   }
 }
 
@@ -233,11 +356,13 @@ const RULES = [
   ruleNoUndefinedClasses,
   ruleIconButtonsAreLabelled,
   ruleNoSilentOverrides,
-  ruleFormPanelsHaveColumns,
+  ruleFormPanelsHaveHeadAndBody,
+  ruleDropdownsAreOurs,
+  ruleBadgesAreComponents,
+  rulePrimaryButtons,
 ]
 
 for (const rule of RULES) rule()
-adviseOnePrimaryPerFile()
 
 if (problems.length > 0) {
   console.error(`check-ui: ${problems.length} 处问题\n`)

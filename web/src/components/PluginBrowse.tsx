@@ -9,6 +9,7 @@ import type {
   PluginListing,
   PluginSourceKind,
 } from '../types'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Card } from './Card'
 import { CompatBadge } from './PluginCompat'
@@ -869,7 +870,7 @@ function BrowseCard({
             前往源站
           </a>
         )}
-        <span className="badge browse-card__source">{sourceLabel(listing.source)}</span>
+        <Badge className="browse-card__source">{sourceLabel(listing.source)}</Badge>
       </div>
     </Card>
   )

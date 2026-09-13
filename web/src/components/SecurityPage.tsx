@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '../api'
 import type { AuthEvent, AuthEventKind, User } from '../types'
+import type { BadgeTone } from './Badge'
+import { Badge } from './Badge'
 import { Page } from './Page'
 
 /**
@@ -124,9 +126,9 @@ export function SecurityPage() {
                   <tr key={`${event.at}-${index}`}>
                     <td className="muted">{formatTime(event.at)}</td>
                     <td>
-                      <span className={`badge ${KIND_BADGE[event.kind] ?? ''}`}>
+                      <Badge tone={KIND_BADGE[event.kind] ?? 'neutral'}>
                         {KIND_LABELS[event.kind] ?? event.kind}
-                      </span>
+                      </Badge>
                       {event.count > 1 && <span className="muted"> ×{event.count}</span>}
                       {event.detail && <span className="muted"> {event.detail}</span>}
                     </td>
@@ -163,18 +165,18 @@ const KIND_LABELS: Record<AuthEventKind, string> = {
   'user-deleted': '删除账号',
 }
 
-const KIND_BADGE: Record<AuthEventKind, string> = {
-  signin: 'badge--ok',
-  'signin-failed': 'badge--danger',
-  throttled: 'badge--warn',
-  paired: 'badge--ok',
-  'pair-failed': 'badge--danger',
-  unpaired: '',
-  'password-changed': 'badge--warn',
-  'token-rejected': 'badge--warn',
-  'user-created': 'badge--warn',
-  'user-updated': 'badge--warn',
-  'user-deleted': 'badge--danger',
+const KIND_BADGE: Record<AuthEventKind, BadgeTone> = {
+  signin: 'ok',
+  'signin-failed': 'danger',
+  throttled: 'warn',
+  paired: 'ok',
+  'pair-failed': 'danger',
+  unpaired: 'neutral',
+  'password-changed': 'warn',
+  'token-rejected': 'warn',
+  'user-created': 'warn',
+  'user-updated': 'warn',
+  'user-deleted': 'danger',
 }
 
 /**

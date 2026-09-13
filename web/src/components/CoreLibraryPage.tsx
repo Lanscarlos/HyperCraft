@@ -4,6 +4,7 @@ import { ask } from '../confirm'
 import { formatBytes, formatDate } from '../format'
 import type { DownloadJob, ServerCore } from '../types'
 import type { CoreController } from '../useCores'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { CoreCatalogue, isRecommended, useCoreCatalogue } from './CoreCatalogue'
 import { Page } from './Page'
@@ -197,10 +198,10 @@ function CoreRow({
         <div className="asset__title">
           <span className="asset__label">
             <strong title={title}>{title}</strong>
-            {core.kind === 'proxy' && <span className="badge">代理端</span>}
-            {core.imported && <span className="badge">自行放入</span>}
+            {core.kind === 'proxy' && <Badge>代理端</Badge>}
+            {core.imported && <Badge>自行放入</Badge>}
             {!core.imported && !isRecommended(core.channel) && (
-              <span className="badge badge--warn">{core.channel}</span>
+              <Badge tone="warn">{core.channel}</Badge>
             )}
           </span>
           <span className="asset__sub">
@@ -232,9 +233,9 @@ function CoreRow({
           <span className="asset__users">
             使用中：
             {core.usedBy.map((name) => (
-              <span className="badge" key={name}>
+              <Badge key={name}>
                 {name}
-              </span>
+              </Badge>
             ))}
           </span>
         ) : (

@@ -3877,42 +3877,42 @@ a:hover {
   font-weight: 600;
 }
 
-/* A settings form is two columns: an aside saying what this section is, and a
-   body holding the fields. The width a wide window brings goes to the aside —
-   it does not go into making a text input longer, which is what made this page
-   read like a narrow form someone had dragged sideways.
+/* A settings form is a card like every other card in the panel: its own head,
+   then what the head is about. The head is 段标题 + one sentence of why; the
+   body is the fields.
 
-   This replaced an auto-fit grid whose column count came out of the viewport:
-   in the 1440px instance pane it computed to three ~420px tracks, so a .field-row
-   nested in one of them put a four-digit megabyte box next to a jar name at
-   half its width, and a .checkbox — never in the full-bleed whitelist — took a
-   six-line paragraph into a 300px cell.
+   It used to be two columns — the head stood to the left of the fields, and the
+   width a wide window brought went to it. On paper that reads as "width goes to
+   the guide, not into making a text input longer". On screen it was a caption
+   of two lines standing in a column three hundred pixels wide and four hundred
+   tall, and the emptiness read as a hole in the card rather than as a margin.
+   The arithmetic that was supposed to hold it at 200px did not: flexbox freezes
+   the body once it hits its max-width and hands the leftover to whoever can
+   still grow, which was the head, alone — 282px of it at 1186px of card, 536px
+   at 1440px. Capping it stopped the growth without answering the objection,
+   which was that the column should not be there.
 
-   The wrap is intrinsic, not a breakpoint. 999 against 1 means the body takes
-   essentially all the free space, which pins the aside at its 200px basis
-   without a max-width it could not shed once wrapped; the body's 480px basis
-   is what decides when to wrap, at 200 + 24 + 480 = 704px of card. Below that
-   the body drops to its own line and the aside becomes an ordinary heading.
+   So the head goes where a card's head goes. The body still stops at the
+   reading measure, and the width a wide window brings is now genuinely trailing
+   space — which is what the comment here claimed all along, from the wrong
+   layout.
 
-   The whitelist that used to follow — ten selectors granted grid-column: 1/-1 —
-   is gone with the grid. The body is a vertical flex column, so everything in
-   it is full-bleed by construction and there is nothing left to forget. */
+   .panel is already a flex column, so this modifier no longer overrides the
+   direction. What is left of it is the gap and the two children's own rules,
+   and the guarantee that both wrappers are written (see ruleFormPanelsHaveColumns
+   in check-ui.mjs) — without them the fields lose their measure and run to the
+   card's edge. */
 .panel--form {
-  display: flex;
-  /* .panel is a column; this one is not. Without the override the two grow
-     factors below apply to height, and the aside sits on top of the body with
-     200px of empty card between them. */
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 14px 24px;
-  align-items: start;
+  gap: 14px;
 }
 
+/* The head. Same shape as .chart-head, one sentence quieter: this one is
+   explaining a section of a form, not labelling a chart with a control on it. */
 .panel--form > .panel__aside {
-  flex: 1 1 200px;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-width: var(--content-max);
 }
 
 /* Capped at the reading measure rather than at the card: past ~880px a row of
@@ -3920,7 +3920,6 @@ a:hover {
    trailing space on a wide monitor is deliberate. min-width: 0 because this
    holds paths and textareas, and without it they push the card open. */
 .panel--form > .panel__body {
-  flex: 999 1 480px;
   max-width: var(--content-max);
   min-width: 0;
   display: flex;
@@ -3928,11 +3927,14 @@ a:hover {
   gap: 14px;
 }
 
-/* The aside's one sentence: why this section exists, not what the fields do. */
+/* The head's one sentence: why this section exists, not what the fields do.
+   Reads at the size every other card's subtitle reads at (.chart-head__meta) —
+   as a column caption it was 11px and faint, which is the weight of a footnote,
+   and a footnote is not what the line under a card's title is. */
 .panel__aside .panel__note {
   margin: 0;
-  color: var(--text-faint);
-  font-size: 11px;
+  color: var(--text-dim);
+  font-size: 12px;
   line-height: 1.6;
 }
 
@@ -3942,6 +3944,12 @@ a:hover {
   font-family: var(--font-mono);
   font-size: 11px;
   word-break: break-all;
+}
+
+/* In a form head the gap above is already 4px, so the pull-up would lift the
+   path onto the sentence it sits under. */
+.panel__aside .panel__path {
+  margin-top: 0;
 }
 
 /* The long tail of server.properties: dozens of one-line key/value pairs the
@@ -5341,6 +5349,15 @@ details[open]::details-content {
   flex-wrap: nowrap;
 }
 
+/* Same reason as .actions above: the head's left column claims the row, and a
+   shrinkable aside gets squeezed to its narrowest column — here that is the
+   hint line under 编辑模式 broken across three. It drops under the title whole
+   instead. */
+.page__head .file-mode {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
 /* Beside a title the chips are the secondary half, so they wrap onto a second
    row rather than pushing the lead paragraph down to a narrow column — which
    is what plain max-content sizing does once a long path is among them. */
@@ -6149,14 +6166,16 @@ details[open]::details-content {
 /* 编辑模式 used to be the fourth button in a row of four, and read as the
    third: same height, same border, same weight as 新建文件夹 beside it. It is
    not another thing to do to a file, it is what the screen is for — so it gets
-   a shape none of the buttons have, a line saying what it does, and a row of
-   its own to sit at the end of. Still not filled: 上传文件 is this screen's one
-   solid button, and a second one would be two first things to press. */
+   a shape none of the buttons have and a line saying what it does, and it sits
+   beside the page title, where the panel keeps what a page does. Still not
+   filled: 上传文件 is this screen's one solid button, and a second one would be
+   two first things to press. */
 .file-mode {
   display: flex;
   align-items: center;
-  /* The end of the path row, which is the one line of this panel with room to
-     spare at every width the mode is offered at. */
+  /* Keeps it against the right edge on the row it ends up on — the head's own
+     space-between already does that on the title's row, but once the head
+     wraps this is the only thing holding it there. */
   margin-left: auto;
   gap: 8px;
   padding: 5px 10px 5px 8px;
@@ -14368,6 +14387,57 @@ button.select.input-slim {
 
 .select--block {
   width: 100%;
+}
+
+/* The typed trigger, for the fields whose value may also be a name the list has
+   never heard of (Select's allowCustom). It wears the same `.select` skin as the
+   button opposite — same height, border, focus ring — so the two read as one
+   control with two jobs, and what differs is only what differs: a caret lives in
+   this one.
+
+   The chevron is positioned rather than a flex sibling because an <input> cannot
+   hold a child. That is the same constraint that makes the native branch paint
+   its arrow into the background, and the same reason it needs pointer-events off
+   — it sits over the text box, and a click on it has to reach the box. */
+.combo {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.field .combo {
+  width: 100%;
+}
+
+/* The padding is restated because `.field input` above is a selector heavier
+   than `.select` and sets its own — which cost this box two pixels of height
+   next to the Select beside it, and, worse, the 30px of right margin the
+   chevron needs: at 11px a long jar name runs underneath the arrow.
+
+   min-width: 0 because an <input> carries an intrinsic width from its size
+   attribute, and in a .field-row that floor is what pushes the row open. */
+.combo > input.select {
+  padding: 7px 30px 7px 11px;
+  width: 100%;
+  min-width: 0;
+  cursor: text;
+}
+
+/* Centred on the box rather than on the line, so it stays centred if the field
+   ever grows a second one. */
+.combo__chevron {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+/* The .select[aria-expanded] rule above cannot reach here — the chevron is a
+   sibling of the input, not a child of it, which is the whole point. */
+.combo[data-open='true'] .combo__chevron {
+  transform: translateY(-50%) rotate(180deg);
 }
 
 .select:hover:not(:disabled),
