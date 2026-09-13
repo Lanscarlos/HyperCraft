@@ -256,6 +256,12 @@ func DetectSystem(ctx context.Context) (SystemJava, bool) {
 //	java version "1.8.0_502"
 var versionPattern = regexp.MustCompile(`version "([^"]+)"`)
 
+// Probe asks a java binary what version it is. Exported for the API, which
+// registers a path only after the path answers.
+func Probe(ctx context.Context, javaPath string) (SystemJava, bool) {
+	return probe(ctx, javaPath)
+}
+
 // probe runs a java binary to find out what it is. `java -version` writes to
 // stderr, which is why both streams are captured.
 func probe(ctx context.Context, javaPath string) (SystemJava, bool) {

@@ -275,6 +275,9 @@ func (s *Server) protectedRoutes() []route {
 		rt("GET /api/java/available", s.handleListJavaMajors, authz.CapPanelJava),
 		rt("POST /api/java/install", s.handleInstallJava, authz.CapPanelJava),
 		rt("POST /api/java/install/cancel", s.handleCancelJavaInstall, authz.CapPanelJava),
+		rt("POST /api/java/registry", s.handleRegisterJava, authz.CapPanelJava),
+		rt("DELETE /api/java/registry/{id}", s.handleUnregisterJava, authz.CapPanelJava),
+		rt("POST /api/java/registry/{id}/probe", s.handleProbeJava, authz.CapPanelJava),
 		rt("DELETE /api/java/{id}", s.handleDeleteJava, authz.CapPanelJava),
 
 		// Databases. Panel-wide like the Java runtimes and for the same reason
