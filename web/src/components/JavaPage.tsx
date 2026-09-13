@@ -7,6 +7,7 @@ import type { JavaDistribution, JavaInstallJob, JavaRuntime, SystemJava } from '
 import type { JavaController } from '../useJava'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { EmptyState } from './EmptyState'
 import { Page } from './Page'
 import { Section } from './Section'
 import { Select } from './Select'
@@ -143,22 +144,14 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
     return (
       <Page wide title="Java 环境" lead={JAVA_LEAD}>
         <SkeletonScreen inPage label="正在读取已装的 Java…">
-          <SkeletonPanel title={false}>
-            <div className="chart-head">
-              <Skeleton w="64px" h={15} />
-              <Skeleton w="180px" h={12} />
-            </div>
+          <SkeletonPanel head>
             {/* 已安装 is a list of runtime rows, and how many there are is
                 exactly what is being fetched — so this is the system Java plus
                 one install, the commonest case on a machine that has been set
                 up. */}
             <SkeletonRows rows={2} />
           </SkeletonPanel>
-          <SkeletonPanel title={false}>
-            <div className="chart-head">
-              <Skeleton w="96px" h={15} />
-              <Skeleton w="220px" h={12} />
-            </div>
+          <SkeletonPanel head>
             <Skeleton w="100%" h={34} />
             <Skeleton w="60%" h={34} />
           </SkeletonPanel>
@@ -266,13 +259,12 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
         )}
 
         {runtimes.length === 0 && !detected ? (
-          <div className="welcome__empty">
-            <p>还没有可选的 Java，实例的启动设置里会是空的。</p>
-            <p className="muted">
+          <EmptyState title="还没有可选的 Java，实例的启动设置里会是空的。">
+            <p>
               下面挑一个版本装上，几十秒的事，全程不动系统环境；已经有 Java 的话，上面「添加本机
               Java」填路径登记进来。
             </p>
-          </div>
+          </EmptyState>
         ) : (
           <Shelf head={['Java', '完整版本', '体积', '装入 / 登记于', '使用中的实例', '']}>
             {detected && (

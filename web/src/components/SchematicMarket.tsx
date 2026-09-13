@@ -9,6 +9,7 @@ import type { SchematicController } from '../useSchematics'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Card } from './Card'
+import { EmptyState } from './EmptyState'
 import { Page } from './Page'
 import { Section } from './Section'
 import { Select } from './Select'
@@ -176,16 +177,15 @@ export function SchematicMarket({
         ))}
 
         {items.length === 0 ? (
-          <div className="welcome__empty">
-            <p>{result && result.total > 0 ? '没有匹配的建筑。' : '这些源里还没有建筑。'}</p>
-            <p className="muted">
+          <EmptyState title={<>{result && result.total > 0 ? '没有匹配的建筑。' : '这些源里还没有建筑。'}</>}>
+            <p>
               建筑市场读的是你添加的源。
               <button className="link" type="button" onClick={() => onOpenView('source')}>
                 加一个 GitHub 仓库或索引地址
               </button>
               ，仓库里的每个 .schem 都会出现在这里。
             </p>
-          </div>
+          </EmptyState>
         ) : (
           <div className="schemlib__grid" role="list">
             {items.map((item) => (

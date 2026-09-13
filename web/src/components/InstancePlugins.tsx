@@ -15,6 +15,7 @@ import type { PluginController } from '../usePlugins'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { DataTable, DataTableHead, DataTableRow } from './DataTable'
+import { EmptyState } from './EmptyState'
 import { InstancePluginDrawer } from './InstancePluginDrawer'
 import { Menu } from './Menu'
 import type { MenuItem } from './Menu'
@@ -24,7 +25,7 @@ import { PluginBrowse, loaderLabel } from './PluginBrowse'
 import { CompatBadge } from './PluginCompat'
 import { PluginInstallDialog, loaderNote } from './PluginInstallDialog'
 import { Select } from './Select'
-import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
+import { SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
 /** Which rows the status chips are showing, inside 已安装. */
 type StatusFilter = 'all' | 'broken' | 'duplicate'
@@ -232,11 +233,7 @@ export function InstancePlugins({
       <div className="stack">
         {head}
         <SkeletonScreen inPage label="正在读取插件…">
-          <SkeletonPanel title={false}>
-            <div className="chart-head">
-              <Skeleton w="72px" h={15} />
-              <Skeleton w="52%" h={12} />
-            </div>
+          <SkeletonPanel head title={false}>
             <SkeletonRows rows={5} />
           </SkeletonPanel>
         </SkeletonScreen>
@@ -368,9 +365,8 @@ export function InstancePlugins({
       )}
 
       {entries.length === 0 ? (
-        <div className="welcome__empty">
-          <p>这台服务器还没有插件。</p>
-          <p className="muted">
+        <EmptyState title="这台服务器还没有插件。">
+          <p>
             {available.length > 0 ? (
               <>
                 插件库里有 {available.length} 个可以装的，用上面的「从插件库安装」挑一个。
@@ -386,7 +382,7 @@ export function InstancePlugins({
             )}
             也可以把 jar 直接传进 <code>plugins/</code>，面板会认出来。
           </p>
-        </div>
+        </EmptyState>
       ) : (
         <DataTable className="plugin-table" role="table" aria-label="已装插件">
           {/* 版本 sits next to 插件 because they are one fact — which build of

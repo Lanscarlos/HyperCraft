@@ -22,6 +22,7 @@ import type { PluginController } from '../usePlugins'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { DataTable, DataTableHead, DataTableRow } from './DataTable'
+import { EmptyState } from './EmptyState'
 import { Menu } from './Menu'
 import { Modal } from './Modal'
 import { Page } from './Page'
@@ -1066,13 +1067,12 @@ function EmptyLibrary({
   onAddSource: () => void
 }) {
   return (
-    <div className="welcome__empty">
-      <p>插件库还是空的。</p>
-      <p className="muted">
+    <EmptyState title="插件库还是空的。">
+      <p>
         这里是面板的公共缓存：一个 jar 下载一次，想装几台服就复制几份，
         于是「同一个插件在五台服上」是一份文件一个校验和，而不是五份谁也认不出彼此的下载。
       </p>
-      <p className="muted">
+      <p>
         去
         <button className="link" onClick={onBrowse}>
           插件市场
@@ -1087,7 +1087,7 @@ function EmptyLibrary({
         </button>
         跟着它的 Release 走 —— 私有仓库也行。
       </p>
-    </div>
+    </EmptyState>
   )
 }
 

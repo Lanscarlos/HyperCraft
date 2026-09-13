@@ -12,6 +12,7 @@ import type {
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Card } from './Card'
+import { EmptyState } from './EmptyState'
 import { CompatBadge } from './PluginCompat'
 import { PluginDrawer } from './PluginDrawer'
 import { PluginIcon } from './PluginIcon'
@@ -385,9 +386,8 @@ export function PluginBrowse({
               )}
 
               {!loading && listings.length === 0 && (
-                <div className="welcome__empty">
-                  <p>没有搜到插件。</p>
-                  <p className="muted">下面三样通常有一样是原因：</p>
+                <EmptyState title="没有搜到插件。">
+                  <p>下面三样通常有一样是原因：</p>
                   <ul className="browse__advice">
                     <li>关键词太具体 —— 插件的名字往往和它做的事没什么关系，试试少打几个字。</li>
                     {draft.onlyCompatible && draft.against.length > 0 && (
@@ -408,7 +408,7 @@ export function PluginBrowse({
                     )}
                     <li>某个源没连上 —— 真是这样的话上面会写出来是哪个。</li>
                   </ul>
-                </div>
+                </EmptyState>
               )}
             </>
           )}

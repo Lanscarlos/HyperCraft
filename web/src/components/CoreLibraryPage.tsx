@@ -7,6 +7,7 @@ import type { CoreController } from '../useCores'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { CoreCatalogue, isRecommended, useCoreCatalogue } from './CoreCatalogue'
+import { EmptyState } from './EmptyState'
 import { Page } from './Page'
 import { Section } from './Section'
 import { Shelf } from './Shelf'
@@ -88,12 +89,11 @@ export function CoreLibraryPage({
 
       <Section title="核心库" note="把自己的 jar 丢进核心库目录，也会出现在这里">
         {stored.length === 0 ? (
-          <div className="welcome__empty">
-            <p>核心库还是空的。</p>
-            <p className="muted">
+          <EmptyState title="核心库还是空的。">
+            <p>
               下面挑一个下载，或者把自己的 jar（Forge、Fabric、模组整合包的服务端）直接放进核心库目录。
             </p>
-          </div>
+          </EmptyState>
         ) : (
           <Shelf head={['核心', '构建', '体积', '加入于', '使用中的实例', '']}>
             {stored.map((core) => (
@@ -109,11 +109,7 @@ export function CoreLibraryPage({
           finished a card short. */}
       {loading && (
         <SkeletonScreen inPage label="正在读取可下载的核心…">
-          <SkeletonPanel title={false}>
-            <div className="chart-head">
-              <Skeleton w="88px" h={15} />
-              <Skeleton w="260px" h={12} />
-            </div>
+          <SkeletonPanel head title={false}>
             <Skeleton w="100%" h={34} />
             <Skeleton w="72%" h={34} />
           </SkeletonPanel>
@@ -128,14 +124,10 @@ export function CoreLibraryPage({
       )}
 
       {!loading && projects.length > 0 && (
-        <section className="panel">
-          <div className="chart-head">
-            <h2 className="panel__title">下载核心</h2>
-            <p className="chart-head__meta">
-              走服务器自己的网络，不经过你的浏览器，关掉网页也会继续
-            </p>
-          </div>
-
+        <Section
+          title="下载核心"
+          note="走服务器自己的网络，不经过你的浏览器，关掉网页也会继续"
+        >
           <p className="chart-note">
             下载完成后，新建实例时选它，或在实例的「实例设置 → 从核心库安装」里装上。
           </p>
@@ -165,7 +157,7 @@ export function CoreLibraryPage({
               </Button>
             )}
           </div>
-        </section>
+        </Section>
       )}
     </Page>
   )

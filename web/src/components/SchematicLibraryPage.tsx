@@ -14,6 +14,7 @@ import type { SchematicController } from '../useSchematics'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Card } from './Card'
+import { EmptyState } from './EmptyState'
 import { Modal } from './Modal'
 import { Page } from './Page'
 import { SchematicDialog } from './SchematicPreview'
@@ -170,13 +171,12 @@ export function SchematicLibraryPage({
         {uploads && <UploadReport results={uploads} onDismiss={() => setUploads(null)} />}
 
         {entries.length === 0 ? (
-          <div className="welcome__empty">
-            <p>建筑库还是空的。</p>
-            <p className="muted">
+          <EmptyState title="建筑库还是空的。">
+            <p>
               上传几个 .schem，从「建筑市场」下载，或者在实例的文件管理器里预览一个 schematic
               再点「加入建筑库」。
             </p>
-          </div>
+          </EmptyState>
         ) : shown.length === 0 ? (
           <p className="muted">没有匹配「{query}」的建筑。</p>
         ) : (

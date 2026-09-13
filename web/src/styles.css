@@ -5489,6 +5489,16 @@ details[open]::details-content {
   margin-left: 0;
 }
 
+/* A placeholder standing in for a section's head: the title on the left, the
+   fact or the control at the far end, the same row .panel__head draws. */
+.skeleton-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 /* ------------------------------------------------------------------- empty
 
    "Nothing here yet", once. A dashed outline says the space is meant to be

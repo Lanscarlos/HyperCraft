@@ -101,11 +101,10 @@ function GitHubTokenPanel({
   }
 
   return (
-    <section className="panel">
-      <div className="chart-head">
-        <h2 className="panel__title">GitHub 访问令牌</h2>
-        {tokens.length > 0 && <Badge tone="ok">{tokens.length} 个</Badge>}
-      </div>
+    <Section
+      title="GitHub 访问令牌"
+      tools={tokens.length > 0 && <Badge tone="ok">{tokens.length} 个</Badge>}
+    >
       <p className="chart-note">
         自己写的插件发在私有仓库里时，面板得先能证明「我是你」才看得见它。可以存好几个 ——
         自己号一个、公司 org 一个 —— 添加插件时挑用哪个，不用为了让一把钥匙开两把锁去开
@@ -163,7 +162,7 @@ function GitHubTokenPanel({
           </Button>
         </div>
       </form>
-    </section>
+    </Section>
   )
 }
 

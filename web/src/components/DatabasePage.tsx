@@ -12,12 +12,13 @@ import type {
 import type { DatabaseController } from '../useDatabases'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { EmptyState } from './EmptyState'
 import { FieldHelp } from './FieldHelp'
 import { Page } from './Page'
 import { Section } from './Section'
 import { Select } from './Select'
 import { Shelf } from './Shelf'
-import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
+import { SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
 /** Named because the page renders it before its data arrives as well as after,
  *  and the two have to be the same string or the page moves when it loads. */
@@ -66,11 +67,7 @@ export function DatabasePage({ databases }: { databases: DatabaseController }) {
     return (
       <Page wide title="数据库环境" lead={DB_LEAD}>
         <SkeletonScreen inPage label="正在读取数据库…">
-          <SkeletonPanel title={false}>
-            <div className="chart-head">
-              <Skeleton w="72px" h={15} />
-              <Skeleton w="180px" h={12} />
-            </div>
+          <SkeletonPanel head title={false}>
             <SkeletonRows rows={2} />
           </SkeletonPanel>
         </SkeletonScreen>
@@ -187,37 +184,26 @@ function ServiceList({
        empty state. */
     <div className={current ? 'dbsplit' : undefined}>
       <div className="dbsplit__main">
-        <section className="panel">
-          <div className="chart-head">
-            <h2 className="panel__title">我的数据库</h2>
-            <p className="chart-head__meta">
-              {services.length > 0 ? `面板管理 ${services.length} 个` : '还没有建过数据库'}
-            </p>
-          </div>
+        <Section
+          title="我的数据库"
+          meta={services.length > 0 ? `面板管理 ${services.length} 个` : '还没有建过数据库'}
+        >
 
           {services.length === 0 ? (
-            <div className="welcome__empty">
-              {usable.length === 0 ? (
-                <>
-                  <p>还没有装数据库引擎，建不了数据库。</p>
-                  {/* No link: 安装引擎 is the last card on this page now, so
-                      pointing at it is pointing down. */}
-                  <p className="muted">
-                    先在下面装一个引擎，MySQL 的精简包只有 60 MB 左右，装完就能建库。
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p>引擎装好了，还没有建过数据库。</p>
-                  <p className="muted">
-                    <button className="link" type="button" onClick={() => setCreating(true)}>
-                      建一个
-                    </button>
-                    ，端口、账号、密码面板都会给默认值，建完直接复制连接串。
-                  </p>
-                </>
-              )}
-            </div>
+            usable.length === 0 ? (
+              /* No link: 安装引擎 is the last card on this page now, so
+                 pointing at it is pointing down. */
+              <EmptyState title="还没有装数据库引擎，建不了数据库。">
+                先在下面装一个引擎，MySQL 的精简包只有 60 MB 左右，装完就能建库。
+              </EmptyState>
+            ) : (
+              <EmptyState title="引擎装好了，还没有建过数据库。">
+                <button className="link" type="button" onClick={() => setCreating(true)}>
+                  建一个
+                </button>
+                ，端口、账号、密码面板都会给默认值，建完直接复制连接串。
+              </EmptyState>
+            )
           ) : (
             <Shelf head={['数据库', '监听', '库名', '建于', '状态', '']}>
               {services.map((service) => (
@@ -252,7 +238,7 @@ function ServiceList({
               </span>
             </div>
           )}
-        </section>
+        </Section>
 
         {creating && (
           <CreateForm
@@ -735,14 +721,10 @@ function EngineList({
   }
 
   return (
-    <section className="panel">
-      <div className="chart-head">
-        <h2 className="panel__title">已装引擎</h2>
-        <p className="chart-head__meta">
-          共 {formatBytes(installs.reduce((sum, entry) => sum + entry.size, 0))} · 删掉引擎不会动数据，
-          但跑在上面的数据库会起不来
-        </p>
-      </div>
+    <Section
+      title="已装引擎"
+      note={`共 ${formatBytes(installs.reduce((sum, entry) => sum + entry.size, 0))} · 删掉引擎不会动数据，但跑在上面的数据库会起不来`}
+    >
 
       <Shelf head={['引擎', '', '体积', '安装于', '使用中的数据库', '']}>
         {installs.map((install) => (
@@ -827,7 +809,7 @@ function EngineList({
           </article>
         ))}
       </Shelf>
-    </section>
+    </Section>
   )
 }
 
@@ -869,41 +851,36 @@ function InstallEngine({
   const engineInfo = engines.find((entry) => entry.id === selected)
 
   return (
-    <section className="panel">
-      {/* Which of the three, in the card's head. It is one choice out of three
-          and it scopes everything below it, which is the shape of a tab strip
-          rather than of a grid of tiles the size of the versions underneath. */}
-      <div className="chart-head">
-        <h2 className="panel__title">安装引擎</h2>
-        <p className="chart-head__meta">
-          {engineInfo ? `二进制来自 ${engineInfo.vendor}` : '从官方渠道下载'} ·
-          下载走服务器自己的网络，关掉网页也会继续
-        </p>
-        <div className="chart-head__tools">
-          <div className="segmented segmented--inline" role="group" aria-label="选择数据库">
-            {engines.map((entry) => (
-              <button
-                key={entry.id}
-                type="button"
-                className={`segmented__option${
-                  entry.id === engine ? ' segmented__option--active' : ''
-                }`}
-                aria-pressed={entry.id === engine}
-                title={entry.note}
-                disabled={installing}
-                onClick={() => {
-                  setEngine(entry.id)
-                  setVersion(null)
-                  setCustom('')
-                }}
-              >
-                <strong>{entry.name}</strong>
-              </button>
-            ))}
-          </div>
+    <Section
+      title="安装引擎"
+      note={`${engineInfo ? `二进制来自 ${engineInfo.vendor}` : '从官方渠道下载'} · 下载走服务器自己的网络，关掉网页也会继续`}
+      /* Which of the three, in the card's head. It is one choice out of three
+         and it scopes everything below it, which is the shape of a tab strip
+         rather than of a grid of tiles the size of the versions underneath. */
+      tools={
+        <div className="segmented segmented--inline" role="group" aria-label="选择数据库">
+          {engines.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              className={`segmented__option${
+                entry.id === engine ? ' segmented__option--active' : ''
+              }`}
+              aria-pressed={entry.id === engine}
+              title={entry.note}
+              disabled={installing}
+              onClick={() => {
+                setEngine(entry.id)
+                setVersion(null)
+                setCustom('')
+              }}
+            >
+              <strong>{entry.name}</strong>
+            </button>
+          ))}
         </div>
-      </div>
-
+      }
+    >
       {list === undefined ? (
         <p className="muted">正在读取可安装的版本…</p>
       ) : list.length === 0 ? (
@@ -998,7 +975,7 @@ function InstallEngine({
         )}
         <span className="muted">装完还要建一个数据库才能用。</span>
       </div>
-    </section>
+    </Section>
   )
 }
 
