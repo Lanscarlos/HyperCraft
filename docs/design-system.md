@@ -143,6 +143,86 @@
 
 实例状态圆点，`state` 就是 `InstanceState`。自带 `aria-hidden`——每一处它出现的地方，状态都同时写成了文字。
 
+### `Section`
+
+```tsx
+<Section title="核心库" count={3} note="一句话说明这一段是干什么的。" meta="物理 15.7 GB"
+         tools={<Button size="small">添加</Button>} tone="warn|danger" form>
+```
+
+**面板里每一个有标题的内容块都是它**，没有第二种写法。标题和说明在左，一句短事实和这一段
+自己的控件在右，正文在下面。
+
+`note` 是句子，`meta` 是**不带动词的短事实**（`linux/x64`、`物理 15.7 GB`、`还没建数据库`）。
+分错的后果很具体：一句话放进 `meta` 会把控件挤出那一行。
+
+`form` 让正文进 `.panel__body`（封顶 880px、字段间距 14px），设置类表单一律加。
+
+**这一段以前有五种写法**：`.chart-head` 配一行 meta、`.panel__head` 配一个按钮、
+`.update__head`、表单的 `.panel__aside`、以及裸 `<h3>`；长出自己写法的页面还有第六第七种
+（`.dlqueue__title`、`.foreign__title`）。说明文字落在三个不同的位置，计数有两种，控件在
+作者记得的那一边。一页页读下来，面板像七个人拼的。守卫 `ruleSectionsAreComponents` 卡住
+`panel--form` / `panel__head` / `panel__body` / `panel__tools`，只许 `Section.tsx` 写。
+
+### `Toolbar` / `ToolbarSearch`
+
+```tsx
+<Toolbar>
+  <ToolbarSearch placeholder="按名称搜索" value={q} onChange={…} aria-label="…" />
+  <div className="toolbar__chips">…chip…</div>
+  <span className="toolbar__count">1 / 1</span>
+  <div className="toolbar__tools"><Button size="small">…</Button></div>
+</Toolbar>
+```
+
+**一个列表最多一条，就贴在它上面。** 搜索在左，筛选 chip 跟着，计数或一句判据在中间，
+这个列表自己的按钮在最右。
+
+替掉的七套：`.filters`、`.chart-filters`、`.chist__filters`、`.schemlib__bar`、
+`.browse__search`、`.file-toolbar`、`.chips`。
+
+文件页的查找框用 `.toolbar__search--end` 挪到最右端 —— 伸手去按「上传」不该落进过滤框里。
+
+chip 的选中态**只有 `chip--on`**（`chip--active` 已经没了）；chip 里的计数用 `<b>`。
+
+### `EmptyState`
+
+```tsx
+<EmptyState title="核心库还是空的。" action={<Button variant="primary">…</Button>}>
+  下面挑一个下载，或者把自己的 jar 直接放进核心库目录。
+</EmptyState>
+<EmptyState inline title="没有匹配的插件。" />   {/* 表格/列表里代替行 */}
+```
+
+只有两种形态：**块**（虚线框，空间是「等着被填」而不是「渲染挂了」）和 **`inline`**
+（列表表头下面的一行，表头不动，筛不到东西时列表不变形）。
+
+第一句是「这里没有什么」，后面是建议。以前有六种写法（`.welcome__empty`、表格里的
+`<p>`、`p.muted`、带字形的 `.file-empty`，加上两个页面各自的），拿到哪一种取决于页面而不是
+取决于情况。守卫 `ruleEmptyStatesAreComponents` 卡住 `empty__*`。
+
+### `.rowlist > .row`
+
+卡片里的行列表：一个账号、一台配对设备、一个令牌、一个索引源、一条下载。
+
+```html
+<div class="rowlist">
+  <div class="row">
+    <div class="row__main">
+      <span class="row__title">admin</span><Badge/><span class="row__sub">别名</span>
+      <div class="row__actions"><button class="link">编辑</button></div>
+    </div>
+    <div class="row__meta">可以管理全部实例 · 没有配对设备</div>
+  </div>
+</div>
+```
+
+修饰符：`row--on`（选中，走描边不走填色）、`row--off`（停用）、`row--pick`（整行是
+`<label>` 的单选行，横向）。
+
+替掉的六套：`.device-row`、`.acct-row`（和前者逐字节相同）、`.tokenrow`、`.setting-row`、
+`.schemsource`、`.dlrow`、`.foreign__row`。
+
 ### `Card`
 
 ```tsx
@@ -153,6 +233,9 @@
 ```
 
 调用点保留自己的块类，「卡片里面放什么」的规则留在原处，只有容器是共享的。整张卡可点的场合，可点的部分是子元素 `.card__open`，卡片靠 `:has()` 跟着抬升——**一张自己带按钮的卡片不能自己是按钮**。
+
+**`Card` 和 `Section` 的分工**：`Section` 是页面上一个有标题的内容块（段），`Card` 是栅格
+里重复出现的一张卡（一个实例、一个建筑、一条 JVM 参数）。一段里装一排卡，不反过来。
 
 ### `DataTable` / `DataTableHead` / `DataTableRow` / `DataTableEmpty`
 
@@ -170,27 +253,37 @@
 
 ---
 
-## 4 · 表单
+## 3.5 · 页头
 
-**面板级表单一律是 `.panel.panel--form`：卡片头 + 字段，跟面板里其他卡片一个形状。**
-
-```html
-<section class="panel panel--form">
-  <div class="panel__aside">
-    <h3 class="panel__title">段标题</h3>
-    <p class="panel__note">这一段是干什么的，一句话。</p>
-  </div>
-  <div class="panel__body">
-    <!-- 字段 -->
-  </div>
-</section>
+```tsx
+<Page wide title="插件列表" count={n} lead="这一页是干什么的。"
+      facts={<><span>12 个</span><span>3.5 GB</span></>}
+      actions={<><Button>次要</Button><Button variant="primary">主要</Button><Menu…>⋯</Menu></>}>
 ```
 
-两个包裹层都是必需的，`ruleFormPanelsHaveHeadAndBody` 会检查。**漏掉不会报错**，只会让字段失去自己的行长、一路铺到卡片边——那种「看起来差不多对」正是这条规则要挡的。
+- `facts` 是常驻事实（数量、体积、路径），渲染在 lead **下面**。它们以前在页头右半边，
+  一条深路径会把整行挤到第二行、悬空在标题旁边。
+- `actions` **最多两个按钮加一个溢出 `Menu`**，其中只有一个实心。多出来的进菜单，危险的在
+  菜单里标红。插件页曾经一行四个按钮加一个链接，配置历史一行四个其中一个是危险操作 ——
+  一眼要读五遍才找得到要按的那个。
+- `count` 是标题后面那个数：`title="插件" count={n}`。
 
-**不要用 `.panel__head`**：那是 `UsersPage` 在用的横向标题行，另一回事，复用会被 `ruleNoSilentOverrides` 判为重复声明。
+## 4 · 表单
 
-头和正文都封顶 `--content-max`（880px），所以两者左右边缘对齐，宽屏上尾部的留白是有意的：宽度给导览，不给输入框。
+**面板级表单一律是 `<Section form>`：卡片头 + 字段，跟面板里其他卡片一个形状。**
+
+```tsx
+<Section form title="段标题" note="这一段是干什么的，一句话。">
+  {/* 字段 */}
+</Section>
+```
+
+渲染出来是 `.panel.panel--form > .panel__head + .panel__body`。这几个类只许 `Section.tsx`
+写（`ruleSectionsAreComponents`）：`.panel--form` 扛的是「字段停在阅读宽度」这个保证，
+手写时**漏掉包裹层不会报错**，只会让字段失去自己的行长、一路铺到卡片边——那种「看起来
+差不多对」正是这条规则要挡的。
+
+正文封顶 `--content-max`（880px），宽屏上尾部的留白是有意的：宽度给导览，不给输入框。
 
 **这一段曾经是左右两栏**，段标题站在字段左边。纸面上的理由是「宽窗口带来的宽度归导览，不归输入框」，
 实际是一句两行的说明站在一个三百像素宽、四百像素高的格子里，那片空白读起来是卡片上的一个洞，不是留白。
@@ -309,7 +402,8 @@ flexbox 冻结，剩余空间全部分给唯一还能伸的项——也就是左
 | --- | --- |
 | `ruleNoUndefinedClasses` | tsx 里用到的每个 BEM 类名都在 `styles.css` 里存在。基类的修饰符若已定义则算它已定义（`.chist__line` + `--add`/`--delete` 是合法的 BEM，未改动的行没有背景是对的）。 |
 | `ruleIconButtonsAreLabelled` | `<Button icon>` 必须带 `aria-label`。图标按钮没有文字，漏了 label 屏幕阅读器只念得出 "button"。 |
-| `ruleFormPanelsHaveHeadAndBody` | 每个 `.panel--form` 都有 `.panel__aside`（头）和 `.panel__body`（字段）。按文件内出现次数比对，不解析 JSX 嵌套——用到它的文件都是一段一对，漏一处计数就对不上。 |
+| `ruleSectionsAreComponents` | `panel--form` / `panel__head` / `panel__heading` / `panel__body` / `panel__tools` 只许 `Section.tsx` 写。`.panel--form` 扛的是「表单字段停在阅读宽度」这个保证，而保证依赖那两层包裹；手写时漏一层不会报错，只会让字段一路铺到卡片边——那种「看起来差不多对」正是这条要挡的。 |
+| `ruleEmptyStatesAreComponents` | `empty__*` 只许 `EmptyState.tsx` 写。以前有六种「这里没有东西」的写法，拿到哪种取决于页面而不是取决于情况。 |
 | `rulePrimaryButtons` | 一个文件最多一个 `variant="primary"`，`PRIMARY_ALLOWED` 里登记过的按登记的配额。见第 6 节。 |
 | `ruleBadgesAreComponents` | `<span>` 不许手写 `.badge` / `.badge--*`，一律走 `<Badge>`。模板里的 `${…}` 先剥掉再分词，否则 `badge${TONE[x]}` 这种写法会整个溜过去。非 `<span>` 的放行——画成徽章的按钮不可能是 `Badge`。 |
 | `ruleDropdownsAreOurs` | 组件里不许出现原生 `<select>` / `<datalist>`，一律走 `Select`。`Select.tsx` 自身豁免 —— 它拥有两个分支，包括粗指针设备上回落的那个真 `<select>`。扫描前先剥注释：这份代码库的注释大量在讨论这两个标签（`InstancePlugins` 和 `JVMArgsEditor` 各自长篇解释了为什么**不**用），不剥就全是误报。 |
