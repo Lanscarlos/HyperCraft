@@ -168,4 +168,90 @@ func activeCount(q *Queue) int {
 	return n
 }
 
-var _ = errors.Is
+func stateOf(q *Queue, id string) State {
+	for _, job := range q.Jobs() {
+		if job.ID == id {
+			return job.State
+		}
+	}
+	return ""
+}
+
+func TestCancelStopsOneJobAndLeavesTheRest(t *testing.T) {
+	h := newHeld()
+	q := NewQueue(slog.New(slog.DiscardHandler))
+	t.Cleanup(q.Close)
+	q.SetLimit(KindPlugin, 3)
+
+	one, _ := q.Submit(req(q, h, KindPlugin, "one"))
+	two, _ := q.Submit(req(q, h, KindPlugin, "two"))
+	waitFor(t, func() bool { return h.inFlight.Load() == 2 })
+
+	if err := q.Cancel(one.ID); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	waitFor(t, func() bool { return stateOf(q, one.ID) == StateCancelled })
+	if got := stateOf(q, two.ID); got != StateDownloading {
+		t.Fatalf("sibling state = %q, want downloading", got)
+	}
+	close(h.release)
+}
+
+// A failure has to outlive the download that follows it: before the queue
+// existed the next job overwrote the only record of what went wrong.
+func TestAFailedJobSurvivesTheNextDownload(t *testing.T) {
+	q := NewQueue(slog.New(slog.DiscardHandler))
+	t.Cleanup(q.Close)
+	q.SetLimit(KindCore, 1)
+
+	bad := Request{
+		Kind: KindCore, Title: "bad", DedupeKey: "bad",
+		Attempts: func(context.Context) ([]Attempt, error) { return nil, errors.New("boom") },
+	}
+	if _, err := q.Submit(bad); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return activeCount(q) == 0 })
+
+	h := newHeld()
+	close(h.release)
+	if _, err := q.Submit(req(q, h, KindCore, "good")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return activeCount(q) == 0 })
+
+	var failed int
+	for _, job := range q.Jobs() {
+		if job.State == StateFailed && job.Error != "" {
+			failed++
+		}
+	}
+	if failed != 1 {
+		t.Fatalf("failed jobs in history = %d, want 1", failed)
+	}
+}
+
+func TestClearFinishedKeepsWhatIsStillRunning(t *testing.T) {
+	h := newHeld()
+	q := NewQueue(slog.New(slog.DiscardHandler))
+	t.Cleanup(q.Close)
+	q.SetLimit(KindPlugin, 2)
+
+	done := newHeld()
+	close(done.release)
+	if _, err := q.Submit(req(q, done, KindPlugin, "over")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return activeCount(q) == 0 })
+
+	live, _ := q.Submit(req(q, h, KindPlugin, "live"))
+	waitFor(t, func() bool { return stateOf(q, live.ID) == StateDownloading })
+
+	if n := q.ClearFinished(); n != 1 {
+		t.Fatalf("cleared %d, want 1", n)
+	}
+	if got := stateOf(q, live.ID); got != StateDownloading {
+		t.Fatalf("running job state = %q, want downloading", got)
+	}
+	close(h.release)
+}
