@@ -160,7 +160,14 @@ POST   /api/java/registry/{id}/probe   重新检测
 
 权限沿用现有 java 路由的 `authz.CapPanelJava`（`routes.go:274-278`）。
 
-删除**不提供 force**：强删之后那些实例的 `java` 就是白名单外的值，白名单当场出现空洞。拒绝更干净。
+删除规则**与 managed runtime 的删除完全一致**，复用 `handleDeleteJava` 的策略（`handlers_java.go`）：
+
+- 有实例**正在运行**在它上面 → 409，指名是哪个实例
+- 仅仅有已停实例指向它 → 允许删除，响应里列出受影响的实例，前端告知
+
+不给两种删除编两套心智模型。留下的「空洞」是无害的——见下面的约束点：校验的是改动，不是状态，所以指向一个已删条目的实例照样能编辑、能启动（启动路径不查表）。
+
+`usersOf`（`handlers_java.go`）现在按 `runtime.Path` 前缀匹配，因为 managed runtime 是一棵目录树。登记条目没有目录树，**按 `JavaPath` 精确匹配**，需要给它加一条分支。
 
 ### 存量迁移
 
@@ -178,7 +185,23 @@ POST   /api/java/registry/{id}/probe   重新检测
 
 ### 约束点
 
-只有一处：`handleCreateInstance` 和 `handleUpdateInstance` 校验传入的 `java` 在合并列表内，不在则 400，消息指向 Java 环境页。
+只有一处：`handleCreateInstance` 和 `handleUpdateInstance`。
+
+**校验的是改动，不是状态：**
+
+> body 里带了 `java`、trim 后非空、**且与服务端当前存的值不同**时，才校验它在合并列表内。不在则 400，消息指向 Java 环境页。
+
+「不是状态」这一点是必须的。设置页把整份 config 读进表单（`LaunchSettings.tsx:42`）后整份 PATCH 回来，所以一个 `java` 值不在白名单里的存量实例——迁移时探测失败的，或者 managed runtime 被删之后的——**会连改名字都做不到**。那是个荒唐的失败。
+
+这跟同一个 handler 里权限检查的规则**故意不同**，且有根据。`handlers_instances.go:203` 解释权限为什么用「present, not different」：
+
+> Present, not different: a client echoing the whole form back unchanged still
+> has to hold the capability, because "unchanged" is a claim the server would
+> have to take the client's word for.
+
+权限那条成立，是因为服务端无法独立判断「没变」。白名单这条不受这个限制——**服务端手里就有当前 config，自己比对，不听客户端一面之词。** 实现时必须是服务端比对，不能新增一个 `javaChanged` 之类的请求字段。
+
+`java` 缺省或为空时**不校验**，交给 `applyDefaults`（`config.go:132`）兜底成 `"java"`。那表示「我没选」，保持历史行为；创建向导在改造后总会送一个明确的值。
 
 实例导入（`ImportInstanceDialog.tsx:150`）走同一个创建入口，自动受约束。
 
