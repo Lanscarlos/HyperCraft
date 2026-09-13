@@ -578,13 +578,15 @@ function CreateForm({
   }
 
   return (
-    <section className="panel">
-      <div className="chart-head">
-        <h2 className="panel__title">新建数据库</h2>
-        <p className="chart-head__meta">留空的都会用默认值</p>
+    <section className="panel panel--form">
+      <div className="panel__aside">
+        <h3 className="panel__title">新建数据库</h3>
+        <p className="panel__note">建一个库和它自己的账号，留空的都会用默认值。</p>
       </div>
 
-      <div className="field">
+      <div className="panel__body">
+
+      <div className="field field--md">
         <span>用哪个引擎</span>
         <Select
           value={installId}
@@ -599,7 +601,7 @@ function CreateForm({
         {engine && <small>{engine.note}</small>}
       </div>
 
-      <div className="field">
+      <div className="field field--md">
         <span>库名</span>
         <input
           value={database}
@@ -612,7 +614,7 @@ function CreateForm({
         </small>
       </div>
 
-      <div className="field">
+      <div className="field field--md">
         <span>显示名（可选）</span>
         <input
           value={name}
@@ -623,7 +625,7 @@ function CreateForm({
 
       {needsAccount && (
         <>
-          <div className="field">
+          <div className="field field--md">
             <span>用户名</span>
             <input
               value={user}
@@ -631,7 +633,7 @@ function CreateForm({
               spellCheck={false}
             />
           </div>
-          <div className="field">
+          <div className="field field--md">
             <span>密码（可选）</span>
             <input
               value={password}
@@ -684,6 +686,7 @@ function CreateForm({
           取消
         </Button>
         <span className="muted">初始化要几秒到几十秒，建好后不会自动启动。</span>
+      </div>
       </div>
     </section>
   )
