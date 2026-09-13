@@ -161,6 +161,23 @@ func (c *Client) Resolve(ctx context.Context, engine, version string, platform P
 }
 
 // Fetch opens the archive body, which the caller closes.
+// Opener fetches one URL, for the download kernel to call when it reaches this
+// route. The HTTPS check runs on whatever is handed in rather than on the
+// release, so a route is a line to the same bytes and not a licence to leave
+// TLS.
+func (c *Client) Opener(rawURL string) func(context.Context) (io.ReadCloser, error) {
+	return func(ctx context.Context) (io.ReadCloser, error) {
+		if err := c.checkURL(rawURL); err != nil {
+			return nil, err
+		}
+		resp, err := c.do(ctx, http.MethodGet, rawURL, "")
+		if err != nil {
+			return nil, err
+		}
+		return resp.Body, nil
+	}
+}
+
 func (c *Client) Fetch(ctx context.Context, release Release) (io.ReadCloser, error) {
 	if err := c.checkURL(release.URL); err != nil {
 		return nil, err

@@ -233,3 +233,47 @@ func TestAPublicAssetWalksTheProxiesThenGitHub(t *testing.T) {
 		t.Fatalf("routes = %v, want several ending at %q", routes, MirrorDirect)
 	}
 }
+
+// The digest a registry published must reach the kernel, or the download is
+// verified against nothing at all.
+//
+// This is not hypothetical: it was broken for a whole commit. The asset's
+// checksum is only known once the release resolves, which happens on the
+// worker, and the migration to the shared queue simply never passed it along.
+// Nothing failed — downloads kept working, unverified.
+func TestTheSourcesChecksumReachesTheKernel(t *testing.T) {
+	cases := []struct {
+		name  string
+		asset Asset
+		algo  string
+	}{
+		{"modrinth publishes sha512", Asset{SHA512: strings.Repeat("a", 128)}, "sha512"},
+		{"a source publishing sha256", Asset{SHA256: strings.Repeat("b", 64)}, "sha256"},
+		{"github publishes neither", Asset{}, ""},
+		{
+			"both published takes the stronger",
+			Asset{SHA256: strings.Repeat("b", 64), SHA512: strings.Repeat("a", 128)},
+			"sha512",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Through describeFor, not assetDigest directly: what broke was the
+			// plumbing between them, and a test of the leaf would have passed
+			// throughout.
+			asset := tc.asset
+			asset.Name = "plug.jar"
+			asset.Size = 10
+			got := describeFor(Release{Tag: "v1", Version: "1"}, asset)
+			if got.Digest.Algo != tc.algo {
+				t.Fatalf("algo = %q, want %q", got.Digest.Algo, tc.algo)
+			}
+			if tc.algo != "" && got.Digest.Value == "" {
+				t.Fatal("the algorithm survived but the checksum did not")
+			}
+			if got.FileName != "plug.jar" || got.Total != 10 {
+				t.Fatalf("the rest of the description did not survive: %+v", got)
+			}
+		})
+	}
+}

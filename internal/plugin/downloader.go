@@ -303,15 +303,7 @@ func (d *Downloader) Start(pluginID, tag, asset string) (Job, error) {
 			// Until now the row said only which plugin was asked for: "最新" has
 			// no file name and no size, and a request pinned to a tag still does
 			// not know which jar of it. This is the moment the panel learns.
-			pub.Describe(download.Description{
-				FileName: want.Name,
-				Total:    want.Size,
-				Subtitle: release.Version,
-				Meta: map[string]string{
-					metaTag:     release.Tag,
-					metaVersion: release.Version,
-				},
-			})
+			pub.Describe(describeFor(release, want))
 
 			d.log.Info("plugin download started",
 				"plugin", resolved.ID, "tag", release.Tag, "file", want.Name, "size", want.Size)
@@ -415,6 +407,38 @@ func (d *Downloader) resolve(ctx context.Context, item Plugin, tag string) (Rele
 // run streams the jar to a .part file and only then moves it into place, so a
 // failed or cancelled download never leaves something that looks like an
 // installable plugin in the library.
+
+// describeFor is everything about a download that is only known once the
+// release has resolved.
+//
+// Its own function so it can be tested directly. The digest in particular went
+// missing for a whole commit during the move to the shared queue — downloads
+// kept working, verified against nothing, and no test noticed, because every
+// test that exercised this path used a GitHub release, which publishes no
+// checksum at all.
+func describeFor(release Release, want Asset) download.Description {
+	return download.Description{
+		FileName: want.Name,
+		Total:    want.Size,
+		Subtitle: release.Version,
+		Digest:   assetDigest(want),
+		Meta: map[string]string{
+			metaTag:     release.Tag,
+			metaVersion: release.Version,
+		},
+	}
+}
+
+// assetDigest is the strongest checksum the source published for a jar, or none.
+func assetDigest(asset Asset) download.Digest {
+	if asset.SHA512 != "" {
+		return download.Digest{Algo: "sha512", Value: asset.SHA512}
+	}
+	if asset.SHA256 != "" {
+		return download.Digest{Algo: "sha256", Value: asset.SHA256}
+	}
+	return download.Digest{}
+}
 
 // record moves a finished jar into place and writes the version into the
 // library. All of this used to be the back half of run().

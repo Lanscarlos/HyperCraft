@@ -189,7 +189,7 @@ func (i *Installer) Start(dist string, major int, imageType, source string) (Job
 		// The digest the distribution's metadata API published, never the one
 		// the source serving the file claims. This is what makes the mirrors
 		// safe to offer at all.
-		SHA256:    release.SHA256,
+		Digest:    download.Digest{Algo: "sha256", Value: release.SHA256},
 		DedupeKey: id,
 		// Beside the runtimes, so the finished archive and the staging
 		// directory it unpacks into are on one filesystem.

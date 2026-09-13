@@ -199,9 +199,9 @@ func run() error {
 	databaseInstaller := dbruntime.NewInstaller(
 		dbruntime.NewClient(userAgent),
 		dbruntime.NewStore(paths.DatabaseEnginesRoot()),
+		downloadQueue,
 		logger,
 	)
-	defer databaseInstaller.Close()
 
 	databaseConfigs, err := st.LoadDatabases()
 	if err != nil {
@@ -499,7 +499,6 @@ func run() error {
 	}
 	// Downloads go before the servers do: a half-written jar is worth nothing,
 	// and the servers deserve the whole shutdown budget.
-	databaseInstaller.Close()
 	downloadQueue.Close()
 
 	logger.Info("stopping managed servers", "grace", shutdownGrace)

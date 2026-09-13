@@ -2,6 +2,8 @@ package download
 
 import (
 	"context"
+	"crypto/md5"  //nolint:gosec // see newHash
+	"crypto/sha1" //nolint:gosec // see newHash
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
@@ -16,6 +18,59 @@ import (
 // ErrChecksum is returned when the downloaded bytes do not match the digest
 // the request published.
 var ErrChecksum = errors.New("checksum mismatch")
+
+// Digest is a checksum an upstream published, named by the algorithm it used.
+//
+// Nothing here gets to choose the algorithm — sha256 from PaperMC, Adoptium and
+// MongoDB, sha512 from Modrinth, sha1 from Maven, md5 from Oracle — so all of
+// them are accepted for what they are worth. Refusing the weak ones would not
+// make those downloads safer; it would make them unchecked.
+//
+// Modrinth's sha1 is the one exception, and it is the caller's to make: it
+// publishes both sha512 and sha1, so the plugin package asks for the stronger
+// and never offers the weaker.
+type Digest struct {
+	// Algo is one of sha256, sha512, sha1, md5. An unknown one is treated as no
+	// digest at all rather than as a failure: it means this build of the panel
+	// does not know how to check what upstream published, which is the same
+	// position as upstream publishing nothing.
+	Algo  string
+	Value string
+}
+
+// algoName is how an algorithm is written for a person reading an error. The
+// wire names are lower case and unhyphenated; nobody writes them that way.
+func algoName(algo string) string {
+	switch algo {
+	case "sha256":
+		return "SHA-256"
+	case "sha512":
+		return "SHA-512"
+	case "sha1":
+		return "SHA-1"
+	case "md5":
+		return "MD5"
+	}
+	return algo
+}
+
+// ok reports whether there is something to check against.
+func (d Digest) ok() bool { return d.Algo != "" && d.Value != "" && newHash(d.Algo) != nil }
+
+// newHash is the hash upstream published a checksum with.
+func newHash(algo string) hash.Hash {
+	switch algo {
+	case "sha256":
+		return sha256.New()
+	case "sha512":
+		return sha512.New()
+	case "sha1":
+		return sha1.New() //nolint:gosec // upstream publishes nothing stronger
+	case "md5":
+		return md5.New() //nolint:gosec // ditto
+	}
+	return nil
+}
 
 // maxUnknownSize caps a download whose size the request did not declare, and
 // also whatever size *is* declared once a checksum makes that declared size
@@ -96,7 +151,7 @@ func transfer(ctx context.Context, q *Queue, e *entry, r Request, temp string, p
 		return "", err
 	}
 
-	verifiable := r.SHA256 != "" || r.SHA512 != ""
+	verifiable := r.Digest.ok()
 	// sized marks the case where the declared size is the only check there
 	// is — every GitHub release asset lands here — and so has to be exact.
 	//
@@ -121,10 +176,13 @@ func transfer(ctx context.Context, q *Queue, e *entry, r Request, temp string, p
 	// nothing is a cost every download would pay.
 	digest := sha256.New()
 	writers := []io.Writer{file, digest}
-	var wide hash.Hash
-	if r.SHA512 != "" {
-		wide = sha512.New()
-		writers = append(writers, wide)
+	// A second hash only when there is a published one to compare against and
+	// it is not the one already being computed, because hashing 200 MB twice
+	// for nothing is a cost every download would pay.
+	var published hash.Hash
+	if verifiable && r.Digest.Algo != "sha256" {
+		published = newHash(r.Digest.Algo)
+		writers = append(writers, published)
 	}
 	progress := &progressWriter{
 		to: io.MultiWriter(writers...),
@@ -159,20 +217,25 @@ func transfer(ctx context.Context, q *Queue, e *entry, r Request, temp string, p
 	// The digest a request published, when it published one, is finally
 	// compared rather than only recorded.
 	sum := hex.EncodeToString(digest.Sum(nil))
-	return sum, verifyDigest(r, sum, wide, written)
+	return sum, verifyDigest(r, sum, published, written)
 }
 
-// verifyDigest checks the bytes against whichever digest r published. sum is
-// the SHA-256 of what arrived and wide the SHA-512 of it, non-nil only when
-// there was a published SHA-512 to check.
-func verifyDigest(r Request, sum string, wide hash.Hash, written int64) error {
-	algo, got, want := "SHA-256", sum, r.SHA256
-	if wide != nil {
-		algo, got, want = "SHA-512", hex.EncodeToString(wide.Sum(nil)), r.SHA512
-	}
-	if want == "" || strings.EqualFold(got, want) {
+// verifyDigest checks the bytes against whatever digest r published. sum is the
+// SHA-256 of what arrived, which is always computed; published is the hash of
+// the algorithm upstream actually used, non-nil only when that was something
+// else.
+func verifyDigest(r Request, sum string, published hash.Hash, written int64) error {
+	if !r.Digest.ok() {
 		return nil
 	}
+	algo, got := "SHA-256", sum
+	if published != nil {
+		algo, got = algoName(r.Digest.Algo), hex.EncodeToString(published.Sum(nil))
+	}
+	if strings.EqualFold(got, r.Digest.Value) {
+		return nil
+	}
+	want := r.Digest.Value
 	// A short body is the one checksum failure with an obvious cause, and
 	// "the connection dropped, run it again" is very different advice from
 	// "this source is serving the wrong file".
@@ -193,7 +256,7 @@ type Description struct {
 	FileName string
 	Total    int64
 	Meta     map[string]string
-	// SHA256 and SHA512 are the digests the origin's metadata published.
+	// Digest is what the origin's metadata published for this file.
 	//
 	// They are here and not only on the Request because most shelves do not
 	// know them at submit time: the build is resolved on the worker, minutes
@@ -204,8 +267,7 @@ type Description struct {
 	// its digest inside Attempts, wrote it to a copy of the Request nobody read
 	// again, and verified nothing at all — while the mirror it had just gained
 	// was safe to use *only* because of that check.
-	SHA256 string
-	SHA512 string
+	Digest Digest
 }
 
 // Describe fills in what Submit could not know.
@@ -241,11 +303,8 @@ func (p *Progress) Describe(d Description) {
 		}
 		job.Meta[k] = v
 	}
-	if d.SHA256 != "" {
-		p.entry.req.SHA256 = d.SHA256
-	}
-	if d.SHA512 != "" {
-		p.entry.req.SHA512 = d.SHA512
+	if d.Digest.Value != "" {
+		p.entry.req.Digest = d.Digest
 	}
 }
 

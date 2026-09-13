@@ -52,18 +52,11 @@ type Request struct {
 	FileName        string
 	// Total is the declared size, for the bar. Zero means unknown.
 	Total int64
-	// SHA256 is the digest the *upstream metadata* published, which is what
-	// makes a mirror safe to use: whichever route serves the bytes, they are
-	// checked against what the origin said they would be. Empty where upstream
-	// publishes none (GitHub release assets), and then there is no content
-	// check at all — see transfer.
-	SHA256 string
-	// SHA512 is the same thing in the other algorithm, and exists because
-	// Modrinth publishes sha512 (and sha1, deliberately never read: it is the
-	// weakest of the three and would be the one an attacker picks if the panel
-	// accepted it) and no sha256. A source publishes one or the other, never
-	// both, and either is enough to check a download against — see transfer.
-	SHA512 string
+	// Digest is what the *upstream metadata* published for this file, and is
+	// what makes a mirror safe to use: whichever route serves the bytes, they
+	// are checked against what the origin said they would be. Empty where
+	// upstream publishes nothing, and then there is no content check at all.
+	Digest Digest
 	// DedupeKey collapses a repeat request onto the job already doing it. Two
 	// workers writing the same part file is a corrupt download.
 	DedupeKey string

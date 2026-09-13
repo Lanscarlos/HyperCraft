@@ -143,6 +143,7 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 		DatabaseInstalls: dbruntime.NewInstaller(
 			dbruntime.NewClient("test"),
 			dbruntime.NewStore(paths.DatabaseEnginesRoot()),
+			downloadQueue,
 			logger,
 		),
 		Databases: databases,

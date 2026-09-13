@@ -16,6 +16,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/lanscarlos/hypercraft/internal/download"
 	"time"
 
 	"github.com/ulikunitz/xz"
@@ -106,7 +108,9 @@ func newTestInstaller(t *testing.T, base string) (*Installer, *Store) {
 	client := NewClient("HyperCraft-test")
 	client.AllowInsecure()
 	store := NewStore(filepath.Join(t.TempDir(), "engines"))
-	return NewInstaller(client, store, testLogger()), store
+	queue := download.NewQueue(testLogger())
+	t.Cleanup(queue.Close)
+	return NewInstaller(client, store, queue, testLogger()), store
 }
 
 // The whole install path, end to end: resolve over HTTP, verify the checksum,
@@ -179,7 +183,10 @@ func TestInstallRefusesABadChecksum(t *testing.T) {
 	waitForJob(t, installer)
 
 	job, _ := installer.Status()
-	if job.State != JobFailed || !strings.Contains(job.Error, "校验不上") {
+	// MySQL's checksums come from Oracle as MD5, which is all they publish.
+	// Naming the algorithm matters: "校验不符" alone leaves an operator unable
+	// to tell a weak check from a strong one.
+	if job.State != JobFailed || !strings.Contains(job.Error, "MD5") {
 		t.Fatalf("a corrupt download was accepted: %s %s", job.State, job.Error)
 	}
 	if installs, _ := store.List(); len(installs) != 0 {

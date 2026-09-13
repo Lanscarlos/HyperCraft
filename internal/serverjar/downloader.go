@@ -224,7 +224,7 @@ func (d *Downloader) Start(req Request) (Job, error) {
 		Subtitle:  fmt.Sprintf("#%d", build.Build),
 		FileName:  build.FileName,
 		Total:     build.Size,
-		SHA256:    build.SHA256,
+		Digest:    download.Digest{Algo: "sha256", Value: build.SHA256},
 		DedupeKey: project.ID + "\x00" + req.Version + "\x00" + strconv.Itoa(build.Build),
 		TempDir:   d.library.Root(),
 		Meta: map[string]string{

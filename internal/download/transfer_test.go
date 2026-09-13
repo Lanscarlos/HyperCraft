@@ -2,6 +2,8 @@ package download
 
 import (
 	"context"
+	"crypto/md5"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
@@ -49,7 +51,7 @@ func TestMisdeclaredSizeIsAcceptedWhenTheChecksumMatches(t *testing.T) {
 	body := "the actual bytes"
 	job := runOne(t, Request{
 		Kind: KindJava, Title: "jdk", DedupeKey: "jdk",
-		Total: int64(len(body)) + 9, SHA256: sum(body),
+		Total: int64(len(body)) + 9, Digest: Digest{Algo: "sha256", Value: sum(body)},
 		Attempts: serve(body),
 		Install:  func(context.Context, string, string, *Progress) (string, error) { return "rt-1", nil },
 	})
@@ -61,7 +63,7 @@ func TestMisdeclaredSizeIsAcceptedWhenTheChecksumMatches(t *testing.T) {
 func TestPublishedChecksumMismatchIsRejected(t *testing.T) {
 	job := runOne(t, Request{
 		Kind: KindCore, Title: "paper", DedupeKey: "paper",
-		SHA256:   sum("what upstream promised"),
+		Digest:   Digest{Algo: "sha256", Value: sum("what upstream promised")},
 		Attempts: serve("something else entirely"),
 		Install:  func(context.Context, string, string, *Progress) (string, error) { return "", nil },
 	})
@@ -79,7 +81,7 @@ func TestMisdeclaredSizeIsRejectedWithoutAChecksum(t *testing.T) {
 	body := "four"
 	job := runOne(t, Request{
 		Kind: KindPlugin, Title: "jar", DedupeKey: "jar",
-		Total: int64(len(body)) + 10, SHA256: "",
+		Total: int64(len(body)) + 10, Digest: Digest{},
 		Attempts: serve(body),
 		Install:  func(context.Context, string, string, *Progress) (string, error) { return "", nil },
 	})
@@ -93,7 +95,7 @@ func TestMisdeclaredSizeIsRejectedWithoutAChecksum(t *testing.T) {
 func TestATruncatedBodyIsReportedAsTruncated(t *testing.T) {
 	job := runOne(t, Request{
 		Kind: KindCore, Title: "paper", DedupeKey: "paper",
-		Total: 1024, SHA256: sum("full body"),
+		Total: 1024, Digest: Digest{Algo: "sha256", Value: sum("full body")},
 		Attempts: serve("short"),
 		Install:  func(context.Context, string, string, *Progress) (string, error) { return "", nil },
 	})
@@ -108,7 +110,7 @@ func TestAFailingRouteFallsThroughToTheNextOne(t *testing.T) {
 	body := "served by the second"
 	job := runOne(t, Request{
 		Kind: KindCore, Title: "paper", DedupeKey: "paper",
-		SHA256: sum(body),
+		Digest: Digest{Algo: "sha256", Value: sum(body)},
 		Attempts: func(context.Context, *Progress) ([]Attempt, error) {
 			return []Attempt{
 				{Route: "mirror", Open: func(context.Context) (io.ReadCloser, error) {
@@ -136,7 +138,7 @@ func TestAFailedDownloadLeavesNoFileBehind(t *testing.T) {
 	job := runOne(t, Request{
 		Kind: KindCore, Title: "paper", DedupeKey: "paper",
 		TempDir:  dir,
-		SHA256:   sum("promised"),
+		Digest:   Digest{Algo: "sha256", Value: sum("promised")},
 		Attempts: serve("delivered"),
 		Install:  func(context.Context, string, string, *Progress) (string, error) { return "", nil },
 	})
@@ -165,7 +167,7 @@ func TestASHA512OnlyRequestIsVerifiedAgainstIt(t *testing.T) {
 	body := "what modrinth promised"
 	job := runOne(t, Request{
 		Kind: KindPlugin, Title: "jar", DedupeKey: "jar",
-		Total: int64(len(body)), SHA512: sum512(body),
+		Total: int64(len(body)), Digest: Digest{Algo: "sha512", Value: sum512(body)},
 		Attempts: serve(body),
 		Install:  func(context.Context, string, string, *Progress) (string, error) { return "p-1", nil },
 	})
@@ -177,7 +179,7 @@ func TestASHA512OnlyRequestIsVerifiedAgainstIt(t *testing.T) {
 func TestASHA512MismatchIsRejected(t *testing.T) {
 	job := runOne(t, Request{
 		Kind: KindPlugin, Title: "jar", DedupeKey: "jar",
-		SHA512:   sum512("what modrinth promised"),
+		Digest:   Digest{Algo: "sha512", Value: sum512("what modrinth promised")},
 		Attempts: serve("something else entirely"),
 		Install:  func(context.Context, string, string, *Progress) (string, error) { return "", nil },
 	})
@@ -197,7 +199,7 @@ func TestAMisdeclaredSizeIsAcceptedWhenOnlySHA512IsPublished(t *testing.T) {
 	body := "the actual bytes"
 	job := runOne(t, Request{
 		Kind: KindPlugin, Title: "jar", DedupeKey: "jar",
-		Total: int64(len(body)) + 9, SHA512: sum512(body),
+		Total: int64(len(body)) + 9, Digest: Digest{Algo: "sha512", Value: sum512(body)},
 		Attempts: serve(body),
 		Install:  func(context.Context, string, string, *Progress) (string, error) { return "p-1", nil },
 	})
@@ -238,7 +240,7 @@ func TestADigestLearnedWhileResolvingIsStillChecked(t *testing.T) {
 	job := runOne(t, Request{
 		Kind: KindCore, Title: "paper", DedupeKey: "paper",
 		Attempts: func(_ context.Context, pub *Progress) ([]Attempt, error) {
-			pub.Describe(Description{SHA256: sum("what upstream promised")})
+			pub.Describe(Description{Digest: Digest{Algo: "sha256", Value: sum("what upstream promised")}})
 			return []Attempt{{Route: "mirror", Open: func(context.Context) (io.ReadCloser, error) {
 				return io.NopCloser(strings.NewReader("what the mirror served")), nil
 			}}}, nil
@@ -259,7 +261,7 @@ func TestADigestLearnedWhileResolvingPassesWhenItMatches(t *testing.T) {
 	job := runOne(t, Request{
 		Kind: KindCore, Title: "paper", DedupeKey: "paper",
 		Attempts: func(_ context.Context, pub *Progress) ([]Attempt, error) {
-			pub.Describe(Description{SHA256: sum(body), FileName: "paper.jar", Total: int64(len(body))})
+			pub.Describe(Description{Digest: Digest{Algo: "sha256", Value: sum(body)}, FileName: "paper.jar", Total: int64(len(body))})
 			return []Attempt{{Route: "mirror", Open: func(context.Context) (io.ReadCloser, error) {
 				return io.NopCloser(strings.NewReader(body)), nil
 			}}}, nil
@@ -286,6 +288,62 @@ func TestTheTempDirectoryIsCreatedIfItIsNotThereYet(t *testing.T) {
 		Total:    int64(len(body)),
 		Attempts: serve(body),
 		Install:  func(context.Context, string, string, *Progress) (string, error) { return "core-1", nil },
+	})
+	if job.State != StateDone {
+		t.Fatalf("state = %q err = %q, want done", job.State, job.Error)
+	}
+}
+
+// Nothing here gets to choose the algorithm: sha256 from PaperMC, Adoptium and
+// MongoDB, sha512 from Modrinth, sha1 from Maven for PostgreSQL, md5 from
+// Oracle for MySQL. Refusing the weak ones would not make those downloads
+// safer — it would make them unchecked, which is what the shared kernel very
+// nearly did to two of the three database engines.
+func TestEveryPublishedAlgorithmIsActuallyChecked(t *testing.T) {
+	body := "what upstream promised"
+	digests := map[string]func(string) string{
+		"sha256": func(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) },
+		"sha512": func(s string) string { h := sha512.Sum512([]byte(s)); return hex.EncodeToString(h[:]) },
+		"sha1":   func(s string) string { h := sha1.Sum([]byte(s)); return hex.EncodeToString(h[:]) },
+		"md5":    func(s string) string { h := md5.Sum([]byte(s)); return hex.EncodeToString(h[:]) },
+	}
+	for algo, of := range digests {
+		t.Run(algo+" accepts what matches", func(t *testing.T) {
+			job := runOne(t, Request{
+				Kind: KindDatabase, Title: algo, DedupeKey: algo,
+				Digest:   Digest{Algo: algo, Value: of(body)},
+				Attempts: serve(body),
+				Install:  func(context.Context, string, string, *Progress) (string, error) { return "x", nil },
+			})
+			if job.State != StateDone {
+				t.Fatalf("state = %q err = %q, want done", job.State, job.Error)
+			}
+		})
+		t.Run(algo+" rejects what does not", func(t *testing.T) {
+			job := runOne(t, Request{
+				Kind: KindDatabase, Title: algo, DedupeKey: algo,
+				Digest:   Digest{Algo: algo, Value: of("something else")},
+				Attempts: serve(body),
+				Install:  func(context.Context, string, string, *Progress) (string, error) { return "", nil },
+			})
+			if job.State != StateFailed {
+				t.Fatalf("state = %q, want failed", job.State)
+			}
+			if !strings.Contains(job.Error, algoName(algo)) {
+				t.Fatalf("error = %q, want it to name %s", job.Error, algoName(algo))
+			}
+		})
+	}
+}
+
+// An algorithm this build does not know is the same position as upstream
+// publishing nothing — not a reason to refuse the download outright.
+func TestAnUnknownAlgorithmIsTreatedAsNoDigest(t *testing.T) {
+	job := runOne(t, Request{
+		Kind: KindDatabase, Title: "x", DedupeKey: "x",
+		Digest:   Digest{Algo: "whirlpool", Value: "ffff"},
+		Attempts: serve("bytes"),
+		Install:  func(context.Context, string, string, *Progress) (string, error) { return "x", nil },
 	})
 	if job.State != StateDone {
 		t.Fatalf("state = %q err = %q, want done", job.State, job.Error)
