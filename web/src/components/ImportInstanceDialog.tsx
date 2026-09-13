@@ -228,21 +228,21 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
             {(parsed?.ok !== true || parsed.draft.argFiles.length === 0) && (
               <label className="field">
                 <span>服务端 jar 文件名</span>
-                <input
+                <Select
+                  allowCustom
+                  ariaLabel="服务端 jar 文件名"
                   value={jar}
-                  onChange={(e) => {
-                    touchedJar.current = true
-                    setJar(e.target.value)
-                  }}
                   placeholder="server.jar"
-                  list="import-instance-jars"
-                  spellCheck={false}
+                  options={(found.jars ?? []).map((entry) => ({
+                    value: entry.name,
+                    label: entry.name,
+                    note: formatBytes(entry.size),
+                  }))}
+                  onChange={(next) => {
+                    touchedJar.current = true
+                    setJar(next)
+                  }}
                 />
-                <datalist id="import-instance-jars">
-                  {(found.jars ?? []).map((entry) => (
-                    <option key={entry.name} value={entry.name} />
-                  ))}
-                </datalist>
                 <small>
                   {found.jar
                     ? `目录里挑出来的是 ${found.jar}，不对的话点输入框换一个。`

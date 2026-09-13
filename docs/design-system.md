@@ -93,6 +93,26 @@
 
 **什么时候不用它**：`<a className="btn">`（链接扮成按钮）和 `<Menu className="btn">`（Menu 自己渲染触发器）保持原样，它们不是 `<button>`。
 
+### `Select`
+
+```tsx
+<Select ariaLabel="Java 环境" value={java} options={opts} onChange={setJava} />
+<Select allowCustom ariaLabel="服务端 jar" value={jar} placeholder="server.jar" … />
+// options: { value, label, note?, disabled? }[]
+```
+
+面板里**唯一**的下拉。`note` 是第二行，放标签本身说不清的东西（文件大小、版本日期、令牌尾号）。
+
+`allowCustom` 让值也能直接敲进去，列表退为建议：列表里没有的名字照样留得住。给「服务端 jar」这类
+「通常从目录里挑，但也可能填一个还没下载的」的字段用。
+
+**不要用原生 `<select>` 和 `<datalist>`**：它们的弹窗是平台画的，读不到任何一个令牌，也不跟着明暗
+主题走 —— 一个精修到毫米的表单中间掉出一块 Windows 95 风格的列表，就是这么来的。守卫 `ruleDropdownsAreOurs`
+直接卡。粗指针设备上 `Select` 自己会回落到真的 `<select>`（拇指要的是系统自带的选择器），那是它内部的事。
+
+`<label class="field">` 包不住它 —— 非 `allowCustom` 时它渲染的是 `<button>`，而 `<label>` 标不了
+按钮，所以 `ariaLabel` 实际上是必填的。
+
 ### `Badge`
 
 ```tsx
@@ -252,6 +272,7 @@
 | `ruleNoUndefinedClasses` | tsx 里用到的每个 BEM 类名都在 `styles.css` 里存在。基类的修饰符若已定义则算它已定义（`.chist__line` + `--add`/`--delete` 是合法的 BEM，未改动的行没有背景是对的）。 |
 | `ruleIconButtonsAreLabelled` | `<Button icon>` 必须带 `aria-label`。图标按钮没有文字，漏了 label 屏幕阅读器只念得出 "button"。 |
 | `ruleFormPanelsHaveColumns` | 每个 `.panel--form` 都有 `.panel__aside` 和 `.panel__body`。按文件内出现次数比对，不解析 JSX 嵌套——三个用到它的文件都是一段一对，漏一处计数就对不上。 |
+| `ruleDropdownsAreOurs` | 组件里不许出现原生 `<select>` / `<datalist>`，一律走 `Select`。`Select.tsx` 自身豁免 —— 它拥有两个分支，包括粗指针设备上回落的那个真 `<select>`。扫描前先剥注释：这份代码库的注释大量在讨论这两个标签（`InstancePlugins` 和 `JVMArgsEditor` 各自长篇解释了为什么**不**用），不剥就全是误报。 |
 | `ruleNoSilentOverrides` | 同一个选择器不许重复声明同一个**属性**。写两遍本身不算错——这份样式表是按叙述组织的；但同一个属性写两遍，就一定有一块在悄悄失效。有意的覆盖写进 `OVERRIDE_ALLOWED` 并附理由。 |
 
 只校验 BEM 形状（含 `__` 或 `--`）的类名——单词形的 token 会被模板字符串里的对象键和状态名污染，全是误报。扫描 JSX 标签时先跳注释再跳字符串：属性之间的注释里有 "snapshot's copy"，把那个撇号当成字符串起始会吞掉整个文件。

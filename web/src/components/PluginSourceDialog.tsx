@@ -6,6 +6,7 @@ import type { PluginTokenInfo, SourcePreview } from '../types'
 import type { PluginInput } from '../usePlugins'
 import { Button } from './Button'
 import { Modal } from './Modal'
+import { Select } from './Select'
 
 /**
  * Adding a GitHub repository, after looking at it.
@@ -115,21 +116,22 @@ export function PluginSourceDialog({
         {tokens.length > 1 && (
           <label className="field">
             <span>用哪个令牌读</span>
-            <select
+            <Select
+              ariaLabel="用哪个令牌读"
               value={tokenId}
-              onChange={(event) => {
-                setTokenId(event.target.value)
+              options={[
+                { value: '', label: `默认（${tokens[0].name}）` },
+                ...tokens.map((token) => ({
+                  value: token.id,
+                  label: token.name,
+                  note: token.hint ? `···${token.hint}` : undefined,
+                })),
+              ]}
+              onChange={(next) => {
+                setTokenId(next)
                 setPreview(null)
               }}
-            >
-              <option value="">默认（{tokens[0].name}）</option>
-              {tokens.map((token) => (
-                <option key={token.id} value={token.id}>
-                  {token.name}
-                  {token.hint ? ` ···${token.hint}` : ''}
-                </option>
-              ))}
-            </select>
+            />
             <small>
               私有仓库只有能看见它的那个账号的令牌读得到。公开仓库随便挑，令牌在这里只起提额度的作用。
             </small>

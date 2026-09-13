@@ -14290,6 +14290,57 @@ button.select.input-slim {
   width: 100%;
 }
 
+/* The typed trigger, for the fields whose value may also be a name the list has
+   never heard of (Select's allowCustom). It wears the same `.select` skin as the
+   button opposite — same height, border, focus ring — so the two read as one
+   control with two jobs, and what differs is only what differs: a caret lives in
+   this one.
+
+   The chevron is positioned rather than a flex sibling because an <input> cannot
+   hold a child. That is the same constraint that makes the native branch paint
+   its arrow into the background, and the same reason it needs pointer-events off
+   — it sits over the text box, and a click on it has to reach the box. */
+.combo {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.field .combo {
+  width: 100%;
+}
+
+/* The padding is restated because `.field input` above is a selector heavier
+   than `.select` and sets its own — which cost this box two pixels of height
+   next to the Select beside it, and, worse, the 30px of right margin the
+   chevron needs: at 11px a long jar name runs underneath the arrow.
+
+   min-width: 0 because an <input> carries an intrinsic width from its size
+   attribute, and in a .field-row that floor is what pushes the row open. */
+.combo > input.select {
+  padding: 7px 30px 7px 11px;
+  width: 100%;
+  min-width: 0;
+  cursor: text;
+}
+
+/* Centred on the box rather than on the line, so it stays centred if the field
+   ever grows a second one. */
+.combo__chevron {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+/* The .select[aria-expanded] rule above cannot reach here — the chevron is a
+   sibling of the input, not a child of it, which is the whole point. */
+.combo[data-open='true'] .combo__chevron {
+  transform: translateY(-50%) rotate(180deg);
+}
+
 .select:hover:not(:disabled),
 .field select:hover:not(:disabled),
 select.input-slim:hover:not(:disabled) {

@@ -213,6 +213,52 @@ function ruleFormPanelsHaveColumns() {
   }
 }
 
+/** Rule: dropdowns are the panel's, not the platform's.
+ *
+ *  A native `<select>` is two controls in one: a box the page draws and a
+ *  popup the *platform* draws. `appearance: none` and the rules in styles.css
+ *  win the box; nothing wins the popup. So choosing a Java runtime used to end
+ *  in a Windows 95 list dropping out of a control styled to the millimetre,
+ *  and Select.tsx exists to answer exactly that.
+ *
+ *  `<datalist>` is the same bug wearing the other hat, and it outlived the fix
+ *  by a year in the three 服务端 jar fields — one field below a Select, in the
+ *  same form, in the same screenshot. Neither can read a token, neither fades
+ *  the way every other surface in the panel fades, and neither has anywhere to
+ *  put the second line that is most of why a list is worth offering.
+ *
+ *  Select.tsx is exempt: it owns both branches, including the real `<select>`
+ *  it falls back to on a touch screen, where the platform's picker is the
+ *  better one. */
+const DROPDOWN_EXEMPT = new Set(['components/Select.tsx'])
+
+/** Source with its comments blanked out.
+ *
+ *  Needed because this codebase's comments are prose about the code, so they
+ *  talk about `<select>` and `<datalist>` constantly — InstancePlugins and
+ *  JVMArgsEditor each explain at length why they do *not* use one, and both
+ *  read as violations until the comments are gone. Line comments are only
+ *  taken when the `//` does not follow a `:`, which is what a URL looks like.
+ */
+function withoutComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
+}
+
+function ruleDropdownsAreOurs() {
+  for (const file of tsxFiles(SRC)) {
+    const rel = path.relative(SRC, file)
+    if (DROPDOWN_EXEMPT.has(rel)) continue
+    const src = withoutComments(fs.readFileSync(file, 'utf8'))
+    for (const [tag, hint] of [
+      ['<select', '改用 <Select>'],
+      ['<datalist', '改用 <Select allowCustom>'],
+    ]) {
+      const n = (src.match(new RegExp(`${tag}[\\s>]`, 'g')) ?? []).length
+      if (n > 0) problems.push(`${rel} 用了 ${n} 处原生 ${tag}> —— ${hint}`)
+    }
+  }
+}
+
 /** Advisory: one filled button per screen.
  *
  *  Not an error yet — a dozen components exceed it, and each needs a
@@ -234,6 +280,7 @@ const RULES = [
   ruleIconButtonsAreLabelled,
   ruleNoSilentOverrides,
   ruleFormPanelsHaveColumns,
+  ruleDropdownsAreOurs,
 ]
 
 for (const rule of RULES) rule()
