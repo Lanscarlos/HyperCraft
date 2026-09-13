@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -141,7 +142,7 @@ func (q *Queue) Submit(r Request) (Job, error) {
 		return Job{}, ErrBusy
 	}
 	if existing := q.duplicate(r.Kind, r.DedupeKey); existing != nil {
-		return *existing.pub, nil
+		return existing.pub.clone(), nil
 	}
 	queued := 0
 	for _, e := range q.jobs {
@@ -161,7 +162,9 @@ func (q *Queue) Submit(r Request) (Job, error) {
 			Title:    r.Title,
 			Subtitle: r.Subtitle,
 			FileName: r.FileName,
-			Meta:     r.Meta,
+			// Copied, not adopted: the caller still holds its own reference to
+			// the map it passed in, and Describe writes into this one.
+			Meta:     maps.Clone(r.Meta),
 			Total:    r.Total,
 			State:    StateQueued,
 			QueuedAt: time.Now(),
@@ -171,7 +174,7 @@ func (q *Queue) Submit(r Request) (Job, error) {
 	q.jobs = append(q.jobs, e)
 	q.prune()
 	q.dispatch()
-	return *e.pub, nil
+	return e.pub.clone(), nil
 }
 
 // duplicate finds an unfinished job for exactly this request. Called with the
@@ -253,7 +256,7 @@ func (q *Queue) Jobs() []Job {
 	defer q.mu.Unlock()
 	out := make([]Job, 0, len(q.jobs))
 	for i := len(q.jobs) - 1; i >= 0; i-- {
-		out = append(out, *q.jobs[i].pub)
+		out = append(out, q.jobs[i].pub.clone())
 	}
 	return out
 }

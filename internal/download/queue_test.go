@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -365,4 +366,46 @@ func TestClearFinishedKeepsWhatIsStillRunning(t *testing.T) {
 		t.Fatalf("running job state = %q, want downloading", got)
 	}
 	close(h.release)
+}
+
+// A Job handed out from under the lock must not share its Meta map with the
+// entry the worker is still writing to. Copying the struct is not enough: the
+// map header comes along and the reader gets a live view.
+//
+// Found by -race in CI, not by any assertion — which is why this exists.
+func TestReadingJobsWhileAWorkerDescribesThemIsRaceFree(t *testing.T) {
+	h := newHeld()
+	q := NewQueue(slog.New(slog.DiscardHandler))
+	t.Cleanup(q.Close)
+	q.SetLimit(KindPlugin, 3)
+
+	for i := 0; i < 3; i++ {
+		name := "p" + string(rune('a'+i))
+		r := req(q, h, KindPlugin, name)
+		r.Meta = map[string]string{"start": name}
+		r.Attempts = func(_ context.Context, pub *Progress) ([]Attempt, error) {
+			for n := 0; n < 50; n++ {
+				pub.Describe(Description{Meta: map[string]string{"n": strconv.Itoa(n)}})
+			}
+			return []Attempt{h.attempt("ok!")}, nil
+		}
+		if _, err := q.Submit(r); err != nil {
+			t.Fatalf("submit: %v", err)
+		}
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 200; i++ {
+			for _, job := range q.Jobs() {
+				for k, v := range job.Meta {
+					_, _ = k, v
+				}
+			}
+		}
+	}()
+	<-done
+	close(h.release)
+	waitFor(t, func() bool { return activeCount(q) == 0 })
 }

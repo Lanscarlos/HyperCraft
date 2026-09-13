@@ -87,6 +87,24 @@ type Job struct {
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 }
 
+// clone is a Job safe to hand out from under the lock.
+//
+// Copying the struct is not enough: Meta is a map, so a plain copy hands the
+// caller a live view of something Describe is still writing to, and the race
+// detector finds it the moment a job is read while its worker resolves. Every
+// Job that leaves the queue goes through here.
+func (j Job) clone() Job {
+	if j.Meta == nil {
+		return j
+	}
+	meta := make(map[string]string, len(j.Meta))
+	for k, v := range j.Meta {
+		meta[k] = v
+	}
+	j.Meta = meta
+	return j
+}
+
 // Attempt is one place the bytes might come from.
 //
 // The queue does not build URLs. Route selection lives with the caller because
