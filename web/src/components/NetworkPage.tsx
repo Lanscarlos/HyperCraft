@@ -1012,8 +1012,10 @@ function AddServer({
           onChange={setPicked}
         />
       </label>
+      {/* One of these per proxy card, so never the filled one: a button that
+          repeats down the page is a row action, and a page where every row is
+          filled has no filled button at all. */}
       <Button
-        variant="primary"
         type="button"
         disabled={busy || picked === ''}
         onClick={() => onLink(proxy.id, picked)}

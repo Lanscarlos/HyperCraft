@@ -234,8 +234,11 @@ function ServiceList({
 
           {usable.length > 0 && (
             <div className="actions">
+              {/* Hands the emphasis over the moment the form opens: 创建 is
+                  then the thing being asked for, and this one is a disabled
+                  copy of a decision already made. */}
               <Button
-                variant="primary"
+                variant={creating ? 'default' : 'primary'}
                 type="button"
                 disabled={databases.busy || creating}
                 onClick={() => setCreating(true)}
@@ -988,8 +991,9 @@ function InstallEngine({
             取消安装
           </Button>
         ) : (
+          // The escape hatch, not the main path — that is the 安装 on each
+          // row of the list above, and those are plain.
           <Button
-            variant="primary"
             disabled={busy || custom.trim() === ''}
             onClick={() => void databases.install(engine, custom.trim())}
           >

@@ -906,8 +906,10 @@ function CoreStep({
                     取消下载
                   </Button>
                 ) : (
+                  // Plain: the wizard's filled button is in the footer and
+                  // stays there from step to step. A second one inside a step
+                  // competes with 下一步 for the same glance.
                   <Button
-                    variant="primary"
                     type="button"
                     disabled={busy || !catalogue.versionId}
                     onClick={onDownload}
