@@ -292,7 +292,76 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
           of chooser tiles, and where those builds come from is two selects in
           this card's head — which is where a property of the download belongs,
           rather than behind a second navigation step. */}
-      <Section title="可安装">
+      <Section
+        title="可安装"
+        tools={
+          majors.length > 0 && (
+            <>
+              {distributions.length > 1 && (
+                <Select
+                  value={distribution ?? ''}
+                  onChange={(id) => {
+                    setDistribution(id)
+                    // The two source lists share nothing but auto and
+                    // official, so a mirror picked for the other
+                    // distribution cannot carry over.
+                    setSource(null)
+                  }}
+                  disabled={installing}
+                  ariaLabel="发行版"
+                  className="input-slim"
+                  options={distributions.map((entry) => ({
+                    value: entry.id,
+                    label: entry.name,
+                    note: entry.note,
+                  }))}
+                />
+              )}
+              {sources.length > 0 && (
+                <Select
+                  value={source ?? ''}
+                  onChange={setSource}
+                  disabled={installing}
+                  ariaLabel="下载源"
+                  className="input-slim"
+                  placeholder="下载源"
+                  options={sources.map((entry) => ({
+                    value: entry.id,
+                    label: entry.name,
+                    note: entry.note,
+                  }))}
+                />
+              )}
+              <div className="segmented segmented--inline" role="group" aria-label="镜像类型">
+                {IMAGE_TYPES.map((entry) => (
+                  <button
+                    key={entry.value}
+                    type="button"
+                    className={`segmented__option${
+                      imageType === entry.value ? ' segmented__option--active' : ''
+                    }`}
+                    aria-pressed={imageType === entry.value}
+                    title={entry.note}
+                    disabled={installing}
+                    onClick={() => setImageType(entry.value)}
+                  >
+                    <strong>{entry.label}</strong>
+                  </button>
+                ))}
+              </div>
+              {(hiddenMajors > 0 || showAllMajors) && (
+                <button
+                  className="link"
+                  type="button"
+                  onClick={() => setShowAllMajors((on) => !on)}
+                >
+                  {showAllMajors ? '只看 LTS' : `全部 ${majors.length} 个`}
+                </button>
+              )}
+            </>
+          )
+        }
+      >
         {majors.length === 0 ? (
           <>
             <p className="muted">
@@ -302,80 +371,6 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
           </>
         ) : (
           <>
-            {/* The tools ride the list rather than the section head: with no
-                versions to install there is nothing for a mirror picker to
-                pick for, and a head that changes shape between the two states
-                reads as two different cards. */}
-            <div className="toolbar">
-              <div className="toolbar__tools">
-                {distributions.length > 1 && (
-                  <Select
-                    value={distribution ?? ''}
-                    onChange={(id) => {
-                      setDistribution(id)
-                      // The two source lists share nothing but auto and
-                      // official, so a mirror picked for the other
-                      // distribution cannot carry over.
-                      setSource(null)
-                    }}
-                    disabled={installing}
-                    ariaLabel="发行版"
-                    className="input-slim"
-                    options={distributions.map((entry) => ({
-                      value: entry.id,
-                      label: entry.name,
-                      note: entry.note,
-                    }))}
-                  />
-                )}
-                {sources.length > 0 && (
-                  <Select
-                    value={source ?? ''}
-                    onChange={setSource}
-                    disabled={installing}
-                    ariaLabel="下载源"
-                    className="input-slim"
-                    placeholder="下载源"
-                    options={sources.map((entry) => ({
-                      value: entry.id,
-                      label: entry.name,
-                      note: entry.note,
-                    }))}
-                  />
-                )}
-                <div
-                  className="segmented segmented--inline"
-                  role="group"
-                  aria-label="镜像类型"
-                >
-                  {IMAGE_TYPES.map((entry) => (
-                    <button
-                      key={entry.value}
-                      type="button"
-                      className={`segmented__option${
-                        imageType === entry.value ? ' segmented__option--active' : ''
-                      }`}
-                      aria-pressed={imageType === entry.value}
-                      title={entry.note}
-                      disabled={installing}
-                      onClick={() => setImageType(entry.value)}
-                    >
-                      <strong>{entry.label}</strong>
-                    </button>
-                  ))}
-                </div>
-                {(hiddenMajors > 0 || showAllMajors) && (
-                  <button
-                    className="link"
-                    type="button"
-                    onClick={() => setShowAllMajors((on) => !on)}
-                  >
-                    {showAllMajors ? '只看 LTS' : `全部 ${majors.length} 个`}
-                  </button>
-                )}
-              </div>
-            </div>
-
             <div className="pick-grid">
               {visibleMajors.map((entry) => {
                 const running = installing && job?.major === entry.major

@@ -11253,6 +11253,13 @@ button.rows__name:hover strong {
     border: 1px solid var(--border);
   }
 
+  /* Sized to its own words rather than to the page. As a column heading it
+     filled the rail, which was the rail's width; on one column that same
+     stretch is a 1000px button saying 仅看已修改. */
+  .cfg__filter {
+    align-self: flex-start;
+  }
+
   /* Said once at the top of the page on this layout; repeating the path under
      a wrapped chip row pushes the first setting off the screen. */
   .cfg__note,
