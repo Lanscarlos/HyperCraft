@@ -107,7 +107,7 @@ Java 则相反：自由路径没有带来自由度，只带来了盲区。把它
 登记：  用户填路径 → POST /api/java/registry → probe 探版本 → 写 Registry
                                             ↘ 探不到 → 400，不写
 选择：  实例设置下拉 ← GET /api/java（Store ∪ Registry）
-保存：  PATCH 实例 → 校验 java ∈ (Store ∪ Registry) → 落盘
+保存：  PUT 实例 → java 有变化时校验 ∈ (Store ∪ Registry) → 落盘
                    ↘ 不在 → 400，指向 Java 环境页
 启动：  cfg.Java → argv[0]（不查表，不解析）
 ```
@@ -191,7 +191,7 @@ POST   /api/java/registry/{id}/probe   重新检测
 
 > body 里带了 `java`、trim 后非空、**且与服务端当前存的值不同**时，才校验它在合并列表内。不在则 400，消息指向 Java 环境页。
 
-「不是状态」这一点是必须的。设置页把整份 config 读进表单（`LaunchSettings.tsx:42`）后整份 PATCH 回来，所以一个 `java` 值不在白名单里的存量实例——迁移时探测失败的，或者 managed runtime 被删之后的——**会连改名字都做不到**。那是个荒唐的失败。
+「不是状态」这一点是必须的。设置页把整份 config 读进表单（`LaunchSettings.tsx:42`）后整份 PUT 回来，所以一个 `java` 值不在白名单里的存量实例——迁移时探测失败的，或者 managed runtime 被删之后的——**会连改名字都做不到**。那是个荒唐的失败。
 
 这跟同一个 handler 里权限检查的规则**故意不同**，且有根据。`handlers_instances.go:203` 解释权限为什么用「present, not different」：
 
