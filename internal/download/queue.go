@@ -3,9 +3,9 @@ package download
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -58,6 +58,12 @@ type Request struct {
 	// publishes none (GitHub release assets), and then there is no content
 	// check at all — see transfer.
 	SHA256 string
+	// SHA512 is the same thing in the other algorithm, and exists because
+	// Modrinth publishes sha512 (and sha1, deliberately never read: it is the
+	// weakest of the three and would be the one an attacker picks if the panel
+	// accepted it) and no sha256. A source publishes one or the other, never
+	// both, and either is enough to check a download against — see transfer.
+	SHA512 string
 	// DedupeKey collapses a repeat request onto the job already doing it. Two
 	// workers writing the same part file is a corrupt download.
 	DedupeKey string
@@ -308,11 +314,6 @@ func (q *Queue) finish(e *entry, state State, err error) {
 }
 
 // work runs one job end to end and then hands its slot to whatever is next.
-//
-// Deliberately minimal: it opens the first attempt, copies the body to a temp
-// file, and installs it. No checksum, no fallback to a second attempt, no
-// progress bytes — Task 3 replaces this with the verifying, falling-back
-// transfer.
 func (q *Queue) work(ctx context.Context, e *entry) {
 	defer func() {
 		q.wg.Done()
@@ -326,61 +327,40 @@ func (q *Queue) work(ctx context.Context, e *entry) {
 		q.mu.Unlock()
 	}()
 
-	attempts, err := e.req.Attempts(ctx)
-	if err != nil {
-		q.finish(e, StateFailed, err)
-		return
+	dir := e.req.TempDir
+	if dir == "" {
+		dir = os.TempDir()
 	}
-	if len(attempts) == 0 {
-		q.finish(e, StateFailed, errors.New("no attempts to try"))
-		return
-	}
-	attempt := attempts[0]
+	// The job ID is unique for the life of this process, but the queue is not
+	// persisted (see Job.ID) and IDs restart at 1 — a stray file left behind
+	// by a process that died mid-download could otherwise collide with a
+	// fresh job that happens to draw the same ID.
+	temp := filepath.Join(dir, e.pub.ID+".part")
+	_ = os.Remove(temp)
 
-	body, err := attempt.Open(ctx)
-	if err != nil {
+	if err := transfer(ctx, q, e, e.req, temp); err != nil {
+		os.Remove(temp)
 		if ctx.Err() != nil {
 			q.finish(e, StateCancelled, ErrCancelled)
 			return
 		}
 		q.finish(e, StateFailed, err)
-		return
-	}
-
-	temp, err := os.CreateTemp(e.req.TempDir, "hypercraft-download-*")
-	if err != nil {
-		body.Close()
-		q.finish(e, StateFailed, err)
-		return
-	}
-	_, copyErr := io.Copy(temp, body)
-	closeErr := temp.Close()
-	body.Close()
-	if copyErr != nil {
-		os.Remove(temp.Name())
-		if ctx.Err() != nil {
-			q.finish(e, StateCancelled, ErrCancelled)
-			return
-		}
-		q.finish(e, StateFailed, copyErr)
-		return
-	}
-	if closeErr != nil {
-		os.Remove(temp.Name())
-		q.finish(e, StateFailed, closeErr)
 		return
 	}
 
 	q.mu.Lock()
-	e.pub.Route = attempt.Route
 	e.pub.State = StateExtracting
 	q.mu.Unlock()
 
 	var ref string
+	var err error
 	if e.req.Install != nil {
-		ref, err = e.req.Install(ctx, temp.Name(), &Progress{q: q, entry: e})
+		ref, err = e.req.Install(ctx, temp, &Progress{q: q, entry: e})
 	}
-	os.Remove(temp.Name())
+	// Success path decides where the bytes end up (Install's own os.Rename
+	// moves them out from under this path), so the Remove that follows either
+	// way finds nothing there and its error is ignored.
+	os.Remove(temp)
 	if err != nil {
 		if ctx.Err() != nil {
 			q.finish(e, StateCancelled, ErrCancelled)
