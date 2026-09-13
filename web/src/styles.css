@@ -3878,9 +3878,10 @@ a:hover {
 }
 
 /* A settings form is two columns: an aside saying what this section is, and a
-   body holding the fields. The width a wide window brings goes to the aside —
-   it does not go into making a text input longer, which is what made this page
-   read like a narrow form someone had dragged sideways.
+   body holding the fields. The width a wide window brings goes to the aside
+   first and to trailing space after that — it does not go into making a text
+   input longer, which is what made this page read like a narrow form someone
+   had dragged sideways.
 
    This replaced an auto-fit grid whose column count came out of the viewport:
    in the 1440px instance pane it computed to three ~420px tracks, so a .field-row
@@ -3889,10 +3890,19 @@ a:hover {
    six-line paragraph into a 300px cell.
 
    The wrap is intrinsic, not a breakpoint. 999 against 1 means the body takes
-   essentially all the free space, which pins the aside at its 200px basis
-   without a max-width it could not shed once wrapped; the body's 480px basis
-   is what decides when to wrap, at 200 + 24 + 480 = 704px of card. Below that
-   the body drops to its own line and the aside becomes an ordinary heading.
+   essentially all the free space while it still has room to grow, which holds
+   the aside near its 200px basis; the body's 480px basis is what decides when
+   to wrap, at 200 + 24 + 480 = 704px of card. Below that the body drops to its
+   own line and the aside becomes an ordinary heading.
+
+   That ratio stops governing the moment the body reaches its max-width. Flexbox
+   freezes an item that hits its cap and hands the leftover to whoever can still
+   grow — which is the aside, alone. So past ~1000px of card every further pixel
+   landed on the aside rather than beside the body: measured, 282px of aside at
+   1186px of card and 536px at 1440px, a two-line caption in a column wider than
+   half the reading measure. Hence the cap below. It costs the wrapped case, where
+   the aside can no longer take the whole line and stops 280px in; a phone gives
+   up ~110px of note width, which is the cheaper of the two.
 
    The whitelist that used to follow — ten selectors granted grid-column: 1/-1 —
    is gone with the grid. The body is a vertical flex column, so everything in
@@ -3908,8 +3918,13 @@ a:hover {
   align-items: start;
 }
 
+/* Capped because flex hands this column the body's leftover once the body is
+   frozen at its own cap — see the note above. 280px is about where one sentence
+   at 11px stops reading as a caption beside the form and starts reading as a
+   paragraph adrift in an empty column. */
 .panel--form > .panel__aside {
   flex: 1 1 200px;
+  max-width: 280px;
   display: flex;
   flex-direction: column;
   gap: 4px;
