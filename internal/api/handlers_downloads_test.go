@@ -360,13 +360,15 @@ func TestLibraryIsEmptyBeforeAnyDownload(t *testing.T) {
 	}
 }
 
-func TestCancelWithoutADownloadIsAConflict(t *testing.T) {
+// Cancelling is /api/downloads/{id}/cancel now — one route for every shelf,
+// naming the job rather than meaning "whatever this shelf is doing". An id the
+// panel does not hold answers 404; see handlers_downloads_queue_test.go for the
+// rest of that route, including why it is 404 and not 403.
+func TestCancellingANonexistentDownloadIsNotFound(t *testing.T) {
 	env := newTestEnv(t)
 	env.login()
 
-	resp := env.do(http.MethodPost, "/api/cores/cancel", nil)
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusConflict {
-		t.Errorf("expected 409, got %d", resp.StatusCode)
+	if got := env.status(http.MethodPost, "/api/downloads/no-such-job/cancel", nil); got != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", got)
 	}
 }

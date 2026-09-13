@@ -6,9 +6,10 @@ import { toast } from '../toast'
 import type {
   DatabaseEngine,
   DatabaseInstall,
-  DatabaseInstallJob,
+  DownloadJob,
   DatabaseService,
 } from '../types'
+import { jobMeta } from '../types'
 import type { DatabaseController } from '../useDatabases'
 import { Badge } from './Badge'
 import { Button } from './Button'
@@ -913,7 +914,7 @@ function InstallEngine({
               second step for a decision the line had already made. */}
           <div className="pick-grid">
             {list.map((entry) => {
-              const running = installing && job?.version === entry.version
+              const running = installing && job !== null && jobMeta(job, 'version') === entry.version
               return (
                 <div
                   key={entry.version}
@@ -1022,8 +1023,10 @@ function DownloadNote({ engine }: { engine: string }) {
   )
 }
 
-function InstallStatus({ job, engines }: { job: DatabaseInstallJob; engines: DatabaseEngine[] }) {
-  const name = engines.find((entry) => entry.id === job.engine)?.name ?? job.engine
+function InstallStatus({ job, engines }: { job: DownloadJob; engines: DatabaseEngine[] }) {
+  const engine = jobMeta(job, 'engine')
+  const name = engines.find((entry) => entry.id === engine)?.name ?? engine
+  const version = jobMeta(job, 'version')
 
   if (job.state === 'downloading') {
     const fraction = job.total > 0 ? job.downloaded / job.total : 0
@@ -1038,7 +1041,7 @@ function InstallStatus({ job, engines }: { job: DatabaseInstallJob; engines: Dat
           </span>
         </div>
         <p className="chart-note">
-          正在下载 {name} {job.version}
+          正在下载 {name} {version}
         </p>
       </div>
     )
@@ -1047,7 +1050,7 @@ function InstallStatus({ job, engines }: { job: DatabaseInstallJob; engines: Dat
   if (job.state === 'extracting') {
     return (
       <div className="alert alert--ok">
-        正在解压 {name} {job.version}…（大的包解压比下载还慢，别关面板）
+        正在解压 {name} {version}…（大的包解压比下载还慢，别关面板）
       </div>
     )
   }
@@ -1055,7 +1058,7 @@ function InstallStatus({ job, engines }: { job: DatabaseInstallJob; engines: Dat
   if (job.state === 'done') {
     return (
       <div className="alert alert--ok">
-        {name} {job.version} 已安装，去「我的数据库」建一个库就能用了。
+        {name} {version} 已安装，去「我的数据库」建一个库就能用了。
       </div>
     )
   }

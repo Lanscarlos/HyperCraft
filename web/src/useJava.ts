@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { api } from './api'
+import type { DownloadController } from './useDownloads'
 import type {
+  DownloadJob,
   JavaDistribution,
-  JavaInstallJob,
   JavaMajor,
   JavaOverview,
 } from './types'
-
-/** Cadence while an install runs, for a progress bar that moves. */
-const ACTIVE_POLL_MS = 800
 
 export interface JavaController {
   overview: JavaOverview | null
@@ -17,7 +15,7 @@ export interface JavaController {
   /** The OpenJDK builds an install can pick from, default first, each with
    *  its own download sources. */
   distributions: JavaDistribution[]
-  job: JavaInstallJob | null
+  job: DownloadJob | null
   /** True while an install is downloading or extracting. */
   installing: boolean
   /** True while one of the actions below is in flight. */
@@ -48,14 +46,18 @@ export interface JavaController {
  * running after you navigate away, so the sidebar needs to know it is still
  * going. The page reads this state, it does not own it.
  */
-export function useJava(enabled: boolean): JavaController {
+export function useJava(enabled: boolean, downloads: DownloadController): JavaController {
   const [overview, setOverview] = useState<JavaOverview | null>(null)
   const [majors, setMajors] = useState<JavaMajor[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const job = overview?.job ?? null
-  const installing = job?.state === 'downloading' || job?.state === 'extracting'
+  // From the panel-wide queue rather than from this shelf's own listing: while
+  // an install runs the only thing changing is the byte count, and re-fetching
+  // the whole runtime inventory eight times a second to read it was the cost
+  // this replaces.
+  const job = downloads.latest('java')
+  const installing = downloads.activeOf('java') > 0
 
   const refresh = useCallback(async () => {
     try {
@@ -88,10 +90,11 @@ export function useJava(enabled: boolean): JavaController {
     void refreshMajors()
   }, [enabled, refresh, refreshMajors])
 
+  // Re-read when an install stops, not while it runs: what changes at the end
+  // is the shelf, and that is what this listing is.
   useEffect(() => {
-    if (!enabled || !installing) return
-    const timer = window.setInterval(() => void refresh(), ACTIVE_POLL_MS)
-    return () => window.clearInterval(timer)
+    if (!enabled || installing) return
+    void refresh()
   }, [enabled, installing, refresh])
 
   // A finished install changes the "已安装" flags. The runtimes list itself
@@ -99,7 +102,7 @@ export function useJava(enabled: boolean): JavaController {
   useEffect(() => {
     if (job?.state !== 'done') return
     void refreshMajors()
-  }, [job?.state, job?.runtimeId, refreshMajors])
+  }, [job?.state, job?.ref, refreshMajors])
 
   const act = useCallback(async (action: () => Promise<void>, fallback: string) => {
     setBusy(true)
@@ -126,7 +129,7 @@ export function useJava(enabled: boolean): JavaController {
   const cancel = useCallback(
     () =>
       act(async () => {
-        await api.cancelJavaInstall()
+        await downloads.cancel(job?.id ?? '')
         await refresh()
       }, '取消失败'),
     [act, refresh],

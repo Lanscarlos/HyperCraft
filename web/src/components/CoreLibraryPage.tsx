@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 
 import { ask } from '../confirm'
 import { formatBytes, formatDate } from '../format'
-import type { CoreDownloadJob, ServerCore } from '../types'
+import type { DownloadJob, ServerCore } from '../types'
 import type { CoreController } from '../useCores'
 import { Button } from './Button'
 import { CoreCatalogue, isRecommended, useCoreCatalogue } from './CoreCatalogue'
@@ -45,7 +45,7 @@ export function CoreLibraryPage({
   useEffect(() => {
     if (job?.state !== 'done') return
     void cores.refresh()
-  }, [job?.state, job?.coreId, cores])
+  }, [job?.state, job?.ref, cores])
 
   const remove = async (core: ServerCore) => {
     const ok = await ask({
@@ -248,7 +248,7 @@ function CoreRow({
   )
 }
 
-function JobStatus({ job }: { job: CoreDownloadJob }) {
+function JobStatus({ job }: { job: DownloadJob }) {
   if (job.state === 'downloading') {
     const fraction = job.total > 0 ? job.downloaded / job.total : 0
     return (
@@ -262,7 +262,8 @@ function JobStatus({ job }: { job: CoreDownloadJob }) {
           </span>
         </div>
         <p className="chart-note">
-          正在下载 {job.fileName}（{job.projectName} {job.version} 构建 #{job.build}）
+          正在下载 {job.fileName}（{job.title}
+          {job.subtitle ? ` 构建 ${job.subtitle}` : ''}）
         </p>
       </div>
     )

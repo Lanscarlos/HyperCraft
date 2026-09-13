@@ -10,7 +10,7 @@ import type {
   ForeignJar,
   InstanceStatus,
   LibraryPlugin,
-  PluginDownloadJob,
+  DownloadJob,
   PluginFilter,
   PluginOverview,
   PluginOverviewRow,
@@ -67,6 +67,7 @@ export function PluginLibraryPage({
   onOpenPlugin,
   onOpenSettings,
   onOpenView,
+  onOpenDownloads,
   onChooseAgainst,
   onOpenInstance,
 }: {
@@ -83,6 +84,8 @@ export function PluginLibraryPage({
   onOpenPlugin: (id: string | null) => void
   onOpenSettings: () => void
   onOpenView: (view: LibraryView) => void
+  /** 下载 is panel-wide now; the strip links out of this shelf. */
+  onOpenDownloads: () => void
   onChooseAgainst: (ids: string[]) => void
   onOpenInstance: (id: string) => void
 }) {
@@ -240,7 +243,7 @@ export function PluginLibraryPage({
       {plugins.active > 0 && (
         <QueueStrip
           jobs={plugins.jobs}
-          onOpenQueue={() => onOpenView('queue')}
+          onOpenQueue={onOpenDownloads}
         />
       )}
 
@@ -1508,7 +1511,7 @@ function QueueStrip({
   jobs,
   onOpenQueue,
 }: {
-  jobs: PluginDownloadJob[]
+  jobs: DownloadJob[]
   onOpenQueue: () => void
 }) {
   const running = jobs.filter((job) => job.state === 'downloading')
@@ -1517,7 +1520,7 @@ function QueueStrip({
   // names on one line is not a sentence anybody reads.
   const what =
     running.length === 1
-      ? `正在下载 ${running[0].pluginName} ${running[0].version}`
+      ? `正在下载 ${running[0].title}${running[0].subtitle ? ` ${running[0].subtitle}` : ''}`
       : `正在下载 ${running.length} 个插件`
 
   return (

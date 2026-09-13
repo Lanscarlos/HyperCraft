@@ -273,8 +273,8 @@ export function NewInstanceWizard({
     if (!awaitingCore || job?.state !== 'done') return
     setAwaitingCore(false)
     void cores.refresh()
-    if (job.coreId) {
-      setCoreId(job.coreId)
+    if (job.ref) {
+      setCoreId(job.ref)
       setCoreMode('library')
     }
   }, [awaitingCore, cores])
@@ -283,8 +283,8 @@ export function NewInstanceWizard({
     const job = java.job
     if (!awaitingJava || job?.state !== 'done') return
     setAwaitingJava(false)
-    if (job.runtimeId) {
-      const installed = runtimes.find((runtime) => runtime.id === job.runtimeId)
+    if (job.ref) {
+      const installed = runtimes.find((runtime) => runtime.id === job.ref)
       if (installed) setJavaPath(installed.javaPath)
     }
   }, [awaitingJava, java.job, runtimes])
@@ -948,7 +948,8 @@ function DownloadStatus({ job }: { job: NonNullable<CoreController['job']> }) {
           </span>
         </div>
         <p className="chart-note">
-          正在下载 {job.fileName}（{job.projectName} {job.version} 构建 #{job.build}）
+          正在下载 {job.fileName}（{job.title}
+          {job.subtitle ? ` 构建 ${job.subtitle}` : ''}）
         </p>
       </div>
     )
@@ -1191,13 +1192,14 @@ function InstallStatus({ job }: { job: NonNullable<JavaController['job']> }) {
           </span>
         </div>
         <p className="chart-note">
-          正在下载 Java {job.major} {job.imageType.toUpperCase()}（{job.version}）
+          正在下载 {job.title}
+          {job.subtitle ? ` ${job.subtitle.toUpperCase()}` : ''}
         </p>
       </div>
     )
   }
   if (job.state === 'extracting') {
-    return <div className="alert alert--ok">正在解压 Java {job.major}…</div>
+    return <div className="alert alert--ok">正在解压 {job.title}…</div>
   }
   if (job.state === 'failed') {
     return <div className="alert alert--error">安装失败：{job.error ?? '未知错误'}</div>

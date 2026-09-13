@@ -392,17 +392,6 @@ func TestDeleteRejectsTraversalIDs(t *testing.T) {
 	}
 }
 
-func TestCancelJavaInstallWithoutOne(t *testing.T) {
-	env := newTestEnv(t)
-	env.login()
-
-	resp := env.do(http.MethodPost, "/api/java/install/cancel", nil)
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusConflict {
-		t.Errorf("expected 409, got %d", resp.StatusCode)
-	}
-}
-
 // A panel that has never installed anything offers Zulu, and says so.
 func TestJavaOverviewDefaultsToZulu(t *testing.T) {
 	env := newTestEnv(t)

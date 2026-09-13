@@ -362,17 +362,6 @@ func (s *Server) handleInstallJava(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, job)
 }
 
-func (s *Server) handleCancelJavaInstall(w http.ResponseWriter, r *http.Request) {
-	if !s.javaAvailable(w) {
-		return
-	}
-	if err := s.java.Cancel(); err != nil {
-		writeError(w, http.StatusConflict, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // handleDeleteJava removes an installed runtime.
 //
 // It refuses while a server is running on it: those files are mapped into a

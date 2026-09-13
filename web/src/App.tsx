@@ -8,6 +8,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { CoreLibraryPage } from './components/CoreLibraryPage'
 import { DatabasePage } from './components/DatabasePage'
 import { Dashboard } from './components/Dashboard'
+import { DownloadsPage } from './components/DownloadsPage'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { HostPage } from './components/HostPage'
 import { HostTerminal } from './components/HostTerminal'
@@ -19,7 +20,6 @@ import { Login } from './components/Login'
 import { NetworkPage } from './components/NetworkPage'
 import { NewInstanceWizard } from './components/NewInstanceWizard'
 import { PluginLibraryPage } from './components/PluginLibraryPage'
-import { PluginQueuePage } from './components/PluginQueuePage'
 import { SchematicLibraryPage } from './components/SchematicLibraryPage'
 import { SchematicMarket } from './components/SchematicMarket'
 import { SettingsPage } from './components/SettingsPage'
@@ -47,6 +47,7 @@ import { captureScope } from './scopeMorph'
 import type { InstanceStatus, User } from './types'
 import { isLive, mergeState } from './types'
 import { useCores } from './useCores'
+import { useDownloads } from './useDownloads'
 import { useDatabases } from './useDatabases'
 import { useJava } from './useJava'
 import { useMediaQuery } from './useMediaQuery'
@@ -249,11 +250,14 @@ export default function App() {
   // Polled at the app level rather than inside the pages that show them: all
   // four are long-running daemon jobs that keep going after you navigate away,
   // and the sidebar says so while they do.
+  // Before the four shelves below, which all read it: what the panel is
+  // downloading is one fact now, not four.
+  const downloads = useDownloads(signedIn)
   const update = useUpdate(signedIn)
-  const java = useJava(signedIn)
-  const databases = useDatabases(signedIn)
-  const cores = useCores(signedIn)
-  const plugins = usePlugins(signedIn)
+  const java = useJava(signedIn, downloads)
+  const databases = useDatabases(signedIn, downloads)
+  const cores = useCores(signedIn, downloads)
+  const plugins = usePlugins(signedIn, downloads)
   // Not polled, unlike the four above it: a schematic has no download job to
   // watch — the request that fetches one is over before a progress bar would
   // have drawn a frame — so it is loaded once and refreshed after the actions
@@ -600,6 +604,8 @@ export default function App() {
             backHref={backRoute ? pathOf(backRoute) : null}
             backLabel={backRoute ? labelOfRoute(backRoute, instances) : null}
             onOpenPalette={() => setPaletteOpen(true)}
+            downloads={downloads}
+            onOpenDownloads={() => navigate({ kind: 'downloads' })}
             onChangePassword={() => setShowPassword(true)}
             onSignOut={() => void signOut()}
           />
@@ -677,12 +683,6 @@ export default function App() {
                   )
                 ) : route.section === 'cores' ? (
                   <CoreLibraryPage cores={cores} onOpenJava={() => openLibrary('java', 'installed')} />
-                ) : route.view === 'queue' ? (
-                  // A page of its own rather than a block on 插件列表: five
-                  // downloads at once is a list, and a list that appears and
-                  // vanishes inside a table shoves that table down the screen
-                  // every time somebody presses 更新入库.
-                  <PluginQueuePage plugins={plugins} />
                 ) : (
                   <PluginLibraryPage
                     plugins={plugins}
@@ -696,6 +696,7 @@ export default function App() {
                     // against — which is the context the comparison was made of.
                     openPluginId={openedPlugin?.id}
                     onOpenView={(view) => openLibrary('plugins', view)}
+                    onOpenDownloads={() => navigate({ kind: 'downloads', only: 'plugin' })}
                     onChooseAgainst={(ids) =>
                       navigate(
                         { kind: 'library', section: 'plugins', view: 'browse', against: ids },
@@ -735,6 +736,12 @@ export default function App() {
                   onCancel={
                     goBack ?? (() => navigate({ kind: 'instances', query: '', state: 'all' }))
                   }
+                />
+              ) : route.kind === 'downloads' ? (
+                <DownloadsPage
+                  downloads={downloads}
+                  only={route.only}
+                  onFilter={(kind) => navigate({ kind: 'downloads', only: kind })}
                 />
               ) : route.kind === 'network' ? (
                 <NetworkPage

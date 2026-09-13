@@ -2,15 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { ApiError, api } from './api'
 import { ask } from './confirm'
-import type { CoreDownloadJob, CoreLibrary, ServerCore } from './types'
-
-/** Cadence while a download runs, for a progress bar that moves. */
-const ACTIVE_POLL_MS = 800
+import type { CoreLibrary, DownloadJob, ServerCore } from './types'
+import type { DownloadController } from './useDownloads'
 
 export interface CoreController {
   library: CoreLibrary | null
   cores: ServerCore[]
-  job: CoreDownloadJob | null
+  job: DownloadJob | null
   /** True while a core is coming down. */
   downloading: boolean
   /** True while one of the actions below is in flight. */
@@ -30,13 +28,17 @@ export interface CoreController {
  * sidebar can say so while it does. The pages read this state, they do not own
  * it.
  */
-export function useCores(enabled: boolean): CoreController {
+export function useCores(enabled: boolean, downloads: DownloadController): CoreController {
   const [library, setLibrary] = useState<CoreLibrary | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const job = library?.job ?? null
-  const downloading = job?.state === 'downloading'
+  // From the panel-wide queue rather than from this shelf's own listing. Before
+  // this, showing a moving bar meant re-fetching the entire core library eight
+  // times a second to read one byte count — and three other hooks were doing
+  // the same to their own lists at the same time.
+  const job = downloads.latest('core')
+  const downloading = downloads.activeOf('core') > 0
 
   const refresh = useCallback(async () => {
     try {
@@ -51,10 +53,12 @@ export function useCores(enabled: boolean): CoreController {
     void refresh()
   }, [enabled, refresh])
 
+  // The listing is re-read when a download stops, not while it runs: the only
+  // thing that changes during one is the byte count, and that arrives on the
+  // job. What changes at the end is the shelf.
   useEffect(() => {
-    if (!enabled || !downloading) return
-    const timer = window.setInterval(() => void refresh(), ACTIVE_POLL_MS)
-    return () => window.clearInterval(timer)
+    if (!enabled || downloading) return
+    void refresh()
   }, [enabled, downloading, refresh])
 
   const act = useCallback(async (action: () => Promise<void>, fallback: string) => {
@@ -74,9 +78,10 @@ export function useCores(enabled: boolean): CoreController {
     (project: string, version: string, overwrite = false) =>
       act(async () => {
         try {
-          const started = await api.startCoreDownload({ project, version, overwrite })
-          // Show the job immediately; the poll takes over from here.
-          setLibrary((prev) => (prev ? { ...prev, job: started } : prev))
+          await api.startCoreDownload({ project, version, overwrite })
+          // Ask the queue at once rather than waiting for its next tick, so the
+          // row appears under the button that was just pressed.
+          await downloads.refresh()
         } catch (err) {
           // 409 is "that build is already in the library" — a re-download is
           // usually a repair after a bad file, worth offering and never worth
@@ -89,23 +94,23 @@ export function useCores(enabled: boolean): CoreController {
               confirmLabel: '重新下载',
             })
             if (!ok) return
-            const started = await api.startCoreDownload({ project, version, overwrite: true })
-            setLibrary((prev) => (prev ? { ...prev, job: started } : prev))
+            await api.startCoreDownload({ project, version, overwrite: true })
+            await downloads.refresh()
             return
           }
           throw err
         }
       }, '下载失败').catch(() => undefined),
-    [act],
+    [act, downloads],
   )
 
   const cancel = useCallback(
     () =>
       act(async () => {
-        await api.cancelCoreDownload()
+        await downloads.cancel(job?.id ?? '')
         await refresh()
       }, '取消失败').catch(() => undefined),
-    [act, refresh],
+    [act, refresh, downloads, job],
   )
 
   const remove = useCallback(

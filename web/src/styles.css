@@ -8571,6 +8571,86 @@ small.field__bad {
   border-left-color: var(--danger);
 }
 
+/* The shelf a row belongs to, named rather than coloured: four shelves is more
+   than a palette can distinguish, and colour here is already carrying the
+   state on the left edge. */
+.dlrow__kind {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+}
+
+.dlrow__kind svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Which shelf the list is narrowed to. A list filter, so it lives in the query
+   string and reads as chips rather than as a second navigation. */
+.dlfilter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.dlfilter__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-dim);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease);
+}
+
+.dlfilter__chip:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.dlfilter__chip:focus-visible {
+  outline: var(--ring);
+  outline-offset: 2px;
+}
+
+.dlfilter__chip--on {
+  color: var(--text);
+  background: var(--surface-3);
+  border-color: var(--border-accent);
+}
+
+.dlfilter__chip svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* A count, not a severity. Plain, per docs/design-system.md. */
+.dlfilter__n {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+
+.dlfilter__chip--on .dlfilter__n {
+  color: var(--text-dim);
+}
+
 .dlrow__main {
   display: flex;
   align-items: center;
@@ -15200,4 +15280,153 @@ select.input-slim option {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- 下载托盘 */
+
+/* What the panel is downloading, from wherever you are. In the top bar because
+   a download belongs to no scope, and the sidebar is replaced wholesale between
+   them — see Scope in routes.ts. */
+.tray {
+  position: relative;
+  display: flex;
+}
+
+/* Wears the top bar's own button shape; the badge is the only thing that marks
+   it out, and only while something is coming down. */
+.tray__button {
+  position: relative;
+}
+
+.tray__button .badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.tray__sheet {
+  position: fixed;
+  /* Same rung as the row menus: it opens from the top bar, which sits above
+     the drawer, and nothing that opens from up there may be painted behind it. */
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  /* The rows scroll, the footer does not. */
+  min-height: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+/* Grown out of the button that opened it rather than dropped in from nowhere:
+   the corner nearest the trigger stays put and the sheet unfolds away from it.
+   Reusing the row menus' keyframes on purpose — this is the same gesture, and
+   a second pair that differed by a few pixels would only look like a bug. */
+.tray__sheet {
+  transform-origin: top right;
+  animation: pop var(--dur-3) var(--ease) both;
+}
+
+.tray__sheet[data-dir='up'] {
+  transform-origin: bottom right;
+  animation-name: pop-above;
+}
+
+/* On its way out it is scenery, and scenery must not take clicks. DownloadTray
+   holds it mounted for exactly as long as this takes; see useDismiss.ts. */
+.tray__sheet[data-state='out'] {
+  animation: pop-out var(--dur) var(--ease-in) both;
+  pointer-events: none;
+}
+
+.tray__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.tray__empty {
+  margin: 0;
+  padding: 6px 2px;
+  font-size: 13px;
+}
+
+.tray__row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.tray__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tray__what {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.tray__meta {
+  margin: 0;
+  font-size: 12px;
+}
+
+/* 查看全部. The failures, the history and the reasons live on the page: they
+   are sentences, and a sentence in a 360px sheet is either truncated or turns
+   the tray into the page. */
+.tray__all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-dim);
+  background: var(--surface-1);
+  border: 0;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+  transition: color var(--dur-1) var(--ease);
+}
+
+.tray__all:hover {
+  color: var(--text);
+}
+
+.tray__all:focus-visible {
+  outline: var(--ring);
+  outline-offset: -2px;
+}
+
+.tray__all svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* The tray's bar. Shorter than the page's, and the label rides beside it
+   rather than inside: 22px of bar in a 360px sheet is a lot of furniture for
+   one number. */
+.progress--slim {
+  height: 16px;
+}
+
+.progress--slim .progress__label {
+  font-size: 11px;
 }

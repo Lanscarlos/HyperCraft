@@ -194,7 +194,6 @@ func (s *Server) protectedRoutes() []route {
 		rt("GET /api/downloads/projects/{project}/versions/{version}/build", s.handleLatestCoreBuild, authz.CapLibraryCores),
 		rt("GET /api/cores", s.handleCoreLibrary, authz.CapLibraryCores),
 		rt("POST /api/cores", s.handleStartCoreDownload, authz.CapLibraryCores),
-		rt("POST /api/cores/cancel", s.handleCancelCoreDownload, authz.CapLibraryCores),
 		rt("DELETE /api/cores/{id}", s.handleDeleteCore, authz.CapLibraryCores),
 		// Deciding which jar a server runs is a launch setting that happens to
 		// be spelled as a copy out of the library, so it needs both.
@@ -234,8 +233,6 @@ func (s *Server) protectedRoutes() []route {
 		rt("PUT /api/plugins/config/tokens/{tokenId}", s.handleUpdatePluginToken, authz.CapPanelSettings),
 		rt("DELETE /api/plugins/config/tokens/{tokenId}", s.handleDeletePluginToken, authz.CapPanelSettings),
 		rt("PUT /api/plugins/config/mirror", s.handlePluginMirror, authz.CapPanelSettings),
-		rt("POST /api/plugins/cancel", s.handleCancelPluginDownload, authz.CapLibraryPlugins),
-		rt("DELETE /api/plugins/downloads", s.handleClearPluginDownloads, authz.CapLibraryPlugins),
 		rt("PUT /api/plugins/{id}", s.handleUpdatePlugin, authz.CapLibraryPlugins),
 		rt("DELETE /api/plugins/{id}", s.handleDeletePlugin, authz.CapLibraryPlugins),
 		rt("GET /api/plugins/{id}/releases", s.handlePluginReleases, authz.CapLibraryPlugins),
@@ -290,7 +287,6 @@ func (s *Server) protectedRoutes() []route {
 		rt("GET /api/java", s.handleJavaOverview, authz.CapPanelJava),
 		rt("GET /api/java/available", s.handleListJavaMajors, authz.CapPanelJava),
 		rt("POST /api/java/install", s.handleInstallJava, authz.CapPanelJava),
-		rt("POST /api/java/install/cancel", s.handleCancelJavaInstall, authz.CapPanelJava),
 		rt("POST /api/java/registry", s.handleRegisterJava, authz.CapPanelJava),
 		rt("DELETE /api/java/registry/{id}", s.handleUnregisterJava, authz.CapPanelJava),
 		rt("POST /api/java/registry/{id}/probe", s.handleProbeJava, authz.CapPanelJava),
@@ -309,7 +305,6 @@ func (s *Server) protectedRoutes() []route {
 		// are: "engines" must never be reachable as a service id.
 		rt("GET /api/databases/engines/{engine}/versions", s.handleListDatabaseVersions, authz.CapPanelDatabases),
 		rt("POST /api/databases/engines/install", s.handleInstallDatabase, authz.CapPanelDatabases),
-		rt("POST /api/databases/engines/install/cancel", s.handleCancelDatabaseInstall, authz.CapPanelDatabases),
 		rt("DELETE /api/databases/engines/{id}", s.handleDeleteDatabaseEngine, authz.CapPanelDatabases),
 
 		rt("POST /api/databases/services", s.handleCreateDatabase, authz.CapPanelDatabases),

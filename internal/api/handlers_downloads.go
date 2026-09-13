@@ -165,17 +165,6 @@ func (s *Server) handleStartCoreDownload(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusAccepted, job)
 }
 
-func (s *Server) handleCancelCoreDownload(w http.ResponseWriter, r *http.Request) {
-	if !s.downloadsAvailable(w) {
-		return
-	}
-	if err := s.jars.Cancel(); err != nil {
-		writeError(w, http.StatusConflict, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // handleDeleteCore removes a core from the library. The copies instances were
 // stamped out of are untouched, which is why this needs no running check: it
 // cannot pull a file out from under a live JVM.

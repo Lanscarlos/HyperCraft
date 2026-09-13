@@ -1,4 +1,4 @@
-import type { Capability } from './types'
+import type { Capability, DownloadKind } from './types'
 import { CAP } from './useCan'
 
 /**
@@ -136,6 +136,12 @@ export type Route =
        */
       against?: string[]
     }
+  /**
+   * What the panel is downloading. Panel-wide, because a download belongs to
+   * no scope — see Scope below — and it used to live inside 插件库 as 下载队列
+   * while three other shelves each kept their own invisible one.
+   */
+  | { kind: 'downloads'; only?: DownloadKind }
   | { kind: 'host'; section: HostSection }
   | { kind: 'settings'; section: SettingsSection }
 
@@ -262,7 +268,6 @@ export const LIBRARY_VIEWS: Record<LibrarySection, { id: LibraryView; label: str
   plugins: [
     { id: 'list', label: '插件列表' },
     { id: 'browse', label: '插件市场' },
-    { id: 'queue', label: '下载队列' },
   ],
   // The same three questions the plugin shelf asks, minus the queue: a
   // schematic is a few hundred kilobytes, so a download is over before there is
@@ -331,6 +336,9 @@ export const HOST_ENTRY_CAPS: [HostSection, Capability][] = [
 
 const STATE_FILTERS: StateFilter[] = ['all', 'live', 'stopped', 'problem']
 
+/** The shelves 下载 can be narrowed to. Mirrors download.Kind. */
+const DOWNLOAD_KINDS: DownloadKind[] = ['core', 'java', 'database', 'plugin']
+
 function pick<T extends string>(values: { id: T }[], value: string, fallback: T): T {
   return values.some((entry) => entry.id === value) ? (value as T) : fallback
 }
@@ -379,6 +387,7 @@ export function parentOf(route: Route): Route | null {
   switch (route.kind) {
     case 'instances':
     case 'network':
+    case 'downloads':
       return { kind: 'overview' }
     case 'new-instance':
       return { kind: 'instances', query: '', state: 'all' }
@@ -448,6 +457,16 @@ function readRoute(path: string, search: string): Route {
     if (section === 'plugins' && second === 'source') {
       return { kind: 'settings', section: 'plugins' }
     }
+    // 下载队列 left 插件库 for the top level: it was never only about plugins,
+    // and three other shelves were quietly keeping their own.
+    //
+    // This has to come *before* the plugin-id fallback further down, not just
+    // instead of an entry in LIBRARY_VIEWS. Without it an old bookmark falls
+    // through to that branch and the panel goes looking for a plugin called
+    // "queue".
+    if (section === 'plugins' && second === 'queue') {
+      return { kind: 'downloads' }
+    }
     const view = LIBRARY_VIEWS[section].find((entry) => entry.id === second)?.id
     if (view) {
       if (section === 'plugins' && view === 'list' && library[3]) {
@@ -476,6 +495,15 @@ function readRoute(path: string, search: string): Route {
       return { kind: 'library', section, view: 'list', schemId: decodeURIComponent(second) }
     }
     return { kind: 'library', section, view: defaultView(section) }
+  }
+
+  if (path === '/downloads') {
+    // The filter is a query parameter, like every other list filter here: it
+    // scopes what you are looking at rather than naming a different page.
+    const only = params.get('kind') ?? ''
+    return DOWNLOAD_KINDS.includes(only as DownloadKind)
+      ? { kind: 'downloads', only: only as DownloadKind }
+      : { kind: 'downloads' }
   }
 
   if (path === '/network') return { kind: 'network' }
@@ -552,6 +580,8 @@ export function pathOf(route: Route): string {
       return `/settings/${route.section}`
     case 'new-instance':
       return '/instances/new'
+    case 'downloads':
+      return route.only ? `/downloads?kind=${route.only}` : '/downloads'
     case 'network':
       return '/network'
     case 'instances': {
@@ -584,6 +614,10 @@ export function samePage(a: Route, b: Route): boolean {
       )
     case 'settings':
       return b.kind === 'settings' && a.section === b.section
+    case 'downloads':
+      // The filter is a list filter, so it does not make a different page —
+      // same rule as the instance list's search and state chips.
+      return b.kind === 'downloads'
     default:
       return true
   }

@@ -3,7 +3,9 @@ import type { MouseEventHandler, RefObject } from 'react'
 import { formatBytes, formatPercent } from '../format'
 import type { InstanceMetrics, InstanceState, InstanceStatus, User } from '../types'
 import { STATE_LABELS, isLive } from '../types'
+import type { DownloadController } from '../useDownloads'
 import { useUptime } from '../useUptime'
+import { DownloadTray } from './DownloadTray'
 import { Icon } from './Icon'
 import { Menu } from './Menu'
 import { PowerControls } from './PowerControls'
@@ -47,6 +49,10 @@ interface Props {
   /** ⌘K. On a drawer layout the sidebar's own search button is off screen, so
    *  this is the only one left — which is exactly when it is needed most. */
   onOpenPalette: () => void
+  /** The panel-wide download queue, for the tray. */
+  downloads: DownloadController
+  /** Where 查看全部 in the tray leads. */
+  onOpenDownloads: () => void
   onChangePassword: () => void
   onSignOut: () => void
 }
@@ -75,6 +81,8 @@ export function TopBar({
   backHref,
   backLabel,
   onOpenPalette,
+  downloads,
+  onOpenDownloads,
   onChangePassword,
   onSignOut,
 }: Props) {
@@ -165,6 +173,10 @@ export function TopBar({
       )}
 
       <div className="topbar__right">
+        {/* First, and the only one of these that is a *state* rather than an
+            action: what the panel is doing, then what you can do to it, then
+            who you are. */}
+        <DownloadTray downloads={downloads} onOpenPage={onOpenDownloads} />
         <button
           className="topbar__search"
           onClick={onOpenPalette}

@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { api } from './api'
-import type { LibraryPlugin, PluginDownloadJob, PluginLibrary } from './types'
-import { hasPluginUpdate, isJobActive } from './types'
+import type { DownloadJob, LibraryPlugin, PluginLibrary } from './types'
+import type { DownloadController } from './useDownloads'
+import { hasPluginUpdate, isDownloadActive } from './types'
 
-/** Cadence while a download runs, for a progress bar that moves. */
-const ACTIVE_POLL_MS = 800
 
 export interface PluginInput {
   name: string
@@ -23,9 +22,9 @@ export interface PluginController {
   library: PluginLibrary | null
   plugins: LibraryPlugin[]
   /** The download queue and its history, newest first. */
-  jobs: PluginDownloadJob[]
+  jobs: DownloadJob[]
   /** The newest job, for the places that only ever showed one. */
-  job: PluginDownloadJob | null
+  job: DownloadJob | null
   /** How many jars are queued or coming down. Zero is the quiet state, and it
    *  is what the sidebar badge and the queue page's summary both read. */
   active: number
@@ -73,14 +72,18 @@ export interface PluginController {
  * anonymous GitHub API allows 60 calls an hour, and a page that refreshed them
  * on its own would spend that budget on nobody's behalf.
  */
-export function usePlugins(enabled: boolean): PluginController {
+export function usePlugins(enabled: boolean, downloads: DownloadController): PluginController {
   const [library, setLibrary] = useState<PluginLibrary | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const jobs = library?.jobs ?? []
-  const job = jobs[0] ?? library?.job ?? null
-  const active = jobs.filter((entry) => isJobActive(entry.state)).length
+  // From the panel-wide queue rather than from this shelf's own listing. This
+  // shelf had the only real queue before the kernel existed, and it still paid
+  // for a progress bar by re-fetching the whole plugin library eight times a
+  // second — which on a library of any size is the most expensive of the four.
+  const jobs = downloads.of('plugin')
+  const job = jobs[0] ?? null
+  const active = downloads.activeOf('plugin')
   const downloading = active > 0
   const plugins = library?.plugins ?? []
   const updates = plugins.filter(hasPluginUpdate).length
@@ -98,10 +101,11 @@ export function usePlugins(enabled: boolean): PluginController {
     void refresh()
   }, [enabled, refresh])
 
+  // Re-read when the queue goes quiet, not while it runs: a finished download
+  // adds a version to the library, and that is what this listing is for.
   useEffect(() => {
-    if (!enabled || !downloading) return
-    const timer = window.setInterval(() => void refresh(), ACTIVE_POLL_MS)
-    return () => window.clearInterval(timer)
+    if (!enabled || downloading) return
+    void refresh()
   }, [enabled, downloading, refresh])
 
   const act = useCallback(async <T,>(action: () => Promise<T>, fallback: string) => {
@@ -171,37 +175,33 @@ export function usePlugins(enabled: boolean): PluginController {
   const download = useCallback(
     (id: string, tag: string, asset?: string) =>
       act(async () => {
-        const started = await api.downloadPlugin(id, tag, asset)
-        // Show the job immediately; the poll takes over from here. Prepended
-        // rather than replacing, because there may be four others under way —
-        // and asking for a jar already queued answers with that same job, so
-        // an id already in the list is an update rather than an addition.
-        setLibrary((prev) =>
-          prev
-            ? {
-                ...prev,
-                job: started,
-                jobs: [started, ...prev.jobs.filter((entry) => entry.id !== started.id)],
-              }
-            : prev,
-        )
+        await api.downloadPlugin(id, tag, asset)
+        // Ask the queue at once rather than waiting for its next tick, so the
+        // row appears under the button that was just pressed. Asking for a jar
+        // already queued answers with that same job, so a repeat shows up as
+        // the row that is already there.
+        await downloads.refresh()
       }, '下载失败').catch(() => undefined),
-    [act],
+    [act, downloads],
   )
 
   const cancel = useCallback(
     (jobId?: string) =>
       act(async () => {
-        await api.cancelPluginDownload(jobId)
+        if (jobId) await downloads.cancel(jobId)
+        else for (const entry of jobs.filter((e) => isDownloadActive(e.state))) {
+          await downloads.cancel(entry.id)
+        }
         await refresh()
       }, '取消失败').catch(() => undefined),
-    [act, refresh],
+    [act, refresh, downloads, jobs],
   )
 
   const clearFinished = useCallback(
     () =>
       act(async () => {
-        setLibrary(await api.clearPluginDownloads())
+        await downloads.clearFinished()
+        await refresh()
       }, '清空记录失败').catch(() => undefined),
     [act],
   )

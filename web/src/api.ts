@@ -78,6 +78,8 @@ import type {
   VelocityInput,
   VelocityResponse,
   ParsedScript,
+  DownloadsView,
+  DownloadRouteChoice,
 } from './types'
 
 /**
@@ -334,7 +336,6 @@ export const api = {
       version: input.version,
       overwrite: input.overwrite ?? false,
     }),
-  cancelCoreDownload: () => request<void>('POST', '/api/cores/cancel'),
   deleteCore: (id: string) => request<void>('DELETE', `/api/cores/${encodeURIComponent(id)}`),
   /** Copies a core out of the library into an instance directory. */
   applyCore: (
@@ -422,6 +423,18 @@ export const api = {
   /** Asks upstream what versions exist. Always a network round trip. */
   pluginReleases: (id: string) =>
     request<PluginRelease[]>('GET', `/api/plugins/${encodeURIComponent(id)}/releases`),
+  /** Every download the panel is doing, filtered to what this account may
+   *  see. One request that carries only jobs, replacing four that each
+   *  re-fetched a whole shelf. */
+  downloads: () => request<DownloadsView>('GET', '/api/downloads'),
+  /** Stops one download by id. */
+  cancelDownload: (id: string) =>
+    request<{ id: string }>('POST', `/api/downloads/${encodeURIComponent(id)}/cancel`),
+  /** Forgets finished jobs — the visible ones. Answers with the list, so the
+   *  page needs no second round trip to redraw. */
+  clearDownloads: () => request<DownloadsView>('DELETE', '/api/downloads'),
+  /** Which routes each shelf can be pointed at, and which is picked. */
+  downloadRoutes: () => request<DownloadRouteChoice[]>('GET', '/api/downloads/routes'),
   checkPlugin: (id: string) =>
     request<LibraryPlugin>('POST', `/api/plugins/${encodeURIComponent(id)}/check`),
   checkPlugins: () => request<PluginLibrary>('POST', '/api/plugins/check'),
@@ -435,15 +448,6 @@ export const api = {
       tag,
       asset,
     }),
-  /** Stops one download, or everything in flight when no id is given. */
-  cancelPluginDownload: (id?: string) =>
-    request<void>(
-      'POST',
-      id ? `/api/plugins/cancel?id=${encodeURIComponent(id)}` : '/api/plugins/cancel',
-    ),
-  /** Forgets finished jobs. Answers with the library, so the queue page needs
-   *  no second round trip to redraw. */
-  clearPluginDownloads: () => request<PluginLibrary>('DELETE', '/api/plugins/downloads'),
   /** Deletes a release from the library, or one jar of it — deleting the
    *  Velocity build of a release while keeping the Paper one is a real thing
    *  to want on a plugin that ships both. */
@@ -629,7 +633,6 @@ export const api = {
       imageType,
       source,
     }),
-  cancelJavaInstall: () => request<void>('POST', '/api/java/install/cancel'),
   deleteJavaRuntime: (id: string) =>
     request<void>('DELETE', `/api/java/${encodeURIComponent(id)}`),
   /** Registers a Java already on this machine. The panel probes the path
@@ -652,7 +655,6 @@ export const api = {
     ),
   installDatabaseEngine: (engine: string, version: string) =>
     request<DatabaseInstallJob>('POST', '/api/databases/engines/install', { engine, version }),
-  cancelDatabaseInstall: () => request<void>('POST', '/api/databases/engines/install/cancel'),
   deleteDatabaseEngine: (id: string) =>
     request<void>('DELETE', `/api/databases/engines/${encodeURIComponent(id)}`),
 

@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { api } from './api'
+import type { DownloadController } from './useDownloads'
+import { jobMeta } from './types'
 import type {
-  DatabaseInstallJob,
+  DownloadJob,
   DatabaseOverview,
   DatabaseService,
   DatabaseVersion,
   NewDatabase,
 } from './types'
 
-/** Cadence while an install runs, for a progress bar that moves. */
-const ACTIVE_POLL_MS = 800
 
 /** Cadence while a database is starting or stopping. Slower than the install
  *  poll: nothing here has a percentage, only a state that flips once. */
@@ -22,7 +22,7 @@ export interface DatabaseController {
    *  three upstreams, and fetching all of them to draw one page would make the
    *  page as slow as the slowest of them. */
   versions: Record<string, DatabaseVersion[]>
-  job: DatabaseInstallJob | null
+  job: DownloadJob | null
   /** True while an engine is downloading or extracting. */
   installing: boolean
   /** True while any database is starting or stopping. */
@@ -52,14 +52,20 @@ export interface DatabaseController {
  * navigate away, and so does a database — the sidebar has to be able to say a
  * database is up while you are looking at a server's console.
  */
-export function useDatabases(enabled: boolean): DatabaseController {
+export function useDatabases(
+  enabled: boolean,
+  downloads: DownloadController,
+): DatabaseController {
   const [overview, setOverview] = useState<DatabaseOverview | null>(null)
   const [versions, setVersions] = useState<Record<string, DatabaseVersion[]>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const job = overview?.job ?? null
-  const installing = job?.state === 'downloading' || job?.state === 'extracting'
+  // From the panel-wide queue rather than from this shelf's own listing, for
+  // the same reason as the other three: what moves during an install is the
+  // byte count, and it does not need the engine inventory fetched with it.
+  const job = downloads.latest('database')
+  const installing = downloads.activeOf('database') > 0
   const transitioning = (overview?.services ?? []).some(
     (service) => service.state === 'starting' || service.state === 'stopping',
   )
@@ -90,17 +96,22 @@ export function useDatabases(enabled: boolean): DatabaseController {
   }, [enabled, refresh])
 
   useEffect(() => {
-    if (!enabled || (!installing && !transitioning)) return
-    const interval = installing ? ACTIVE_POLL_MS : TRANSITION_POLL_MS
+    // Only the service transitions are polled here now. An install's progress
+    // rides the shared queue; what this cadence is for is a database going
+    // up or down, which nothing else reports.
+    if (!enabled || !transitioning) return
+    const interval = TRANSITION_POLL_MS
     const timer = window.setInterval(() => void refresh(), interval)
     return () => window.clearInterval(timer)
-  }, [enabled, installing, transitioning, refresh])
+  }, [enabled, transitioning, refresh])
 
   // A finished install changes the 已安装 flags on the version list.
   useEffect(() => {
-    if (job?.state !== 'done' || !job.engine) return
-    void loadVersions(job.engine)
-  }, [job?.state, job?.engine, job?.installId, loadVersions])
+    const engine = job ? jobMeta(job, 'engine') : ''
+    if (job?.state !== 'done' || !engine) return
+    void refresh()
+    void loadVersions(engine)
+  }, [job?.state, job, refresh, loadVersions])
 
   const act = useCallback(async <T,>(action: () => Promise<T>, fallback: string) => {
     setBusy(true)
@@ -118,9 +129,10 @@ export function useDatabases(enabled: boolean): DatabaseController {
   const install = useCallback(
     async (engine: string, version: string) => {
       await act(async () => {
-        const started = await api.installDatabaseEngine(engine, version)
-        // Show the job immediately; the poll takes over from here.
-        setOverview((prev) => (prev ? { ...prev, job: started } : prev))
+        await api.installDatabaseEngine(engine, version)
+        // Ask the queue at once rather than waiting for its next tick, so the
+        // row appears under the button that was just pressed.
+        await downloads.refresh()
       }, '安装失败')
     },
     [act],
@@ -128,7 +140,7 @@ export function useDatabases(enabled: boolean): DatabaseController {
 
   const cancelInstall = useCallback(async () => {
     await act(async () => {
-      await api.cancelDatabaseInstall()
+      await downloads.cancel(job?.id ?? '')
       await refresh()
     }, '取消失败')
   }, [act, refresh])

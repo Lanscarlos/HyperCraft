@@ -1121,6 +1121,83 @@ export function versionSize(version: PluginVersion): number {
   return pluginArtifacts(version).reduce((sum, artifact) => sum + artifact.size, 0)
 }
 
+// ------------------------------------------------------------- downloads
+
+/** Which shelf a download belongs to. Mirrors internal/download. */
+export type DownloadKind = 'core' | 'java' | 'database' | 'plugin'
+
+export type DownloadState =
+  | 'queued'
+  | 'downloading'
+  | 'extracting'
+  | 'done'
+  | 'failed'
+  | 'cancelled'
+
+/** True while a job is still going to do something. */
+export function isDownloadActive(state: DownloadState): boolean {
+  return state === 'queued' || state === 'downloading' || state === 'extracting'
+}
+
+/**
+ * One download, whichever shelf started it.
+ *
+ * Built by the daemon rather than assembled here: only that side knows a build
+ * number from a major version, and the panel-wide list would otherwise need a
+ * branch per shelf to render one row.
+ */
+export interface DownloadJob {
+  id: string
+  kind: DownloadKind
+  /** 「Paper 1.21.4」「Temurin 21.0.5+11」 */
+  title: string
+  /** 「#232」「jre」 — the detail that distinguishes two builds of one thing. */
+  subtitle?: string
+  fileName: string
+  /** Which route actually served the bytes. With the automatic order in play
+   *  this is not something the operator's setting can tell them. */
+  route?: string
+  total: number
+  downloaded: number
+  state: DownloadState
+  error?: string
+  /** What the finished download produced, by the id its own shelf knows it as.
+   *  How a finished row offers "go and look at it" without the panel guessing. */
+  ref?: string
+  /** Each shelf's own identifiers, for the pages that still speak in them. */
+  meta?: Record<string, string>
+  queuedAt: string
+  startedAt?: string
+  finishedAt?: string
+}
+
+/**
+ * One of a shelf's own identifiers off a job.
+ *
+ * The kernel's job carries a title and a subtitle for the panel-wide list; the
+ * shelf pages still speak in their own terms — which major version, which
+ * image type — and those ride along in meta. Keys are whatever that shelf's Go
+ * package writes (see its meta* constants).
+ */
+export function jobMeta(job: DownloadJob, key: string): string {
+  return job.meta?.[key] ?? ''
+}
+
+export interface DownloadsView {
+  jobs: DownloadJob[]
+  /** How many of the *visible* jobs are still going. Counted by the daemon so
+   *  it can never disagree with the list — see handlers_downloads_queue.go. */
+  active: number
+}
+
+/** One shelf's routing: what can be picked, and what is picked now. */
+export interface DownloadRouteChoice {
+  kind: DownloadKind
+  name: string
+  routes: { id: string; name: string; note: string; prefix?: string }[]
+  current: string
+}
+
 export type PluginDownloadState = 'queued' | 'downloading' | 'done' | 'failed' | 'cancelled'
 
 /** True while a job is still going to do something. */

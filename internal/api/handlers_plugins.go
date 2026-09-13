@@ -719,38 +719,6 @@ func (s *Server) handleDownloadPlugin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, job)
 }
 
-// handleCancelPluginDownload stops downloads.
-//
-// One job when the request names one, everything in flight when it does not.
-// The empty form is what the single-slot panel's 取消 button sent and it still
-// means what it meant then — "stop what is running" — which with a queue is
-// every job rather than the only one.
-func (s *Server) handleCancelPluginDownload(w http.ResponseWriter, r *http.Request) {
-	if !s.pluginsAvailable(w) {
-		return
-	}
-	if id := strings.TrimSpace(r.URL.Query().Get("id")); id != "" {
-		if err := s.plugins.Cancel(id); err != nil {
-			s.writePluginError(w, err)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	s.plugins.CancelAll()
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// handleClearPluginDownloads forgets finished jobs. What is still queued or
-// running stays: this clears a record, it does not stop work.
-func (s *Server) handleClearPluginDownloads(w http.ResponseWriter, r *http.Request) {
-	if !s.pluginsAvailable(w) {
-		return
-	}
-	s.plugins.ClearFinished()
-	writeJSON(w, http.StatusOK, s.pluginLibrary(r))
-}
-
 // handleDeletePluginVersion removes one downloaded release, or one jar of it.
 //
 // The tag arrives as a query parameter rather than a path segment because tags

@@ -177,17 +177,6 @@ func (s *Server) handleInstallDatabase(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, job)
 }
 
-func (s *Server) handleCancelDatabaseInstall(w http.ResponseWriter, r *http.Request) {
-	if !s.databasesAvailable(w) {
-		return
-	}
-	if err := s.databaseInstalls.Cancel(); err != nil {
-		writeError(w, http.StatusConflict, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // handleDeleteDatabaseEngine removes an installed engine.
 //
 // It refuses while any service exists on it, running or not — unlike a Java

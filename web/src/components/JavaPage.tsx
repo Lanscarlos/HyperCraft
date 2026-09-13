@@ -3,7 +3,8 @@ import type { FormEvent } from 'react'
 
 import { ask } from '../confirm'
 import { formatBytes, formatDate } from '../format'
-import type { JavaDistribution, JavaInstallJob, JavaRuntime, SystemJava } from '../types'
+import type { DownloadJob, JavaDistribution, JavaRuntime, SystemJava } from '../types'
+import { jobMeta } from '../types'
 import type { JavaController } from '../useJava'
 import { Badge } from './Badge'
 import { Button } from './Button'
@@ -387,7 +388,7 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
 
             <div className="pick-grid">
               {visibleMajors.map((entry) => {
-                const running = installing && job?.major === entry.major
+                const running = installing && job !== null && Number(jobMeta(job, 'major')) === entry.major
                 return (
                   <div
                     key={entry.major}
@@ -632,11 +633,17 @@ function RuntimeRow({
   )
 }
 
+/** Which source is serving it: the one that answered, or — until one has —
+ *  the one that was asked for. */
+function sourceOf(job: DownloadJob): string {
+  return job.route || jobMeta(job, 'source')
+}
+
 function InstallStatus({
   job,
   distributions,
 }: {
-  job: JavaInstallJob
+  job: DownloadJob
   distributions: JavaDistribution[]
 }) {
   // The job carries the source that is actually serving it, which is not
@@ -648,8 +655,8 @@ function InstallStatus({
   // running install keeps its source name even if the picker has moved on.
   const from =
     distributions
-      .find((entry) => entry.id === job.distribution)
-      ?.sources.find((entry) => entry.id === job.source)?.name ?? job.source
+      .find((entry) => entry.id === jobMeta(job, 'distribution'))
+      ?.sources.find((entry) => entry.id === sourceOf(job))?.name ?? sourceOf(job)
 
   if (job.state === 'downloading') {
     const fraction = job.total > 0 ? job.downloaded / job.total : 0
@@ -664,7 +671,8 @@ function InstallStatus({
           </span>
         </div>
         <p className="chart-note">
-          正在下载 Java {job.major} {job.imageType.toUpperCase()}（{job.version}）
+          正在下载 {job.title}
+          {job.subtitle ? ` ${job.subtitle.toUpperCase()}` : ''}
           {from && ` · 下载源：${from}`}
         </p>
       </div>
@@ -674,7 +682,7 @@ function InstallStatus({
   if (job.state === 'extracting') {
     return (
       <div className="alert alert--ok">
-        正在解压 Java {job.major}（{job.version}）…
+        正在解压 {job.title}…
       </div>
     )
   }
@@ -682,13 +690,13 @@ function InstallStatus({
   if (job.state === 'done') {
     return (
       <div className="alert alert--ok">
-        Java {job.major}（{job.version}）已安装，去实例的「启动设置」里选它。
+        {job.title} 已安装，去实例的「启动设置」里选它。
       </div>
     )
   }
 
   if (job.state === 'cancelled') {
-    return <div className="alert alert--ok">已取消安装 Java {job.major}，没有留下任何文件。</div>
+    return <div className="alert alert--ok">已取消安装 Java {Number(jobMeta(job, 'major'))}，没有留下任何文件。</div>
   }
 
   return (
