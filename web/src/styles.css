@@ -1017,8 +1017,7 @@ a:hover {
   .choice-grid,
   .tiles,
   .rows,
-  .plugin-rows,
-  .device-list
+  .rowlist
 ) > * {
   animation: rise var(--dur-3) var(--ease) backwards;
 
@@ -3167,11 +3166,6 @@ a:hover {
   }
 }
 
-.status__label {
-  color: var(--text);
-  font-weight: 500;
-}
-
 /* -------------------------------------------------------------- instance */
 
 .instance {
@@ -3390,33 +3384,6 @@ a:hover {
 .cockpit__address span {
   color: var(--accent);
   font-size: 11px;
-}
-
-/* Status as a filled chip rather than a word: it is the one thing on this bar
-   that is read at a glance from across a desk. */
-.pill {
-  padding: 2px 10px;
-  border-radius: var(--radius-pill);
-  font-size: 11px;
-  font-weight: 600;
-  background: var(--surface-3);
-  color: var(--text-dim);
-}
-
-.pill--running {
-  background: var(--ok-soft);
-  color: var(--ok-ink);
-}
-
-.pill--starting,
-.pill--stopping {
-  background: var(--caution-soft);
-  color: var(--caution-ink);
-}
-
-.pill--crashed {
-  background: var(--danger-soft);
-  color: var(--danger-ink);
 }
 
 /* --- the metric strip ------------------------------------------------- */
@@ -5255,27 +5222,22 @@ details[open]::details-content {
   font-size: 12px;
 }
 
-/* ------------------------------------------------------- welcome & pages
+/* ------------------------------------------------------------------ pages
 
-   .page is the plain scrolling page shell every panel-wide view uses; the
-   overview is the same thing with cards under it. */
+   .page is the scrolling page shell every panel-wide view uses. */
 
 /* Every page arrives the same way, and it is deliberately the smallest of the
    entrances: six pixels and a fifth of a second. A page is the largest thing
    that moves in the panel, so it is also the thing whose movement gets old
    fastest — anything more theatrical here would be paid for on every click for
    the life of the install. */
-.welcome,
-.page {
-  overflow-y: auto;
-  padding-bottom: 30px;
-  animation: rise var(--dur-3) var(--ease) backwards;
-}
-
 .page {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow-y: auto;
+  padding-bottom: 30px;
+  animation: rise var(--dur-3) var(--ease) backwards;
 }
 
 /* The scroll container itself is always as wide as the pane, so its scrollbar
@@ -5307,10 +5269,6 @@ details[open]::details-content {
   max-width: none;
 }
 
-.welcome h1 {
-  font-size: 22px;
-  margin: 0 0 8px;
-}
 
 /* The second selector is the same head inside an instance pane, which is not
    a .page: the sections there open with the head every page opens with, so the
@@ -5424,25 +5382,12 @@ details[open]::details-content {
   white-space: nowrap;
 }
 
-.welcome__lead {
-  color: var(--text-dim);
-  max-width: 640px;
-  margin: 0 0 24px;
-}
-
 .page__lead {
   color: var(--text-dim);
   max-width: 660px;
   margin: -8px 0 0;
 }
 
-.welcome__hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 12px 0 24px;
-  color: var(--text-dim);
-}
 
 /* The "nothing here yet" block: a dashed outline says the space is meant to
    be filled, rather than looking like a rendering failure. */
@@ -6900,36 +6845,12 @@ details[open]::details-content {
 
 /* ---- the text editor -------------------------------------------------- */
 
-.editor__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.editor__title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
 .editor__path {
   margin: 2px 0 0;
   color: var(--text-faint);
   font-family: var(--font-mono);
   font-size: 11px;
   word-break: break-all;
-}
-
-.editor__facts {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--text-faint);
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
 }
 
 .editor__dot::before {
@@ -7832,8 +7753,9 @@ small.field__bad {
 /* Two columns fit here, but not two comfortable ones. So the tree comes back
    *over* the editor instead of taking a quarter of a width that is already
    short — the editor keeps the row either way, and nothing reflows when the
-   tree opens and shuts. */
-@media (max-width: 1200px) {
+   tree opens and shuts. 1240 is the sheet's own step (the sidebar narrows
+   there too), not a number of this pane's own. */
+@media (max-width: 1240px) {
   .fm--editing {
     position: relative;
     grid-template-columns: minmax(0, 1fr);
@@ -11828,111 +11750,10 @@ button.rows__name:hover strong {
   }
 }
 
-/* --------------------------------------------------------------- plugin list
-
-   The library page is a list, not a grid of cards: what an operator does here
-   is scan down twenty plugins looking for the ones that need attention, and a
-   row puts name, held version, upstream version and users on one line where
-   they can be compared. Everything you can do *to* a plugin is on its own page,
-   so a row needs no controls beyond "open" and the one action worth taking from
-   the list — downloading an update it just told you about. */
-
-.plugin-rows {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.plugin-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.plugin-row:last-child {
-  border-bottom: none;
-}
-
-.plugin-row:hover {
-  background: var(--surface-2);
-}
-
-/* The name is the target: the whole left half is one button, so opening a
-   plugin does not require finding a small link at the end of the row. */
-.plugin-row__main {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 2 1 220px;
-  min-width: 0;
-  padding: 0;
-  background: none;
-  border: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.plugin-row__title {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.plugin-row__title strong {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.plugin-row__title small,
-.plugin-row__facts small {
-  color: var(--text-faint);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.plugin-row__facts {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1 1 180px;
-  min-width: 0;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.plugin-row__users {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  flex: 1 1 140px;
-  min-width: 0;
-  font-size: 11px;
-}
-
-.plugin-row__actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: auto;
-  white-space: nowrap;
-}
-
-/* Below this the four columns stop fitting side by side, and a row that wraps
-   mid-column reads worse than one that stacks. */
-@media (max-width: 900px) {
+/* Below the drawer breakpoint every rail-and-body layout in the panel is one
+   column — this one, 配置历史, the file manager — so they all collapse at the
+   same number rather than each at a number of its own. */
+@media (max-width: 1024px) {
   /* The rail stops being a rail: two columns at this width leaves the form
      about 300px, and a select with 四个游戏模式 does not fit in that. It goes
      above the sections as a row of chips that wraps, which is the same jump
@@ -11960,16 +11781,6 @@ button.rows__name:hover strong {
   .cfg__note,
   .cfg__path {
     display: none;
-  }
-}
-
-@media (max-width: 900px) {
-  .plugin-row {
-    flex-wrap: wrap;
-  }
-
-  .plugin-row__main {
-    flex: 1 1 100%;
   }
 }
 
@@ -13848,8 +13659,8 @@ button.rows__name:hover strong {
 .ptable__head,
 .ptable__row {
   grid-template-columns:
-    28px minmax(180px, 1.6fr) 156px 156px
-    minmax(160px, 1.4fr) 108px 116px;
+    28px minmax(168px, 1.6fr) 148px 148px
+    minmax(150px, 1.4fr) 104px 112px;
 }
 
 /* The ledger disagreeing with the disk, on the edge. A tinted row would read
@@ -14233,7 +14044,7 @@ button.rows__name:hover strong {
 }
 
 /* The sidebar folds to icons; a meter with two numbers in it does not fold. */
-.sidebar--rail .apibudget {
+.app[data-rail='on'] .apibudget {
   display: none;
 }
 
@@ -14307,13 +14118,13 @@ button.rows__name:hover strong {
   line-height: 1.6;
 }
 
-/* 1300, not the 1100 this used to be. The row needs 976px for its seven tracks,
-   but it is not measuring against the window — it is measuring against what is
-   left of it after the 240px rail and the content padding, which is ~250px
-   less. At 1200 the row was 48px wider than the card holding it and the last
-   column hung off the edge. The number to compare against a breakpoint here is
-   always window minus rail. */
-@media (max-width: 1300px) {
+/* The row is not measuring against the window — it is measuring against what
+   is left of it after the 240px rail and the content padding, which is ~290px
+   less. The seven tracks' floors add up to what is left at 1241 (this used to
+   be 1300 with wider floors; the sheet has one step here, not two twenty
+   pixels apart). The number to compare against a breakpoint is always window
+   minus rail. */
+@media (max-width: 1240px) {
   /* Upstream and the deploy column are the two the row can lose first: the
      first is repeated in the status word, the second in the drawer. */
   .ptable__head,
@@ -14327,7 +14138,7 @@ button.rows__name:hover strong {
   }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 780px) {
   .ptable__head,
   .ptable__row {
     grid-template-columns: 28px minmax(0, 1fr) 132px auto;
@@ -14431,10 +14242,6 @@ button.rows__name:hover strong {
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
-}
-
-.meta-chips__warn {
-  color: var(--caution-ink);
 }
 
 /* A badge in a stacked cell would otherwise take the column's full width: it
@@ -15074,7 +14881,8 @@ select.input-slim option {
   align-items: start;
 }
 
-@media (max-width: 900px) {
+/* Same number as the drawer and as .cfg: below it, one column. */
+@media (max-width: 1024px) {
   .chist {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -15110,7 +14918,7 @@ select.input-slim option {
   overscroll-behavior: contain;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
   .chist__rows {
     max-height: none;
   }

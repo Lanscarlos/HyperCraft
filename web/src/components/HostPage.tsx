@@ -8,8 +8,12 @@ import { STATE_LABELS, byUrgency, isLive } from '../types'
 import type { SystemController } from '../useSystem'
 import type { TerminalController } from '../useTerminal'
 import { DataTable, DataTableHead, DataTableRow } from './DataTable'
+import { EmptyState } from './EmptyState'
 import { Meter } from './Meter'
 import { Page } from './Page'
+import { Section } from './Section'
+import { SkeletonPanel, SkeletonScreen } from './Skeleton'
+import { StatusDot } from './StatusDot'
 import { TerminalSettings } from './TerminalSettings'
 import { TimeSeriesChart, type Point } from './TimeSeriesChart'
 
@@ -84,9 +88,16 @@ function HostMetrics({
   }, [info])
 
   if (!info) {
+    // Same width as the loaded page, so nothing shifts when the data lands.
     return (
-      <Page title="监控" lead={system.error ?? '正在读取本机状态…'}>
-        {system.error && <div className="alert alert--error">{system.error}</div>}
+      <Page wide title="监控" lead={system.error ?? '正在读取本机状态…'}>
+        {system.error ? (
+          <div className="alert alert--error">{system.error}</div>
+        ) : (
+          <SkeletonScreen inPage>
+            <SkeletonPanel />
+          </SkeletonScreen>
+        )}
       </Page>
     )
   }
@@ -100,12 +111,7 @@ function HostMetrics({
       title="监控"
       lead="这台机器整体的负载。要看单台服务器的曲线，去它自己的「监控」页。"
     >
-      <section className="panel">
-        <div className="chart-head">
-          <h2 className="panel__title">内存</h2>
-          <p className="chart-head__meta">物理 {formatBytes(memory.total)}</p>
-        </div>
-
+      <Section title="内存" meta={`物理 ${formatBytes(memory.total)}`}>
         {/* Three numbers, not one percentage. "已分配" is the one that decides
             whether another server can be started at all, and a single bar
             hides it completely — right up until the kernel picks a running
@@ -164,16 +170,12 @@ function HostMetrics({
             看的是这个数，不是当前占用。
           </p>
         )}
-      </section>
+      </Section>
 
-      <section className="panel">
-        <div className="chart-head">
-          <h2 className="panel__title">CPU 占用（全机）</h2>
-          <p className="chart-head__meta">
-            最近 30 分钟 · {info.host.cpuCores} 核 ·{' '}
-            {latest ? formatPercent(latest.cpuPercent) : '—'}
-          </p>
-        </div>
+      <Section
+        title="CPU 占用（全机）"
+        meta={`最近 30 分钟 · ${info.host.cpuCores} 核 · ${latest ? formatPercent(latest.cpuPercent) : '—'}`}
+      >
         <TimeSeriesChart
           points={series.cpu}
           color={CPU_COLOR}
@@ -184,7 +186,7 @@ function HostMetrics({
           onHover={setHoverIndex}
           ariaLabel="本机 CPU 占用曲线，最近 30 分钟"
         />
-      </section>
+      </Section>
 
       <NetworkPanel
         info={info}
@@ -194,14 +196,16 @@ function HostMetrics({
         onHover={setHoverIndex}
       />
 
-      <section className="panel">
-        <h2 className="panel__title">面板自身</h2>
-        <p className="chart-note">
-          {formatBytes(info.panel.heapBytes)} 堆内存 · {info.panel.goroutines} 个协程 ·{' '}
-          {info.goVersion}。守护进程本身在一台跑着 JVM 的机器上是舍入误差，
-          这里放着只是为了让它可被证伪。
-        </p>
-      </section>
+      <Section
+        title="面板自身"
+        note={
+          <>
+            {formatBytes(info.panel.heapBytes)} 堆内存 · {info.panel.goroutines} 个协程 ·{' '}
+            {info.goVersion}。守护进程本身在一台跑着 JVM 的机器上是舍入误差，
+            这里放着只是为了让它可被证伪。
+          </>
+        }
+      />
     </Page>
   )
 }
@@ -281,15 +285,10 @@ function NetworkPanel({
   const peak = (points: Point[]) => points.reduce((max, p) => Math.max(max, p.v), 0)
 
   return (
-    <section className="panel">
-      <div className="chart-head">
-        <h2 className="panel__title">网络流量</h2>
-        <p className="chart-head__meta">
-          最近 30 分钟 ·{' '}
-          {interfaces.length > 0 ? `${interfaces.join('、')}（不含回环）` : '正在识别网卡…'}
-        </p>
-      </div>
-
+    <Section
+      title="网络流量"
+      note={`最近 30 分钟 · ${interfaces.length > 0 ? `${interfaces.join('、')}（不含回环）` : '正在识别网卡…'}`}
+    >
       <dl className="figures">
         <div>
           <dt>当前下行</dt>
@@ -351,7 +350,7 @@ function NetworkPanel({
         全机的量，不是某一台服的：面板自己的更新下载、备份上传、其它服务都在里面。
         上行长期贴着带宽上限，玩家看到的就是延迟和卡顿 —— 那通常是带宽不够，不是 CPU 不够。
       </p>
-    </section>
+    </Section>
   )
 }
 
@@ -400,7 +399,7 @@ function HostInstances({
                 <small className="rows__path">{item.directory}</small>
               </button>
               <span className="rows__cell" role="cell">
-                <span className={`status__dot status__dot--${item.state}`} />
+                <StatusDot state={item.state} />
                 {STATE_LABELS[item.state]}
               </span>
               <span className="rows__cell rows__cell--num" role="cell">
@@ -428,7 +427,7 @@ function HostInstances({
             </DataTableRow>
           )
         })}
-        {instances.length === 0 && <p className="rows__empty">这台机器上还没有实例。</p>}
+        {instances.length === 0 && <EmptyState inline title="这台机器上还没有实例。" />}
       </DataTable>
 
       <p className="chart-note">
@@ -450,7 +449,16 @@ function HostDisk({
   instances: InstanceStatus[]
   onNavigate: (route: Route) => void
 }) {
-  if (!system) return <Page title="磁盘" lead="正在读取本机状态…" />
+  // Same width as the loaded page, so nothing shifts when the data lands.
+  if (!system) {
+    return (
+      <Page wide title="磁盘" lead="正在读取本机状态…">
+        <SkeletonScreen inPage>
+          <SkeletonPanel />
+        </SkeletonScreen>
+      </Page>
+    )
+  }
 
   const free = system.disk.total > 0 ? system.disk.free / system.disk.total : 1
   const level = free < DISK_CRITICAL_FREE ? 'error' : free < DISK_WARN_FREE ? 'warn' : 'ok'
@@ -475,7 +483,9 @@ function HostDisk({
         </div>
       )}
 
-      <section className="panel">
+      {/* Headless on purpose: the meter's label is the path, and a title over
+          it would only repeat that. */}
+      <Section>
         <Meter
           label={system.disk.path}
           percent={diskUsedPercent(system)}
@@ -484,13 +494,12 @@ function HostDisk({
         <p className="chart-note">
           面板只统计它自己所在的这块盘。实例目录挂在别的盘上时，那块盘的用量要自己看。
         </p>
-      </section>
+      </Section>
 
-      <section className="panel">
-        <h2 className="panel__title">从这里开始清</h2>
-        <p className="chart-note">
-          按经验，占地方的顺序通常是：世界备份 &gt; 旧日志 &gt; 下载过的核心 jar &gt; 插件历史版本。
-        </p>
+      <Section
+        title="从这里开始清"
+        note="按经验，占地方的顺序通常是：世界备份 > 旧日志 > 下载过的核心 jar > 插件历史版本。"
+      >
         <DataTable className="rows" role="table" aria-label="清理入口">
           {instances.map((item) => (
             <DataTableRow className="rows__row" role="row" key={item.id}>
@@ -555,7 +564,7 @@ function HostDisk({
             </span>
           </DataTableRow>
         </DataTable>
-      </section>
+      </Section>
     </Page>
   )
 }
@@ -573,11 +582,11 @@ function HostConfig({
 }) {
   return (
     <Page
+      wide
       title="节点配置"
       lead="这台机器本身的设置。面板账号、更新通道之类跟机器无关的东西在「面板设置」里。"
     >
-      <section className="panel">
-        <h2 className="panel__title">本机</h2>
+      <Section title="本机">
         <dl className="figures">
           <div>
             <dt>主机名</dt>
@@ -600,7 +609,7 @@ function HostConfig({
             <dd>{system?.version ?? '—'}</dd>
           </div>
         </dl>
-      </section>
+      </Section>
 
       <TerminalSettings
         terminal={terminal}
