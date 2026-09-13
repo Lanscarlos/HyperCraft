@@ -623,8 +623,11 @@ function CreateForm({
         />
       </div>
 
+      {/* One account, so one line: a username without its password is half a
+          credential, and reading them down a column puts the pair on two
+          separate rows of a form that is mostly optional fields. */}
       {needsAccount && (
-        <>
+        <div className="field-row">
           <div className="field field--md">
             <span>用户名</span>
             <input
@@ -645,7 +648,7 @@ function CreateForm({
               至少 8 位，不能有引号、反斜杠和空格 —— 这些字符会破坏插件配置文件和面板生成的初始化语句。
             </small>
           </div>
-        </>
+        </div>
       )}
 
       <div className="field">
