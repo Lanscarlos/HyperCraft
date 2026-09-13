@@ -116,6 +116,7 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 				javaruntime.DistZulu:    azul.URL(),
 			}),
 			javaruntime.NewStore(paths.JavaRoot()),
+			javaruntime.NewRegistry(paths.JavaRegistryFile(), logger),
 			logger,
 		),
 		Plugins: plugin.NewDownloader(
@@ -230,6 +231,22 @@ func (e *testEnv) login() {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		e.t.Fatalf("login failed: %d", resp.StatusCode)
+	}
+}
+
+// allowJava registers a path straight into the registry, skipping the probe
+// the API endpoint does.
+//
+// The fake launchers these tests run are shell scripts that print Minecraft log
+// lines; none of them answers `java -version`, so none could be registered
+// through the endpoint. What the tests need is for the path to be on the
+// whitelist, not for it to be a real JVM.
+func (e *testEnv) allowJava(path string) {
+	e.t.Helper()
+	if _, err := e.api.java.Registry().Add(javaruntime.Entry{
+		JavaPath: path, AddedBy: javaruntime.AddedManual,
+	}); err != nil {
+		e.t.Fatalf("allowJava(%q): %v", path, err)
 	}
 }
 

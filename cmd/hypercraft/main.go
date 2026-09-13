@@ -147,12 +147,31 @@ func run() error {
 
 	// Java runtimes live beside the servers, in the data directory, so a panel
 	// that manages its own JDKs stays as movable as one that does not.
+	javaRegistry := javaruntime.NewRegistry(paths.JavaRegistryFile(), logger)
 	javaInstaller := javaruntime.NewInstaller(
 		javaruntime.NewClient(userAgent, nil),
 		javaruntime.NewStore(paths.JavaRoot()),
+		javaRegistry,
 		logger,
 	)
 	defer javaInstaller.Close()
+
+	// Every instance that existed before the registry is launching with a java
+	// path nobody registered. Record them, or tightening the instance form to
+	// "pick a registered one" would invalidate the lot on the first upgrade.
+	//
+	// configs is what st.LoadInstances already read, which is the same list the
+	// manager was loaded from — no need to ask it back through a lock.
+	javaPaths := make([]string, 0, len(configs))
+	for _, cfg := range configs {
+		javaPaths = append(javaPaths, cfg.Java)
+	}
+	// Background rather than the signal context: that one is not built until
+	// much further down, and probe caps itself at ten seconds per path.
+	if added := javaruntime.MigrateInstanceJava(
+		context.Background(), javaInstaller.Store(), javaRegistry, javaPaths); added > 0 {
+		logger.Info("registered the java paths instances were already using", "count", added)
+	}
 
 	// Databases sit beside the Java runtimes for the same reason: half the
 	// plugins a server runs want one, and installing MySQL by hand is a
