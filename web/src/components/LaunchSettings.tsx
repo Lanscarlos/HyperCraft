@@ -618,28 +618,33 @@ export function LaunchSettings({
         </>
       ) : (
         <>
-          <label className="field field--md">
-            <span>服务端 jar</span>
-            <Select
-              allowCustom
-              ariaLabel="服务端 jar"
-              value={form.jar}
-              placeholder="server.jar"
-              options={jars.map((jar) => ({
-                value: jar.name,
-                label: jar.name,
-                note: formatBytes(jar.size),
-              }))}
-              onChange={(next) => update('jar', next)}
-            />
-            <small>
-              {jars.length > 0
-                ? `上面这个目录下找到 ${jars.length} 个 jar 文件，点输入框可以直接选`
-                : '目录下暂时没有 jar 文件，从上面装一个核心，或自己传一个'}
-            </small>
-          </label>
-
+          {/* One row, because they are one sentence: 跑哪个 jar、给多少内存 —
+              which is what this section's own note says it is about. Stacked,
+              a 380px select and two 120px boxes left three ragged right edges
+              in as many rows, and the eye had to walk down a staircase to read
+              a single decision. */}
           <div className="field-row">
+            <label className="field field--md">
+              <span>服务端 jar</span>
+              <Select
+                allowCustom
+                ariaLabel="服务端 jar"
+                value={form.jar}
+                placeholder="server.jar"
+                options={jars.map((jar) => ({
+                  value: jar.name,
+                  label: jar.name,
+                  note: formatBytes(jar.size),
+                }))}
+                onChange={(next) => update('jar', next)}
+              />
+              <small>
+                {jars.length > 0
+                  ? `上面这个目录下找到 ${jars.length} 个 jar 文件，点输入框可以直接选`
+                  : '目录下暂时没有 jar 文件，从上面装一个核心，或自己传一个'}
+              </small>
+            </label>
+
             <label className="field field--num">
               <span>最小内存 (MB)</span>
               <input

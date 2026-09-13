@@ -3938,6 +3938,15 @@ a:hover {
    So the head goes where every other card's head goes. */
 .panel--form {
   gap: 14px;
+  /* The card is as wide as a form, not as wide as the pane.
+     .panel__body has always stopped at the reading measure; the card around it
+     did not, so in an instance pane (1148px) every form card carried 268px of
+     itself as empty right-hand side. A card with an empty quarter reads as a
+     hole in the card, which is the exact complaint that moved this section's
+     head out of a left column in the first place — the hole had simply moved
+     to the other edge. The padding and the two borders are added back so the
+     fields keep the full 880 they are measured for. */
+  max-width: calc(var(--content-max) + 42px);
 }
 
 /* Capped at the reading measure rather than at the card: past ~880px a row of
@@ -4641,6 +4650,21 @@ a:hover {
 
 /* Last in the grid, and dashed so it reads as the empty slot it is rather than
    as another argument. */
+/* With no arguments yet this is the whole of the empty state: one dashed box
+   that both says so and is the way out of it. There used to be a centred
+   paragraph above it saying the same thing, so an empty editor spent 250px
+   and two affordances on "there is nothing here". */
+.jvmcard__add--empty {
+  grid-column: 1 / -1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.jvmcard__add--empty small {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
 .jvmcard__add {
   display: flex;
   align-items: center;
@@ -5384,11 +5408,17 @@ details[open]::details-content {
    the header stays where it was and the list does not change shape when the
    filter finds nothing. */
 .empty--inline {
-  padding: 22px 14px;
+  /* Left, not centred. The block form is a panel of its own and centres like
+     any placard; this one is standing in for rows or fields that would have
+     hung off the left edge, and a sentence floating in the middle of an
+     880px form reads as a stray caption rather than as the absent content. */
+  align-items: flex-start;
+  padding: 14px 2px;
   background: none;
   border: none;
   border-radius: 0;
   gap: 4px;
+  text-align: left;
 }
 
 .empty--inline .empty__title {

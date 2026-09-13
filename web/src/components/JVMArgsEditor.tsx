@@ -13,7 +13,6 @@ import {
   type KnownFlag,
 } from '../jvmFlags'
 import { Card } from './Card'
-import { EmptyState } from './EmptyState'
 import { Select } from './Select'
 
 /**
@@ -105,12 +104,6 @@ export function JVMArgsEditor({
 
   return (
     <div className="jvmargs">
-      {rows.length === 0 && (
-        <EmptyState inline title="还没有 JVM 参数。">
-          上面的预设可以一次填好一套，也可以自己加。
-        </EmptyState>
-      )}
-
       <div className="jvmargs__grid">
         {rows.map((flag) => (
           <ArgCard
@@ -125,8 +118,16 @@ export function JVMArgsEditor({
           />
         ))}
 
-        <button className="jvmcard__add" type="button" onClick={add}>
+        {/* The empty state and the way out of it are one box: an editor with no
+            arguments in it used to carry a centred paragraph saying so on top
+            of this, which is the same sentence twice and 250px of height. */}
+        <button
+          className={`jvmcard__add${rows.length === 0 ? ' jvmcard__add--empty' : ''}`}
+          type="button"
+          onClick={add}
+        >
           + 添加参数
+          {rows.length === 0 && <small>还没有 JVM 参数；上面的预设可以一次填好一套</small>}
         </button>
       </div>
 
