@@ -46,6 +46,12 @@ func transfer(ctx context.Context, q *Queue, e *entry, r Request, temp string, p
 	if err != nil {
 		return "", err
 	}
+	// Re-read after Attempts, not before: resolving the download is where most
+	// shelves learn the digest, and Describe writes it onto the entry. The copy
+	// handed in was taken at Submit, when there was nothing to know.
+	q.mu.Lock()
+	r = e.req
+	q.mu.Unlock()
 	if len(attempts) == 0 {
 		return "", errors.New("no attempts to try")
 	}
@@ -187,6 +193,19 @@ type Description struct {
 	FileName string
 	Total    int64
 	Meta     map[string]string
+	// SHA256 and SHA512 are the digests the origin's metadata published.
+	//
+	// They are here and not only on the Request because most shelves do not
+	// know them at submit time: the build is resolved on the worker, minutes
+	// after the button was pressed, and the digest comes with it. A Request
+	// that carries one keeps it; this fills in the rest.
+	//
+	// Getting this wrong is silent. Before it existed, a core download resolved
+	// its digest inside Attempts, wrote it to a copy of the Request nobody read
+	// again, and verified nothing at all — while the mirror it had just gained
+	// was safe to use *only* because of that check.
+	SHA256 string
+	SHA512 string
 }
 
 // Describe fills in what Submit could not know.
@@ -210,12 +229,23 @@ func (p *Progress) Describe(d Description) {
 	}
 	if d.Total > 0 {
 		job.Total = d.Total
+		// Also onto the request, which is what transfer reads: Total is not just
+		// the bar's denominator, it is the size gate when no digest was
+		// published and the difference between reporting a short body as "the
+		// connection dropped" and as "this source is serving the wrong file".
+		p.entry.req.Total = d.Total
 	}
 	for k, v := range d.Meta {
 		if job.Meta == nil {
 			job.Meta = map[string]string{}
 		}
 		job.Meta[k] = v
+	}
+	if d.SHA256 != "" {
+		p.entry.req.SHA256 = d.SHA256
+	}
+	if d.SHA512 != "" {
+		p.entry.req.SHA512 = d.SHA512
 	}
 }
 

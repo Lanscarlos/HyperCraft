@@ -100,6 +100,9 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 		t.Fatalf("dbruntime.NewManager: %v", err)
 	}
 
+	downloadQueue := download.NewQueue(logger)
+	t.Cleanup(downloadQueue.Close)
+
 	options := Options{
 		Manager:  mgr,
 		Store:    st,
@@ -109,6 +112,7 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 		Jars: serverjar.NewDownloader(
 			serverjar.NewClient(fill.URL(), "test"),
 			serverjar.NewLibrary(paths.CoresRoot()),
+			downloadQueue,
 			logger,
 		),
 		Java: javaruntime.NewInstaller(
@@ -123,7 +127,7 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 		Plugins: plugin.NewDownloader(
 			plugin.NewClient(gh.URL(), "test"),
 			pluginLibrary,
-			download.NewQueue(logger),
+			downloadQueue,
 			logger,
 		),
 		InstancePlugins: plugin.NewInstances(pluginLibrary, paths.InstancePluginsFile()),

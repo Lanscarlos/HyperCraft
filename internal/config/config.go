@@ -77,6 +77,15 @@ type Panel struct {
 	// the same reason JavaSource is: it describes this machine's situation,
 	// not one download's.
 	JavaDistribution string `json:"javaDistribution,omitempty"`
+	// CoreSource is where server-core downloads are pulled from, by the id of
+	// one of serverjar.Sources(). Empty means the automatic choice, which is
+	// both the default and what every config written before cores had any
+	// mirror at all carries — so no pointer is needed to tell them apart.
+	//
+	// Remembered from the last download rather than set on a settings page, for
+	// the same reason JavaSource is: it describes this machine's line to the
+	// internet, not one download's.
+	CoreSource string `json:"coreSource,omitempty"`
 	// PluginMirror is the proxy plugin jars are downloaded through, by the id
 	// of one of plugin.Mirrors() or as a custom URL prefix. Empty means the
 	// automatic order, which is both the default and what a config written

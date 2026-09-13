@@ -201,3 +201,31 @@ func TestAdoptiumKeepsTheProxyWhenTheCopiesCannotAddressTheBuild(t *testing.T) {
 		t.Fatalf("order = %q, want ghproxy,official", got)
 	}
 }
+
+// A copy holds one upstream's tree and nothing else. FastMirror's path template
+// will happily build a URL for any project, version and build it is handed, so
+// without a host check a download from somewhere else entirely would be served
+// from there — the wrong file, from a third party, silently.
+func TestACopyIsSkippedWhenTheOriginIsNotItsUpstream(t *testing.T) {
+	elsewhere := Origin("http://127.0.0.1:9999/artifact.jar")
+	elsewhere.Parts = map[string]string{
+		partProject: "paper", partVersion: "1.21.11", partBuild: "132",
+	}
+	order := RouteOrder("papermc", RouteAuto, elsewhere)
+	if got := strings.Join(ids(order), ","); got != "official" {
+		t.Fatalf("order = %q, want official alone — a copy must not serve another host's download", got)
+	}
+}
+
+// The same rule for the Adoptium copies, whose path template is equally willing.
+func TestAnAdoptiumCopyIsSkippedForAnotherHost(t *testing.T) {
+	elsewhere := Origin("https://example.invalid/OpenJDK21.tar.gz")
+	elsewhere.Parts = map[string]string{
+		partMajor: "21", partImageType: "jdk", partArch: "x64",
+		partOS: "linux", partFileName: "OpenJDK21.tar.gz",
+	}
+	order := RouteOrder("adoptium", RouteAuto, elsewhere)
+	if got := strings.Join(ids(order), ","); got != "official" {
+		t.Fatalf("order = %q, want official alone", got)
+	}
+}

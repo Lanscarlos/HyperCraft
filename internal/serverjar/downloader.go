@@ -2,65 +2,111 @@ package serverjar
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sync"
+	"strconv"
 	"time"
+
+	"github.com/lanscarlos/hypercraft/internal/download"
 )
 
 var (
-	// ErrBusy is returned when a download is already running.
-	ErrBusy = errors.New("a core download is already running")
+	// ErrBusy is returned when the queue cannot take the request.
+	ErrBusy = download.ErrBusy
 	// ErrExists is returned when that exact build is already in the library
 	// and the caller did not ask to replace it.
 	ErrExists = errors.New("this core is already in the library")
 	// ErrCancelled is recorded on a job the operator stopped.
-	ErrCancelled = errors.New("download cancelled")
+	ErrCancelled = download.ErrCancelled
 	// ErrChecksum is recorded when the bytes on disk are not what upstream
 	// published. The partial file is removed rather than left to be launched.
-	ErrChecksum = errors.New("checksum mismatch")
+	ErrChecksum = download.ErrChecksum
 )
 
-// maxUnknownSize caps a download whose size upstream did not declare. Every
-// real core is far below this; the limit exists so a redirect to something
-// enormous cannot fill the operator's disk.
-const maxUnknownSize = 1 << 30 // 1 GiB
+// routeSet is the set in internal/download core downloads are routed through.
+const routeSet = "papermc"
 
-// JobState is where a download has got to.
-type JobState string
-
+// The states a core job reports, which are the kernel's under this package's
+// long-standing names — what the panel API publishes and its clients switch on.
 const (
-	JobDownloading JobState = "downloading"
-	JobDone        JobState = "done"
-	JobFailed      JobState = "failed"
-	JobCancelled   JobState = "cancelled"
+	JobDownloading = string(download.StateDownloading)
+	JobDone        = string(download.StateDone)
+	JobFailed      = string(download.StateFailed)
+	JobCancelled   = string(download.StateCancelled)
 )
 
-// Job is a snapshot of the panel's most recent core download.
+// Job is a snapshot of one core download, in the shape the panel API has always
+// published.
 //
-// It survives the download: after the transfer ends the finished job stays
-// readable, so an operator who closed the tab still sees how it went.
+// The queue itself is internal/download's now — this is the projection of one of
+// its jobs back into the vocabulary the core endpoints speak. The fields that
+// are not on a kernel job ride there in Job.Meta, put on by Start.
 type Job struct {
-	Project     string   `json:"project"`
-	ProjectName string   `json:"projectName"`
-	Version     string   `json:"version"`
-	Build       int      `json:"build"`
-	Channel     string   `json:"channel"`
-	FileName    string   `json:"fileName"`
-	Total       int64    `json:"total"`
-	Downloaded  int64    `json:"downloaded"`
-	State       JobState `json:"state"`
-	Error       string   `json:"error,omitempty"`
+	Project     string `json:"project"`
+	ProjectName string `json:"projectName"`
+	Version     string `json:"version"`
+	Build       int    `json:"build"`
+	Channel     string `json:"channel"`
+	FileName    string `json:"fileName"`
+	// Source is the route that actually served the bytes. New with the mirror:
+	// with the automatic order in play, "it downloaded" and "it downloaded from
+	// the one you would have picked" are different facts.
+	Source     string `json:"source,omitempty"`
+	Total      int64  `json:"total"`
+	Downloaded int64  `json:"downloaded"`
+	State      string `json:"state"`
+	Error      string `json:"error,omitempty"`
 	// CoreID names the library entry a finished download produced.
 	CoreID     string     `json:"coreId,omitempty"`
 	StartedAt  time.Time  `json:"startedAt"`
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
+}
+
+// Meta keys Start writes onto a kernel job so jobOf can rebuild a Job from it.
+const (
+	metaProject     = "project"
+	metaProjectName = "projectName"
+	metaVersion     = "version"
+	metaBuild       = "build"
+	metaChannel     = "channel"
+)
+
+// jobOf projects a kernel job back into this package's shape.
+func jobOf(j download.Job) Job {
+	build, _ := strconv.Atoi(j.Meta[metaBuild])
+	started := j.QueuedAt
+	if j.StartedAt != nil {
+		started = *j.StartedAt
+	}
+	state := string(j.State)
+	switch j.State {
+	case download.StateQueued, download.StateExtracting:
+		// Neither has ever appeared in this shelf's API. Queued is new — cores
+		// used to hold a single slot — and a core is recorded rather than
+		// unpacked, so extracting is over before it can be polled. Reporting
+		// both as downloading is the honest answer for a client that has only
+		// ever known four states; the panel-wide list shows the real one.
+		state = JobDownloading
+	}
+	return Job{
+		Project:     j.Meta[metaProject],
+		ProjectName: j.Meta[metaProjectName],
+		Version:     j.Meta[metaVersion],
+		Build:       build,
+		Channel:     j.Meta[metaChannel],
+		FileName:    j.FileName,
+		Source:      j.Route,
+		Total:       j.Total,
+		Downloaded:  j.Downloaded,
+		State:       state,
+		Error:       j.Error,
+		CoreID:      j.Ref,
+		StartedAt:   started,
+		FinishedAt:  j.FinishedAt,
+	}
 }
 
 // Request describes one download.
@@ -72,24 +118,27 @@ type Request struct {
 
 // Downloader fetches server cores into the panel-wide library.
 //
-// One at a time, panel-wide: the library is shared, and two transfers racing
-// over the same directory buys nothing. Like the server processes themselves, a
-// download belongs to the daemon and not to the request that started it —
-// closing the tab, logging out or losing the network does not interrupt a jar
-// that is already coming down.
+// The queue it used to own moved to internal/download, shared with every other
+// shelf, and with it the single slot went: asking for a second core while the
+// first is coming down now queues rather than answering 409. What stays here is
+// what only this package knows — which projects exist, how PaperMC's metadata
+// describes a build, and what recording a finished download in the core library
+// means.
 type Downloader struct {
 	client  *Client
 	library *Library
+	queue   *download.Queue
 	log     *slog.Logger
 
-	mu     sync.Mutex
-	job    *Job
-	cancel context.CancelFunc
-	done   chan struct{}
+	// source is the route cores are fetched through, by the id of one of the
+	// papermc set's routes or a custom prefix. Held here rather than on the
+	// client because it is the operator's standing answer about this machine's
+	// network, not a property of the API.
+	source string
 }
 
-func NewDownloader(client *Client, library *Library, logger *slog.Logger) *Downloader {
-	return &Downloader{client: client, library: library, log: logger}
+func NewDownloader(client *Client, library *Library, queue *download.Queue, logger *slog.Logger) *Downloader {
+	return &Downloader{client: client, library: library, queue: queue, log: logger}
 }
 
 // Client exposes the API client for the metadata handlers.
@@ -98,69 +147,180 @@ func (d *Downloader) Client() *Client { return d.client }
 // Library exposes the directory downloaded cores land in.
 func (d *Downloader) Library() *Library { return d.library }
 
-// Start resolves the newest build and begins fetching it in the background.
+// SetSource chooses the route cores are downloaded through. An unknown id is
+// refused rather than quietly turned into the default.
+func (d *Downloader) SetSource(id string) error {
+	resolved, err := download.ResolveRoute(routeSet, id)
+	if err != nil {
+		return err
+	}
+	d.source = resolved
+	return nil
+}
+
+// Source is the configured route, or download.RouteAuto.
+func (d *Downloader) Source() string {
+	if d.source == "" {
+		return download.RouteAuto
+	}
+	return d.source
+}
+
+// Sources lists the routes a core download can be pointed at, automatic first.
+func Sources() []download.Route {
+	routes := download.RouteSets[routeSet].Routes
+	out := make([]download.Route, 0, len(routes)+1)
+	out = append(out, download.Route{
+		ID:   download.RouteAuto,
+		Name: "自动",
+		Note: "按上面的顺序挨个试，哪个通用哪个",
+	})
+	return append(out, routes...)
+}
+
+// Start resolves the newest build and queues it.
 //
-// It returns once the download is under way; everything that can be reported
-// as a bad request — unknown project, unknown version, core already in the
-// library — is checked before that, so the operator gets a real error rather
-// than a job that fails a second later.
+// Everything that can be reported as a bad request — unknown project, unknown
+// version, core already in the library — is checked before the job exists, so
+// the operator gets a real error rather than a row that fails a second later.
+// That costs a metadata call on the request path, and it is worth it: these are
+// answers a person is waiting for with a dialog open, and the panel's API says
+// them with a 400 and a 409.
+//
+// This is where cores and plugins deliberately differ. A plugin request resolves
+// on the worker (see plugin.Downloader.Start) because three of them can be
+// queued behind each other and the tag they asked for is "newest", which means
+// something different by the time their turn comes. A core download is one at a
+// time and names its version outright.
 func (d *Downloader) Start(req Request) (Job, error) {
 	project, ok := LookupProject(req.Project)
 	if !ok {
 		return Job{}, fmt.Errorf("%w: %s", ErrUnknownProject, req.Project)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// Claim the slot before touching the network, so two clicks in quick
-	// succession cannot both start writing the same file.
-	d.mu.Lock()
-	if d.job != nil && d.job.State == JobDownloading {
-		d.mu.Unlock()
-		cancel()
-		return Job{}, ErrBusy
-	}
-	d.job = &Job{
-		Project:     project.ID,
-		ProjectName: project.Name,
-		Version:     req.Version,
-		State:       JobDownloading,
-		StartedAt:   time.Now(),
-	}
-	d.cancel = cancel
-	d.done = make(chan struct{})
-	job, done := d.job, d.done
-	d.mu.Unlock()
-
-	build, err := d.resolve(ctx, req)
-	if err == nil {
-		err = d.checkTarget(build.FileName, req.Overwrite)
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	build, err := d.client.LatestBuild(ctx, req.Project, req.Version)
 	if err != nil {
-		cancel()
-		close(done)
-		d.finish(job, JobFailed, err)
+		return Job{}, err
+	}
+	if err := d.checkTarget(build.FileName, req.Overwrite); err != nil {
 		return Job{}, err
 	}
 
-	d.mu.Lock()
-	job.Build = build.Build
-	job.Channel = build.Channel
-	job.FileName = build.FileName
-	job.Total = build.Size
-	snapshot := *job
-	d.mu.Unlock()
+	// The metadata always comes from the origin — it is a few kilobytes, and it
+	// is what makes a mirror safe to offer, because the digest it carries is
+	// what the bytes are checked against whichever route serves them.
+	up := download.Origin(build.URL)
+	up.Parts = map[string]string{
+		"project": project.ID,
+		"version": req.Version,
+		"build":   strconv.Itoa(build.Build),
+	}
 
-	d.log.Info("core download started",
-		"project", project.ID, "version", req.Version,
-		"build", build.Build, "file", build.FileName, "size", build.Size)
+	job, err := d.queue.Submit(download.Request{
+		Kind:      download.KindCore,
+		Title:     project.Name + " " + req.Version,
+		Subtitle:  fmt.Sprintf("#%d", build.Build),
+		FileName:  build.FileName,
+		Total:     build.Size,
+		SHA256:    build.SHA256,
+		DedupeKey: project.ID + "\x00" + req.Version + "\x00" + strconv.Itoa(build.Build),
+		TempDir:   d.library.Root(),
+		Meta: map[string]string{
+			metaProject:     project.ID,
+			metaProjectName: project.Name,
+			metaVersion:     req.Version,
+			metaBuild:       strconv.Itoa(build.Build),
+			metaChannel:     build.Channel,
+		},
+		Attempts: func(_ context.Context, _ *download.Progress) ([]download.Attempt, error) {
+			d.log.Info("core download started",
+				"project", project.ID, "version", req.Version,
+				"build", build.Build, "file", build.FileName, "size", build.Size)
+			routes := download.RouteOrder(routeSet, d.Source(), up)
+			out := make([]download.Attempt, 0, len(routes))
+			for _, route := range routes {
+				out = append(out, download.Attempt{
+					Route: route.ID,
+					Open:  d.client.Opener(route.Link(up)),
+				})
+			}
+			return out, nil
+		},
+		Install: func(_ context.Context, temp, sum string, _ *download.Progress) (string, error) {
+			if err := d.record(build, project, req, temp, sum); err != nil {
+				return "", err
+			}
+			d.log.Info("core download finished", "file", build.FileName)
+			return build.FileName, nil
+		},
+	})
+	if err != nil {
+		return Job{}, err
+	}
+	return jobOf(job), nil
+}
 
-	go func() {
-		defer cancel()
-		defer close(done)
-		d.run(ctx, job, build, project, req)
-	}()
-	return snapshot, nil
+// record moves a verified jar onto its final name and writes it into the
+// library. All of this used to be the back half of run().
+func (d *Downloader) record(build Build, project Project, req Request, temp, digest string) error {
+	root := d.library.Root()
+	final := filepath.Join(root, build.FileName)
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return err
+	}
+	if err := place(temp, final, req.Overwrite); err != nil {
+		return err
+	}
+	if err := d.library.record(Core{
+		ID:          build.FileName,
+		FileName:    build.FileName,
+		Project:     project.ID,
+		ProjectName: project.Name,
+		Kind:        project.Kind,
+		Version:     req.Version,
+		Build:       build.Build,
+		Channel:     build.Channel,
+		SHA256:      digest,
+		Size:        build.Size,
+		AddedAt:     time.Now(),
+	}); err != nil {
+		// The jar itself is fine, only its metadata is missing; say so rather
+		// than implying the download has to be repeated.
+		return fmt.Errorf("下载完成，但记录核心信息失败: %w", err)
+	}
+	return nil
+}
+
+// Jobs returns this shelf's downloads, newest first.
+func (d *Downloader) Jobs() []Job {
+	all := d.queue.Jobs()
+	out := make([]Job, 0, len(all))
+	for _, j := range all {
+		if j.Kind == download.KindCore {
+			out = append(out, jobOf(j))
+		}
+	}
+	return out
+}
+
+// Status returns the current or most recent job.
+func (d *Downloader) Status() (Job, bool) {
+	jobs := d.Jobs()
+	if len(jobs) == 0 {
+		return Job{}, false
+	}
+	return jobs[0], true
+}
+
+// Cancel stops every core download still going. The button that sends it has
+// never named one, because there was only ever one to name.
+func (d *Downloader) Cancel() error {
+	if d.queue.CancelAll(download.KindCore) == 0 {
+		return fmt.Errorf("%w: no download is running", ErrCancelled)
+	}
+	return nil
 }
 
 // resolve looks up the build to fetch. It uses the job's context rather than
@@ -174,136 +334,6 @@ func (d *Downloader) resolve(ctx context.Context, req Request) (Build, error) {
 func (d *Downloader) checkTarget(name string, overwrite bool) error {
 	if d.library.Has(name) && !overwrite {
 		return fmt.Errorf("%w: %s", ErrExists, name)
-	}
-	return nil
-}
-
-// run streams the artifact to a .part file, checks it, and only then moves it
-// into place. A failed or cancelled download never leaves something that looks
-// like a working jar in the library.
-func (d *Downloader) run(ctx context.Context, job *Job, build Build, project Project, req Request) {
-	root := d.library.Root()
-	temp := filepath.Join(root, build.FileName+partSuffix)
-	final := filepath.Join(root, build.FileName)
-
-	err := os.MkdirAll(root, 0o755)
-	if err == nil {
-		// A previous attempt may have died with the panel and left its part file.
-		_ = os.Remove(temp)
-		err = d.transfer(ctx, job, temp, build)
-	}
-	if err == nil {
-		err = place(temp, final, req.Overwrite)
-	}
-	if err == nil {
-		err = d.library.record(Core{
-			ID:          build.FileName,
-			FileName:    build.FileName,
-			Project:     project.ID,
-			ProjectName: project.Name,
-			Kind:        project.Kind,
-			Version:     req.Version,
-			Build:       build.Build,
-			Channel:     build.Channel,
-			SHA256:      build.SHA256,
-			Size:        build.Size,
-			AddedAt:     time.Now(),
-		})
-		if err != nil {
-			// The jar itself is fine, only its metadata is missing; say so
-			// rather than implying the download has to be repeated.
-			err = fmt.Errorf("下载完成，但记录核心信息失败: %w", err)
-		}
-	}
-
-	switch {
-	case err == nil:
-		d.mu.Lock()
-		job.CoreID = build.FileName
-		d.mu.Unlock()
-		d.finish(job, JobDone, nil)
-		d.log.Info("core download finished", "file", build.FileName)
-	case ctx.Err() != nil:
-		_ = os.Remove(temp)
-		d.finish(job, JobCancelled, ErrCancelled)
-		d.log.Info("core download cancelled", "file", build.FileName)
-	default:
-		_ = os.Remove(temp)
-		d.finish(job, JobFailed, err)
-		d.log.Warn("core download failed", "file", build.FileName, "err", err)
-	}
-}
-
-func (d *Downloader) transfer(ctx context.Context, job *Job, temp string, build Build) error {
-	body, err := d.client.Fetch(ctx, build)
-	if err != nil {
-		return err
-	}
-	defer body.Close()
-
-	file, err := os.OpenFile(temp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
-		return err
-	}
-
-	// sized marks the case where the declared size is the only check there
-	// is, and so has to be exact.
-	//
-	// With a published checksum it is neither the stronger check nor a
-	// reliable one — Azul's metadata under-reports a Zulu package by 9 bytes
-	// and still publishes the right SHA-256 for it, which turned a perfectly
-	// good Java install into "exceeds the declared size" until the gate moved
-	// (see javaruntime.Installer.download). No core API has been caught doing
-	// it, but nothing here would survive it either, and a jar that hashes
-	// right is the jar upstream published whatever it said it would weigh.
-	// So the size drives the progress bar, and the cap falls back to the same
-	// ceiling an undeclared size gets — there to bound the disk a runaway
-	// redirect can eat, not to verify anything.
-	sized := build.Size > 0 && build.SHA256 == ""
-	limit := int64(maxUnknownSize)
-	if sized {
-		limit = build.Size
-	}
-	digest := sha256.New()
-	progress := &progressWriter{
-		to: io.MultiWriter(file, digest),
-		report: func(n int64) {
-			d.mu.Lock()
-			job.Downloaded = n
-			d.mu.Unlock()
-		},
-	}
-
-	// One byte past the limit, so an exactly-sized body still succeeds while an
-	// oversized one is caught instead of silently truncated.
-	written, copyErr := io.Copy(progress, io.LimitReader(body, limit+1))
-	// A close error on the last flush is the difference between a whole jar and
-	// a truncated one, so it is checked rather than deferred away.
-	closeErr := file.Close()
-	if copyErr != nil {
-		return copyErr
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	switch {
-	case sized && written > limit:
-		return fmt.Errorf("%w: 下载的内容比声明的 %d 字节还多", ErrUpstream, limit)
-	case sized && written != build.Size:
-		return fmt.Errorf("%w: 收到 %d 字节，应为 %d", ErrUpstream, written, build.Size)
-	case written > limit:
-		return fmt.Errorf("%w: 下载超过 %d 字节的上限，已中止", ErrUpstream, limit)
-	}
-	if build.SHA256 != "" {
-		if sum := hex.EncodeToString(digest.Sum(nil)); sum != build.SHA256 {
-			// A short body is the one checksum failure with an obvious cause,
-			// and "the connection dropped, run it again" is very different
-			// advice from "upstream is serving the wrong jar".
-			if build.Size > 0 && written < build.Size {
-				return fmt.Errorf("%w: 下载中断，只收到 %d 字节，应为 %d", ErrChecksum, written, build.Size)
-			}
-			return fmt.Errorf("%w: 校验和不符，算出 %s，应为 %s", ErrChecksum, sum, build.SHA256)
-		}
 	}
 	return nil
 }
@@ -322,74 +352,4 @@ func place(temp, final string, overwrite bool) error {
 		}
 	}
 	return os.Rename(temp, final)
-}
-
-func (d *Downloader) finish(job *Job, state JobState, err error) {
-	now := time.Now()
-
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	job.State = state
-	job.FinishedAt = &now
-	if err != nil {
-		job.Error = err.Error()
-	}
-}
-
-// Status returns the current or most recent job.
-func (d *Downloader) Status() (Job, bool) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.job == nil {
-		return Job{}, false
-	}
-	return *d.job, true
-}
-
-// Cancel stops an in-flight download. Cancelling a finished one is a no-op.
-func (d *Downloader) Cancel() error {
-	d.mu.Lock()
-	if d.job == nil || d.job.State != JobDownloading {
-		d.mu.Unlock()
-		return fmt.Errorf("%w: no download is running", ErrCancelled)
-	}
-	cancel := d.cancel
-	d.mu.Unlock()
-
-	cancel()
-	return nil
-}
-
-// Close cancels a running download and waits briefly for it to unwind, so
-// panel shutdown does not leave a writer racing against the process exit.
-func (d *Downloader) Close() {
-	d.mu.Lock()
-	running := d.job != nil && d.job.State == JobDownloading
-	cancel, done := d.cancel, d.done
-	d.mu.Unlock()
-
-	if !running || cancel == nil {
-		return
-	}
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-	}
-}
-
-// progressWriter reports the running total as bytes go past.
-type progressWriter struct {
-	to      io.Writer
-	report  func(int64)
-	written int64
-}
-
-func (w *progressWriter) Write(p []byte) (int, error) {
-	n, err := w.to.Write(p)
-	w.written += int64(n)
-	// io.Copy hands over 32 KiB at a time, so this is a few hundred calls for
-	// a 60 MB jar — cheap enough to report every one and keep the bar smooth.
-	w.report(w.written)
-	return n, err
 }

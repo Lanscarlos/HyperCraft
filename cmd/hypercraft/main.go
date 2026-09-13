@@ -153,9 +153,15 @@ func run() error {
 	downloads := serverjar.NewDownloader(
 		serverjar.NewClient("", userAgent),
 		serverjar.NewLibrary(paths.CoresRoot()),
+		downloadQueue,
 		logger,
 	)
-	defer downloads.Close()
+	// A stored route this build does not have is not worth refusing to start
+	// over: the automatic order is a working answer, and the panel says which
+	// route a download actually used.
+	if err := downloads.SetSource(panel.CoreSource); err != nil {
+		logger.Warn("ignoring unknown core download source", "source", panel.CoreSource, "err", err)
+	}
 
 	// Java runtimes live beside the servers, in the data directory, so a panel
 	// that manages its own JDKs stays as movable as one that does not.
@@ -493,7 +499,6 @@ func run() error {
 	}
 	// Downloads go before the servers do: a half-written jar is worth nothing,
 	// and the servers deserve the whole shutdown budget.
-	downloads.Close()
 	javaInstaller.Close()
 	databaseInstaller.Close()
 	downloadQueue.Close()

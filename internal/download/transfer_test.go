@@ -228,3 +228,66 @@ func TestInstallIsHandedTheDigestOfWhatArrived(t *testing.T) {
 		t.Fatalf("Install got digest %q, want %q", got, sum(body))
 	}
 }
+
+// Most shelves do not know the digest at submit time: the build is resolved on
+// the worker, and the digest arrives with it. If Describe's digest were dropped
+// — written to a copy of the Request nobody reads again — the download would
+// verify nothing, silently, while the mirror it was routed through is safe to
+// use only because of that check.
+func TestADigestLearnedWhileResolvingIsStillChecked(t *testing.T) {
+	job := runOne(t, Request{
+		Kind: KindCore, Title: "paper", DedupeKey: "paper",
+		Attempts: func(_ context.Context, pub *Progress) ([]Attempt, error) {
+			pub.Describe(Description{SHA256: sum("what upstream promised")})
+			return []Attempt{{Route: "mirror", Open: func(context.Context) (io.ReadCloser, error) {
+				return io.NopCloser(strings.NewReader("what the mirror served")), nil
+			}}}, nil
+		},
+		Install: func(context.Context, string, string, *Progress) (string, error) { return "", nil },
+	})
+	if job.State != StateFailed {
+		t.Fatalf("state = %q, want failed — the mirror served bytes the origin did not promise", job.State)
+	}
+	if !strings.Contains(job.Error, "SHA-256") {
+		t.Fatalf("error = %q, want it to name the checksum", job.Error)
+	}
+}
+
+// The same path, arriving correct.
+func TestADigestLearnedWhileResolvingPassesWhenItMatches(t *testing.T) {
+	body := "what upstream promised"
+	job := runOne(t, Request{
+		Kind: KindCore, Title: "paper", DedupeKey: "paper",
+		Attempts: func(_ context.Context, pub *Progress) ([]Attempt, error) {
+			pub.Describe(Description{SHA256: sum(body), FileName: "paper.jar", Total: int64(len(body))})
+			return []Attempt{{Route: "mirror", Open: func(context.Context) (io.ReadCloser, error) {
+				return io.NopCloser(strings.NewReader(body)), nil
+			}}}, nil
+		},
+		Install: func(context.Context, string, string, *Progress) (string, error) { return "core-1", nil },
+	})
+	if job.State != StateDone {
+		t.Fatalf("state = %q err = %q, want done", job.State, job.Error)
+	}
+	if job.FileName != "paper.jar" {
+		t.Fatalf("FileName = %q, want what Describe set", job.FileName)
+	}
+}
+
+// A shelf points TempDir at its own library, and a fresh panel has downloaded
+// nothing — so that directory does not exist yet. The kernel owns the part file
+// and therefore owns creating the directory under it.
+func TestTheTempDirectoryIsCreatedIfItIsNotThereYet(t *testing.T) {
+	body := "bytes"
+	dir := filepath.Join(t.TempDir(), "not", "created", "yet")
+	job := runOne(t, Request{
+		Kind: KindCore, Title: "paper", DedupeKey: "paper",
+		TempDir:  dir,
+		Total:    int64(len(body)),
+		Attempts: serve(body),
+		Install:  func(context.Context, string, string, *Progress) (string, error) { return "core-1", nil },
+	})
+	if job.State != StateDone {
+		t.Fatalf("state = %q err = %q, want done", job.State, job.Error)
+	}
+}

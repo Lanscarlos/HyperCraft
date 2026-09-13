@@ -283,11 +283,28 @@ func (c *Client) LatestBuild(ctx context.Context, projectID, versionID string) (
 }
 
 // Fetch opens the artifact body. The caller closes it.
+// Opener fetches one URL, for the download kernel to call when it reaches this
+// route. The URL may be a mirror's rather than the origin's, which is why the
+// HTTPS check runs on whatever is handed in rather than on the build: a route
+// is a line to the same bytes, not a licence to leave TLS.
+func (c *Client) Opener(rawURL string) func(context.Context) (io.ReadCloser, error) {
+	return func(ctx context.Context) (io.ReadCloser, error) {
+		if rawURL == "" {
+			return nil, fmt.Errorf("%w: this route cannot serve that build", ErrUpstream)
+		}
+		return c.fetchURL(ctx, rawURL)
+	}
+}
+
 func (c *Client) Fetch(ctx context.Context, build Build) (io.ReadCloser, error) {
-	if err := c.checkDownloadURL(build.URL); err != nil {
+	return c.fetchURL(ctx, build.URL)
+}
+
+func (c *Client) fetchURL(ctx context.Context, rawURL string) (io.ReadCloser, error) {
+	if err := c.checkDownloadURL(rawURL); err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, build.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +316,7 @@ func (c *Client) Fetch(ctx context.Context, build Build) (io.ReadCloser, error) 
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, fmt.Errorf("%w: download returned HTTP %d", ErrUpstream, resp.StatusCode)
+		return nil, fmt.Errorf("%w: %s returned HTTP %d", ErrUpstream, rawURL, resp.StatusCode)
 	}
 	return resp.Body, nil
 }

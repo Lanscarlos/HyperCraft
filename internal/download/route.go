@@ -190,8 +190,21 @@ func RouteOrder(set, pref string, up Upstream) []Route {
 			origin = route
 			continue
 		}
-		// A route that cannot address this upstream is not a fallback, it is a
-		// guaranteed 404 with the operator's name on it.
+		// Two separate ways a route can fail to apply, and both are checked
+		// here rather than left to each Link.
+		//
+		// The host, because a copy holds one upstream's tree and nothing else:
+		// FastMirror's path template is happy to build a URL for any project,
+		// version and build it is handed, so a download whose origin is not
+		// PaperMC would otherwise be quietly served from there instead. That is
+		// not a 404 — it is the wrong file, fetched from a third party, and it
+		// was silently happening to every test that stood up a fake upstream.
+		if !slices.Contains(route.Serves, up.Host) {
+			continue
+		}
+		// And the coordinates, because a copy cannot address a build it was not
+		// told how to name. That is a guaranteed 404 with the operator's name
+		// on it.
 		if route.Link(up) == "" {
 			continue
 		}

@@ -353,6 +353,13 @@ func (q *Queue) work(ctx context.Context, e *entry) {
 	// persisted (see Job.ID) and IDs restart at 1 — a stray file left behind
 	// by a process that died mid-download could otherwise collide with a
 	// fresh job that happens to draw the same ID.
+	// The kernel owns the part file, so it owns the directory holding it. A
+	// shelf that points TempDir at its own library is pointing at a directory
+	// that may not exist yet — a fresh panel has downloaded nothing.
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		q.finish(e, StateFailed, err)
+		return
+	}
 	temp := filepath.Join(dir, e.pub.ID+".part")
 	_ = os.Remove(temp)
 

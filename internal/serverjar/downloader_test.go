@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/lanscarlos/hypercraft/internal/download"
 	"time"
 )
 
@@ -78,7 +80,9 @@ func newTestDownloader(t *testing.T, up *upstream) (*Downloader, *Library) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	library := NewLibrary(t.TempDir())
-	return NewDownloader(NewClient(up.URL, "test"), library, logger), library
+	queue := download.NewQueue(logger)
+	t.Cleanup(queue.Close)
+	return NewDownloader(NewClient(up.URL, "test"), library, queue, logger), library
 }
 
 // awaitJob polls until the download leaves the downloading state.
@@ -250,6 +254,8 @@ func TestDownloadRefusesToClobber(t *testing.T) {
 	d, library := newTestDownloader(t, up)
 	write(t, library, "paper-1.21.11-132.jar", "the jar already in the library")
 
+	// Answered on the request, not on the job: a person is waiting for this with
+	// a dialog open, and the panel's API says it with a 409.
 	_, err := d.Start(Request{Project: "paper", Version: "1.21.11"})
 	if !errors.Is(err, ErrExists) {
 		t.Fatalf("got %v, want ErrExists", err)
@@ -276,16 +282,24 @@ func TestDownloadOverwritesWhenAsked(t *testing.T) {
 	}
 }
 
-func TestSecondDownloadIsRejectedWhileOneRuns(t *testing.T) {
+func TestAskingTwiceForTheSameBuildReusesTheJob(t *testing.T) {
 	up := newUpstream(t, []byte("slow"))
 	up.gate = make(chan struct{})
 	d, _ := newTestDownloader(t, up)
 
-	if _, err := d.Start(Request{Project: "paper", Version: "1.21.11"}); err != nil {
+	// Cores used to hold a single slot and answer the second request with 409.
+	// They queue now — but asking for the *same* build twice still collapses
+	// onto one job, because two workers writing one file is a corrupt download.
+	first, err := d.Start(Request{Project: "paper", Version: "1.21.11"})
+	if err != nil {
 		t.Fatalf("first Start: %v", err)
 	}
-	if _, err := d.Start(Request{Project: "paper", Version: "1.21.11"}); !errors.Is(err, ErrBusy) {
-		t.Fatalf("second Start: got %v, want ErrBusy", err)
+	second, err := d.Start(Request{Project: "paper", Version: "1.21.11"})
+	if err != nil {
+		t.Fatalf("second Start: %v", err)
+	}
+	if second.StartedAt != first.StartedAt {
+		t.Fatalf("asking twice for the same build made two jobs")
 	}
 
 	close(up.gate)
@@ -329,5 +343,52 @@ func TestStartRejectsUnknownProject(t *testing.T) {
 	}
 	if _, ok := d.Status(); ok {
 		t.Errorf("a rejected project should not leave a job behind")
+	}
+}
+
+// The mirror is offered at all only because the bytes can be checked against the
+// digest the *origin* published. Pointed at a route that serves something else,
+// the job must fail rather than install a different jar under the right name.
+//
+// The fake upstream stands in for both halves: fill.papermc.io for the metadata
+// and the mirror for the bytes, which is how it works in production — the digest
+// never comes from the same place as the file.
+func TestBytesFromAMirrorAreCheckedAgainstTheOriginsDigest(t *testing.T) {
+	up := newUpstream(t, []byte("the jar the origin promised"))
+	up.corrupt = true // the route serves something else
+	d, library := newTestDownloader(t, up)
+
+	if _, err := d.Start(Request{Project: "paper", Version: "1.21.11"}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	done := awaitJob(t, d)
+	if done.State != JobFailed {
+		t.Fatalf("state %s — a route serving the wrong bytes must fail the job", done.State)
+	}
+	if !strings.Contains(done.Error, "SHA-256") {
+		t.Fatalf("error %q, want it to name the checksum", done.Error)
+	}
+	if _, ok := read(t, library, "paper-1.21.11-132.jar"); ok {
+		t.Error("the rejected jar was left in the library")
+	}
+}
+
+// Which route actually answered is recorded, so "I picked 直连 but it went
+// through a mirror" is never a mystery.
+func TestTheAnsweringRouteIsRecordedOnTheJob(t *testing.T) {
+	up := newUpstream(t, []byte("a fine paper jar"))
+	d, _ := newTestDownloader(t, up)
+
+	if _, err := d.Start(Request{Project: "paper", Version: "1.21.11"}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	done := awaitJob(t, d)
+	if done.State != JobDone {
+		t.Fatalf("state %s, error %q", done.State, done.Error)
+	}
+	// The fake upstream is not PaperMC's host, so the copy route cannot address
+	// it and the origin is the only line — which is exactly what must be said.
+	if done.Source != "official" {
+		t.Fatalf("Source = %q, want the route that actually served the bytes", done.Source)
 	}
 }
