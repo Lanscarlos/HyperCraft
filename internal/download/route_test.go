@@ -124,3 +124,80 @@ func ids(routes []Route) []string {
 	}
 	return out
 }
+
+func paperUp(project, version, build string) Upstream {
+	up := Origin("https://fill-data.papermc.io/v1/objects/abc/paper-1.21.4-232.jar")
+	up.Parts = map[string]string{
+		partProject: project, partVersion: version, partBuild: build,
+	}
+	return up
+}
+
+// FastMirror serves Paper and Velocity byte-for-byte: build 232 of Paper 1.21.4
+// came back with the same SHA-256 and the same 51437498 bytes as the official
+// CDN. That is what makes it safe to offer — the panel verifies against the
+// checksum fill.papermc.io published, not against anything the mirror says.
+func TestPaperMCOffersTheMirrorThenTheOrigin(t *testing.T) {
+	order := RouteOrder("papermc", RouteAuto, paperUp("paper", "1.21.4", "232"))
+	if got := strings.Join(ids(order), ","); got != "fastmirror,official" {
+		t.Fatalf("order = %q, want fastmirror,official", got)
+	}
+}
+
+// FastMirror capitalises the project segment where PaperMC's API does not.
+func TestTheFastMirrorPathIsRebuiltFromTheCoordinates(t *testing.T) {
+	up := paperUp("paper", "1.21.4", "232")
+	order := RouteOrder("papermc", RouteAuto, up)
+	want := "https://download.fastmirror.net/download/Paper/1.21.4/build232"
+	if got := order[0].Link(up); got != want {
+		t.Fatalf("link = %q, want %q", got, want)
+	}
+}
+
+// A copy cannot address an artifact it was given no coordinates for, and a
+// half-built path is a 404 with the operator's name on it. The origin is the
+// honest answer.
+func TestPaperMCFallsBackToTheOriginWithoutCoordinates(t *testing.T) {
+	bare := Origin("https://fill-data.papermc.io/v1/objects/abc/paper.jar")
+	order := RouteOrder("papermc", RouteAuto, bare)
+	if got := strings.Join(ids(order), ","); got != "official" {
+		t.Fatalf("order = %q, want official alone", got)
+	}
+}
+
+// Zulu's archives come off cdn.azul.com, which none of the Adoptium mirrors
+// carries and the GitHub proxy has nothing to wrap. Shipping a guess that 404s
+// on every install is worse than shipping one route.
+func TestAzulOffersOnlyItsOwnCDN(t *testing.T) {
+	order := RouteOrder("azul", RouteAuto, Origin("https://cdn.azul.com/zulu/bin/x.tar.gz"))
+	if got := ids(order); len(got) != 1 || got[0] != "official" {
+		t.Fatalf("order = %v, want just official", got)
+	}
+}
+
+func TestAdoptiumRebuildsTheMirrorPath(t *testing.T) {
+	up := Origin("https://github.com/adoptium/temurin21-binaries/releases/download/x/OpenJDK21.tar.gz")
+	up.Parts = map[string]string{
+		partMajor: "21", partImageType: "jdk", partArch: "x64",
+		partOS: "linux", partFileName: "OpenJDK21.tar.gz",
+	}
+	order := RouteOrder("adoptium", RouteAuto, up)
+	if got := strings.Join(ids(order), ","); got != "tuna,nju,huawei,ghproxy,official" {
+		t.Fatalf("order = %q", got)
+	}
+	want := "https://mirrors.tuna.tsinghua.edu.cn/Adoptium/21/jdk/x64/linux/OpenJDK21.tar.gz"
+	if got := order[0].Link(up); got != want {
+		t.Fatalf("link = %q, want %q", got, want)
+	}
+}
+
+// The rsync copies need coordinates; the GitHub proxy in the same set does not,
+// because it fronts the origin URL verbatim. Without coordinates the copies
+// drop out and the proxy stays.
+func TestAdoptiumKeepsTheProxyWhenTheCopiesCannotAddressTheBuild(t *testing.T) {
+	bare := Origin("https://github.com/adoptium/temurin21-binaries/releases/download/x/OpenJDK21.tar.gz")
+	order := RouteOrder("adoptium", RouteAuto, bare)
+	if got := strings.Join(ids(order), ","); got != "ghproxy,official" {
+		t.Fatalf("order = %q, want ghproxy,official", got)
+	}
+}

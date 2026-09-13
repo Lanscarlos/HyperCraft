@@ -59,15 +59,21 @@ const (
 // /download/{project}/{version}/build{n} against PaperMC's content-addressed
 // /v1/objects/{sha256}/{name}, and no amount of prefixing turns one into the
 // other.
+// Parts is a map rather than named fields because the coordinates differ per
+// upstream and have nothing in common: Adoptium's tree is addressed by major,
+// image type, arch, os and file name, PaperMC's by project, version and build.
+// Named fields would make Upstream the union of every upstream's schema, where
+// each caller fills three of eight and the next upstream adds more. Each
+// routes_*.go documents the keys it reads and treats a missing one as "cannot
+// serve this", which is the same answer as a host mismatch.
 type Upstream struct {
-	URL  string
-	Host string
-	// Project, Version and Build are what a copy needs to address the same
-	// artifact on its own tree. Left empty by callers whose sets hold no copy.
-	Project string
-	Version string
-	Build   int
+	URL   string
+	Host  string
+	Parts map[string]string
 }
+
+// part is one coordinate, or "" when the caller did not supply it.
+func (u Upstream) part(key string) string { return u.Parts[key] }
 
 // Origin is an Upstream for a set whose routes need nothing but the URL, with
 // Host filled in from it. Serves is matched against Host, so a caller building
