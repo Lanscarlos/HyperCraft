@@ -63,7 +63,15 @@ export function Dashboard({
       aside={
         can(CAP.panelCreate) && (
           <div className="actions">
-            <Button variant="primary" onClick={onCreate}>
+            {/* Solid only while there is a list to stand beside. With no
+                instances the empty state below carries the same onCreate, and
+                two filled buttons for one action is the shape this rule
+                exists to stop — the one that is where the eye already is
+                wins. */}
+            <Button
+              variant={instances.length === 0 ? 'default' : 'primary'}
+              onClick={onCreate}
+            >
               + 新建实例
             </Button>
           </div>

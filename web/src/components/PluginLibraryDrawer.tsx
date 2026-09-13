@@ -541,9 +541,12 @@ function MatrixRow({
           truth, which is what a plugin that legitimately updated itself needs
           and the only way to clear that finding without overwriting a jar
           somebody wanted. */}
+      {/* None of these is filled. They are row actions in a matrix — a row
+          can carry both a repair and an upgrade at once, and a column of
+          filled buttons is a column with no emphasis in it. */}
       <span className="matrix__act">
         {trouble === 'missing' && (
-          <Button size="small" variant="primary" disabled={busy} onClick={onRepush}>
+          <Button size="small" disabled={busy} onClick={onRepush}>
             重新推送
           </Button>
         )}
@@ -552,7 +555,7 @@ function MatrixRow({
             <Button size="small" disabled={busy} onClick={onAccept}>
               以文件为准
             </Button>
-            <Button size="small" variant="primary" disabled={busy} onClick={onRepush}>
+            <Button size="small" disabled={busy} onClick={onRepush}>
               恢复库内版本
             </Button>
           </>
@@ -566,7 +569,7 @@ function MatrixRow({
           </button>
         )}
         {use.update && (
-          <Button size="small" variant="primary" disabled={busy} onClick={onUpgrade}>
+          <Button size="small" disabled={busy} onClick={onUpgrade}>
             升到 {use.update.version}
           </Button>
         )}

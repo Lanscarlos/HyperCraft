@@ -1041,8 +1041,10 @@ export function FileManager({
             {/* A confined role can walk through the folders on the way to the one
                 it may edit, but not write in them. Offering the buttons there
                 would be offering a request the panel refuses. */}
+            {/* Plain: with a file open beside it the editor's 保存 is the
+                filled one, and a toolbar that is filled whether or not you
+                came here to upload competes with it on every screen. */}
             <Button
-              variant="primary"
               onClick={() => fileInput.current?.click()}
               disabled={busy || !listing.writable}
               title={listing.writable ? undefined : readOnlyHere}

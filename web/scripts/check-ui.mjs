@@ -291,19 +291,60 @@ function ruleBadgesAreComponents() {
   }
 }
 
-/** Advisory: one filled button per screen.
+/** How many filled buttons a file may declare, and why more than one of them
+ *  is still not more than one *screen*.
  *
- *  Not an error yet — a dozen components exceed it, and each needs a
- *  judgement about which of its buttons is the primary one. Printed so the
- *  number goes down over time rather than up. */
-function adviseOnePrimaryPerFile() {
-  const over = []
+ *  The count is per file because a script cannot see a screen. Most of the time
+ *  that is the same thing; these are the places where it is not — a dialog is
+ *  its own screen, and two branches of a ternary are never both on one. Every
+ *  entry is a promise that someone looked.
+ *
+ *  A file not listed here gets one. Going over fails; coming under only prints,
+ *  because a build that breaks when you remove a filled button is a build that
+ *  argues for keeping it. */
+const PRIMARY_ALLOWED = new Map([
+  ['components/ConfigHistory.tsx', [2, '页面上的「打快照」，和二次确认对话框里的那一下']],
+  ['components/FileManager.tsx', [3, '编辑器的保存，加上重命名与图片预览两个对话框']],
+  ['components/NewInstanceWizard.tsx', [3, '页脚的「下一步」与「创建实例」互斥，加上完成页的「进入控制台」']],
+  ['components/PluginImportDialog.tsx', [2, '同一个对话框的两个状态：导入前与导入后']],
+  ['components/PluginLibraryPage.tsx', [3, '批量条，加上批量安装与批量升级两个确认对话框']],
+  ['components/SchematicLibraryPage.tsx', [3, '页面的「上传建筑」，加上编辑与安装两个对话框']],
+  ['components/ScriptImportDialog.tsx', [2, '同一个对话框的两个状态：读脚本前与读出来之后']],
+  ['components/TerminalSettings.tsx', [3, '终端已开、确认中、未开三种互斥状态各一个']],
+  ['components/UpdatePanel.tsx', [2, '面板上的「立即更新」，和二次确认对话框里的那一下']],
+])
+
+/** Rule: one filled button per screen.
+ *
+ *  A filled button is a claim that this is the thing to do here. Two of them on
+ *  one screen is two claims, and the reader checks both — which is the cost the
+ *  quiet palette was bought to avoid. The rule bites hardest on lists: a row
+ *  action that is filled is filled once per row, and a page where every row is
+ *  filled has no filled button at all.
+ *
+ *  Where a screen has two candidates, the one that stays is what the screen is
+ *  asking for right now — a form's submit, a wizard footer's next, an empty
+ *  state's call to action, the pending item in a banner. The standing entrance
+ *  in a page or card head is not it, and neither is an escape hatch beside the
+ *  main path. */
+function rulePrimaryButtons() {
   for (const file of tsxFiles(SRC)) {
-    const n = (fs.readFileSync(file, 'utf8').match(/variant="primary"/g) ?? []).length
-    if (n > 1) over.push(`${path.relative(SRC, file)} (${n})`)
-  }
-  if (over.length > 0) {
-    console.warn(`check-ui 提示: ${over.length} 个组件有多于一个实心按钮 — ${over.join('、')}`)
+    const rel = path.relative(SRC, file)
+    const n = (withoutComments(fs.readFileSync(file, 'utf8')).match(/variant="primary"/g) ?? [])
+      .length
+    const [allowed, why] = PRIMARY_ALLOWED.get(rel) ?? [1, '']
+    if (n > allowed) {
+      problems.push(
+        `${rel} 有 ${n} 个实心按钮，最多 ${allowed} 个` +
+          (why ? `（${why}）` : '') +
+          ' —— 一屏只留那个「此刻要你做的事」，其余降成描边',
+      )
+    } else if (allowed > 1 && n < allowed) {
+      console.warn(
+        `check-ui 提示: ${rel} 只剩 ${n} 个实心按钮了，` +
+          `PRIMARY_ALLOWED 里那条可以改成 ${n} 或删掉`,
+      )
+    }
   }
 }
 
@@ -314,10 +355,10 @@ const RULES = [
   ruleFormPanelsHaveColumns,
   ruleDropdownsAreOurs,
   ruleBadgesAreComponents,
+  rulePrimaryButtons,
 ]
 
 for (const rule of RULES) rule()
-adviseOnePrimaryPerFile()
 
 if (problems.length > 0) {
   console.error(`check-ui: ${problems.length} 处问题\n`)

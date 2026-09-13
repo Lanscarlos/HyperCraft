@@ -670,7 +670,11 @@ function RestartBanner({
           {pending.length > 4 && ` 等 ${pending.length} 项`}
         </p>
       </div>
-      <Button variant="primary" disabled={busy} onClick={onRestart}>
+      {/* Plain inside a coloured alert. The banner already is the emphasis —
+          it has a warn surface, a border and the top of the pane. A filled
+          button on top of that is the same claim made twice, and it would be
+          the second filled button on a screen whose first one is 从插件库安装. */}
+      <Button disabled={busy} onClick={onRestart}>
         立即重启
       </Button>
     </div>
