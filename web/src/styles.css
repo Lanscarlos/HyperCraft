@@ -3877,57 +3877,42 @@ a:hover {
   font-weight: 600;
 }
 
-/* A settings form is two columns: an aside saying what this section is, and a
-   body holding the fields. The width a wide window brings goes to the aside
-   first and to trailing space after that — it does not go into making a text
-   input longer, which is what made this page read like a narrow form someone
-   had dragged sideways.
+/* A settings form is a card like every other card in the panel: its own head,
+   then what the head is about. The head is 段标题 + one sentence of why; the
+   body is the fields.
 
-   This replaced an auto-fit grid whose column count came out of the viewport:
-   in the 1440px instance pane it computed to three ~420px tracks, so a .field-row
-   nested in one of them put a four-digit megabyte box next to a jar name at
-   half its width, and a .checkbox — never in the full-bleed whitelist — took a
-   six-line paragraph into a 300px cell.
+   It used to be two columns — the head stood to the left of the fields, and the
+   width a wide window brought went to it. On paper that reads as "width goes to
+   the guide, not into making a text input longer". On screen it was a caption
+   of two lines standing in a column three hundred pixels wide and four hundred
+   tall, and the emptiness read as a hole in the card rather than as a margin.
+   The arithmetic that was supposed to hold it at 200px did not: flexbox freezes
+   the body once it hits its max-width and hands the leftover to whoever can
+   still grow, which was the head, alone — 282px of it at 1186px of card, 536px
+   at 1440px. Capping it stopped the growth without answering the objection,
+   which was that the column should not be there.
 
-   The wrap is intrinsic, not a breakpoint. 999 against 1 means the body takes
-   essentially all the free space while it still has room to grow, which holds
-   the aside near its 200px basis; the body's 480px basis is what decides when
-   to wrap, at 200 + 24 + 480 = 704px of card. Below that the body drops to its
-   own line and the aside becomes an ordinary heading.
+   So the head goes where a card's head goes. The body still stops at the
+   reading measure, and the width a wide window brings is now genuinely trailing
+   space — which is what the comment here claimed all along, from the wrong
+   layout.
 
-   That ratio stops governing the moment the body reaches its max-width. Flexbox
-   freezes an item that hits its cap and hands the leftover to whoever can still
-   grow — which is the aside, alone. So past ~1000px of card every further pixel
-   landed on the aside rather than beside the body: measured, 282px of aside at
-   1186px of card and 536px at 1440px, a two-line caption in a column wider than
-   half the reading measure. Hence the cap below. It costs the wrapped case, where
-   the aside can no longer take the whole line and stops 280px in; a phone gives
-   up ~110px of note width, which is the cheaper of the two.
-
-   The whitelist that used to follow — ten selectors granted grid-column: 1/-1 —
-   is gone with the grid. The body is a vertical flex column, so everything in
-   it is full-bleed by construction and there is nothing left to forget. */
+   .panel is already a flex column, so this modifier no longer overrides the
+   direction. What is left of it is the gap and the two children's own rules,
+   and the guarantee that both wrappers are written (see ruleFormPanelsHaveColumns
+   in check-ui.mjs) — without them the fields lose their measure and run to the
+   card's edge. */
 .panel--form {
-  display: flex;
-  /* .panel is a column; this one is not. Without the override the two grow
-     factors below apply to height, and the aside sits on top of the body with
-     200px of empty card between them. */
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 14px 24px;
-  align-items: start;
+  gap: 14px;
 }
 
-/* Capped because flex hands this column the body's leftover once the body is
-   frozen at its own cap — see the note above. 280px is about where one sentence
-   at 11px stops reading as a caption beside the form and starts reading as a
-   paragraph adrift in an empty column. */
+/* The head. Same shape as .chart-head, one sentence quieter: this one is
+   explaining a section of a form, not labelling a chart with a control on it. */
 .panel--form > .panel__aside {
-  flex: 1 1 200px;
-  max-width: 280px;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-width: var(--content-max);
 }
 
 /* Capped at the reading measure rather than at the card: past ~880px a row of
@@ -3935,7 +3920,6 @@ a:hover {
    trailing space on a wide monitor is deliberate. min-width: 0 because this
    holds paths and textareas, and without it they push the card open. */
 .panel--form > .panel__body {
-  flex: 999 1 480px;
   max-width: var(--content-max);
   min-width: 0;
   display: flex;
@@ -3943,11 +3927,14 @@ a:hover {
   gap: 14px;
 }
 
-/* The aside's one sentence: why this section exists, not what the fields do. */
+/* The head's one sentence: why this section exists, not what the fields do.
+   Reads at the size every other card's subtitle reads at (.chart-head__meta) —
+   as a column caption it was 11px and faint, which is the weight of a footnote,
+   and a footnote is not what the line under a card's title is. */
 .panel__aside .panel__note {
   margin: 0;
-  color: var(--text-faint);
-  font-size: 11px;
+  color: var(--text-dim);
+  font-size: 12px;
   line-height: 1.6;
 }
 
@@ -3957,6 +3944,12 @@ a:hover {
   font-family: var(--font-mono);
   font-size: 11px;
   word-break: break-all;
+}
+
+/* In a form head the gap above is already 4px, so the pull-up would lift the
+   path onto the sentence it sits under. */
+.panel__aside .panel__path {
+  margin-top: 0;
 }
 
 /* The long tail of server.properties: dozens of one-line key/value pairs the

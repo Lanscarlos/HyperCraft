@@ -172,7 +172,7 @@
 
 ## 4 · 表单
 
-**面板级表单一律是 `.panel.panel--form`，卡片内左右两栏。**
+**面板级表单一律是 `.panel.panel--form`：卡片头 + 字段，跟面板里其他卡片一个形状。**
 
 ```html
 <section class="panel panel--form">
@@ -186,11 +186,19 @@
 </section>
 ```
 
-两个包裹层都是必需的，`ruleFormPanelsHaveColumns` 会检查。**漏掉不会报错**，只会退化成一列平铺——那种「看起来差不多对」正是这条规则要挡的。
+两个包裹层都是必需的，`ruleFormPanelsHaveHeadAndBody` 会检查。**漏掉不会报错**，只会让字段失去自己的行长、一路铺到卡片边——那种「看起来差不多对」正是这条规则要挡的。
 
 **不要用 `.panel__head`**：那是 `UsersPage` 在用的横向标题行，另一回事，复用会被 `ruleNoSilentOverrides` 判为重复声明。
 
-分栏靠 `flex: 999` 对 `flex: 1` 的悬殊 grow 比实现：右栏拿走几乎全部余量，左栏因此稳定停在 200px 的 basis 上，不需要 `max-width`（换行之后它还得能独占整行）。换行点是 `200 + 24 + 480 = 704px`，**没有媒体查询**。右栏封顶 `--content-max`（880px），宽屏上尾部的留白是有意的：宽度给导览，不给输入框。
+头和正文都封顶 `--content-max`（880px），所以两者左右边缘对齐，宽屏上尾部的留白是有意的：宽度给导览，不给输入框。
+
+**这一段曾经是左右两栏**，段标题站在字段左边。纸面上的理由是「宽窗口带来的宽度归导览，不归输入框」，
+实际是一句两行的说明站在一个三百像素宽、四百像素高的格子里，那片空白读起来是卡片上的一个洞，不是留白。
+而且那套算式并不成立：`flex: 999` 对 `flex: 1` 只在正文还能涨的时候管用，正文一撞上 `max-width` 就被
+flexbox 冻结，剩余空间全部分给唯一还能伸的项——也就是左栏。实测卡片内宽 1186px 时左栏 282px，1440px 时
+536px。给它封顶只是止住了增长，没有回答「这一栏本来就不该在那儿」。
+
+所以头回到卡片头该在的位置。留白从「标题和字段之间」挪到了右边，那才是注释里一直声称的那个尾部留白。
 
 这套排版替换掉的是一个 `repeat(auto-fit, minmax(340px, 1fr))` 栅格。它的列数由视口宽度决定——在 1440px 的实例 pane 里恰好算出三列，于是同一视觉行上会出现三种宽度的输入框，而没进整行白名单的 `.checkbox` 把六行说明塞进 300px 的格子。**列数浮动，字段宽度就无从谈起。**
 
@@ -301,7 +309,7 @@
 | --- | --- |
 | `ruleNoUndefinedClasses` | tsx 里用到的每个 BEM 类名都在 `styles.css` 里存在。基类的修饰符若已定义则算它已定义（`.chist__line` + `--add`/`--delete` 是合法的 BEM，未改动的行没有背景是对的）。 |
 | `ruleIconButtonsAreLabelled` | `<Button icon>` 必须带 `aria-label`。图标按钮没有文字，漏了 label 屏幕阅读器只念得出 "button"。 |
-| `ruleFormPanelsHaveColumns` | 每个 `.panel--form` 都有 `.panel__aside` 和 `.panel__body`。按文件内出现次数比对，不解析 JSX 嵌套——三个用到它的文件都是一段一对，漏一处计数就对不上。 |
+| `ruleFormPanelsHaveHeadAndBody` | 每个 `.panel--form` 都有 `.panel__aside`（头）和 `.panel__body`（字段）。按文件内出现次数比对，不解析 JSX 嵌套——用到它的文件都是一段一对，漏一处计数就对不上。 |
 | `rulePrimaryButtons` | 一个文件最多一个 `variant="primary"`，`PRIMARY_ALLOWED` 里登记过的按登记的配额。见第 6 节。 |
 | `ruleBadgesAreComponents` | `<span>` 不许手写 `.badge` / `.badge--*`，一律走 `<Badge>`。模板里的 `${…}` 先剥掉再分词，否则 `badge${TONE[x]}` 这种写法会整个溜过去。非 `<span>` 的放行——画成徽章的按钮不可能是 `Badge`。 |
 | `ruleDropdownsAreOurs` | 组件里不许出现原生 `<select>` / `<datalist>`，一律走 `Select`。`Select.tsx` 自身豁免 —— 它拥有两个分支，包括粗指针设备上回落的那个真 `<select>`。扫描前先剥注释：这份代码库的注释大量在讨论这两个标签（`InstancePlugins` 和 `JVMArgsEditor` 各自长篇解释了为什么**不**用），不剥就全是误报。 |

@@ -185,20 +185,24 @@ function ruleNoSilentOverrides() {
   }
 }
 
-/** Rule: a .panel--form declares both of its columns.
+/** Rule: a .panel--form declares both a head and a body.
  *
- *  The panel is a two-column flex box — an aside carrying the section's title
- *  and one sentence of why, and a body carrying the fields. A section that
- *  forgets the wrappers does not break: it degrades into one flat column of
- *  full-width controls, which looks close enough to right that it survives
- *  review. That is exactly the failure this layout set out to remove, so it is
- *  checked rather than remembered.
+ *  The head carries the section's title and one sentence of why; the body
+ *  carries the fields and stops at the reading measure. A section that forgets
+ *  the wrappers does not break — the fields lose their measure and run to the
+ *  card's edge, which looks close enough to right that it survives review.
+ *  That is the failure this layout set out to remove, so it is checked rather
+ *  than remembered.
+ *
+ *  (These were two columns until the head moved above the body. The wrappers
+ *  are what carry the rules either way, which is why the check outlived the
+ *  layout it was written for.)
  *
  *  Counting occurrences per file rather than parsing JSX nesting: the files
  *  that use .panel--form write one aside and one body per section, so the
  *  counts match when every section is wrapped and diverge the moment one is
  *  missed. A nesting parser would catch more and cost far more. */
-function ruleFormPanelsHaveColumns() {
+function ruleFormPanelsHaveHeadAndBody() {
   for (const file of tsxFiles(SRC)) {
     const src = fs.readFileSync(file, 'utf8')
     const panels = (src.match(/panel--form/g) ?? []).length
@@ -208,7 +212,7 @@ function ruleFormPanelsHaveColumns() {
     if (asides === panels && bodies === panels) continue
     problems.push(
       `${path.relative(SRC, file)} 有 ${panels} 个 .panel--form，` +
-        `但 ${asides} 个 .panel__aside、${bodies} 个 .panel__body —— 每个都要两栏包裹`,
+        `但 ${asides} 个 .panel__aside、${bodies} 个 .panel__body —— 每个都要头和正文两层包裹`,
     )
   }
 }
@@ -352,7 +356,7 @@ const RULES = [
   ruleNoUndefinedClasses,
   ruleIconButtonsAreLabelled,
   ruleNoSilentOverrides,
-  ruleFormPanelsHaveColumns,
+  ruleFormPanelsHaveHeadAndBody,
   ruleDropdownsAreOurs,
   ruleBadgesAreComponents,
   rulePrimaryButtons,
