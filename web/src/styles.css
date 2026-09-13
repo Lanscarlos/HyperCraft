@@ -3870,13 +3870,19 @@ a:hover {
 }
 
 /* The title column claims the row; the fact and the tools take what they
-   need at the end and wrap under it, together, when it is not there. The
-   basis is the shortest width a one-sentence note still reads at. */
+   need at the end and wrap under it, together, when it is not there.
+
+   The basis is what decides that wrap, and it is deliberately short: it is not
+   the width the column wants (flex-grow gives it the whole row anyway), it is
+   the width below which a title and one small button stop fitting side by
+   side. At 280 they stopped fitting inside a card on a 390px phone, so every
+   section head there put its one button alone on a second line, right-aligned
+   under nothing — 账号 and 新建账号 reading as two unrelated things. */
 .panel__heading {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1 1 280px;
+  flex: 1 1 220px;
   min-width: 0;
 }
 
