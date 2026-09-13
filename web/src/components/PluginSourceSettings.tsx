@@ -5,6 +5,7 @@ import type { PluginTokenInfo } from '../types'
 import type { PluginController } from '../usePlugins'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { FieldHelp } from './FieldHelp'
 import { Page } from './Page'
 import { Section } from './Section'
 
@@ -148,12 +149,16 @@ function GitHubTokenPanel({
               placeholder="github_pat_… 或 ghp_…"
               onChange={(e) => setToken(e.target.value)}
             />
-            <small>
-              在 GitHub 的 Settings → Developer settings → Personal access tokens 里生成。
+            {/* One sentence stays; the rest folds. Four sentences under one of
+                two side-by-side fields made the row five lines tall and left
+                four lines of hole under the other one — which is the case
+                FieldHelp exists for. */}
+            <small>在 GitHub 的 Settings → Developer settings → Personal access tokens 里生成。</small>
+            <FieldHelp summary="要给什么权限？存在哪？">
               fine-grained 令牌只要给目标仓库的 <code>Contents: Read-only</code> 权限；
               classic 令牌勾 <code>repo</code>。存在面板自己的 panel.json 里（0600），
               只发给 api.github.com，不会经过下载源。
-            </small>
+            </FieldHelp>
           </label>
         </div>
         <div className="field__tools">

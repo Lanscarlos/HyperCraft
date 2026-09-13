@@ -1376,11 +1376,16 @@ function ServerStep({
 }) {
   return (
     <>
-      <Section form title="服务器设置" note="开服前要先定下来的几项。">
-        <p className="chart-note">
-          这些写进 <code>server.properties</code>，之后在「服务器配置」页随时能改 ——
-          除了存档名和种子：世界一旦生成，改它们等于换一个世界。
-        </p>
+      <Section
+        form
+        title="服务器设置"
+        note={
+          <>
+            开服前要先定下来的几项。这些写进 <code>server.properties</code>，之后在「服务器配置」页
+            随时能改 —— 除了存档名和种子：世界一旦生成，改它们等于换一个世界。
+          </>
+        }
+      >
 
         <label className="field">
           <span>端口</span>
@@ -1509,11 +1514,16 @@ function ProxyStep({
 }) {
   return (
     <>
-      <Section form title="代理端设置" note="代理端和普通服务端要填的不是一套。">
-        <p className="chart-note">
-          这些写进 <code>velocity.toml</code>，之后在「代理配置」页随时能改。
-          子服务器留到那一页添加 —— 那时候它们才存在。
-        </p>
+      <Section
+        form
+        title="代理端设置"
+        note={
+          <>
+            代理端和普通服务端要填的不是一套。这些写进 <code>velocity.toml</code>，之后在「代理配置」
+            页随时能改；子服务器留到那一页添加 —— 那时候它们才存在。
+          </>
+        }
+      >
 
         <label className="field">
           <span>监听端口</span>

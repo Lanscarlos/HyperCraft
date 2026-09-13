@@ -260,10 +260,8 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
 
         {runtimes.length === 0 && !detected ? (
           <EmptyState title="还没有可选的 Java，实例的启动设置里会是空的。">
-            <p>
-              下面挑一个版本装上，几十秒的事，全程不动系统环境；已经有 Java 的话，上面「添加本机
-              Java」填路径登记进来。
-            </p>
+            下面挑一个版本装上，几十秒的事，全程不动系统环境；已经有 Java 的话，上面「添加本机
+            Java」填路径登记进来。
           </EmptyState>
         ) : (
           <Shelf head={['Java', '完整版本', '体积', '装入 / 登记于', '使用中的实例', '']}>

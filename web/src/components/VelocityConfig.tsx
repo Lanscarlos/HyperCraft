@@ -444,12 +444,17 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
         ))}
       </Section>
 
-      <Section form title="玩家信息转发" note="子服看到的 IP 和 UUID 从哪来。">
-        <p className="muted">
-          用 <code>modern</code> 的话，每个子服的{' '}
-          <code>paper-global.yml</code> 里要打开 <code>velocity.enabled</code>{' '}
-          并填上同一个密钥，同时关掉子服自己的正版验证。
-        </p>
+      <Section
+        form
+        title="玩家信息转发"
+        note={
+          <>
+            子服看到的 IP 和 UUID 从哪来。用 <code>modern</code> 的话，每个子服的{' '}
+            <code>paper-global.yml</code> 里要打开 <code>velocity.enabled</code>{' '}
+            并填上同一个密钥，同时关掉子服自己的正版验证。
+          </>
+        }
+      >
         {grouped.forwarding.map((setting) => (
           <SettingField
             key={setting.key}
@@ -508,8 +513,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
         )}
       </Section>
 
-      <Section form title="高级设置" note="默认值适用于绝大多数服。">
-        <p className="muted">不清楚作用的就别动。</p>
+      <Section form title="高级设置" note="默认值适用于绝大多数服；不清楚作用的就别动。">
         {grouped.advanced.map((setting) => (
           <SettingField
             key={setting.key}

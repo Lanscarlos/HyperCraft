@@ -378,22 +378,20 @@ export function InstancePlugins({
 
       {entries.length === 0 ? (
         <EmptyState title="这台服务器还没有插件。">
-          <p>
-            {available.length > 0 ? (
-              <>
-                插件库里有 {available.length} 个可以装的，用上面的「从插件库安装」挑一个。
-              </>
-            ) : (
-              <>
-                插件库还是空的，先在上面的
-                <button className="link" onClick={() => setTab('market')}>
-                  「市场」
-                </button>
-                下载一个到插件库，再回这里装。
-              </>
-            )}
-            也可以把 jar 直接传进 <code>plugins/</code>，面板会认出来。
-          </p>
+          {available.length > 0 ? (
+            <>
+              插件库里有 {available.length} 个可以装的，用上面的「从插件库安装」挑一个。
+            </>
+          ) : (
+            <>
+              插件库还是空的，先在上面的
+              <button className="link" onClick={() => setTab('market')}>
+                「市场」
+              </button>
+              下载一个到插件库，再回这里装。
+            </>
+          )}
+          也可以把 jar 直接传进 <code>plugins/</code>，面板会认出来。
         </EmptyState>
       ) : (
         <DataTable className="plugin-table" role="table" aria-label="已装插件">

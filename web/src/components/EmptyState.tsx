@@ -23,13 +23,18 @@ interface Props {
  * situations exist: a section that is empty (a block, so the space reads as
  * meant to be filled rather than as a rendering failure), and a list that has
  * nothing to show under its header (a line, so the header stays where it is).
+ *
+ * The note is a <div> rather than a <p> because callers pass prose with links
+ * and the odd paragraph of their own. As a <p> the parser closed it at the
+ * caller's first block child, which then escaped the note's reading measure
+ * and ran the full width of the card.
  */
 export function EmptyState({ title, children, action, inline }: Props) {
   if (inline) {
     return (
       <div className="empty empty--inline">
         <p className="empty__title">{title}</p>
-        {children !== undefined && <p className="empty__note">{children}</p>}
+        {children !== undefined && <div className="empty__note">{children}</div>}
         {action !== undefined && <div className="empty__actions">{action}</div>}
       </div>
     )
@@ -37,7 +42,7 @@ export function EmptyState({ title, children, action, inline }: Props) {
   return (
     <div className="empty">
       <p className="empty__title">{title}</p>
-      {children !== undefined && <p className="empty__note">{children}</p>}
+      {children !== undefined && <div className="empty__note">{children}</div>}
       {action !== undefined && <div className="empty__actions">{action}</div>}
     </div>
   )

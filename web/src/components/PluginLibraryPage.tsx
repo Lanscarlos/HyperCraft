@@ -1079,17 +1079,17 @@ function EmptyLibrary({
       </p>
       <p>
         去
-        <button className="link" onClick={onBrowse}>
-          插件市场
-        </button>
-        找一个，
-        <button className="link" onClick={onImport}>
-          导入一个本地 jar
-        </button>
-        ，或者
-        <button className="link" onClick={onAddSource}>
-          加个 GitHub 仓库
-        </button>
+      <button className="link" onClick={onBrowse}>
+        插件市场
+      </button>
+      找一个，
+      <button className="link" onClick={onImport}>
+        导入一个本地 jar
+      </button>
+      ，或者
+      <button className="link" onClick={onAddSource}>
+        加个 GitHub 仓库
+      </button>
         跟着它的 Release 走 —— 私有仓库也行。
       </p>
     </EmptyState>

@@ -713,9 +713,9 @@ function EngineList({
   if (installs.length === 0) {
     return (
       <Section title="已装引擎" note="引擎是数据库程序本身，一个可以给多个数据库共用">
-        <p className="muted">
-          还没有装过。下面挑一个装上 —— 全程不动系统里的服务，也不需要 root 之外的额外配置。
-        </p>
+        <EmptyState inline title="还没有装过。">
+          下面挑一个装上 —— 全程不动系统里的服务，也不需要 root 之外的额外配置。
+        </EmptyState>
       </Section>
     )
   }

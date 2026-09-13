@@ -5396,6 +5396,13 @@ details[open]::details-content {
   line-height: 1.6;
 }
 
+/* Callers pass prose, sometimes as their own paragraphs. They inherit the
+   note's measure; what they must not bring is a <p>'s default margin, which
+   would space them off the title the note sits under. */
+.empty__note p {
+  margin: 0;
+}
+
 .empty__actions {
   display: flex;
   gap: 10px;

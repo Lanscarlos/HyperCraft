@@ -171,10 +171,8 @@ export function SchematicLibraryPage({
 
         {entries.length === 0 ? (
           <EmptyState title="建筑库还是空的。">
-            <p>
-              上传几个 .schem，从「建筑市场」下载，或者在实例的文件管理器里预览一个 schematic
-              再点「加入建筑库」。
-            </p>
+            上传几个 .schem，从「建筑市场」下载，或者在实例的文件管理器里预览一个 schematic
+            再点「加入建筑库」。
           </EmptyState>
         ) : shown.length === 0 ? (
           <p className="muted">没有匹配「{query}」的建筑。</p>
