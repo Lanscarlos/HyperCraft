@@ -12,6 +12,7 @@ import type {
 import type { DatabaseController } from '../useDatabases'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { FieldHelp } from './FieldHelp'
 import { Page } from './Page'
 import { Select } from './Select'
 import { Shelf } from './Shelf'
@@ -612,9 +613,12 @@ function CreateForm({
           placeholder="minecraft"
           spellCheck={false}
         />
-        <small>
-          字母开头，只能用字母、数字和下划线。给每个服务器一个库比共用一个更好排查问题。
-        </small>
+        <small>字母开头，只能用字母、数字和下划线。</small>
+        <FieldHelp summary="几个服务器可以共用一个库吗？">
+          可以，但默认一台服一个库。共用时两边插件的表名是一样的，数据就混在一张表里 ——
+          确实要共享（比如整个群组共用一套权限）的时候这正是你要的，其余情况下它只会让
+          「这一行是哪台服写的」变成一个需要查的问题。分开建，备份和迁走某一台服也简单。
+        </FieldHelp>
       </div>
 
       <div className="field field--md">
@@ -647,9 +651,12 @@ function CreateForm({
               placeholder="留空则自动生成一个"
               spellCheck={false}
             />
-            <small>
-              至少 8 位，不能有引号、反斜杠和空格 —— 这些字符会破坏插件配置文件和面板生成的初始化语句。
-            </small>
+            <small>至少 8 位，不能有引号、反斜杠和空格。</small>
+            <FieldHelp summary="为什么不能有这几个字符？">
+              插件的配置文件多是 YAML，密码里一个引号就能把那一行断开，服务端启动时报的却是
+              别的错。面板建库时还要拼一条语句把这个账号建出来，反斜杠和空格在那里同样是语法。
+              留空让面板自动生成一个，这些都不用操心。
+            </FieldHelp>
           </div>
         </div>
       )}
