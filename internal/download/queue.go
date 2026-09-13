@@ -265,10 +265,14 @@ func (q *Queue) Close() {
 			}
 		}
 	}
+	running := len(cancels) > 0
 	q.mu.Unlock()
 
 	for _, cancel := range cancels {
 		cancel()
+	}
+	if !running {
+		return
 	}
 
 	done := make(chan struct{})
@@ -286,12 +290,21 @@ func (q *Queue) Close() {
 func (q *Queue) finish(e *entry, state State, err error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	// A job cancelled while it was still queued is already finished; a worker
+	// that started before the cancellation landed must not resurrect it.
+	if !e.pub.State.Active() {
+		return
+	}
 	now := time.Now()
 	e.pub.State = state
 	e.pub.FinishedAt = &now
 	if err != nil {
 		e.pub.Error = err.Error()
 	}
+	// Pruned here as well as on insert, because a job only becomes history when
+	// it ends: pruning only on insert leaves the queue one row over the cap
+	// between the last download finishing and the next one starting.
+	q.prune()
 }
 
 // work runs one job end to end and then hands its slot to whatever is next.

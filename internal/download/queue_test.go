@@ -111,6 +111,41 @@ func TestAskingTwiceForTheSameThingReusesTheJob(t *testing.T) {
 	close(h.release)
 }
 
+// TestFinishDoesNotResurrectAFinishedJob pins the guard at the top of finish:
+// a job cancelled while still queued is already finished, and a worker that
+// started before the cancellation landed must not overwrite that outcome.
+// Task 2's Cancel(id) is exactly the caller this protects against racing
+// work's own call to finish.
+func TestFinishDoesNotResurrectAFinishedJob(t *testing.T) {
+	h := newHeld()
+	q := NewQueue(slog.New(slog.DiscardHandler))
+	t.Cleanup(q.Close)
+	q.SetLimit(KindPlugin, 1)
+
+	if _, err := q.Submit(req(q, h, KindPlugin, "solo")); err != nil {
+		t.Fatal(err)
+	}
+
+	q.mu.Lock()
+	e := q.jobs[0]
+	q.mu.Unlock()
+
+	first := errors.New("first")
+	q.finish(e, StateFailed, first)
+	q.finish(e, StateDone, nil) // must be a no-op: the job already finished
+
+	q.mu.Lock()
+	state, errText := e.pub.State, e.pub.Error
+	q.mu.Unlock()
+
+	if state != StateFailed || errText != first.Error() {
+		t.Fatalf("finish resurrected a finished job: state=%s err=%q, want %s/%q",
+			state, errText, StateFailed, first.Error())
+	}
+
+	close(h.release) // let the worker unblock so Close does not wait out its timeout
+}
+
 func waitFor(t *testing.T, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
