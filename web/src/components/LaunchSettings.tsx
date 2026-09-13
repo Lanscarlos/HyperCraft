@@ -457,6 +457,35 @@ export function LaunchSettings({
     javaOptions.unshift({ value: form.java, label: form.java, note: '未登记' })
   }
 
+  /* The Java choice is argv[0] in both modes. It is also exported into the
+     environment, which is what a server that shells out to a java of its own
+     picks up.
+
+     Only what the panel has been told about: there is no free-text path here
+     any more, and 「资源库 → Java 环境」 is the one way in. The server
+     enforces the same rule on save, so this select is a convenience, not the
+     guard.
+
+     A value rather than markup in place, because where it sits depends on the
+     mode: beside the jar it runs (they are one decision — 用哪个 Java、跑哪个
+     jar), or alone above an argument file, which has no jar to sit beside. */
+  const javaField = (
+    <label className="field field--md">
+      <span>Java 环境</span>
+      <Select
+        ariaLabel="Java 环境"
+        value={form.java}
+        options={javaOptions}
+        onChange={(next) => update('java', next)}
+      />
+      <small>
+        {runtimes.length > 0
+          ? 'Java 只能在「资源库 → Java 环境」里添加——装一个，或者登记本机已有的；添加过的在这里选。'
+          : '还没有可选的 Java。到「资源库 → Java 环境」装一个，或者登记本机已有的，之后这里就能选。'}
+      </small>
+    </label>
+  )
+
   return (
     <form className="stack stack--narrow" onSubmit={save}>
       <PageHead title="实例设置" lead="名称、目录、核心、Java 和内存，以及它怎么启动。" />
@@ -467,32 +496,22 @@ export function LaunchSettings({
         onRecheck={() => setCheckRev((rev) => rev + 1)}
       />
 
-      <Section form title="基本信息" note="这台服务器叫什么、文件放在哪、是什么服务端。">
-      <label className="field field--md">
-        <span>实例名称</span>
-        <input
-          value={form.name}
-          onChange={(e) => update('name', e.target.value)}
-          required
-        />
-      </label>
-
-      <DirectoryField
-        value={form.directory}
-        onChange={(value) => update('directory', value)}
-        disabled={isLive(instance.state)}
-        hint={
-          <>
-            服务端 jar、存档和配置都放在这里。「浏览…」可以指到本机任意位置，
-            包括一个已经有服务端的目录。
-            {!directoryExists && ' 这个目录还不存在，保存后会在启动时创建。'}
-            {isLive(instance.state) && ' 服务器运行时无法修改。'}
-          </>
-        }
-      />
-
+      <Section form title="基本信息" note="这台服务器叫什么、是什么服务端、文件放在哪。">
+      {/* Who it is, on one line: a name, a kind and a version are one answer,
+          and each of the three was a row of its own ending at a different
+          place. 服务端类型 is a short identifier (Paper, NeoForge,
+          CraftBukkit) rather than a name, so it takes the short measure and
+          the three fit the reading width together. */}
       <div className="field-row">
         <label className="field field--md">
+          <span>实例名称</span>
+          <input
+            value={form.name}
+            onChange={(e) => update('name', e.target.value)}
+            required
+          />
+        </label>
+        <label className="field field--sm">
           <span>服务端类型</span>
           <Select
             ariaLabel="服务端类型"
@@ -524,6 +543,21 @@ export function LaunchSettings({
           mod 会被装进 <code>plugins/</code> 而不是 <code>mods/</code>，插件市场里每一条也都标成「未知」。
         </FieldHelp>
       </p>
+
+      <DirectoryField
+        value={form.directory}
+        onChange={(value) => update('directory', value)}
+        disabled={isLive(instance.state)}
+        hint={
+          <>
+            服务端 jar、存档和配置都放在这里。「浏览…」可以指到本机任意位置，
+            包括一个已经有服务端的目录。
+            {!directoryExists && ' 这个目录还不存在，保存后会在启动时创建。'}
+            {isLive(instance.state) && ' 服务器运行时无法修改。'}
+          </>
+        }
+      />
+
       </Section>
 
       <Section form title="启动方式" note="面板拼出来的那条命令行：用哪个 Java、跑哪个 jar、给多少内存。">
@@ -555,31 +589,10 @@ export function LaunchSettings({
         ))}
       </div>
 
-      {/* The Java choice is argv[0] in both modes. It is also exported into
-          the environment, which is what a server that shells out to a java
-          of its own picks up.
-
-          Only what the panel has been told about: there is no free-text path
-          here any more, and 「资源库 → Java 环境」 is the one way in. The
-          server enforces the same rule on save, so this select is a
-          convenience, not the guard. */}
-      <label className="field field--md">
-        <span>Java 环境</span>
-        <Select
-          ariaLabel="Java 环境"
-          value={form.java}
-          options={javaOptions}
-          onChange={(next) => update('java', next)}
-        />
-        <small>
-          {runtimes.length > 0
-            ? 'Java 只能在「资源库 → Java 环境」里添加——装一个，或者登记本机已有的；添加过的在这里选。'
-            : '还没有可选的 Java。到「资源库 → Java 环境」装一个，或者登记本机已有的，之后这里就能选。'}
-        </small>
-      </label>
-
       {argFileMode ? (
         <>
+          {javaField}
+
           <label className="field">
             <span>参数文件</span>
             <textarea
@@ -618,12 +631,12 @@ export function LaunchSettings({
         </>
       ) : (
         <>
-          {/* One row, because they are one sentence: 跑哪个 jar、给多少内存 —
-              which is what this section's own note says it is about. Stacked,
-              a 380px select and two 120px boxes left three ragged right edges
-              in as many rows, and the eye had to walk down a staircase to read
-              a single decision. */}
+          {/* 用哪个 Java、跑哪个 jar — one decision, one row. Stacked, each was
+              a 380px control ending at the same place three rows running, with
+              the rest of the line empty beside it. */}
           <div className="field-row">
+            {javaField}
+
             <label className="field field--md">
               <span>服务端 jar</span>
               <Select
@@ -644,7 +657,9 @@ export function LaunchSettings({
                   : '目录下暂时没有 jar 文件，从上面装一个核心，或自己传一个'}
               </small>
             </label>
+          </div>
 
+          <div className="field-row">
             <label className="field field--num">
               <span>最小内存 (MB)</span>
               <input
