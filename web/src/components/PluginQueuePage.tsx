@@ -4,6 +4,7 @@ import { formatBytes, formatDate } from '../format'
 import { toast } from '../toast'
 import type { PluginDownloadJob } from '../types'
 import { isJobActive } from '../types'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Page } from './Page'
 import type { PluginController } from '../usePlugins'
@@ -183,15 +184,15 @@ function JobRow({
 function JobBadge({ job }: { job: PluginDownloadJob }) {
   switch (job.state) {
     case 'queued':
-      return <span className="badge badge--muted">排队</span>
+      return <Badge tone="muted">排队</Badge>
     case 'downloading':
-      return <span className="badge">下载中</span>
+      return <Badge>下载中</Badge>
     case 'done':
-      return <span className="badge badge--ok">已入库</span>
+      return <Badge tone="ok">已入库</Badge>
     case 'cancelled':
-      return <span className="badge badge--muted">已取消</span>
+      return <Badge tone="muted">已取消</Badge>
     default:
-      return <span className="badge badge--warn">失败</span>
+      return <Badge tone="warn">失败</Badge>
   }
 }
 

@@ -26,6 +26,7 @@ import type { PluginController } from '../usePlugins'
 import type { SchematicController } from '../useSchematics'
 import { CAP, useCan } from '../useCan'
 import type { TerminalController } from '../useTerminal'
+import type { BadgeTone } from './Badge'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Icon } from './Icon'
@@ -187,13 +188,13 @@ export function Sidebar(props: Props) {
   )
 }
 
-/** What 概览's count is painted as, by the worst level in it. Info is the empty
- *  string on purpose: a count of things worth knowing is a plain badge, the
- *  same one 插件库 carries two rows down. */
-const ALERT_BADGE: Record<AlertLevel, string> = {
-  error: ' badge--alert',
-  warn: ' badge--warn',
-  info: '',
+/** What 概览's count is painted as, by the worst level in it. Info is neutral
+ *  on purpose: a count of things worth knowing is a plain badge, the same one
+ *  插件库 carries two rows down. */
+const ALERT_BADGE: Record<AlertLevel, BadgeTone> = {
+  error: 'alert',
+  warn: 'warn',
+  info: 'neutral',
 }
 
 // ------------------------------------------------------------------ global
@@ -261,7 +262,7 @@ function GlobalScope(props: Props) {
                 // level, which made "有个插件能更新" look like a server that
                 // had fallen over — and red is the one colour in the panel that
                 // has to keep meaning that.
-                <span className={`badge${ALERT_BADGE[alertLevel ?? 'info']}`}>{alertCount}</span>
+                <Badge tone={ALERT_BADGE[alertLevel ?? 'info']}>{alertCount}</Badge>
               ) : null
             }
           />

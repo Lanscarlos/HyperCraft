@@ -117,12 +117,23 @@
 
 ```tsx
 <Badge tone="warn">需重启</Badge>
-// tone: neutral | ok | warn | danger | alert | live | muted | update | changed
+// tone: BadgeTone = neutral | ok | warn | danger | alert | live | muted | update | changed
 ```
 
-静态状态标签，默认无色。
+静态状态标签，默认无色。`BadgeTone` 是导出的——状态到色调的映射表（`SecurityPage` 的 `KIND_BADGE`、
+`Sidebar` 的 `ALERT_BADGE`）标上它，拼错就编译不过。
 
-**什么时候不用它**：`.chip` 是**可点的筛选控件**（有 `cursor: pointer`、`--active` 态、按下去会缩），不是徽章。两者看起来相邻，但把标签变成控件是错的。
+**不要手写 `.badge` 和它的 `--tone` 修饰符**：守卫 `ruleBadgesAreComponents` 直接卡。这套 class 名曾经
+散在 23 个文件里当裸字符串写，于是 `.badge--warn` 被定义了两遍、后一块丢掉 `border-color`，警告徽章的
+描边一直没生效而没人发现——因为没有任何一处是这套色调词汇的家。现在有了。
+
+**什么时候不用它**：
+
+- `.chip` 是**可点的筛选控件**（有 `cursor: pointer`、`--active` 态、按下去会缩），不是徽章。两者看起来
+  相邻，但把标签变成控件是错的。
+- **画成徽章的控件**留着裸 class。插件列表那个「→ 新版本号」的升级键是 `<button className="badge
+  badge--update">`：`Badge` 渲染的是 `<span>`，换过去等于把按钮变没了。这跟 `<a className="btn">` 对
+  `Button` 的例外是同一件事，守卫只卡 `<span>`。
 
 ### `StatusDot`
 
@@ -272,6 +283,7 @@
 | `ruleNoUndefinedClasses` | tsx 里用到的每个 BEM 类名都在 `styles.css` 里存在。基类的修饰符若已定义则算它已定义（`.chist__line` + `--add`/`--delete` 是合法的 BEM，未改动的行没有背景是对的）。 |
 | `ruleIconButtonsAreLabelled` | `<Button icon>` 必须带 `aria-label`。图标按钮没有文字，漏了 label 屏幕阅读器只念得出 "button"。 |
 | `ruleFormPanelsHaveColumns` | 每个 `.panel--form` 都有 `.panel__aside` 和 `.panel__body`。按文件内出现次数比对，不解析 JSX 嵌套——三个用到它的文件都是一段一对，漏一处计数就对不上。 |
+| `ruleBadgesAreComponents` | `<span>` 不许手写 `.badge` / `.badge--*`，一律走 `<Badge>`。模板里的 `${…}` 先剥掉再分词，否则 `badge${TONE[x]}` 这种写法会整个溜过去。非 `<span>` 的放行——画成徽章的按钮不可能是 `Badge`。 |
 | `ruleDropdownsAreOurs` | 组件里不许出现原生 `<select>` / `<datalist>`，一律走 `Select`。`Select.tsx` 自身豁免 —— 它拥有两个分支，包括粗指针设备上回落的那个真 `<select>`。扫描前先剥注释：这份代码库的注释大量在讨论这两个标签（`InstancePlugins` 和 `JVMArgsEditor` 各自长篇解释了为什么**不**用），不剥就全是误报。 |
 | `ruleNoSilentOverrides` | 同一个选择器不许重复声明同一个**属性**。写两遍本身不算错——这份样式表是按叙述组织的；但同一个属性写两遍，就一定有一块在悄悄失效。有意的覆盖写进 `OVERRIDE_ALLOWED` 并附理由。 |
 

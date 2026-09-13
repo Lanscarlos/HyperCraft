@@ -11,6 +11,7 @@ import type {
   SchematicTarget,
 } from '../types'
 import type { SchematicController } from '../useSchematics'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Card } from './Card'
 import { Modal } from './Modal'
@@ -270,7 +271,7 @@ export function SchematicCard({
         <span className="schemcard__title">
           <strong>{entry.name}</strong>
           {entry.origin.kind !== 'upload' && (
-            <span className="badge">{ORIGIN_LABELS[entry.origin.kind] ?? entry.origin.kind}</span>
+            <Badge>{ORIGIN_LABELS[entry.origin.kind] ?? entry.origin.kind}</Badge>
           )}
         </span>
         <span className="schemcard__file">
@@ -305,9 +306,9 @@ export function SchematicCard({
       {(entry.tags?.length ?? 0) > 0 && (
         <p className="schemcard__tags">
           {entry.tags?.map((tag) => (
-            <span className="badge" key={tag}>
+            <Badge key={tag}>
               {tag}
-            </span>
+            </Badge>
           ))}
         </p>
       )}

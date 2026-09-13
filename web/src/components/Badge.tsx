@@ -1,16 +1,27 @@
 import type { ReactNode } from 'react'
 
-type Tone = 'neutral' | 'ok' | 'warn' | 'danger' | 'alert' | 'live' | 'muted' | 'update' | 'changed'
+/** Exported because two callers keep a map from their own state to a tone —
+ *  see SecurityPage's KIND_BADGE and Sidebar's ALERT_BADGE. */
+export type BadgeTone =
+  | 'neutral'
+  | 'ok'
+  | 'warn'
+  | 'danger'
+  | 'alert'
+  | 'live'
+  | 'muted'
+  | 'update'
+  | 'changed'
 
 interface Props {
   /** Colour is a claim that something is wrong. Leave it neutral otherwise. */
-  tone?: Tone
+  tone?: BadgeTone
   className?: string
   title?: string
   children: ReactNode
 }
 
-const TONE: Record<Tone, string> = {
+const TONE: Record<BadgeTone, string> = {
   neutral: '',
   ok: 'badge--ok',
   warn: 'badge--warn',

@@ -11,6 +11,7 @@ import type {
   Role,
 } from '../types'
 import { AccountDialog } from './AccountDialog'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Page } from './Page'
 import { RoleDialog } from './RoleDialog'
@@ -159,9 +160,9 @@ export function UsersPage({ instances, me }: Props) {
                   {account.displayName && (
                     <span className="acct-row__alias">{account.displayName}</span>
                   )}
-                  <span className="badge">{account.roleName}</span>
-                  {account.disabled && <span className="badge badge--warn">已停用</span>}
-                  {account.username === me && <span className="badge badge--muted">这是你</span>}
+                  <Badge>{account.roleName}</Badge>
+                  {account.disabled && <Badge tone="warn">已停用</Badge>}
+                  {account.username === me && <Badge tone="muted">这是你</Badge>}
                   <span className="acct-row__spacer" />
                   <span className="acct-row__actions">
                     <button
@@ -224,7 +225,7 @@ export function UsersPage({ instances, me }: Props) {
               <div className="acct-row" key={role.id}>
                 <div className="acct-row__main">
                   <strong>{role.name}</strong>
-                  {role.builtIn && <span className="badge badge--muted">内置</span>}
+                  {role.builtIn && <Badge tone="muted">内置</Badge>}
                   <span className="acct-row__spacer" />
                   <span className="acct-row__actions">
                     <button

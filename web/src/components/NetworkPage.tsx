@@ -12,6 +12,7 @@ import type {
   NetworkServer,
 } from '../types'
 import { useMediaQuery } from '../useMediaQuery'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Page, PageHead } from './Page'
 import { Select } from './Select'
@@ -703,10 +704,10 @@ function ProxyCard({
 
       <p className="netcard__meta">
         <span title="监听地址">{proxy.bind || '0.0.0.0:25577'}</span>
-        <span className={`badge${proxy.forwarding === 'none' ? ' badge--warn' : ''}`}>
+        <Badge tone={proxy.forwarding === 'none' ? 'warn' : 'neutral'}>
           {forwardingLabel(proxy.forwarding)}
-        </span>
-        {!proxy.onlineMode && <span className="badge badge--warn">离线模式</span>}
+        </Badge>
+        {!proxy.onlineMode && <Badge tone="warn">离线模式</Badge>}
       </p>
 
       {links.length === 0 && foreign.length === 0 ? (
@@ -734,7 +735,7 @@ function ProxyCard({
                       {server.name}
                     </button>
                   )}
-                  {link.try && <span className="badge">落点</span>}
+                  {link.try && <Badge>落点</Badge>}
                 </div>
                 {/* Somebody else's sub-server keeps its status dot and loses
                     the list behind it: what is wrong with it is a sentence for
@@ -783,7 +784,7 @@ function ProxyCard({
                 <span className="netlink__dot netlink__dot--foreign" aria-hidden="true" />
                 <strong>{entry.name}</strong>
                 <span className="netlink__to">{entry.address}</span>
-                <span className="badge">面板外</span>
+                <Badge>面板外</Badge>
               </div>
             </li>
           ))}
@@ -842,11 +843,11 @@ function ServerCard({
 
       <p className="netcard__meta">
         <span title="子服地址">{server.address}</span>
-        <span className="badge">{server.paper ? 'Paper 系' : 'Spigot 系'}</span>
+        <Badge>{server.paper ? 'Paper 系' : 'Spigot 系'}</Badge>
         {server.onlineMode ? (
-          <span className="badge">正版验证开</span>
+          <Badge>正版验证开</Badge>
         ) : (
-          <span className="badge badge--warn">正版验证关</span>
+          <Badge tone="warn">正版验证关</Badge>
         )}
       </p>
 
@@ -897,9 +898,9 @@ function NetworkList({
             </h3>
             <p className="netcard__meta">
               <span>{proxy.bind || '0.0.0.0:25577'}</span>
-              <span className={`badge${proxy.forwarding === 'none' ? ' badge--warn' : ''}`}>
+              <Badge tone={proxy.forwarding === 'none' ? 'warn' : 'neutral'}>
                 {forwardingLabel(proxy.forwarding)}
-              </span>
+              </Badge>
             </p>
 
             {links.length === 0 ? (

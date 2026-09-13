@@ -6,6 +6,7 @@ import type { InstanceStatus, JavaRuntime, ServerCore, SystemInfo } from '../typ
 import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
 import type { JavaController } from '../useJava'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { CoreCatalogue, useCoreCatalogue } from './CoreCatalogue'
 import { Page } from './Page'
@@ -865,8 +866,8 @@ function CoreStep({
                 >
                   <span className="choice__label">
                     {coreLabel(entry)}
-                    {entry.kind === 'proxy' && <span className="badge">代理端</span>}
-                    {entry.imported && <span className="badge">自行放入</span>}
+                    {entry.kind === 'proxy' && <Badge>代理端</Badge>}
+                    {entry.imported && <Badge>自行放入</Badge>}
                   </span>
                   <span className="choice__note">{coreNote(entry)}</span>
                 </button>
@@ -1059,7 +1060,7 @@ function JavaStep({
             >
               <span className="choice__label">
                 用这个系统 Java
-                {systemJava.major > 0 && <span className="badge">Java {systemJava.major}</span>}
+                {systemJava.major > 0 && <Badge>Java {systemJava.major}</Badge>}
                 <Verdict of={verdict(systemJava.major)} />
               </span>
               <span className="choice__note">{systemJava.path} · 点一下登记进面板并选中</span>
@@ -1076,9 +1077,9 @@ function JavaStep({
             >
               <span className="choice__label">
                 Java {runtime.major || '?'}
-                <span className="badge">
+                <Badge>
                   {runtime.origin === 'external' ? '本机路径' : runtime.imageType.toUpperCase()}
-                </span>
+                </Badge>
                 <Verdict of={verdict(runtime.major)} />
               </span>
               <span className="choice__note">
@@ -1133,9 +1134,9 @@ function JavaStep({
                   <span className="choice__value">{entry.major}</span>
                   <span className="choice__label">
                     Java {entry.major}
-                    {entry.lts && <span className="badge">LTS</span>}
-                    {entry.installed && <span className="badge badge--ok">已安装</span>}
-                    {entry.major === required && <span className="badge badge--ok">本核心需要</span>}
+                    {entry.lts && <Badge>LTS</Badge>}
+                    {entry.installed && <Badge tone="ok">已安装</Badge>}
+                    {entry.major === required && <Badge tone="ok">本核心需要</Badge>}
                   </span>
                 </button>
               ))}
@@ -1174,7 +1175,7 @@ function JavaStep({
 
 function Verdict({ of }: { of: { label: string; warn: boolean } | null }) {
   if (!of) return null
-  return <span className={`badge ${of.warn ? 'badge--warn' : 'badge--ok'}`}>{of.label}</span>
+  return <Badge tone={of.warn ? 'warn' : 'ok'}>{of.label}</Badge>
 }
 
 function InstallStatus({ job }: { job: NonNullable<JavaController['job']> }) {
@@ -1679,7 +1680,7 @@ function ConfirmStep({
           <dd>
             {javaLabel}
             {javaTooOld && (
-              <span className="badge badge--warn">低于该核心要求的 Java {required}</span>
+              <Badge tone="warn">低于该核心要求的 Java {required}</Badge>
             )}
             <br />
             <code>{javaPath}</code>
@@ -1704,9 +1705,9 @@ function ConfirmStep({
             <dd>
               {changed.length > 0 ? (
                 changed.map(([key, value]) => (
-                  <span className="badge" key={key}>
+                  <Badge key={key}>
                     {key}={value || '（空）'}
-                  </span>
+                  </Badge>
                 ))
               ) : (
                 <span className="muted">全部保持默认，服务端第一次启动时自己生成</span>

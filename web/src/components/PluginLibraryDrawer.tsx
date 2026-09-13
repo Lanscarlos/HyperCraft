@@ -20,6 +20,7 @@ import type {
 import { pluginArtifacts, statusLabel, versionSize } from '../types'
 import { useDismiss } from '../useDismiss'
 import type { PluginController } from '../usePlugins'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { loaderLabel, sourceLabel } from './PluginBrowse'
 import { PluginIcon } from './PluginIcon'
@@ -497,9 +498,9 @@ function MatrixRow({
           {use.name}
         </button>
         {use.present && !use.enabled && (
-          <span className="badge badge--muted" title="jar 被改名成 .disabled，服务端不会加载">
+          <Badge tone="muted" title="jar 被改名成 .disabled，服务端不会加载">
             已停用
-          </span>
+          </Badge>
         )}
       </span>
 
@@ -820,14 +821,14 @@ function VersionGroup({
           {open ? '▾' : '▸'}
         </span>
         <span className="ptable__num vgroup__ver">{entry.version}</span>
-        {entry.prerelease && <span className="badge badge--warn">预发布</span>}
-        {pinned && <span className="badge">已锁定</span>}
+        {entry.prerelease && <Badge tone="warn">预发布</Badge>}
+        {pinned && <Badge>已锁定</Badge>}
         {entry.held ? (
-          <span className="badge badge--ok">
+          <Badge tone="ok">
             库里已有{artifacts.length > 1 && ` · ${artifacts.length} 个 jar`}
-          </span>
+          </Badge>
         ) : (
-          <span className="badge badge--muted">未下载</span>
+          <Badge tone="muted">未下载</Badge>
         )}
         <span className="vgroup__meta">
           {formatDate(entry.publishedAt)}
@@ -868,9 +869,9 @@ function VersionGroup({
               {offered.map((asset) => (
                 <div className="offers__row" key={asset.name}>
                   {asset.platform ? (
-                    <span className="badge">{loaderLabel(asset.platform)}</span>
+                    <Badge>{loaderLabel(asset.platform)}</Badge>
                   ) : (
-                    <span className="badge badge--muted">未标平台</span>
+                    <Badge tone="muted">未标平台</Badge>
                   )}
                   <code className="offers__file" title={asset.name}>
                     {asset.name}
@@ -970,13 +971,13 @@ function ArtifactRow({
         </span>
       </span>
       <span className="arow__tags">
-        {artifact.platform && <span className="badge">{loaderLabel(artifact.platform)}</span>}
+        {artifact.platform && <Badge>{loaderLabel(artifact.platform)}</Badge>}
         {artifact.loaders
           ?.filter((loader) => loader !== artifact.platform)
           .map((loader) => (
-            <span className="badge" key={loader}>
+            <Badge key={loader}>
               {loaderLabel(loader)}
-            </span>
+            </Badge>
           ))}
         <span className="arow__size">{formatBytes(artifact.size)}</span>
       </span>
@@ -1316,13 +1317,13 @@ function DependencyTab({
             {declared.depend.map((name) => (
               <li key={name}>
                 <span>{name}</span>
-                <span className="badge badge--warn">必需</span>
+                <Badge tone="warn">必需</Badge>
               </li>
             ))}
             {declared.softDepend.map((name) => (
               <li key={name}>
                 <span>{name}</span>
-                <span className="badge badge--muted">可选</span>
+                <Badge tone="muted">可选</Badge>
               </li>
             ))}
           </ul>
@@ -1346,9 +1347,9 @@ function DependencyTab({
                 ) : (
                   <span>{dep.name}</span>
                 )}
-                <span className={`badge ${dep.required ? 'badge--warn' : 'badge--muted'}`}>
+                <Badge tone={dep.required ? 'warn' : 'muted'}>
                   {dep.required ? '必需' : '可选'}
-                </span>
+                </Badge>
               </li>
             ))}
           </ul>
