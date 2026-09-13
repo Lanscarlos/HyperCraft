@@ -1,4 +1,12 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { ApiError, api, downloadURL, previewURL, uploadFiles } from '../api'
 import { ask } from '../confirm'
@@ -22,6 +30,16 @@ interface EditorState {
   path: string
   content: string
   original: string
+  /**
+   * A tab opened by a single click, which the next single click takes over.
+   *
+   * Walking a plugin's lang directory looking for the right file is a dozen
+   * clicks, and without this it was a dozen tabs to close afterwards. A double
+   * click opens the file for keeps, and so does the first keystroke typed into
+   * it — which is also why a preview tab is always clean, and can be replaced
+   * without asking anybody about unsaved work.
+   */
+  preview?: boolean
 }
 
 /** Which column the list is ordered by, and which way. */
@@ -218,14 +236,44 @@ export function FileManager({
   // is a dead end, so it is not a state that can be reached.
   const treeShown = treeOpen || editor === null
 
-  /** Brings a file to the front, opening a tab for it if it has none. A file
-   *  already open is never re-read: it may have unsaved edits in it. */
-  const openEditor = useCallback((next: EditorState) => {
-    setTabs((current) =>
-      current.some((tab) => tab.path === next.path) ? current : [...current, next],
-    )
+  /**
+   * Brings a file to the front, opening a tab for it if it has none. A file
+   * already open is never re-read: it may have unsaved edits in it.
+   *
+   * `pin` is the difference between a double click and a single one — see
+   * EditorState.preview. Without it the tab strip is the one place in the pane
+   * that only ever grows.
+   */
+  const openEditor = useCallback((next: EditorState, pin = false) => {
+    setTabs((current) => {
+      const at = current.findIndex((tab) => tab.path === next.path)
+      if (at !== -1) {
+        // Already open. The only thing left for the click to do is pin it, and
+        // only a double one does that — re-previewing a file somebody double
+        // clicked would take the tab back off them.
+        if (!pin || !current[at].preview) return current
+        return current.map((tab, index) =>
+          index === at ? { ...tab, preview: false } : tab,
+        )
+      }
+      const opened = { ...next, preview: !pin }
+      const slot = current.findIndex((tab) => tab.preview)
+      // One preview slot, wherever it already sits: reusing it in place keeps
+      // the pinned tabs either side of it from shuffling under the pointer.
+      return slot === -1
+        ? [...current, opened]
+        : current.map((tab, index) => (index === slot ? opened : tab))
+    })
     setActiveTab(next.path)
     setNarrowPane('editor')
+  }, [])
+
+  /** Keeps the tab in front: the double click that asked for it, and the first
+   *  keystroke typed into a file opened by a single one. */
+  const pinTab = useCallback((path: string) => {
+    setTabs((current) =>
+      current.map((tab) => (tab.path === path && tab.preview ? { ...tab, preview: false } : tab)),
+    )
   }, [])
 
   /** Edits the tab in front. */
@@ -244,19 +292,33 @@ export function FileManager({
     setNarrowPane('list')
   }, [])
 
+  // Read inside openPath rather than depended on: re-creating that callback on
+  // every keystroke would re-run the jump effect below, which is keyed to it.
+  const tabsNow = useRef(tabs)
+  tabsNow.current = tabs
+
   /** Opens a file in the editor by path, for callers that never had a row to
    *  click — the jump from 配置历史 arrives with a path and nothing else. */
   const openPath = useCallback(
-    async (path: string) => {
+    async (path: string, pin = false) => {
+      // Already open: hand its own state back rather than reading the file
+      // again over the wire. The second click of a double one would otherwise
+      // cost a request that can only be thrown away — what is in the tab may be
+      // edited, and openEditor keeps it either way.
+      const known = tabsNow.current.find((tab) => tab.path === path)
+      if (known) {
+        openEditor(known, pin)
+        return
+      }
       try {
         const file = await api.readFile(instance.id, path)
-        openEditor({ path, content: file.content, original: file.content })
+        openEditor({ path, content: file.content, original: file.content }, pin)
         setError(null)
       } catch (err) {
         setError(err instanceof Error ? err.message : '打开文件失败')
       }
     },
-    [instance.id],
+    [instance.id, openEditor],
   )
 
   useEffect(() => {
@@ -278,7 +340,9 @@ export function FileManager({
       // The directory first, always: if the file turns out to be unreadable —
       // binary, or deleted between the click and the request — the operator is
       // at least standing where it should be.
-      if (target?.file) await openPath(target.file)
+      // Pinned: arriving here from 配置历史 is somebody who already knows which
+      // file they want, not somebody browsing for it.
+      if (target?.file) await openPath(target.file, true)
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jump?.token, load])
@@ -424,7 +488,7 @@ export function FileManager({
     try {
       await api.writeFile(instance.id, path, '')
       await load(dir)
-      openEditor({ path, content: '', original: '' })
+      openEditor({ path, content: '', original: '' }, true)
       toast(`已创建 ${name}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建失败')
@@ -644,7 +708,7 @@ export function FileManager({
     toast(`已开始下载 ${files.length} 个文件`)
   }
 
-  const openEntry = async (entry: FileEntry) => {
+  const openEntry = async (entry: FileEntry, pin = false) => {
     if (entry.isDir) {
       void load(entry.path)
       return
@@ -654,7 +718,7 @@ export function FileManager({
       return
     }
     if (!entry.editable) return
-    await openPath(entry.path)
+    await openPath(entry.path, pin)
   }
 
   const saveEditor = async () => {
@@ -827,7 +891,7 @@ export function FileManager({
           below 1024 there is only room for one of these, and which one depends
           on whether anything is open. */}
       <div
-        className={editing ? 'fm fm--editing' : 'fm'}
+        className={`fm${editing ? ' fm--editing' : editor ? ' fm--open' : ''}`}
         data-pane={editor ? narrowPane : 'list'}
         data-tree={editing ? (treeShown ? 'on' : 'off') : undefined}
       >
@@ -922,13 +986,13 @@ export function FileManager({
             filter={editing ? treeQuery : ''}
             menuFor={editing ? treeMenu : undefined}
             onOpen={(next) => void load(next)}
-            onOpenFile={(next) => {
+            onOpenFile={(next, pin) => {
               // Below 1200 the tree is an overlay sitting on top of the editor,
               // so picking a file is also how it gets dismissed — the same
               // reasoning as the navigation drawer in App. Above it the tree
               // has a column of its own and nothing is covered.
               if (tight) setTreeOpen(false)
-              void openPath(next)
+              void openPath(next, pin)
             }}
           />
         </aside>
@@ -949,6 +1013,27 @@ export function FileManager({
               <Glyph name="up" />
             </button>
             <Breadcrumb dir={dir} onNavigate={(next) => void load(next)} />
+
+            {/* Not one more button in the toolbar below: 上传 / 新建 / 刷新 all
+                do something to the files, and this one changes what the screen
+                is for. It sat fourth among them looking like the third, which
+                is how a mode nobody finds stays a mode nobody finds. Up here it
+                has a shape of its own, a line saying what it does, and a row
+                that does not wrap it away when the column narrows. */}
+            {roomy && (
+              <button
+                type="button"
+                className="file-mode"
+                onClick={() => setEditing(true)}
+                title="把这一屏交给编辑器：列表让位，目录树带上文件"
+              >
+                <Glyph name="doc" className="file-mode__glyph" />
+                <span className="file-mode__text">
+                  <b>编辑模式</b>
+                  <small>列表让位，目录树带上文件</small>
+                </span>
+              </button>
+            )}
           </div>
 
           <div className="file-toolbar">
@@ -999,16 +1084,6 @@ export function FileManager({
             >
               <Glyph name="refresh" className={pending ? 'spin' : undefined} />
             </Button>
-
-            {roomy && (
-              <Button
-                onClick={() => setEditing(true)}
-                title="把这一屏交给编辑器：列表让位，目录树带上文件"
-              >
-                <Glyph name="doc" />
-                编辑模式
-              </Button>
-            )}
 
             <div className="file-toolbar__find">
               <Glyph name="search" />
@@ -1130,6 +1205,7 @@ export function FileManager({
                     ticked={selected.has(entry.path)}
                     onTick={() => toggleOne(entry.path)}
                     onOpen={() => void openEntry(entry)}
+                    onPin={() => void openEntry(entry, true)}
                     onRename={() => void rename(entry)}
                     onDelete={() => void remove(entry)}
                   />
@@ -1183,28 +1259,33 @@ export function FileManager({
               onBackToList={() => setNarrowPane('list')}
               onShowTree={editing && !treeShown ? () => setTreeOpen(true) : undefined}
               onSelectTab={(path: string) => setActiveTab(path)}
+              onPinTab={pinTab}
               onCloseTab={(path: string) => void closeTab(path)}
               busy={busy}
               error={error}
-              onChange={(content) => patchActive({ content })}
+              // Typing into a preview tab is the other way to keep it: nobody
+              // edits a file they meant to glance at.
+              onChange={(content) => patchActive({ content, preview: false })}
               onSave={() => void saveEditor()}
               onRevert={() => patchActive({ content: editor.original })}
               onClose={() => void closeEditor()}
               onOpenHistory={onOpenHistory && (() => onOpenHistory(editor.path))}
             />
           ) : (
-            // A placeholder rather than a collapsed column: the listing beside
-            // it would otherwise jump a few hundred pixels wider the moment
-            // anything is opened, on every open and every close.
-            <div className="fm__blank">
-              <Glyph name="doc" />
-              <p>
-                {editing
-                  ? '从左边的目录树里点一个文件，会在这里打开。'
-                  : '从中间的列表里点一个文件，会在这里打开。'}
-              </p>
-              <p className="muted">可以同时开着几个，用上面的标签切换。</p>
-            </div>
+            // Edit mode's two columns are both always there — the tree and the
+            // thing it opens — so an empty one says what it is waiting for. In
+            // browse mode the column collapses instead (see .fm), because a
+            // third of the width explaining that a click opens a file is a
+            // third of the width the listing was asking for.
+            editing && (
+              <div className="fm__blank">
+                <Glyph name="doc" />
+                <p>从左边的目录树里点一个文件，会在这里打开。</p>
+                <p className="muted">
+                  单击是预览，双击或者开始输入就固定成一个标签。
+                </p>
+              </div>
+            )
           )}
         </div>
       </div>
@@ -1223,6 +1304,7 @@ function FileRow({
   ticked,
   onTick,
   onOpen,
+  onPin,
   onRename,
   onDelete,
 }: {
@@ -1232,6 +1314,8 @@ function FileRow({
   ticked: boolean
   onTick: () => void
   onOpen: () => void
+  /** Double click: opens the file for keeps rather than as a preview tab. */
+  onPin: () => void
   onRename: () => void
   onDelete: () => void
 }) {
@@ -1254,6 +1338,7 @@ function FileRow({
           <button
             className={`file-link${openable ? '' : ' file-link--plain'}`}
             onClick={onOpen}
+            onDoubleClick={entry.isDir ? undefined : onPin}
             disabled={!openable}
             title={
               entry.isDir
@@ -1389,10 +1474,19 @@ function Breadcrumb({ dir, onNavigate }: { dir: string; onNavigate: (next: strin
  * a console line that ends in "at line 42". The gutter is one text node rather
  * than one element per line — a 20 000-line log is a plausible thing to open,
  * and 20 000 spans is not — and it is kept in step with the textarea by
- * mirroring its scroll offset. Both need identical type and line-height for
- * that to hold, which is why the two rules in the stylesheet share a font
- * declaration; wrapping is off for the same reason, since a soft-wrapped line
- * takes two rows on screen and one number in the margin.
+ * translating it. All three need identical type and line-height for that to
+ * hold, which is why the rules in the stylesheet share a font declaration;
+ * wrapping is off for the same reason, since a soft-wrapped line takes two
+ * rows on screen and one number in the margin.
+ *
+ * `transform`, not `scrollTop`. The mirrors used to be scrolled to the
+ * textarea's own offset, which is only the same number while both boxes can
+ * reach it: `wrap="off"` puts a horizontal scrollbar inside the textarea, so
+ * its client box is ~13px shorter than the mirrors' and it scrolls ~13px
+ * further. Assigning that offset to a mirror clamped it, and at the bottom of
+ * a file the colours — and the line numbers — sat a scrollbar's height below
+ * the caret. A translate is not clamped by anything, so the three layers agree
+ * at every offset, including the last one.
  */
 function FileEditor({
   editor,
@@ -1401,6 +1495,7 @@ function FileEditor({
   onBackToList,
   onShowTree,
   onSelectTab,
+  onPinTab,
   onCloseTab,
   busy,
   error,
@@ -1420,6 +1515,9 @@ function FileEditor({
    *  it, and the only thing on screen is the file you are already looking at. */
   onShowTree?: () => void
   onSelectTab: (path: string) => void
+  /** Double click: the tab stops being a preview. The only pin that works on
+   *  every layout — below 1200 the tree closes itself on the first click. */
+  onPinTab: (path: string) => void
   onCloseTab: (path: string) => void
   busy: boolean
   error: string | null
@@ -1431,6 +1529,7 @@ function FileEditor({
 }) {
   const dirty = editor.content !== editor.original
   const gutter = useRef<HTMLDivElement | null>(null)
+  const box = useRef<HTMLTextAreaElement | null>(null)
   // Where the caret is, for the status line. Read off the textarea on every
   // event that can move it rather than derived from the content: a click and
   // an arrow key both move it without changing a character.
@@ -1452,6 +1551,7 @@ function FileEditor({
 
   const hl = useRef<HTMLPreElement | null>(null)
   const lang = useMemo(() => langOf(editor.path), [editor.path])
+
   // Past the threshold the gutter is already off (see `lines`), and tokenising
   // a 400 000-character log on every keystroke is the same bad trade twice.
   const huge = lines === 0
@@ -1462,6 +1562,23 @@ function FileEditor({
     () => (huge || !lang.prism ? null : highlight(deferred, lang.prism)),
     [deferred, huge, lang.prism],
   )
+
+  /** Puts the two mirrors where the textarea is. See the note above the
+   *  component for why this is a transform and not a scroll offset. */
+  const mirror = useCallback(() => {
+    const text = box.current
+    if (!text) return
+    const { scrollTop, scrollLeft } = text
+    if (gutter.current) gutter.current.style.transform = `translateY(${-scrollTop}px)`
+    // The gutter never moves sideways: its numbers are right-aligned against a
+    // rail that stays put, and scrolling to column 300 must not scroll them off.
+    if (hl.current) hl.current.style.transform = `translate(${-scrollLeft}px, ${-scrollTop}px)`
+  }, [])
+
+  // Switching tabs, and the colours landing a frame late, both change the
+  // layers without a scroll event: the browser clamps the textarea's offset to
+  // the new file's height, and the mirrors have to be told about it.
+  useLayoutEffect(mirror, [mirror, editor.path, painted, gutterText])
 
   // A tab away with unsaved changes is a browser-level event; the panel's own
   // 返回 already asks.
@@ -1499,7 +1616,9 @@ function FileEditor({
         <div className="etabs" role="tablist" aria-label="打开的文件">
           {tabs.map((tab) => (
             <div
-              className={`etabs__tab${tab.path === activeTab ? ' etabs__tab--on' : ''}`}
+              className={`etabs__tab${tab.path === activeTab ? ' etabs__tab--on' : ''}${
+                tab.preview ? ' etabs__tab--preview' : ''
+              }`}
               key={tab.path}
             >
               <button
@@ -1508,7 +1627,8 @@ function FileEditor({
                 aria-selected={tab.path === activeTab}
                 className="etabs__pick"
                 onClick={() => onSelectTab(tab.path)}
-                title={tab.path}
+                onDoubleClick={() => onPinTab(tab.path)}
+                title={tab.preview ? `${tab.path}（预览，双击固定）` : tab.path}
               >
                 <FileIcon name={baseName(tab.path)} />
                 {baseName(tab.path)}
@@ -1536,8 +1656,10 @@ function FileEditor({
 
         <div className="editor">
           {lines > 0 && (
-            <div className="editor__gutter" ref={gutter} aria-hidden="true">
-              {gutterText}
+            <div className="editor__gutter" aria-hidden="true">
+              <div className="editor__lines" ref={gutter}>
+                {gutterText}
+              </div>
             </div>
           )}
           <div className="editor__wrap">
@@ -1554,19 +1676,14 @@ function FileEditor({
               />
             )}
             <textarea
+              ref={box}
               className={painted !== null ? 'editor__text editor__text--lit' : 'editor__text'}
               value={editor.content}
               onChange={(event) => onChange(event.target.value)}
-              onScroll={(event) => {
-                // Both mirrors, from the one event: three layers that scroll
-                // apart are three layers that say different things about the
-                // same line.
-                if (gutter.current) gutter.current.scrollTop = event.currentTarget.scrollTop
-                if (hl.current) {
-                  hl.current.scrollTop = event.currentTarget.scrollTop
-                  hl.current.scrollLeft = event.currentTarget.scrollLeft
-                }
-              }}
+              // Both mirrors, from the one event: three layers that scroll
+              // apart are three layers that say different things about the
+              // same line.
+              onScroll={mirror}
               onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
               onClick={(event) => setCaret(event.currentTarget.selectionStart)}
               onKeyUp={(event) => setCaret(event.currentTarget.selectionStart)}
