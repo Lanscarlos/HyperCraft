@@ -40,6 +40,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/lanscarlos/hypercraft/internal/download"
 )
 
 var (
@@ -430,6 +432,13 @@ func (c *Client) noteBudget(resp *http.Response, tokenID string) {
 	c.budgets[tokenID] = Budget{Limit: limit, Remaining: remaining, ResetAt: resetTime(resp), SeenAt: time.Now()}
 }
 
+// downloadTimeout bounds one transfer. Plugin jars are small — a few megabytes
+// — but a slow mirror on a bad line is exactly who needs the headroom.
+//
+// Lives here rather than with the queue: it is this client's HTTP timeout, and
+// the queue does not open connections.
+const downloadTimeout = 30 * time.Minute
+
 func NewClient(apiBase, userAgent string) *Client {
 	if apiBase == "" {
 		apiBase = "https://api.github.com"
@@ -524,15 +533,14 @@ func (c *Client) downloadOrder(src Source, asset Asset) ([]attempt, error) {
 		if asset.URL == "" {
 			return nil, fmt.Errorf("%w: %s has no public download link", ErrNoAsset, asset.Name)
 		}
-		chosen := c.Mirror()
-		prefixes := mirrorOrder(chosen, asset.URL)
-		out := make([]attempt, 0, len(prefixes))
-		for _, prefix := range prefixes {
-			id := MirrorDirect
-			if prefix != "" {
-				id = mirrorID(chosen, prefix)
-			}
-			out = append(out, attempt{url: prefix + asset.URL, mirror: id})
+		// The proxy list, the automatic order and the always-end-at-the-origin
+		// rule all live in internal/download now, shared with the two other
+		// shelves that pull from the same CDN. What stays here is everything
+		// above: which downloads may see a proxy at all.
+		routes := download.RouteOrder(routeSet, c.Mirror(), download.Origin(asset.URL))
+		out := make([]attempt, 0, len(routes))
+		for _, route := range routes {
+			out = append(out, attempt{url: route.Link(download.Origin(asset.URL)), mirror: route.ID})
 		}
 		return out, nil
 	}
@@ -684,6 +692,41 @@ func (c *Client) Latest(ctx context.Context, src Source) (Release, error) {
 // release, through the authenticated API for a private one. It also returns
 // which mirror answered, so a job can say where the bytes came from rather than
 // leaving the automatic order a black box.
+// Attempts is downloadOrder in the shape the download kernel walks.
+//
+// The walking itself — trying each in turn, stopping dead when the job is
+// cancelled rather than blaming the next mirror, recording which one answered —
+// moved to internal/download, because every shelf needs it and only this one
+// had it. What could not move is the hint below: it is about tokens and private
+// repositories, which that package has no business knowing.
+func (c *Client) Attempts(src Source, asset Asset) ([]download.Attempt, error) {
+	order, err := c.downloadOrder(src, asset)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]download.Attempt, 0, len(order))
+	for i, next := range order {
+		last := i == len(order)-1
+		out = append(out, download.Attempt{
+			Route: next.mirror,
+			Open: func(ctx context.Context) (io.ReadCloser, error) {
+				body, err := c.open(ctx, next)
+				if err != nil && last && !src.Private && c.HasTokenFor(src) {
+					// Every route failed. The release listing was readable but no
+					// download link was, and with a token in play the likely cause
+					// is a private repository the visibility check could not reach.
+					// Worth naming: the bare transport error reads like the release
+					// is gone.
+					return nil, fmt.Errorf("%w — if %s is private, check that the token can read it",
+						err, src.Repo)
+				}
+				return body, err
+			},
+		})
+	}
+	return out, nil
+}
+
 func (c *Client) Fetch(ctx context.Context, src Source, asset Asset) (io.ReadCloser, string, error) {
 	order, err := c.downloadOrder(src, asset)
 	if err != nil {

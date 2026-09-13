@@ -16,6 +16,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/auth"
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/dbruntime"
+	"github.com/lanscarlos/hypercraft/internal/download"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/javaruntime"
 	"github.com/lanscarlos/hypercraft/internal/mcprops"
@@ -122,6 +123,7 @@ func newTestEnv(t *testing.T, opts ...func(*Options)) *testEnv {
 		Plugins: plugin.NewDownloader(
 			plugin.NewClient(gh.URL(), "test"),
 			pluginLibrary,
+			download.NewQueue(logger),
 			logger,
 		),
 		InstancePlugins: plugin.NewInstances(pluginLibrary, paths.InstancePluginsFile()),

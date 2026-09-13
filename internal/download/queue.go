@@ -82,7 +82,12 @@ type Request struct {
 	// Attempts is where to try, most preferred first. Called on the worker
 	// rather than at submit time, because a queued job may be minutes from its
 	// turn and the operator may have changed the route in between.
-	Attempts func(ctx context.Context) ([]Attempt, error)
+	//
+	// It is handed the same Progress the install hook gets, because resolving a
+	// download is usually what tells the caller what it is downloading: the
+	// build number, the file name, the size. Describe is how that reaches the
+	// row the operator is looking at.
+	Attempts func(ctx context.Context, pub *Progress) ([]Attempt, error)
 	// Install is what to do with the finished bytes: unpack, record, register.
 	// It runs on the worker goroutine with the job in StateExtracting, and
 	// returns the id its shelf knows the result by.
@@ -351,7 +356,7 @@ func (q *Queue) work(ctx context.Context, e *entry) {
 	temp := filepath.Join(dir, e.pub.ID+".part")
 	_ = os.Remove(temp)
 
-	sum, err := transfer(ctx, q, e, e.req, temp)
+	sum, err := transfer(ctx, q, e, e.req, temp, &Progress{q: q, entry: e})
 	if err != nil {
 		os.Remove(temp)
 		if ctx.Err() != nil {

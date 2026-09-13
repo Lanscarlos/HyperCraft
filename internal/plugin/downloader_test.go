@@ -1,21 +1,16 @@
 package plugin
 
 import (
-	"context"
-	"crypto/sha256"
-	"crypto/sha512"
-	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/lanscarlos/hypercraft/internal/download"
 	"time"
 )
 
@@ -104,8 +99,9 @@ func downloaderFixture(t *testing.T, hold bool, count int) (*Downloader, *downlo
 	for i := range count {
 		items = append(items, addPlugin(t, library, fmt.Sprintf("Plug%d", i), fmt.Sprintf("owner%d/plug%d", i, i)))
 	}
-	downloader := NewDownloader(client, library, slog.New(slog.DiscardHandler))
-	t.Cleanup(downloader.Close)
+	queue := download.NewQueue(slog.New(slog.DiscardHandler))
+	t.Cleanup(queue.Close)
+	downloader := NewDownloader(client, library, queue, slog.New(slog.DiscardHandler))
 	return downloader, stub, items
 }
 
@@ -123,7 +119,7 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
-func countState(jobs []Job, state JobState) int {
+func countState(jobs []Job, state string) int {
 	n := 0
 	for _, job := range jobs {
 		if job.State == state {
@@ -133,419 +129,107 @@ func countState(jobs []Job, state JobState) int {
 	return n
 }
 
-func TestDownloadsRunSideBySideUpToTheLimit(t *testing.T) {
-	downloader, stub, items := downloaderFixture(t, true, maxConcurrent+2)
+// The queue, its concurrency, its history and its checksum policy are
+// internal/download's now and are tested there. What is left here is what only
+// this package knows.
 
-	for _, item := range items {
-		if _, err := downloader.Start(item.ID, "", ""); err != nil {
-			t.Fatalf("Start(%s): %v", item.ID, err)
-		}
-	}
-
-	// The point of the change: asking for five downloads starts five jobs
-	// rather than one and four rejections.
-	waitFor(t, "the limit to fill", func() bool {
-		return countState(downloader.Jobs(), JobDownloading) == maxConcurrent
-	})
-	jobs := downloader.Jobs()
-	if queued := countState(jobs, JobQueued); queued != 2 {
-		t.Fatalf("expected 2 jobs still queued, got %d of %d", queued, len(jobs))
-	}
-
-	// And the point of the limit: the extra two waited rather than piling onto
-	// an API that answers a burst with an hour-long rate limit.
-	if peak := stub.peak.Load(); peak > maxConcurrent {
-		t.Errorf("%d transfers ran at once, limit is %d", peak, maxConcurrent)
-	}
-
-	stub.releaseAll()
-	waitFor(t, "every job to finish", func() bool {
-		return countState(downloader.Jobs(), JobDone) == len(items)
-	})
-}
-
-func TestQueuedDownloadsRunWhenASlotOpens(t *testing.T) {
-	downloader, stub, items := downloaderFixture(t, false, maxConcurrent+3)
-
-	for _, item := range items {
-		if _, err := downloader.Start(item.ID, "", ""); err != nil {
-			t.Fatalf("Start: %v", err)
-		}
-	}
-	waitFor(t, "the queue to drain", func() bool {
-		return countState(downloader.Jobs(), JobDone) == len(items)
-	})
-	if peak := stub.peak.Load(); peak > maxConcurrent {
-		t.Errorf("%d transfers ran at once, limit is %d", peak, maxConcurrent)
-	}
-}
-
-func TestAskingTwiceForTheSameJarReusesTheJob(t *testing.T) {
-	downloader, _, items := downloaderFixture(t, true, 1)
-
-	first, err := downloader.Start(items[0].ID, "", "")
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	// Two clicks on 更新入库 must not put two writers on one .part file. Before
-	// the queue this was prevented by refusing the second outright.
-	second, err := downloader.Start(items[0].ID, "", "")
-	if err != nil {
-		t.Fatalf("second Start: %v", err)
-	}
-	if first.ID != second.ID {
-		t.Errorf("a repeat request started a second job: %s and %s", first.ID, second.ID)
-	}
-	if jobs := downloader.Jobs(); len(jobs) != 1 {
-		t.Errorf("expected one job, got %d", len(jobs))
-	}
-}
-
+// An empty tag means "whatever is newest". Once the release resolves the job
+// says v1.0.0 — but a second request for "newest" is still the same request,
+// and matching it against the resolved tag is how the panel ends up
+// downloading the same jar twice.
 func TestARepeatOfNewestIsNotADifferentRequestOnceItResolves(t *testing.T) {
 	downloader, stub, items := downloaderFixture(t, true, 1)
+	defer stub.releaseAll()
 
 	first, err := downloader.Start(items[0].ID, "", "")
 	if err != nil {
-		t.Fatalf("Start: %v", err)
+		t.Fatalf("first: %v", err)
 	}
-	// Wait until the release has resolved and the job says v1.0.0 rather than
-	// "newest". Matching a repeat against *that* is how the same jar gets
-	// downloaded twice.
-	waitFor(t, "the release to resolve", func() bool {
+	waitFor(t, "the job to resolve its tag", func() bool {
 		jobs := downloader.Jobs()
-		return len(jobs) == 1 && jobs[0].Tag == "v1.0.0"
+		return len(jobs) == 1 && jobs[0].FileName != ""
 	})
 
 	second, err := downloader.Start(items[0].ID, "", "")
 	if err != nil {
-		t.Fatalf("second Start: %v", err)
+		t.Fatalf("second: %v", err)
 	}
-	if first.ID != second.ID {
-		t.Errorf("the resolved tag made a repeat look like a new request")
-	}
-	stub.releaseAll()
-}
-
-func TestCancelStopsOneJobAndLeavesTheRest(t *testing.T) {
-	downloader, stub, items := downloaderFixture(t, true, 2)
-
-	first, err := downloader.Start(items[0].ID, "", "")
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	if _, err := downloader.Start(items[1].ID, "", ""); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	waitFor(t, "both to start", func() bool {
-		return countState(downloader.Jobs(), JobDownloading) == 2
-	})
-
-	if err := downloader.Cancel(first.ID); err != nil {
-		t.Fatalf("Cancel: %v", err)
-	}
-	waitFor(t, "the cancelled job to unwind", func() bool {
-		for _, job := range downloader.Jobs() {
-			if job.ID == first.ID {
-				return job.State == JobCancelled
-			}
-		}
-		return false
-	})
-	// The other one is untouched: a queue whose cancel button stops everything
-	// is a queue nobody dares press it on.
-	for _, job := range downloader.Jobs() {
-		if job.ID != first.ID && job.State != JobDownloading {
-			t.Errorf("the other job went to %s", job.State)
-		}
-	}
-	stub.releaseAll()
-}
-
-func TestCancellingAQueuedJobStopsItBeforeItRuns(t *testing.T) {
-	downloader, stub, items := downloaderFixture(t, true, maxConcurrent+1)
-
-	var last Job
-	for _, item := range items {
-		job, err := downloader.Start(item.ID, "", "")
-		if err != nil {
-			t.Fatalf("Start: %v", err)
-		}
-		last = job
-	}
-	waitFor(t, "the limit to fill", func() bool {
-		return countState(downloader.Jobs(), JobDownloading) == maxConcurrent
-	})
-
-	if err := downloader.Cancel(last.ID); err != nil {
-		t.Fatalf("Cancel: %v", err)
-	}
-	// A queued job has no worker to interrupt. Leaving it for the dispatcher to
-	// notice would mean a cancelled download that still runs the moment a slot
-	// opens — which is exactly what releasing the others opens.
-	stub.releaseAll()
-	waitFor(t, "the running jobs to finish", func() bool {
-		return countState(downloader.Jobs(), JobDone) == maxConcurrent
-	})
-
-	for _, job := range downloader.Jobs() {
-		if job.ID == last.ID && job.State != JobCancelled {
-			t.Fatalf("a cancelled queued job ran anyway: %s", job.State)
-		}
+	if second.ID != first.ID {
+		t.Fatalf("asking for 最新 twice made two jobs (%s, %s)", first.ID, second.ID)
 	}
 }
 
-func TestAFailedJobSurvivesTheNextDownload(t *testing.T) {
-	downloader, _, items := downloaderFixture(t, false, 1)
-
-	// An unknown tag. This used to be refused synchronously; queued, it lands
-	// on the job — which is the whole reason the history has to keep it.
-	if _, err := downloader.Start(items[0].ID, "v9.9.9", ""); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	waitFor(t, "the bad tag to fail", func() bool {
-		return countState(downloader.Jobs(), JobFailed) == 1
-	})
-
-	if _, err := downloader.Start(items[0].ID, "v1.0.0", ""); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	waitFor(t, "the good one to finish", func() bool {
-		return countState(downloader.Jobs(), JobDone) == 1
-	})
-
-	// Before the queue, the second download replaced the first and the failure
-	// was gone by the time anybody looked.
-	if failed := countState(downloader.Jobs(), JobFailed); failed != 1 {
-		t.Errorf("the failed job was lost: %d failures in %d jobs", failed, len(downloader.Jobs()))
-	}
-}
-
-func TestClearFinishedKeepsWhatIsStillRunning(t *testing.T) {
-	downloader, stub, items := downloaderFixture(t, true, 2)
-
-	if _, err := downloader.Start(items[0].ID, "v9.9.9", ""); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	waitFor(t, "the bad tag to fail", func() bool {
-		return countState(downloader.Jobs(), JobFailed) == 1
-	})
-	if _, err := downloader.Start(items[1].ID, "", ""); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	waitFor(t, "the good one to start", func() bool {
-		return countState(downloader.Jobs(), JobDownloading) == 1
-	})
-
-	if dropped := downloader.ClearFinished(); dropped != 1 {
-		t.Errorf("cleared %d rows, expected 1", dropped)
-	}
-	jobs := downloader.Jobs()
-	if len(jobs) != 1 || jobs[0].State != JobDownloading {
-		t.Errorf("clearing the history stopped work: %+v", jobs)
-	}
-	stub.releaseAll()
-}
-
-func TestHistoryIsBoundedButTheQueueIsNot(t *testing.T) {
-	downloader, _, items := downloaderFixture(t, false, 1)
-
-	// Every one of these fails, and fails fast: the point is the count.
-	for i := range maxHistory + 5 {
-		if _, err := downloader.Start(items[0].ID, fmt.Sprintf("v9.9.%d", i), ""); err != nil {
-			t.Fatalf("Start: %v", err)
-		}
-		waitFor(t, "the job to finish", func() bool {
-			jobs := downloader.Jobs()
-			return len(jobs) > 0 && !jobs[0].State.Active()
-		})
-	}
-	// The cap is on finished jobs. Anything still queued or running is work the
-	// panel has promised to do and is never dropped to make room for a record.
-	jobs := downloader.Jobs()
-	finished := len(jobs) - countState(jobs, JobQueued) - countState(jobs, JobDownloading)
-	if finished > maxHistory {
-		t.Errorf("history grew to %d finished jobs, cap is %d", finished, maxHistory)
-	}
-}
-
-func TestTheQueueIsNeverPrunedToMakeRoomForHistory(t *testing.T) {
+// Naming the tag the job resolved to is a different request from "newest", and
+// the panel must not collapse them: one pins a version, the other tracks.
+func TestNamingTheResolvedTagIsItsOwnRequest(t *testing.T) {
 	downloader, stub, items := downloaderFixture(t, true, 1)
+	defer stub.releaseAll()
 
-	// Fill the history first, then queue more work than the cap. Dropping a
-	// queued job to stay under a *history* limit would silently lose a download
-	// the operator asked for.
-	for i := range maxHistory + 2 {
-		if _, err := downloader.Start(items[0].ID, fmt.Sprintf("v9.9.%d", i), ""); err != nil {
-			t.Fatalf("Start: %v", err)
-		}
-		waitFor(t, "the job to finish", func() bool {
-			jobs := downloader.Jobs()
-			return len(jobs) > 0 && !jobs[0].State.Active()
-		})
-	}
-
-	// Every one of these is a distinct request, so none of them dedups away.
-	wanted := maxConcurrent + 4
-	for i := range wanted {
-		if _, err := downloader.Start(items[0].ID, "", fmt.Sprintf("Plug0-1.0.%d.jar", i)); err != nil {
-			t.Fatalf("Start: %v", err)
-		}
-	}
-	jobs := downloader.Jobs()
-	live := countState(jobs, JobQueued) + countState(jobs, JobDownloading)
-	if live != wanted {
-		t.Errorf("%d of %d unfinished jobs survived the history cap", live, wanted)
-	}
-	stub.releaseAll()
-}
-
-func TestConcurrentStartsAreSerialised(t *testing.T) {
-	downloader, stub, items := downloaderFixture(t, true, 4)
-
-	// Two clicks racing on the same plugin from two tabs. The dedup runs under
-	// the lock; without it both would resolve and both would open the same
-	// .part file.
-	var wg sync.WaitGroup
-	for range 8 {
-		for _, item := range items {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				_, _ = downloader.Start(item.ID, "", "")
-			}()
-		}
-	}
-	wg.Wait()
-
-	if jobs := downloader.Jobs(); len(jobs) != len(items) {
-		t.Errorf("expected one job per plugin, got %d for %d plugins", len(jobs), len(items))
-	}
-	stub.releaseAll()
-}
-
-// jarServer serves one fixed body at /dl, which is all the transfer tests need
-// out of a source: they drive transfer directly rather than through a release
-// listing, because the published checksum they turn on is something only a
-// registry puts on an asset and no GitHub release has.
-func jarServer(t *testing.T, body string) string {
-	t.Helper()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.WriteString(w, body)
-	}))
-	t.Cleanup(server.Close)
-	return server.URL + "/dl/plug.jar"
-}
-
-// transferOnce runs one transfer against a fresh downloader and reports what
-// it made of the asset.
-func transferOnce(t *testing.T, asset Asset) (string, error) {
-	t.Helper()
-	library := newLibrary(t)
-	downloader := NewDownloader(NewClient("https://example.invalid", "test"), library, slog.New(slog.DiscardHandler))
-	t.Cleanup(downloader.Close)
-	return downloader.transfer(context.Background(), &Job{}, filepath.Join(t.TempDir(), "plug.jar.part"),
-		Source{Kind: SourceHangar, Repo: "plug"}, asset)
-}
-
-// Upstream's declared size is not always right — Azul's metadata under-reports
-// a Zulu package by 9 bytes and still publishes the correct SHA-256 for it — so
-// a jar whose published checksum matches must install whatever the number next
-// to it said.
-func TestTransferAcceptsMisdeclaredSizeWhenChecksumMatches(t *testing.T) {
-	body := "a fine plugin jar"
-	sum := sha256.Sum256([]byte(body))
-	digest, err := transferOnce(t, Asset{
-		Name:   "plug.jar",
-		Size:   int64(len(body)) - 3,
-		URL:    jarServer(t, body),
-		SHA256: hex.EncodeToString(sum[:]),
-	})
+	newest, err := downloader.Start(items[0].ID, "", "")
 	if err != nil {
-		t.Fatalf("transfer: %v", err)
+		t.Fatalf("newest: %v", err)
 	}
-	if digest != hex.EncodeToString(sum[:]) {
-		t.Errorf("recorded digest %q", digest)
+	pinned, err := downloader.Start(items[0].ID, "v1.0.0", "")
+	if err != nil {
+		t.Fatalf("pinned: %v", err)
+	}
+	if pinned.ID == newest.ID {
+		t.Fatal("asking for 最新 and for v1.0.0 collapsed onto one job")
 	}
 }
 
-// A published checksum that does not match is a jar the panel must not keep,
-// whatever its size says. Until this check existed, a registry's digest was
-// recorded and never compared.
-func TestTransferRejectsPublishedChecksumMismatch(t *testing.T) {
-	body := "a fine plugin jar"
-	_, err := transferOnce(t, Asset{
+// A private asset has exactly one route — the API, authenticated — and no
+// fallback. The public link cannot serve it, and a mirror must not be told
+// about it: the URL alone identifies a repository its owner chose not to
+// publish, and the token would be useless to the proxy anyway.
+//
+// This invariant is why route selection did not move to internal/download with
+// the rest of the queue. Nothing had been testing it.
+func TestAPrivateAssetIsNeverOfferedThroughAProxy(t *testing.T) {
+	client := NewClient("https://api.github.com", "test")
+	client.SetMirror("ghfast")
+	client.SetTokens([]Token{{ID: "t1", Name: "test", Secret: "ghp_x"}})
+
+	src := Source{Kind: "github", Repo: "owner/secret", Private: true, TokenID: "t1"}
+	asset := Asset{
 		Name:   "plug.jar",
-		Size:   int64(len(body)),
-		URL:    jarServer(t, body),
-		SHA256: strings.Repeat("ab", 32),
-	})
-	if !errors.Is(err, ErrChecksum) {
-		t.Fatalf("expected a checksum failure, got %v", err)
+		URL:    "https://github.com/owner/secret/releases/download/v1/plug.jar",
+		APIURL: "https://api.github.com/repos/owner/secret/releases/assets/1",
+	}
+
+	attempts, err := client.Attempts(src, asset)
+	if err != nil {
+		t.Fatalf("attempts: %v", err)
+	}
+	if len(attempts) != 1 {
+		t.Fatalf("a private asset got %d routes, want exactly one", len(attempts))
+	}
+	if attempts[0].Route != MirrorDirect {
+		t.Fatalf("private route = %q, want %q", attempts[0].Route, MirrorDirect)
 	}
 }
 
-// Without a published checksum the declared size is the only integrity check
-// there is, so it stays exact. This is every GitHub release, and Modrinth and
-// SpigotMC too.
-func TestTransferRejectsMisdeclaredSizeWithoutChecksum(t *testing.T) {
-	body := "a fine plugin jar"
-	_, err := transferOnce(t, Asset{
+// The public case is the one the proxies exist for, and it still ends at GitHub
+// so a proxy that is down costs a retry rather than the install.
+func TestAPublicAssetWalksTheProxiesThenGitHub(t *testing.T) {
+	client := NewClient("https://api.github.com", "test")
+	client.SetMirror(MirrorAuto)
+
+	src := Source{Kind: "github", Repo: "owner/open"}
+	asset := Asset{
 		Name: "plug.jar",
-		Size: int64(len(body)) - 3,
-		URL:  jarServer(t, body),
-	})
-	if err == nil || !strings.Contains(err.Error(), "声明的") {
-		t.Fatalf("expected a size failure, got %v", err)
+		URL:  "https://github.com/owner/open/releases/download/v1/plug.jar",
 	}
-}
 
-// A body that stops early no longer trips the size check, so the checksum
-// failure has to be the one that explains it.
-func TestTransferReportsTruncatedBody(t *testing.T) {
-	whole := "a fine plugin jar"
-	sum := sha256.Sum256([]byte(whole))
-	_, err := transferOnce(t, Asset{
-		Name:   "plug.jar",
-		Size:   int64(len(whole)),
-		URL:    jarServer(t, whole[:8]),
-		SHA256: hex.EncodeToString(sum[:]),
-	})
-	if err == nil || !strings.Contains(err.Error(), "下载中断") {
-		t.Fatalf("expected a truncation failure, got %v", err)
-	}
-}
-
-// Modrinth publishes a SHA-512 and no SHA-256, so that is what a Modrinth jar
-// has to be checked against — the recorded digest stays SHA-256 either way,
-// because that is the identity everything downstream matches on.
-func TestTransferVerifiesSHA512(t *testing.T) {
-	body := "a fine plugin jar"
-	wide := sha512.Sum512([]byte(body))
-	narrow := sha256.Sum256([]byte(body))
-
-	digest, err := transferOnce(t, Asset{
-		Name:   "plug.jar",
-		Size:   int64(len(body)) - 3,
-		URL:    jarServer(t, body),
-		SHA512: hex.EncodeToString(wide[:]),
-	})
+	attempts, err := client.Attempts(src, asset)
 	if err != nil {
-		t.Fatalf("transfer: %v", err)
+		t.Fatalf("attempts: %v", err)
 	}
-	if digest != hex.EncodeToString(narrow[:]) {
-		t.Errorf("recorded digest is %q, want the SHA-256 of the bytes", digest)
+	var routes []string
+	for _, a := range attempts {
+		routes = append(routes, a.Route)
 	}
-}
-
-func TestTransferRejectsSHA512Mismatch(t *testing.T) {
-	body := "a fine plugin jar"
-	_, err := transferOnce(t, Asset{
-		Name:   "plug.jar",
-		Size:   int64(len(body)),
-		URL:    jarServer(t, body),
-		SHA512: strings.Repeat("ab", 64),
-	})
-	if !errors.Is(err, ErrChecksum) {
-		t.Fatalf("expected a checksum failure, got %v", err)
+	if len(routes) < 2 || routes[len(routes)-1] != MirrorDirect {
+		t.Fatalf("routes = %v, want several ending at %q", routes, MirrorDirect)
 	}
 }

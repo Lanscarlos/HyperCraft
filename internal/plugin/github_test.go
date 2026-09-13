@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/lanscarlos/hypercraft/internal/download"
 )
 
 func TestParseRepoAcceptsWhatOperatorsActuallyPaste(t *testing.T) {
@@ -234,7 +236,7 @@ func TestMirrorOrderEndsAtGitHubWhicheverWasChosen(t *testing.T) {
 	// finished job can say which one actually served the jar.
 	client.SetMirror("")
 	order, _ = client.downloadOrder(public, asset)
-	if len(order) != len(mirrors) || order[0].mirror != "ghfast" ||
+	if len(order) != len(download.RouteSets[routeSet].Routes) || order[0].mirror != "ghfast" ||
 		order[len(order)-1].mirror != MirrorDirect {
 		t.Fatalf("unexpected automatic order: %+v", order)
 	}

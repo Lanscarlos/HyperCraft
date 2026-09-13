@@ -2,38 +2,45 @@ package plugin
 
 import (
 	"fmt"
-	"strings"
+
+	"github.com/lanscarlos/hypercraft/internal/download"
 )
 
 // Download mirrors for plugin jars.
 //
+// The table itself lives in internal/download as the "github" route set, shared
+// with the panel's own updater and with the Temurin builds that come off the
+// same CDN — ghfast used to be written out three separate times, and the copy
+// the updater held had decayed into a bare prefix string with no list, no
+// automatic order and no fallback.
+//
+// What stays here is the vocabulary the plugin API speaks. These ids are in
+// stored configs (config.PluginMirror) and in the panel's own requests, so they
+// keep their names and their shape; only where the list comes from has changed.
+//
 // A mirror only ever carries the bytes. Release metadata is read straight from
 // api.github.com, which none of these proxies front, and a private repository
-// never goes through one at all — see downloadOrder. So what a mirror changes
-// is download speed, which from a mainland Chinese host is the difference
-// between a two-second install and a timeout.
-//
-// Unlike the Java runtime mirrors, these are proxies rather than copies: they
-// fetch the same GitHub URL on the panel's behalf, so a release published a
-// minute ago is available through them immediately. What they cannot offer is
-// a checksum to verify against — GitHub publishes none for release assets, so
-// the trust in a plugin jar is the same whichever way it arrived, and picking a
-// proxy widens who is trusted with the bytes. An operator with a good line to
-// GitHub should pick 直连.
+// never goes through one at all — see downloadOrder, which keeps that rule
+// beside the token it is about.
+
 const (
 	// MirrorAuto works down the list and only then goes direct. It is what a
 	// panel that has never been told otherwise uses, because the common case is
 	// a host that needs a proxy and an operator who does not want to test four
 	// of them by hand.
-	MirrorAuto = "auto"
+	MirrorAuto = download.RouteAuto
 	// MirrorDirect downloads from GitHub with nothing in between.
 	MirrorDirect = "direct"
 )
 
+// routeSet is the set in internal/download these mirrors are drawn from.
+const routeSet = "github"
+
 // ErrUnknownMirror rejects a mirror id this build does not have.
 var ErrUnknownMirror = fmt.Errorf("unknown download mirror")
 
-// Mirror is a place plugin jars can be downloaded through.
+// Mirror is a place plugin jars can be downloaded through, in the shape the
+// panel API has always published.
 type Mirror struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -46,37 +53,8 @@ type Mirror struct {
 	Default bool `json:"default,omitempty"`
 }
 
-// mirrors are tried in this order by MirrorAuto and offered in this order too.
-// The proxies come first because a panel that does not need one is a panel
-// whose operator can pick 直连 in one click, while the reverse — a Chinese host
-// discovering that plugin downloads simply time out — is a bug report.
-var mirrors = []Mirror{
-	{
-		ID:     "ghfast",
-		Name:   "ghfast.top",
-		Note:   "国内访问通常最快，面板自身更新也默认走它",
-		Prefix: "https://ghfast.top/",
-	},
-	{
-		ID:     "ghproxy",
-		Name:   "gh-proxy.com",
-		Note:   "老牌代理，ghfast 不通时的第一备选",
-		Prefix: "https://gh-proxy.com/",
-	},
-	{
-		ID:     "moeyy",
-		Name:   "github.moeyy.xyz",
-		Note:   "再一个备选，用法相同",
-		Prefix: "https://github.moeyy.xyz/",
-	},
-	{
-		ID:   MirrorDirect,
-		Name: "直连 GitHub",
-		Note: "不经过任何第三方，境外机器选它",
-	},
-}
-
-// autoMirror is the entry the UI shows for MirrorAuto.
+// autoMirror is the entry the UI shows for MirrorAuto. It is not a route — it
+// is the instruction to walk them all — so it has no counterpart in the set.
 var autoMirror = Mirror{
 	ID:      MirrorAuto,
 	Name:    "自动",
@@ -86,21 +64,28 @@ var autoMirror = Mirror{
 
 // Mirrors lists what an operator can pick, automatic first.
 func Mirrors() []Mirror {
-	out := make([]Mirror, 0, len(mirrors)+1)
+	routes := download.RouteSets[routeSet].Routes
+	out := make([]Mirror, 0, len(routes)+1)
 	out = append(out, autoMirror)
-	out = append(out, mirrors...)
+	for _, route := range routes {
+		out = append(out, Mirror{
+			ID:     route.ID,
+			Name:   route.Name,
+			Note:   route.Note,
+			Prefix: route.Prefix,
+		})
+	}
 	return out
 }
 
 // MirrorName is the human name of a mirror id, for a log line or a job.
 func MirrorName(id string) string {
-	switch id {
-	case "", MirrorAuto:
+	if id == "" || id == MirrorAuto {
 		return autoMirror.Name
 	}
-	for _, mirror := range mirrors {
-		if mirror.ID == id {
-			return mirror.Name
+	for _, route := range download.RouteSets[routeSet].Routes {
+		if route.ID == id {
+			return route.Name
 		}
 	}
 	// A custom prefix is its own name; there is nothing better to call it.
@@ -115,82 +100,11 @@ func MirrorName(id string) string {
 // than quietly turned into the default — silently downloading through somewhere
 // other than what was asked for is the surprise this whole feature removes.
 func ResolveMirror(id string) (string, error) {
-	id = strings.TrimSpace(id)
-	switch id {
-	case "", MirrorAuto:
-		return MirrorAuto, nil
+	resolved, err := download.ResolveRoute(routeSet, id)
+	if err != nil {
+		// Re-wrapped so callers that already match on this package's sentinel
+		// keep working; the message from download names the offending id.
+		return "", fmt.Errorf("%w: %v", ErrUnknownMirror, err)
 	}
-	for _, mirror := range mirrors {
-		if mirror.ID == id {
-			return id, nil
-		}
-	}
-	if strings.HasPrefix(id, "https://") || strings.HasPrefix(id, "http://") {
-		if !strings.HasSuffix(id, "/") {
-			id += "/"
-		}
-		return id, nil
-	}
-	return "", fmt.Errorf("%w: %q", ErrUnknownMirror, id)
-}
-
-// mirrorOrder is the prefixes to try for one GitHub download link, most
-// preferred first, where "" means the direct link.
-//
-// Every choice ends at the direct link. A proxy that is down, blocked or
-// rate-limiting would otherwise turn a working install into a failure, and
-// unlike a mirror with its own copy there is nothing a proxy has that GitHub
-// does not — falling through to the origin can only be more correct.
-func mirrorOrder(id, url string) []string {
-	if !strings.HasPrefix(url, "https://github.com/") {
-		// Nothing else is a GitHub release link, and these proxies front
-		// nothing else, so a prefix could only produce a 404.
-		return []string{""}
-	}
-
-	var prefixes []string
-	switch id {
-	case "", MirrorAuto:
-		for _, mirror := range mirrors {
-			prefixes = append(prefixes, mirror.Prefix)
-		}
-	case MirrorDirect:
-		return []string{""}
-	default:
-		prefixes = append(prefixes, mirrorPrefix(id))
-	}
-
-	out := make([]string, 0, len(prefixes)+1)
-	seen := make(map[string]bool, len(prefixes)+1)
-	for _, prefix := range append(prefixes, "") {
-		if seen[prefix] {
-			continue
-		}
-		seen[prefix] = true
-		out = append(out, prefix)
-	}
-	return out
-}
-
-// mirrorID names the mirror a prefix belongs to, so a finished job can say
-// which one served the bytes. A prefix that is not one of the known proxies is
-// the operator's own, and the chosen setting is its name.
-func mirrorID(chosen, prefix string) string {
-	for _, mirror := range mirrors {
-		if mirror.Prefix == prefix {
-			return mirror.ID
-		}
-	}
-	return chosen
-}
-
-// mirrorPrefix is the URL prefix behind an id, or the id itself when it is
-// already a custom prefix.
-func mirrorPrefix(id string) string {
-	for _, mirror := range mirrors {
-		if mirror.ID == id {
-			return mirror.Prefix
-		}
-	}
-	return id
+	return resolved, nil
 }

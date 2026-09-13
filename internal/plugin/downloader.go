@@ -2,82 +2,31 @@ package plugin
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/sha512"
-	"encoding/hex"
-	"errors"
 	"fmt"
-	"hash"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/lanscarlos/hypercraft/internal/download"
 )
 
 var (
 	// ErrBusy is returned when the queue is full.
-	ErrBusy = errors.New("下载队列已经排满了，等几个下完再来")
+	ErrBusy = download.ErrBusy
 	// ErrCancelled is recorded on a job the operator stopped.
-	ErrCancelled = errors.New("download cancelled")
+	ErrCancelled = download.ErrCancelled
 )
 
-// downloadTimeout bounds one transfer. Plugin jars are small — a few megabytes
-// — but a slow mirror on a bad line is exactly who needs the headroom.
-const downloadTimeout = 30 * time.Minute
-
-// maxUnknownSize caps a download whose size the release did not declare.
-const maxUnknownSize = 512 << 20
-
-// maxConcurrent is how many jars come down at once.
+// Job is one plugin download, in the shape the panel API has always published.
 //
-// Three rather than "as many as were asked for", and the limit is upstream's
-// rather than the disk's: every job opens with a release lookup against the
-// GitHub API, where an anonymous panel gets 60 calls an hour and a burst is
-// answered with a rate limit that then blocks the next *check* too. Twenty
-// parallel downloads would spend an hour's budget in one click and leave the
-// operator unable to ask what the newest version is. Mirrors throttle on much
-// the same terms.
-const maxConcurrent = 3
-
-// maxQueued bounds jobs waiting for a slot. A backstop against a bulk action
-// that fans out further than anybody intended, not a limit anyone should meet.
-const maxQueued = 100
-
-// maxHistory bounds the finished jobs kept around to be read.
-//
-// Finished jobs are the whole reason this is a list rather than a counter: a
-// download that failed at 3am is only useful if it is still there in the
-// morning, and before the queue existed the *next* download overwrote it.
-const maxHistory = 30
-
-// JobState is where a download has got to.
-type JobState string
-
-const (
-	// JobQueued is waiting for one of the concurrency slots.
-	JobQueued      JobState = "queued"
-	JobDownloading JobState = "downloading"
-	JobDone        JobState = "done"
-	JobFailed      JobState = "failed"
-	JobCancelled   JobState = "cancelled"
-)
-
-// Active reports whether a job is still going to do something.
-func (s JobState) Active() bool { return s == JobQueued || s == JobDownloading }
-
-// Job is a snapshot of one plugin download.
-//
-// Like a core download, it survives the transfer: the finished job stays
-// readable so an operator who closed the tab still sees how it went.
+// The queue itself is internal/download's now — this is the projection of one
+// of its jobs back into the vocabulary the plugin endpoints speak. The fields
+// that are not on a kernel job (which plugin, which tag, which asset) ride
+// there in Job.Meta, put on by Start, so this package keeps no side table to
+// fall out of step with the kernel's history.
 type Job struct {
-	// ID names this job for cancellation. Assigned by the panel and unique for
-	// as long as the process lives — the queue is deliberately not persisted,
-	// because a download that was interrupted by a panel restart is one that
-	// has to be started again rather than resumed.
 	ID         string `json:"id"`
 	PluginID   string `json:"pluginId"`
 	PluginName string `json:"pluginName"`
@@ -86,63 +35,80 @@ type Job struct {
 	FileName   string `json:"fileName"`
 	// Mirror is where the bytes actually came from, which with the automatic
 	// order in play is not something the operator's setting can tell them.
-	Mirror     string    `json:"mirror,omitempty"`
-	Total      int64     `json:"total"`
-	Downloaded int64     `json:"downloaded"`
-	State      JobState  `json:"state"`
-	Error      string    `json:"error,omitempty"`
-	QueuedAt   time.Time `json:"queuedAt"`
-	// StartedAt is when the job left the queue, so it is absent on one that
-	// never has. Kept separate from QueuedAt rather than folded into it: "sat
-	// in the queue for four minutes" and "took four minutes to download" are
-	// different complaints with different causes.
+	Mirror     string     `json:"mirror,omitempty"`
+	Total      int64      `json:"total"`
+	Downloaded int64      `json:"downloaded"`
+	State      string     `json:"state"`
+	Error      string     `json:"error,omitempty"`
+	QueuedAt   time.Time  `json:"queuedAt"`
 	StartedAt  *time.Time `json:"startedAt,omitempty"`
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 }
 
-// job is one queue entry: what the operator asked for, and where it has got to.
+// The states a plugin job reports, which are the kernel's under this package's
+// long-standing names. Kept as a vocabulary rather than dropped: they are what
+// the panel API publishes and what its clients switch on.
+const (
+	JobQueued      = string(download.StateQueued)
+	JobDownloading = string(download.StateDownloading)
+	JobDone        = string(download.StateDone)
+	JobFailed      = string(download.StateFailed)
+	JobCancelled   = string(download.StateCancelled)
+)
+
+// Meta keys Start writes onto a kernel job so jobOf can rebuild a Job from it.
+const (
+	metaPluginID   = "pluginId"
+	metaPluginName = "pluginName"
+	metaTag        = "tag"
+	metaVersion    = "version"
+)
+
+// jobOf projects a kernel job back into this package's shape.
 //
-// The request is held beside the Job rather than inside it because the two
-// drift apart on purpose. An empty tag means "whatever is newest", and once
-// the release resolves the Job says v5.5.71 — but a second request for
-// "newest" is still the same request, and matching it against the resolved tag
-// is how the panel ends up downloading the same jar twice.
-type job struct {
-	pub *Job
-	// want* are the request as it arrived: empty tag is "newest", empty asset
-	// is "the release's primary jar".
-	wantTag   string
-	wantAsset string
-	cancel    context.CancelFunc
+// StateExtracting has no counterpart here and never appears: a plugin jar is
+// recorded, not unpacked, and that takes microseconds. Should it ever show up,
+// reporting it as downloading is the honest answer for a client that has only
+// ever known four states.
+func jobOf(j download.Job) Job {
+	state := string(j.State)
+	if j.State == download.StateExtracting {
+		state = string(download.StateDownloading)
+	}
+	return Job{
+		ID:         j.ID,
+		PluginID:   j.Meta[metaPluginID],
+		PluginName: j.Meta[metaPluginName],
+		Tag:        j.Meta[metaTag],
+		Version:    j.Meta[metaVersion],
+		FileName:   j.FileName,
+		Mirror:     j.Route,
+		Total:      j.Total,
+		Downloaded: j.Downloaded,
+		State:      state,
+		Error:      j.Error,
+		QueuedAt:   j.QueuedAt,
+		StartedAt:  j.StartedAt,
+		FinishedAt: j.FinishedAt,
+	}
 }
 
 // Downloader fetches plugin releases into the panel-wide library.
 //
-// A queue with a small number of workers, panel-wide. It used to be one slot:
-// a second download while the first was running was refused outright, which
-// made "update these five plugins" into five clicks spread over as long as the
-// downloads took, and left a failed job visible only until the next one
-// replaced it.
-//
-// The queue belongs to the daemon rather than to the request that started it,
-// so closing the tab does not interrupt a jar that is already coming down, and
-// a job that was still waiting for a slot does not lose its place.
+// The queue it used to own moved to internal/download, shared with every other
+// shelf. What stays here is what only this package knows: which repository a
+// plugin comes from, whether that repository is private and which token reads
+// it, which jar of a multi-platform release was asked for, and what recording a
+// finished download in the library means.
 type Downloader struct {
 	client  *Client
 	library *Library
+	queue   *download.Queue
 	log     *slog.Logger
-
-	mu     sync.Mutex
-	jobs   []*job // oldest first, which is the order they run in
-	active int
-	seq    int
-	closed bool
-
-	wg sync.WaitGroup
 }
 
-func NewDownloader(client *Client, library *Library, logger *slog.Logger) *Downloader {
-	return &Downloader{client: client, library: library, log: logger}
+func NewDownloader(client *Client, library *Library, queue *download.Queue, logger *slog.Logger) *Downloader {
+	return &Downloader{client: client, library: library, queue: queue, log: logger}
 }
 
 // Client exposes the release client for the metadata handlers.
@@ -271,12 +237,12 @@ func (d *Downloader) CheckAll(ctx context.Context) []Plugin {
 // is a corrupt download, and the single-slot design used to prevent it by
 // accident, by refusing the second click outright.
 //
-// What it does *not* do any more is resolve the release first. That check used
-// to happen here so an unknown tag came back as a bad request rather than as a
-// job that failed a second later — but it needs the network, and a queued job
-// may be minutes away from its turn. So the only thing answered synchronously
-// is whether the plugin is tracked at all; anything upstream has to say lands
-// on the job, where the queue page shows it.
+// What it does *not* do is resolve the release first. That check used to happen
+// here so an unknown tag came back as a bad request rather than as a job that
+// failed a second later — but it needs the network, and a queued job may be
+// minutes away from its turn. So the only thing answered synchronously is
+// whether the plugin is tracked at all; anything upstream has to say lands on
+// the job, where the queue page shows it.
 func (d *Downloader) Start(pluginID, tag, asset string) (Job, error) {
 	item, err := d.library.Get(pluginID)
 	if err != nil {
@@ -284,164 +250,123 @@ func (d *Downloader) Start(pluginID, tag, asset string) (Job, error) {
 	}
 	tag, asset = strings.TrimSpace(tag), strings.TrimSpace(asset)
 
-	d.mu.Lock()
-	defer d.mu.Unlock()
+	// The request as it arrived, not as it resolves. An empty tag means
+	// "whatever is newest", and once the release resolves the job says v5.5.71
+	// — but a second request for "newest" is still the same request, and
+	// matching it against the resolved tag is how the panel ends up downloading
+	// the same jar twice.
+	key := pluginID + "\x00" + tag + "\x00" + strings.ToLower(asset)
 
-	if d.closed {
-		return Job{}, ErrBusy
-	}
-	if existing := d.duplicate(pluginID, tag, asset); existing != nil {
-		return *existing.pub, nil
-	}
-	queued := 0
-	for _, entry := range d.jobs {
-		if entry.pub.State == JobQueued {
-			queued++
-		}
-	}
-	if queued >= maxQueued {
-		return Job{}, ErrBusy
+	// Resolved on the worker, not here: a job that waited in the queue may have
+	// been sitting there while the operator edited the source or swapped the
+	// token it reads with.
+	var pinned struct {
+		item    Plugin
+		release Release
+		want    Asset
 	}
 
-	d.seq++
-	entry := &job{
-		pub: &Job{
-			ID:         strconv.Itoa(d.seq),
-			PluginID:   item.ID,
-			PluginName: item.Name,
-			Tag:        tag,
-			Version:    VersionOf(tag),
-			FileName:   asset,
-			State:      JobQueued,
-			QueuedAt:   time.Now(),
+	job, err := d.queue.Submit(download.Request{
+		Kind:      download.KindPlugin,
+		Title:     item.Name,
+		FileName:  asset,
+		DedupeKey: key,
+		TempDir:   d.library.Root(),
+		Meta: map[string]string{
+			metaPluginID:   item.ID,
+			metaPluginName: item.Name,
+			metaTag:        tag,
+			metaVersion:    VersionOf(tag),
 		},
-		wantTag:   tag,
-		wantAsset: asset,
-	}
-	d.jobs = append(d.jobs, entry)
-	d.prune()
-	d.dispatch()
-	return *entry.pub, nil
-}
+		Attempts: func(ctx context.Context, pub *download.Progress) ([]download.Attempt, error) {
+			resolved, err := d.library.Get(pluginID)
+			if err != nil {
+				return nil, err
+			}
+			// Checked here rather than trusted from the last check: this is the
+			// one moment where being wrong about it fails the operation, and a
+			// repository that was made private after it was added would
+			// otherwise keep failing until someone thought to press "check
+			// updates".
+			resolved = d.syncVisibility(ctx, resolved)
 
-// duplicate finds an unfinished job for exactly this request. Called with the
-// lock held.
-func (d *Downloader) duplicate(pluginID, tag, asset string) *job {
-	for _, entry := range d.jobs {
-		if !entry.pub.State.Active() || entry.pub.PluginID != pluginID {
-			continue
-		}
-		if entry.wantTag == tag && strings.EqualFold(entry.wantAsset, asset) {
-			return entry
-		}
-	}
-	return nil
-}
+			release, err := d.resolve(ctx, resolved, tag)
+			if err != nil {
+				return nil, err
+			}
+			want, err := pickNamed(release, asset)
+			if err != nil {
+				return nil, err
+			}
+			pinned.item, pinned.release, pinned.want = resolved, release, want
 
-// prune drops the oldest finished jobs once there are more than the history
-// holds. Only finished ones: a queue longer than the history is still a queue,
-// and forgetting a job that has not run yet would lose the download. Called
-// with the lock held.
-func (d *Downloader) prune() {
-	finished := 0
-	for _, entry := range d.jobs {
-		if !entry.pub.State.Active() {
-			finished++
-		}
-	}
-	if finished <= maxHistory {
-		return
-	}
-	drop := finished - maxHistory
-	kept := make([]*job, 0, len(d.jobs)-drop)
-	for _, entry := range d.jobs {
-		if drop > 0 && !entry.pub.State.Active() {
-			drop--
-			continue
-		}
-		kept = append(kept, entry)
-	}
-	d.jobs = kept
-}
+			// Until now the row said only which plugin was asked for: "最新" has
+			// no file name and no size, and a request pinned to a tag still does
+			// not know which jar of it. This is the moment the panel learns.
+			pub.Describe(download.Description{
+				FileName: want.Name,
+				Total:    want.Size,
+				Subtitle: release.Version,
+				Meta: map[string]string{
+					metaTag:     release.Tag,
+					metaVersion: release.Version,
+				},
+			})
 
-// dispatch starts queued jobs while there are slots. Called with the lock held.
-func (d *Downloader) dispatch() {
-	if d.closed {
-		return
-	}
-	for _, entry := range d.jobs {
-		if d.active >= maxConcurrent {
-			return
-		}
-		if entry.pub.State != JobQueued {
-			continue
-		}
-		ctx, cancel := context.WithCancel(context.Background())
-		now := time.Now()
-		entry.cancel = cancel
-		entry.pub.State = JobDownloading
-		entry.pub.StartedAt = &now
-		d.active++
-		d.wg.Add(1)
-		go d.work(ctx, entry)
-	}
-}
-
-// work runs one job end to end and then hands its slot to whatever is next.
-func (d *Downloader) work(ctx context.Context, entry *job) {
-	defer func() {
-		d.wg.Done()
-		d.mu.Lock()
-		d.active--
-		if entry.cancel != nil {
-			entry.cancel()
-			entry.cancel = nil
-		}
-		d.dispatch()
-		d.mu.Unlock()
-	}()
-
-	// Re-read rather than closing over what Start saw: a job that waited in the
-	// queue may have been sitting there while the operator edited the source or
-	// swapped the token it reads with.
-	item, err := d.library.Get(entry.pub.PluginID)
+			d.log.Info("plugin download started",
+				"plugin", resolved.ID, "tag", release.Tag, "file", want.Name, "size", want.Size)
+			return d.client.Attempts(resolved.Source, want)
+		},
+		Install: func(ctx context.Context, temp, sum string, _ *download.Progress) (string, error) {
+			if err := d.record(pinned.item, pinned.release, pinned.want, temp, sum); err != nil {
+				return "", err
+			}
+			d.log.Info("plugin download finished", "plugin", pinned.item.ID, "file", pinned.want.Name)
+			return pinned.item.ID, nil
+		},
+	})
 	if err != nil {
-		d.finish(entry.pub, JobFailed, err)
-		return
+		return Job{}, err
 	}
-
-	// Checked here rather than trusted from the last check: this is the one
-	// moment where being wrong about it fails the operation, and a repository
-	// that was made private after it was added would otherwise keep failing
-	// until someone thought to press "check updates".
-	item = d.syncVisibility(ctx, item)
-
-	release, err := d.resolve(ctx, item, entry.wantTag)
-	var want Asset
-	if err == nil {
-		want, err = pickNamed(release, entry.wantAsset)
-	}
-	if err != nil {
-		if ctx.Err() != nil {
-			d.finish(entry.pub, JobCancelled, ErrCancelled)
-			return
-		}
-		d.finish(entry.pub, JobFailed, err)
-		return
-	}
-
-	d.mu.Lock()
-	entry.pub.Tag = release.Tag
-	entry.pub.Version = release.Version
-	entry.pub.FileName = want.Name
-	entry.pub.Total = want.Size
-	d.mu.Unlock()
-
-	d.log.Info("plugin download started",
-		"plugin", item.ID, "tag", release.Tag, "file", want.Name, "size", want.Size)
-
-	d.run(ctx, entry.pub, item, release, want)
+	return jobOf(job), nil
 }
+
+// Jobs returns the queue and the history, newest first. Plugin jobs only: the
+// panel-wide list is somewhere else.
+func (d *Downloader) Jobs() []Job {
+	all := d.queue.Jobs()
+	out := make([]Job, 0, len(all))
+	for _, j := range all {
+		if j.Kind == download.KindPlugin {
+			out = append(out, jobOf(j))
+		}
+	}
+	return out
+}
+
+// Status returns the most recent job, for the single-job field older clients
+// read. The queue is what the panel itself shows.
+func (d *Downloader) Status() (Job, bool) {
+	jobs := d.Jobs()
+	if len(jobs) == 0 {
+		return Job{}, false
+	}
+	return jobs[0], true
+}
+
+// Cancel stops one download by id.
+func (d *Downloader) Cancel(id string) error { return d.queue.Cancel(id) }
+
+// CancelAll stops every plugin download still queued or running, and reports
+// how many. Other shelves' downloads are not this button's business.
+func (d *Downloader) CancelAll() int { return d.queue.CancelAll(download.KindPlugin) }
+
+// ClearFinished forgets the history and reports how many rows went.
+//
+// Panel-wide rather than plugin-only, which is what the kernel offers and what
+// the button will mean once the download page lands. Until then it clears a
+// little more than the plugin page shows.
+func (d *Downloader) ClearFinished() int { return d.queue.ClearFinished() }
 
 // firstOf is the first list that says anything. Used where an asset's own
 // claim outranks its release's, and the release's is the fallback rather than
@@ -490,382 +415,71 @@ func (d *Downloader) resolve(ctx context.Context, item Plugin, tag string) (Rele
 // run streams the jar to a .part file and only then moves it into place, so a
 // failed or cancelled download never leaves something that looks like an
 // installable plugin in the library.
-func (d *Downloader) run(ctx context.Context, pub *Job, item Plugin, release Release, want Asset) {
+
+// record moves a finished jar into place and writes the version into the
+// library. All of this used to be the back half of run().
+//
+// The .part file the kernel hands over is renamed rather than copied, which is
+// why Start points TempDir at the library root: the two are on one filesystem.
+func (d *Downloader) record(item Plugin, release Release, want Asset, temp, digest string) error {
 	slug, err := versionSlug(release.Tag)
 	if err != nil {
-		d.finish(pub, JobFailed, err)
-		return
+		return err
 	}
 	dir := filepath.Join(d.library.Root(), item.ID, slug)
-	temp := filepath.Join(dir, want.Name+partSuffix)
 	final := filepath.Join(dir, want.Name)
-
-	var digest string
-	if err = os.MkdirAll(dir, 0o755); err == nil {
-		// A previous attempt may have died with the panel and left its part file.
-		_ = os.Remove(temp)
-		digest, err = d.transfer(ctx, pub, temp, item.Source, want)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
 	}
-	if err == nil {
-		// Re-downloading a version the operator already has is the repair path
-		// for a corrupt jar, so the old file is replaced rather than refused —
-		// and only here, with the replacement complete and verified on disk.
-		_ = os.Remove(final)
-		err = os.Rename(temp, final)
-	}
-	if err == nil {
-		// The jar is asked what it is, now that it is whole and on disk. This
-		// is the identity everything downstream depends on: the upgrade sweep
-		// deletes by declared plugin name, and it cannot do that for a jar the
-		// panel never opened. A descriptor that will not parse is not an error
-		// — the file is still a perfectly good download — it just leaves those
-		// fields empty and the panel says so rather than guessing.
-		//
-		// What the *jar* supports, not what the release does: on a release
-		// that ships one build per platform those are different claims, and
-		// the one an install has to be judged against is this file's.
-		artifact := Artifact{
-			SHA256:       digest,
-			FileName:     want.Name,
-			Size:         want.Size,
-			Platform:     want.Platform,
-			GameVersions: firstOf(want.GameVersions, release.GameVersions),
-			Loaders:      firstOf(want.Loaders, release.Loaders),
-			AddedAt:      time.Now(),
-		}
-		if info, size, readErr := readJar(final); readErr == nil {
-			artifact.Size = size
-			artifact.applyJarInfo(info)
-			if info.Platform == "" && want.Platform != "" {
-				artifact.Platform = want.Platform
-			}
-		}
-
-		err = d.library.record(item.ID, Version{
-			Tag:          release.Tag,
-			Version:      release.Version,
-			Artifacts:    []Artifact{artifact},
-			Prerelease:   release.Prerelease,
-			Notes:        release.Notes,
-			PublishedAt:  release.PublishedAt,
-			AddedAt:      time.Now(),
-			GameVersions: release.GameVersions,
-			Loaders:      release.Loaders,
-		})
-		if err != nil {
-			// The jar itself is fine, only its metadata is missing; say so
-			// rather than implying the download has to be repeated.
-			err = fmt.Errorf("下载完成，但记录插件版本失败: %w", err)
-		}
+	// Re-downloading a version the operator already has is the repair path for
+	// a corrupt jar, so the old file is replaced rather than refused — and only
+	// here, with the replacement complete and verified on disk.
+	_ = os.Remove(final)
+	if err := os.Rename(temp, final); err != nil {
+		return err
 	}
 
-	switch {
-	case err == nil:
-		d.finish(pub, JobDone, nil)
-		d.log.Info("plugin download finished", "plugin", item.ID, "file", want.Name)
-	case ctx.Err() != nil:
-		_ = os.Remove(temp)
-		d.finish(pub, JobCancelled, ErrCancelled)
-		d.log.Info("plugin download cancelled", "plugin", item.ID, "file", want.Name)
-	default:
-		_ = os.Remove(temp)
-		d.finish(pub, JobFailed, err)
-		d.log.Warn("plugin download failed", "plugin", item.ID, "file", want.Name, "err", err)
-	}
-}
-
-// transfer streams one asset to disk and returns its SHA-256.
-func (d *Downloader) transfer(ctx context.Context, pub *Job, temp string, src Source, asset Asset) (string, error) {
-	body, mirror, err := d.client.Fetch(ctx, src, asset)
-	if err != nil {
-		return "", err
-	}
-	defer body.Close()
-
-	d.mu.Lock()
-	pub.Mirror = mirror
-	d.mu.Unlock()
-
-	file, err := os.OpenFile(temp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
-		return "", err
-	}
-
-	// sized marks the case where the declared size is the only check there
-	// is — every GitHub release, and Modrinth and SpigotMC too — and so has
-	// to be exact.
+	// The jar is asked what it is, now that it is whole and on disk. This is the
+	// identity everything downstream depends on: the upgrade sweep deletes by
+	// declared plugin name, and it cannot do that for a jar the panel never
+	// opened. A descriptor that will not parse is not an error — the file is
+	// still a perfectly good download — it just leaves those fields empty and the
+	// panel says so rather than guessing.
 	//
-	// Where a source does publish a digest it is both the stronger check and
-	// the more reliable one: Azul's Java metadata under-reports a package by
-	// 9 bytes while publishing the right SHA-256 for it, which turned a
-	// perfectly good install into "exceeds the declared size" until the gate
-	// moved (see javaruntime.Installer.download). So with a digest the size
-	// drives the progress bar, and the cap falls back to the same ceiling an
-	// undeclared size gets — there to bound the disk a runaway redirect can
-	// eat, not to verify anything.
-	sized := asset.Size > 0 && !asset.verifiable()
-	limit := int64(maxUnknownSize)
-	if sized {
-		limit = asset.Size
+	// What the *jar* supports, not what the release does: on a release that ships
+	// one build per platform those are different claims, and the one an install
+	// has to be judged against is this file's.
+	artifact := Artifact{
+		SHA256:       digest,
+		FileName:     want.Name,
+		Size:         want.Size,
+		Platform:     want.Platform,
+		GameVersions: firstOf(want.GameVersions, release.GameVersions),
+		Loaders:      firstOf(want.Loaders, release.Loaders),
+		AddedAt:      time.Now(),
 	}
-
-	// The SHA-256 is always computed, whatever the source published: it is the
-	// identity the library records and the fleet is reconciled against, not
-	// the proof. A second digest is only computed when there is a published
-	// one to compare it to, because hashing 30 MB twice for nothing is a cost
-	// every download would pay.
-	digest := sha256.New()
-	writers := []io.Writer{file, digest}
-	var wide hash.Hash
-	if asset.SHA512 != "" {
-		wide = sha512.New()
-		writers = append(writers, wide)
-	}
-	progress := &progressWriter{
-		to: io.MultiWriter(writers...),
-		report: func(n int64) {
-			d.mu.Lock()
-			pub.Downloaded = n
-			d.mu.Unlock()
-		},
-	}
-
-	// One byte past the limit, so an exactly-sized body still succeeds while an
-	// oversized one is caught instead of silently truncated.
-	written, copyErr := io.Copy(progress, io.LimitReader(body, limit+1))
-	// A close error on the last flush is the difference between a whole jar and
-	// a truncated one, so it is checked rather than deferred away.
-	closeErr := file.Close()
-	if copyErr != nil {
-		return "", copyErr
-	}
-	if closeErr != nil {
-		return "", closeErr
-	}
-	switch {
-	case sized && written > limit:
-		return "", fmt.Errorf("%w: 下载的内容比声明的 %d 字节还多", ErrUpstream, limit)
-	case sized && written != asset.Size:
-		return "", fmt.Errorf("%w: 收到 %d 字节，应为 %d", ErrUpstream, written, asset.Size)
-	case written > limit:
-		return "", fmt.Errorf("%w: 下载超过 %d 字节的上限，已中止", ErrUpstream, limit)
-	}
-
-	// The digest a source published, when it published one, is finally
-	// compared rather than only recorded — the field has been carried on the
-	// asset since the registries went in, and nothing ever read it.
-	sum := hex.EncodeToString(digest.Sum(nil))
-	if err := verifyDigest(asset, sum, wide, written); err != nil {
-		return "", err
-	}
-	return sum, nil
-}
-
-// verifyDigest checks the bytes against whichever digest the source published.
-// sum is the SHA-256 of what arrived and wide the SHA-512 of it, non-nil only
-// when there was a published SHA-512 to check.
-func verifyDigest(asset Asset, sum string, wide hash.Hash, written int64) error {
-	algo, got, want := "SHA-256", sum, asset.SHA256
-	if wide != nil {
-		algo, got, want = "SHA-512", hex.EncodeToString(wide.Sum(nil)), asset.SHA512
-	}
-	if want == "" || strings.EqualFold(got, want) {
-		return nil
-	}
-	// A short body is the one checksum failure with an obvious cause, and
-	// "the connection dropped, run it again" is very different advice from
-	// "this source is serving the wrong jar".
-	if asset.Size > 0 && written < asset.Size {
-		return fmt.Errorf("%w: 下载中断，只收到 %d 字节，应为 %d", ErrChecksum, written, asset.Size)
-	}
-	return fmt.Errorf("%w: %s 不符，算出 %s，应为 %s", ErrChecksum, algo, got, strings.ToLower(want))
-}
-
-func (d *Downloader) finish(pub *Job, state JobState, err error) {
-	now := time.Now()
-
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	// A job cancelled while it was still queued is already finished; a worker
-	// that started before the cancellation landed must not resurrect it.
-	if !pub.State.Active() {
-		return
-	}
-	pub.State = state
-	pub.FinishedAt = &now
-	if err != nil {
-		pub.Error = err.Error()
-	}
-	// Pruned here as well as on insert, because a job only becomes history when
-	// it ends: pruning only on insert leaves the queue one row over the cap
-	// between the last download finishing and the next one starting.
-	d.prune()
-}
-
-// Jobs returns the queue and the history, newest first.
-func (d *Downloader) Jobs() []Job {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	out := make([]Job, 0, len(d.jobs))
-	for i := len(d.jobs) - 1; i >= 0; i-- {
-		out = append(out, *d.jobs[i].pub)
-	}
-	return out
-}
-
-// Status returns the most recent job, for the single-job field older clients
-// read. The queue is what the panel itself shows.
-func (d *Downloader) Status() (Job, bool) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if len(d.jobs) == 0 {
-		return Job{}, false
-	}
-	return *d.jobs[len(d.jobs)-1].pub, true
-}
-
-// Cancel stops one download by id. Cancelling a finished one is an error
-// rather than a no-op: the button that sends it is only drawn on a live job,
-// so a request for a finished one means the page is looking at something the
-// panel no longer agrees with.
-func (d *Downloader) Cancel(id string) error {
-	d.mu.Lock()
-	var found *job
-	for _, entry := range d.jobs {
-		if entry.pub.ID == id {
-			found = entry
-			break
+	if info, size, readErr := readJar(final); readErr == nil {
+		artifact.Size = size
+		artifact.applyJarInfo(info)
+		if info.Platform == "" && want.Platform != "" {
+			artifact.Platform = want.Platform
 		}
 	}
-	if found == nil {
-		d.mu.Unlock()
-		return fmt.Errorf("%w: 没有编号为 %s 的下载", ErrNotFound, id)
-	}
-	if !found.pub.State.Active() {
-		d.mu.Unlock()
-		return fmt.Errorf("%w: 这个下载已经结束了", ErrCancelled)
-	}
-	// A queued job has no worker to interrupt, so it is finished here and now.
-	// Leaving it for dispatch to notice would mean a cancelled download that
-	// still runs the moment a slot opens.
-	if found.pub.State == JobQueued {
-		now := time.Now()
-		found.pub.State = JobCancelled
-		found.pub.Error = ErrCancelled.Error()
-		found.pub.FinishedAt = &now
-		d.mu.Unlock()
-		return nil
-	}
-	cancel := found.cancel
-	d.mu.Unlock()
 
-	if cancel != nil {
-		cancel()
+	if err := d.library.record(item.ID, Version{
+		Tag:          release.Tag,
+		Version:      release.Version,
+		Artifacts:    []Artifact{artifact},
+		Prerelease:   release.Prerelease,
+		Notes:        release.Notes,
+		PublishedAt:  release.PublishedAt,
+		AddedAt:      time.Now(),
+		GameVersions: release.GameVersions,
+		Loaders:      release.Loaders,
+	}); err != nil {
+		// The jar itself is fine, only its metadata is missing; say so rather
+		// than implying the download has to be repeated.
+		return fmt.Errorf("下载完成，但记录插件版本失败: %w", err)
 	}
 	return nil
-}
-
-// CancelAll stops everything still queued or running, and reports how many.
-// The queue page's one-click way out of a bulk action that turned out to be
-// the wrong bulk action.
-func (d *Downloader) CancelAll() int {
-	d.mu.Lock()
-	now := time.Now()
-	cancels := make([]context.CancelFunc, 0, d.active)
-	stopped := 0
-	for _, entry := range d.jobs {
-		switch entry.pub.State {
-		case JobQueued:
-			entry.pub.State = JobCancelled
-			entry.pub.Error = ErrCancelled.Error()
-			entry.pub.FinishedAt = &now
-			stopped++
-		case JobDownloading:
-			if entry.cancel != nil {
-				cancels = append(cancels, entry.cancel)
-			}
-			stopped++
-		}
-	}
-	d.mu.Unlock()
-
-	for _, cancel := range cancels {
-		cancel()
-	}
-	return stopped
-}
-
-// ClearFinished forgets the history and reports how many rows went. What is
-// still queued or running stays — this clears a record, it does not stop work.
-func (d *Downloader) ClearFinished() int {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	kept := make([]*job, 0, len(d.jobs))
-	for _, entry := range d.jobs {
-		if entry.pub.State.Active() {
-			kept = append(kept, entry)
-		}
-	}
-	dropped := len(d.jobs) - len(kept)
-	d.jobs = kept
-	return dropped
-}
-
-// Close cancels everything in flight and waits briefly for the workers to
-// unwind, so panel shutdown does not leave a writer racing against the process
-// exit.
-func (d *Downloader) Close() {
-	d.mu.Lock()
-	d.closed = true
-	now := time.Now()
-	cancels := make([]context.CancelFunc, 0, d.active)
-	for _, entry := range d.jobs {
-		switch entry.pub.State {
-		case JobQueued:
-			// Nothing will pick these up again, and leaving them as "queued"
-			// would be the panel claiming work it is not going to do.
-			entry.pub.State = JobCancelled
-			entry.pub.Error = ErrCancelled.Error()
-			entry.pub.FinishedAt = &now
-		case JobDownloading:
-			if entry.cancel != nil {
-				cancels = append(cancels, entry.cancel)
-			}
-		}
-	}
-	running := d.active > 0
-	d.mu.Unlock()
-
-	for _, cancel := range cancels {
-		cancel()
-	}
-	if !running {
-		return
-	}
-
-	done := make(chan struct{})
-	go func() {
-		d.wg.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-	}
-}
-
-// progressWriter reports the running total as bytes go past.
-type progressWriter struct {
-	to      io.Writer
-	report  func(int64)
-	written int64
-}
-
-func (w *progressWriter) Write(p []byte) (int, error) {
-	n, err := w.to.Write(p)
-	w.written += int64(n)
-	w.report(w.written)
-	return n, err
 }

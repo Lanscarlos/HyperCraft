@@ -41,8 +41,8 @@ func (w *progressWriter) Write(p []byte) (int, error) {
 // published. It records which attempt actually answered into the job's Route,
 // and returns the SHA-256 of what arrived — the identity every shelf records
 // its downloads by, whether or not the request published a digest to check.
-func transfer(ctx context.Context, q *Queue, e *entry, r Request, temp string) (string, error) {
-	attempts, err := r.Attempts(ctx)
+func transfer(ctx context.Context, q *Queue, e *entry, r Request, temp string, pub *Progress) (string, error) {
+	attempts, err := r.Attempts(ctx, pub)
 	if err != nil {
 		return "", err
 	}
@@ -174,6 +174,49 @@ func verifyDigest(r Request, sum string, wide hash.Hash, written int64) error {
 		return fmt.Errorf("%w: 下载中断，只收到 %d 字节，应为 %d", ErrChecksum, written, r.Total)
 	}
 	return fmt.Errorf("%w: %s 不符，算出 %s，应为 %s", ErrChecksum, algo, got, strings.ToLower(want))
+}
+
+// Description is what a caller learns only once it has resolved the download.
+//
+// Every field is optional: an empty string or a zero leaves what is already on
+// the job, so a caller can fill in the file name without blanking the title it
+// set at submit time. Meta is merged key by key for the same reason.
+type Description struct {
+	Title    string
+	Subtitle string
+	FileName string
+	Total    int64
+	Meta     map[string]string
+}
+
+// Describe fills in what Submit could not know.
+//
+// A job is queued before anything has talked to the upstream, so at that point
+// the panel often knows only which plugin was asked for — not which release
+// that resolves to, which jar of it, or how big. Without this the row would
+// still say what it said when the button was pressed.
+func (p *Progress) Describe(d Description) {
+	p.q.mu.Lock()
+	defer p.q.mu.Unlock()
+	job := p.entry.pub
+	if d.Title != "" {
+		job.Title = d.Title
+	}
+	if d.Subtitle != "" {
+		job.Subtitle = d.Subtitle
+	}
+	if d.FileName != "" {
+		job.FileName = d.FileName
+	}
+	if d.Total > 0 {
+		job.Total = d.Total
+	}
+	for k, v := range d.Meta {
+		if job.Meta == nil {
+			job.Meta = map[string]string{}
+		}
+		job.Meta[k] = v
+	}
 }
 
 // Extracting moves the job into its install phase. Called by the Install hook

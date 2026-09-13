@@ -28,6 +28,7 @@ import (
 	"github.com/lanscarlos/hypercraft/internal/config"
 	"github.com/lanscarlos/hypercraft/internal/confighist"
 	"github.com/lanscarlos/hypercraft/internal/dbruntime"
+	"github.com/lanscarlos/hypercraft/internal/download"
 	"github.com/lanscarlos/hypercraft/internal/hostterm"
 	"github.com/lanscarlos/hypercraft/internal/instance"
 	"github.com/lanscarlos/hypercraft/internal/javaruntime"
@@ -138,6 +139,17 @@ func run() error {
 	// They land in a panel-wide library beside the Java runtimes: downloaded
 	// once, copied into as many instances as the operator makes.
 	userAgent := "HyperCraft/" + version + " (+https://github.com/Lanscarlos/HyperCraft)"
+
+	// One queue for every shelf. Downloads used to be four separate
+	// implementations of the same thing, three of which held a single slot and
+	// answered the second request with a 409; see internal/download.
+	//
+	// It belongs to the daemon, like the server processes do: closing the tab,
+	// logging out or losing the network does not interrupt a file that is
+	// already coming down.
+	downloadQueue := download.NewQueue(logger)
+	defer downloadQueue.Close()
+
 	downloads := serverjar.NewDownloader(
 		serverjar.NewClient("", userAgent),
 		serverjar.NewLibrary(paths.CoresRoot()),
@@ -218,8 +230,7 @@ func run() error {
 	// already there when somebody opens the market; refreshed from then on
 	// behind whoever is looking at it. See plugin/picks.go.
 	pluginClient.Registry().RefreshPicks()
-	pluginDownloads := plugin.NewDownloader(pluginClient, pluginLibrary, logger)
-	defer pluginDownloads.Close()
+	pluginDownloads := plugin.NewDownloader(pluginClient, pluginLibrary, downloadQueue, logger)
 	// What every held jar declares about itself, for the ones downloaded before
 	// the panel started reading descriptors. In the background and off the
 	// startup path: it is decoration on a page nobody has opened yet, and a
@@ -485,7 +496,7 @@ func run() error {
 	downloads.Close()
 	javaInstaller.Close()
 	databaseInstaller.Close()
-	pluginDownloads.Close()
+	downloadQueue.Close()
 
 	logger.Info("stopping managed servers", "grace", shutdownGrace)
 	manager.Shutdown(shutdownGrace)

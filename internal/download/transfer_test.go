@@ -34,8 +34,8 @@ func runOne(t *testing.T, r Request) Job {
 	return jobs[0]
 }
 
-func serve(body string) func(context.Context) ([]Attempt, error) {
-	return func(context.Context) ([]Attempt, error) {
+func serve(body string) func(context.Context, *Progress) ([]Attempt, error) {
+	return func(context.Context, *Progress) ([]Attempt, error) {
 		return []Attempt{{Route: "test", Open: func(context.Context) (io.ReadCloser, error) {
 			return io.NopCloser(strings.NewReader(body)), nil
 		}}}, nil
@@ -109,7 +109,7 @@ func TestAFailingRouteFallsThroughToTheNextOne(t *testing.T) {
 	job := runOne(t, Request{
 		Kind: KindCore, Title: "paper", DedupeKey: "paper",
 		SHA256: sum(body),
-		Attempts: func(context.Context) ([]Attempt, error) {
+		Attempts: func(context.Context, *Progress) ([]Attempt, error) {
 			return []Attempt{
 				{Route: "mirror", Open: func(context.Context) (io.ReadCloser, error) {
 					return nil, errors.New("mirror is down")

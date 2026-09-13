@@ -47,7 +47,7 @@ func req(q *Queue, h *held, kind Kind, title string) Request {
 		Title:     title,
 		FileName:  title + ".bin",
 		DedupeKey: title,
-		Attempts:  func(context.Context) ([]Attempt, error) { return []Attempt{h.attempt("ok!")}, nil },
+		Attempts:  func(context.Context, *Progress) ([]Attempt, error) { return []Attempt{h.attempt("ok!")}, nil },
 		Install:   func(context.Context, string, string, *Progress) (string, error) { return title + "-ref", nil },
 	}
 }
@@ -317,7 +317,7 @@ func TestAFailedJobSurvivesTheNextDownload(t *testing.T) {
 
 	bad := Request{
 		Kind: KindCore, Title: "bad", DedupeKey: "bad",
-		Attempts: func(context.Context) ([]Attempt, error) { return nil, errors.New("boom") },
+		Attempts: func(context.Context, *Progress) ([]Attempt, error) { return nil, errors.New("boom") },
 	}
 	if _, err := q.Submit(bad); err != nil {
 		t.Fatal(err)
