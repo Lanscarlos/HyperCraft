@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -418,18 +417,4 @@ func installID(release Release) string {
 	// all "temurin-…" and keep working: the store reads their release file,
 	// not their directory name.
 	return release.Distribution + "-" + version + "-" + release.ImageType
-}
-
-// progressWriter reports the running total as bytes go past.
-type progressWriter struct {
-	to      io.Writer
-	report  func(int64)
-	written int64
-}
-
-func (w *progressWriter) Write(p []byte) (int, error) {
-	n, err := w.to.Write(p)
-	w.written += int64(n)
-	w.report(w.written)
-	return n, err
 }

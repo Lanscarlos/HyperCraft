@@ -29,6 +29,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/lanscarlos/hypercraft/internal/download"
 )
 
 // ErrNoAsset means the release carries no build for the running platform.
@@ -86,6 +88,10 @@ type Release struct {
 	assets map[string]string
 }
 
+// routeSet is the set in internal/download release downloads are routed
+// through. The same one plugin jars use: they come off the same CDN.
+const routeSet = "github"
+
 // Updater checks for and installs releases of a single GitHub repository.
 type Updater struct {
 	repo    string // "owner/name"
@@ -98,8 +104,8 @@ type Updater struct {
 	// apiBase points at GitHub; tests redirect it at an httptest server.
 	apiBase string
 
-	// mirror prefixes release download URLs, e.g. "https://ghfast.top/".
-	// Empty fetches from GitHub directly. See SetMirror for what it may carry.
+	// mirror is the chosen route id, or a custom "https://…/" prefix. See
+	// SetMirror for what it may carry.
 	mirror string
 
 	// downloadPrefix is the URL prefix a mirror is allowed to front. Tests
@@ -129,6 +135,7 @@ func New(repo, currentVersion string) *Updater {
 		current:        currentVersion,
 		client:         &http.Client{Timeout: httpTimeout},
 		channel:        ChannelStable,
+		mirror:         download.RouteAuto,
 		apiBase:        "https://api.github.com",
 		downloadPrefix: "https://github.com/",
 	}
@@ -143,58 +150,97 @@ func (u *Updater) SetChannel(c Channel) { u.channel = ParseChannel(string(c)) }
 // Channel is the release channel this updater follows.
 func (u *Updater) Channel() Channel { return u.channel }
 
-// SetMirror configures a proxy for release downloads, given as a prefix that a
-// GitHub URL is appended to — "https://ghfast.top/" turns
-// https://github.com/o/r/releases/download/v1/x.tar.gz into
-// https://ghfast.top/https://github.com/o/r/releases/download/v1/x.tar.gz.
-// Empty disables it.
+// SetMirror chooses the route release downloads go through, by the id of one of
+// internal/download's "github" routes or as a custom "https://…/" prefix.
+//
+// The table used to be written out here as a single bare prefix string — no
+// list, no automatic order, no fallback — while the plugin shelf held a full
+// copy of the same four proxies. They are one table now; what stays here is the
+// rule below about what a mirror is and is not allowed to decide.
 //
 // A mirror carries the release archive, which is the megabytes and therefore
 // the slow part. It does not get to decide what that archive should contain:
 // the checksums are fetched from GitHub first and only fall back to the mirror
 // if GitHub is unreachable, so serving a doctored binary requires breaking
-// GitHub's TLS too. Nor does it carry the update check — the mirrors people
-// use for this do not proxy api.github.com at all.
-func (u *Updater) SetMirror(prefix string) {
-	prefix = strings.TrimSpace(prefix)
-	if prefix != "" && !strings.HasSuffix(prefix, "/") {
-		prefix += "/"
+// GitHub's TLS too. Nor does it carry the update check — the mirrors people use
+// for this do not proxy api.github.com at all.
+func (u *Updater) SetMirror(id string) error {
+	// Empty means direct here, not automatic. That is this API's long-standing
+	// contract — PUT /api/update/mirror with "" is how an operator turns the
+	// proxy off, and config.UpdateMirror stores it as a deliberate choice
+	// distinct from "never configured" — and it predates the shared table,
+	// where empty means automatic. The mapping happens at this boundary rather
+	// than by changing either side.
+	if strings.TrimSpace(id) == "" {
+		u.mirror = ""
+		return nil
 	}
-	u.mirror = prefix
+	resolved, err := download.ResolveRoute(routeSet, id)
+	if err != nil {
+		return err
+	}
+	u.mirror = resolved
+	return nil
 }
 
-// Mirror is the configured download proxy, or "" for direct downloads.
+// Mirror is the configured route id.
 func (u *Updater) Mirror() string { return u.mirror }
 
-// mirrored rewrites a GitHub download URL to go through the mirror, or returns
-// "" when no mirror applies. Only github.com URLs are rewritten: the proxies
-// are GitHub-specific, and prefixing anything else would just produce a 404.
-func (u *Updater) mirrored(raw string) string {
-	if u.mirror == "" || !strings.HasPrefix(raw, u.downloadPrefix) {
-		return ""
-	}
-	return u.mirror + raw
+// Mirrors lists what an operator can pick, automatic first.
+func Mirrors() []download.Route {
+	routes := download.RouteSets[routeSet].Routes
+	out := make([]download.Route, 0, len(routes)+1)
+	out = append(out, download.Route{
+		ID:   download.RouteAuto,
+		Name: "自动",
+		Note: "按上面的顺序挨个试，哪个通用哪个",
+	})
+	return append(out, routes...)
 }
 
-// bulkOrder is the URL preference for the release archive: mirror first,
-// because speed is the whole point, falling back to GitHub if it fails.
-func (u *Updater) bulkOrder(raw string) []string {
-	if m := u.mirrored(raw); m != "" {
-		return []string{m, raw}
+// proxied is the mirror URLs for one release asset, most preferred first and
+// without the origin. Empty when no route applies.
+func (u *Updater) proxied(raw string) []string {
+	if !strings.HasPrefix(raw, u.downloadPrefix) {
+		// Only github.com URLs are rewritten: the proxies are GitHub-specific,
+		// and prefixing anything else would just produce a 404. The test
+		// updater points downloadPrefix at its own origin, which is what makes
+		// the mirror/direct split observable there.
+		return nil
 	}
-	return []string{raw}
+	chosen := u.mirror
+	if chosen == "" {
+		// Off. See SetMirror.
+		return nil
+	}
+	var out []string
+	for _, route := range download.RouteOrder(routeSet, chosen, download.Origin(raw)) {
+		if route.Kind == download.RouteDirect {
+			continue
+		}
+		if link := route.Link(download.Origin(raw)); link != "" {
+			out = append(out, link)
+		}
+	}
+	return out
+}
+
+// bulkOrder is the URL preference for the release archive: mirrors first,
+// because speed is the whole point, falling back to GitHub if they fail.
+func (u *Updater) bulkOrder(raw string) []string {
+	return append(u.proxied(raw), raw)
 }
 
 // trustedOrder is the URL preference for the checksums: GitHub first, because
 // they are what stops a mirror substituting its own binary, and they are small
-// enough that fetching them slowly costs nothing. The mirror remains a fallback
+// enough that fetching them slowly costs nothing. The mirrors remain a fallback
 // so a blocked GitHub still leaves the panel updatable — with the mirror
 // trusted for that run, which the caller reports.
+//
+// This is why the route table is consulted but not obeyed: RouteOrder puts the
+// proxies first, which is right for the archive and exactly wrong here.
 func (u *Updater) trustedOrder(raw string) []string {
-	if m := u.mirrored(raw); m != "" {
-		return []string{raw, m}
-	}
-	return []string{raw}
+	return append([]string{raw}, u.proxied(raw)...)
 }
 
 // AssetName is the release archive this platform needs. It mirrors the naming

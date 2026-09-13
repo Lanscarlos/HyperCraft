@@ -82,7 +82,7 @@ func (m *mirrorProxy) setBroken(broken bool) {
 
 func TestMirrorRewritesOnlyGitHubURLs(t *testing.T) {
 	u := New("owner/repo", "v1.0.0")
-	u.SetMirror("https://ghfast.top")
+	_ = u.SetMirror("https://ghfast.top")
 
 	// A missing trailing slash is the obvious way to mis-type a prefix, and
 	// would otherwise glue the two URLs together.
@@ -91,8 +91,8 @@ func TestMirrorRewritesOnlyGitHubURLs(t *testing.T) {
 	}
 
 	gh := "https://github.com/o/r/releases/download/v1/x.tar.gz"
-	if got := u.mirrored(gh); got != "https://ghfast.top/"+gh {
-		t.Errorf("mirrored(github) = %q", got)
+	if got := u.proxied(gh); len(got) != 1 || got[0] != "https://ghfast.top/"+gh {
+		t.Errorf("proxied(github) = %q", got)
 	}
 	// These proxies only front GitHub; prefixing anything else yields a 404 at
 	// best, and at worst sends a request somewhere the operator did not intend.
@@ -100,14 +100,36 @@ func TestMirrorRewritesOnlyGitHubURLs(t *testing.T) {
 		"https://api.github.com/repos/o/r/releases/latest",
 		"https://example.invalid/x.tar.gz",
 	} {
-		if got := u.mirrored(other); got != "" {
-			t.Errorf("mirrored(%q) = %q, want no rewrite", other, got)
+		if got := u.proxied(other); len(got) != 0 {
+			t.Errorf("proxied(%q) = %q, want no rewrite", other, got)
 		}
 	}
 
-	u.SetMirror("")
-	if got := u.mirrored(gh); got != "" {
-		t.Errorf("mirrored with no mirror = %q, want no rewrite", got)
+	// Empty means off here, not automatic — see SetMirror.
+	if err := u.SetMirror(""); err != nil {
+		t.Fatalf("SetMirror(\"\"): %v", err)
+	}
+	if got := u.proxied(gh); len(got) != 0 {
+		t.Errorf("proxied with no mirror = %q, want no rewrite", got)
+	}
+
+	// The checksums are what stop a mirror substituting its own binary, so they
+	// go to GitHub first however the archive is routed. RouteOrder puts the
+	// proxies first, which is right for the archive and exactly wrong here.
+	if err := u.SetMirror("auto"); err != nil {
+		t.Fatalf("SetMirror(auto): %v", err)
+	}
+	bulk, trusted := u.bulkOrder(gh), u.trustedOrder(gh)
+	if len(bulk) < 2 || bulk[len(bulk)-1] != gh {
+		t.Fatalf("bulkOrder = %q, want mirrors then GitHub", bulk)
+	}
+	if len(trusted) < 2 || trusted[0] != gh {
+		t.Fatalf("trustedOrder = %q, want GitHub first", trusted)
+	}
+	// Automatic now means every proxy, not the single one this file used to
+	// hold. A blocked ghfast no longer means a panel that cannot update.
+	if len(bulk) < 3 {
+		t.Errorf("automatic gave only %d routes, want the whole list then GitHub", len(bulk))
 	}
 }
 
@@ -231,7 +253,7 @@ func TestNoMirrorMeansEveryRequestGoesDirect(t *testing.T) {
 
 	u, _ := f.updaterFor(t, "v1.0.0")
 	u.downloadPrefix = f.server.URL
-	u.SetMirror("")
+	_ = u.SetMirror("")
 
 	rel, err := u.Check(context.Background())
 	if err != nil {

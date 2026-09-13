@@ -27,7 +27,12 @@ const DefaultMaxUploadMB = 2048
 // opt-in. It only ever carries the release archive: the checksums it is
 // verified against are fetched from GitHub itself, so a mirror cannot swap the
 // binary for one of its own. See internal/selfupdate.
-const DefaultUpdateMirror = "https://ghfast.top/"
+//
+// A route id rather than the bare prefix it used to be: the table moved to
+// internal/download and is shared with the plugin shelf, which had the complete
+// copy. A config written before that still holds the prefix, and still works —
+// an unrecognised "https://…/" is accepted as an operator's own proxy.
+const DefaultUpdateMirror = "ghfast"
 
 // DefaultUpdateChannel is the release channel a panel follows unless the
 // operator picks the other one. Snapshots are built from every green commit on
