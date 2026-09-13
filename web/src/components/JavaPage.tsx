@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
 
 import { ask } from '../confirm'
 import { formatBytes, formatDate } from '../format'
@@ -52,6 +53,10 @@ const IMAGE_TYPES: { value: 'jre' | 'jdk'; label: string; note: string }[] = [
  */
 export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCores: () => void }) {
   const { overview, majors, distributions, job, installing, busy } = java
+  // Shut by default: adding a Java by hand is a thing you do once, and
+  // this page is mostly opened to install one or to read what is there.
+  const [adding, setAdding] = useState(false)
+  const [newPath, setNewPath] = useState('')
   const [major, setMajor] = useState<number | null>(null)
   const [imageType, setImageType] = useState<'jre' | 'jdk'>('jre')
   const [showAllMajors, setShowAllMajors] = useState(false)
@@ -81,19 +86,52 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
   }, [rememberedDistribution])
 
   const remove = async (runtime: JavaRuntime) => {
+    // Two different deletes behind one button. Removing a managed runtime
+    // erases files; removing a registered path only forgets it, and says so —
+    // promising to free bytes it will not free is worse than saying nothing.
+    const external = runtime.origin === 'external'
     const ok = await ask({
-      title: `删除 Java ${runtime.version}？`,
-      lead: `会从面板的运行时目录里删掉它，释放 ${formatBytes(runtime.size)}。`,
+      title: external
+        ? `不再登记这个 Java？`
+        : `删除 Java ${runtime.version}？`,
+      lead: external
+        ? '面板只是忘掉这条路径，磁盘上的 Java 一个字节都不动。'
+        : `会从面板的运行时目录里删掉它，释放 ${formatBytes(runtime.size)}。`,
       detail:
         runtime.usedBy.length > 0
-          ? `实例「${runtime.usedBy.join('、')}」还在用它，删掉之后它们下次启动会失败，得先改到别的 Java。`
-          : '没有实例在用它，系统自带的 Java 也不受影响。',
-      confirmLabel: '删除',
+          ? `实例「${runtime.usedBy.join('、')}」还在用它。它们照常启动——启动读的是实例自己的配置，不是这张表——但下次在设置里改动 Java 之前，得先重新选一个。`
+          : external
+            ? '没有实例在用它。'
+            : '没有实例在用它，系统自带的 Java 也不受影响。',
+      confirmLabel: external ? '不再登记' : '删除',
       danger: true,
     })
     if (!ok) return
+    if (external) {
+      await java.unregister(runtime.id)
+      return
+    }
     await java.remove(runtime.id)
   }
+
+  const submitPath = (event: FormEvent) => {
+    event.preventDefault()
+    const path = newPath.trim()
+    if (path) void java.register(path)
+  }
+
+  // The controller reports a refusal through java.error rather than throwing,
+  // so the submit handler cannot tell whether the path was taken. The row
+  // turning up in the list can — and it is the only proof worth acting on.
+  // A rejected path stays in the box, which is where it has to be to be fixed.
+  useEffect(() => {
+    const path = newPath.trim()
+    if (!path || !overview) return
+    if (overview.runtimes.some((entry) => entry.javaPath === path)) {
+      setNewPath('')
+      setAdding(false)
+    }
+  }, [overview, newPath])
 
   if (!overview) {
     // The heading and the lead are constants, not data — showing them for real
@@ -130,6 +168,16 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
 
   const runtimes = overview.runtimes
   const totalSize = runtimes.reduce((sum, runtime) => sum + runtime.size, 0)
+  // The prompt to register what is on PATH exists to answer "I have a Java and
+  // the panel will not let me pick it". A bare "java" entry — what an instance
+  // configured before the registry says — answers that too, so either one
+  // silences it.
+  const systemUsable =
+    overview.system != null &&
+    runtimes.some(
+      (entry) => entry.javaPath === overview.system?.path || entry.javaPath === 'java',
+    )
+  const detected = systemUsable ? null : overview.system
   // Both distributions ship every major, but only the LTS ones (and whatever
   // is already on disk, or picked) are worth putting in front of someone
   // running a Minecraft server. The rest are one click away.
@@ -183,28 +231,65 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
 
       <section className="panel">
         <div className="chart-head">
-          <h2 className="panel__title">已安装</h2>
+          <h2 className="panel__title">可用的 Java</h2>
           <p className="chart-head__meta">
             {runtimes.length > 0
-              ? `面板管理 ${runtimes.length} 个，共 ${formatBytes(totalSize)}`
-              : '面板还没有装过 Java'}
+              ? `${runtimes.length} 个可选，面板自己装的占用 ${formatBytes(totalSize)}`
+              : '还没有可选的 Java'}
           </p>
+          <div className="chart-head__tools">
+            <button className="link" type="button" onClick={() => setAdding((on) => !on)}>
+              {adding ? '取消' : '添加本机 Java'}
+            </button>
+          </div>
         </div>
 
-        {runtimes.length === 0 && !overview.system ? (
+        {adding && (
+          <form className="java-add" onSubmit={submitPath}>
+            <input
+              type="text"
+              className="input-slim java-add__path"
+              value={newPath}
+              spellCheck={false}
+              autoFocus
+              aria-label="Java 可执行文件的路径"
+              placeholder="/usr/lib/jvm/java-21-openjdk/bin/java"
+              onChange={(e) => setNewPath(e.target.value)}
+            />
+            <Button type="submit" disabled={busy || newPath.trim() === ''}>
+              登记
+            </Button>
+            <p className="java-add__note muted">
+              填 java 可执行文件本身，不是它所在的目录。面板会跑一次{' '}
+              <code>java -version</code> 问出版本再记下来——问不出来的不会被登记。
+            </p>
+          </form>
+        )}
+
+        {runtimes.length === 0 && !detected ? (
           <div className="welcome__empty">
-            <p>这台机器上还没有任何 Java，服务端起不来。</p>
-            <p className="muted">下面挑一个版本装上，几十秒的事，全程不动系统环境。</p>
+            <p>还没有可选的 Java，实例的启动设置里会是空的。</p>
+            <p className="muted">
+              下面挑一个版本装上，几十秒的事，全程不动系统环境；已经有 Java 的话，上面「添加本机
+              Java」填路径登记进来。
+            </p>
           </div>
         ) : (
-          <Shelf head={['运行时', '完整版本', '体积', '安装于', '使用中的实例', '']}>
-            {overview.system && <SystemRow system={overview.system} />}
+          <Shelf head={['Java', '完整版本', '体积', '装入 / 登记于', '使用中的实例', '']}>
+            {detected && (
+              <DetectedRow
+                system={detected}
+                busy={busy}
+                onRegister={() => void java.register(detected.path, true)}
+              />
+            )}
             {runtimes.map((runtime) => (
               <RuntimeRow
                 key={runtime.id}
                 runtime={runtime}
                 busy={busy}
                 onRemove={() => void remove(runtime)}
+                onReprobe={() => void java.reprobe(runtime.id)}
               />
             ))}
           </Shelf>
@@ -394,7 +479,27 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
 
 /** The machine's own Java. Listed because an instance can launch with it, but
  *  it is not the panel's to delete. */
-function SystemRow({ system }: { system: SystemJava }) {
+/**
+ * The Java the panel found on this machine but has not been told it may use.
+ *
+ * It is an offer, not an entry: detection is the panel guessing, and a list
+ * where every row was decided by a person is the whole point of the registry.
+ * Accepting it registers the absolute path rather than the bare "java" — the
+ * operator is confirming this Java, not a promise to follow PATH wherever it
+ * goes later.
+ *
+ * Once accepted the row disappears, because the same Java is then in the list
+ * below like any other.
+ */
+function DetectedRow({
+  system,
+  busy,
+  onRegister,
+}: {
+  system: SystemJava
+  busy: boolean
+  onRegister: () => void
+}) {
   return (
     <article className="asset asset--muted">
       <div className="asset__head">
@@ -403,6 +508,7 @@ function SystemRow({ system }: { system: SystemJava }) {
           <span className="asset__label">
             <strong>系统 Java {system.major || '?'}</strong>
             <Badge>来自 {system.source}</Badge>
+            <Badge tone="muted">未登记</Badge>
           </span>
           <span className="asset__sub">
             <span>{system.vendor || '未知发行方'}</span>
@@ -424,7 +530,10 @@ function SystemRow({ system }: { system: SystemJava }) {
       </dl>
 
       <footer className="asset__actions asset__actions--split">
-        <span className="muted">面板不管理它，也不会删除它。</span>
+        <span className="muted">面板发现了它，但实例里还选不到。</span>
+        <button className="link" type="button" disabled={busy} onClick={onRegister}>
+          登记进来
+        </button>
       </footer>
     </article>
   )
@@ -434,20 +543,29 @@ function RuntimeRow({
   runtime,
   busy,
   onRemove,
+  onReprobe,
 }: {
   runtime: JavaRuntime
   busy: boolean
   onRemove: () => void
+  onReprobe: () => void
 }) {
+  const external = runtime.origin === 'external'
   return (
     <article className="asset">
       <div className="asset__head">
-        <span className="asset__tile asset__tile--accent">{runtime.major}</span>
+        <span className={`asset__tile${external ? '' : ' asset__tile--accent'}`}>
+          {runtime.major || '?'}
+        </span>
         <div className="asset__title">
           <span className="asset__label">
-            <strong>Java {runtime.major}</strong>
-            <Badge>{runtime.imageType.toUpperCase()}</Badge>
+            <strong>Java {runtime.major || '?'}</strong>
+            {external ? <Badge tone="muted">本机路径</Badge> : <Badge>{runtime.imageType.toUpperCase()}</Badge>}
             {runtime.live && <Badge tone="live">运行中</Badge>}
+            {/* The only colour in this list. A path that is gone still shows,
+                because an instance points at it — but it has to say so, or the
+                first anyone hears of it is a server that will not start. */}
+            {!runtime.valid && <Badge tone="warn">路径已失效</Badge>}
           </span>
           <span className="asset__sub">
             <span>{runtime.vendor || '未知发行方'}</span>
@@ -459,14 +577,20 @@ function RuntimeRow({
       <dl className="asset__facts asset__facts--split">
         <div>
           <dt>完整版本</dt>
-          <dd>{runtime.version}</dd>
+          <dd>{runtime.version || '未知'}</dd>
         </div>
+        {/* A registered path is somebody else's directory: the panel neither
+            measured it nor put it there. The cell stays to hold its track. */}
+        {external ? (
+          <div className="asset__hole" aria-hidden="true" />
+        ) : (
+          <div>
+            <dt>体积</dt>
+            <dd>{formatBytes(runtime.size)}</dd>
+          </div>
+        )}
         <div>
-          <dt>体积</dt>
-          <dd>{formatBytes(runtime.size)}</dd>
-        </div>
-        <div>
-          <dt>安装于</dt>
+          <dt>{external ? '登记于' : '安装于'}</dt>
           <dd>{formatDate(runtime.installedAt)}</dd>
         </div>
       </dl>
@@ -484,14 +608,25 @@ function RuntimeRow({
         ) : (
           <span className="muted">暂时没有实例用它</span>
         )}
-        <button
-          className="link link--danger"
-          disabled={busy || runtime.live}
-          title={runtime.live ? '有实例正在用它运行，先停服' : undefined}
-          onClick={onRemove}
-        >
-          删除
-        </button>
+        <span className="asset__buttons">
+          {/* Only for a registered path: a managed runtime's version comes off
+              the release file the panel unpacked, and nothing upgrades it in
+              place. Somebody else's JDK does get upgraded under the panel. */}
+          {external && (
+            <button className="link" type="button" disabled={busy} onClick={onReprobe}>
+              重新检测
+            </button>
+          )}
+          <button
+            className="link link--danger"
+            type="button"
+            disabled={busy || runtime.live}
+            title={runtime.live ? '有实例正在用它运行，先停服' : undefined}
+            onClick={onRemove}
+          >
+            {external ? '不再登记' : '删除'}
+          </button>
+        </span>
       </footer>
     </article>
   )

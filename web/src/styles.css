@@ -9075,6 +9075,38 @@ small.field__bad {
   font-size: 11px;
 }
 
+.asset__buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Registering a Java by hand: one path, one button, one note.
+   Intrinsic rather than a breakpoint — the path box takes whatever is left and
+   the note drops to its own line once the row runs out, which happens at a
+   different width depending on how wide the sidebar is. min-width: 0 on the
+   box because a path is exactly the long unbroken string that otherwise pushes
+   the button off the card. */
+.java-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 0 2px;
+}
+
+.java-add__path {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.java-add__note {
+  flex: 1 1 100%;
+  font-size: 11px;
+  margin: 0;
+}
+
 .asset__users {
   display: flex;
   align-items: center;
