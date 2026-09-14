@@ -106,6 +106,21 @@ function Toast({ item }: { item: ToastItem }) {
           </button>
         )}
       </span>
+      {/* The one thing to do about what just landed. A link rather than a
+          button face: the toast is already an interruption, and a filled
+          control in the corner would be a second first-thing-to-press
+          competing with the page. */}
+      {item.action && (
+        <button
+          className="toast__action"
+          onClick={() => {
+            item.action?.onSelect()
+            close()
+          }}
+        >
+          {item.action.label}
+        </button>
+      )}
       {!item.sticky && (
         <button className="toast__close" onClick={close} aria-label="关闭">
           ×

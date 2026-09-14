@@ -6194,285 +6194,12 @@ details[open]::details-content {
 
 /* ------------------------------------------------------------- file manager
 
-   The list is the panel's one real table, and it is read the way a file
-   manager is read anywhere else: find the folder, find the thing that changed
-   last, act on it. So the columns are pinned to fixed widths rather than left
-   to the browser's content-driven guess — the 操作 column in particular, whose
-   buttons differ per row and used to make its edge zigzag down the page — and
-   everything that is not the name is set at a weight below it. */
+   The vocabulary the file pane is built out of — the tick, the type mark, the
+   row button — kept here rather than in the pane's own section because the
+   plugin and schematic libraries draw file rows too, and one file with two
+   icons is two answers to the same question.
 
-.files {
-  position: relative;
-}
-
-.files__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-/* Up one level, next to the path rather than as a row inside the listing. A
-   "../" line pretending to be a file is a habit inherited from FTP clients,
-   and it is the one row in the table that must never be ticked or deleted. */
-.files__up {
-  display: inline-grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-dim);
-  cursor: pointer;
-  transition:
-    background var(--dur) var(--ease),
-    color var(--dur) var(--ease),
-    transform var(--dur-1) var(--ease);
-}
-
-.files__up:hover:not(:disabled) {
-  background: var(--surface-3);
-  color: var(--text);
-}
-
-.files__up:active:not(:disabled) {
-  transform: scale(var(--press));
-}
-
-.files__up:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 2px;
-  font-size: 13px;
-  min-width: 0;
-}
-
-.breadcrumb__step {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.breadcrumb__crumb {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: none;
-  border: none;
-  border-radius: 5px;
-  color: var(--accent-hover);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 13px;
-  padding: 2px 6px;
-  transition:
-    background var(--dur) var(--ease),
-    transform var(--dur-1) var(--ease);
-}
-
-.breadcrumb__crumb:hover {
-  background: var(--accent-soft);
-}
-
-.breadcrumb__crumb:active {
-  transform: scale(0.94);
-}
-
-/* The last crumb is where you already are: still clickable, because pressing
-   it is how you get back from a filtered view, but it stops advertising
-   itself as somewhere to go. */
-.breadcrumb__crumb--here {
-  color: var(--text);
-  font-weight: 600;
-}
-
-.breadcrumb__sep {
-  color: var(--text-faint);
-}
-
-/* 编辑模式 used to be the fourth button in a row of four, and read as the
-   third: same height, same border, same weight as 新建文件夹 beside it. It is
-   not another thing to do to a file, it is what the screen is for — so it gets
-   a shape none of the buttons have and a line saying what it does, and it sits
-   beside the page title, where the panel keeps what a page does. Still not
-   filled: 上传文件 is this screen's one solid button, and a second one would be
-   two first things to press. */
-.file-mode {
-  display: flex;
-  align-items: center;
-  /* Keeps it against the right edge on the row it ends up on — the head's own
-     space-between already does that on the title's row, but once the head
-     wraps this is the only thing holding it there. */
-  margin-left: auto;
-  gap: 8px;
-  padding: 5px 10px 5px 8px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-dim);
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-  transition:
-    background var(--dur) var(--ease),
-    border-color var(--dur) var(--ease),
-    color var(--dur) var(--ease);
-}
-
-.file-mode:hover {
-  background: var(--surface-3);
-  border-color: var(--border-accent);
-  color: var(--text);
-}
-
-.file-mode:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: var(--ring);
-}
-
-.file-mode__glyph {
-  width: 18px;
-  height: 18px;
-  flex: none;
-  color: var(--accent);
-}
-
-.file-mode__text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  line-height: 1.3;
-}
-
-.file-mode__text b {
-  color: var(--text);
-  font-size: 12.5px;
-  font-weight: 600;
-}
-
-.file-mode__text small {
-  color: var(--text-faint);
-  font-size: 11px;
-}
-
-/* The bar that appears once something is ticked. Tinted rather than plain, so
-   it reads as a mode the list is in and not as another row of tools. */
-.file-bulk {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 8px 12px;
-  background: var(--accent-soft);
-  border: 1px solid var(--border-accent);
-  border-radius: var(--radius);
-  animation: rise 200ms var(--ease) both;
-}
-
-.file-bulk__count {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.file-bulk__clear {
-  margin-left: auto;
-}
-
-/* ---- the listing ---------------------------------------------------- */
-
-.data-table--files td,
-.data-table--files th {
-  padding-top: 7px;
-  padding-bottom: 7px;
-}
-
-.data-table--files col.col--tick {
-  width: 38px;
-}
-
-.data-table--files col.col--size {
-  width: 104px;
-}
-
-.data-table--files col.col--time {
-  width: 148px;
-}
-
-/* Three 28px buttons and their gaps, to the pixel: the column that used to be
-   as wide as whichever row had the most links in it. */
-.data-table--files col.col--ops {
-  width: 116px;
-}
-
-.data-table--files td.col--tick,
-.data-table--files th.col--tick {
-  padding-right: 0;
-}
-
-.data-table--files td.col--ops,
-.data-table--files th.col--ops {
-  text-align: right;
-}
-
-.data-table tbody tr[data-ticked] {
-  background: var(--accent-soft);
-}
-
-/* A column header that is also a control. It keeps the header's type and adds
-   the arrow, which is always in the DOM — reserved space, faint until the
-   column is the one being sorted — so switching columns does not shuffle the
-   labels sideways. */
-.th-sort {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: none;
-  border: none;
-  padding: 0;
-  color: inherit;
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  cursor: pointer;
-  transition: color var(--dur) var(--ease);
-}
-
-.th-sort:hover {
-  color: var(--text);
-}
-
-.th-sort__mark {
-  font-size: 8px;
-  opacity: 0;
-  transition: opacity var(--dur) var(--ease);
-}
-
-.th-sort:hover .th-sort__mark {
-  opacity: 0.45;
-}
-
-[aria-sort='ascending'] .th-sort,
-[aria-sort='descending'] .th-sort {
-  color: var(--text);
-}
-
-[aria-sort='ascending'] .th-sort__mark,
-[aria-sort='descending'] .th-sort__mark {
-  opacity: 1;
-}
-
-.num .th-sort {
-  justify-content: flex-end;
-}
+   The pane's own layout is further down, under 文件页. */
 
 .tick {
   width: 15px;
@@ -6481,13 +6208,6 @@ details[open]::details-content {
   accent-color: var(--accent);
   cursor: pointer;
   vertical-align: middle;
-}
-
-.filecell {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
 }
 
 /* The type mark. A tinted tile rather than a bare glyph: at 13px the eye finds
@@ -6522,46 +6242,6 @@ details[open]::details-content {
 .fileicon--pkg {
   background: var(--surface-4);
   color: var(--text);
-}
-
-.file-link {
-  display: inline-block;
-  max-width: 100%;
-  background: none;
-  border: none;
-  color: var(--text);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 13px;
-  padding: 0;
-  overflow: hidden;
-  text-align: left;
-  text-overflow: ellipsis;
-  transition: color var(--dur) var(--ease);
-}
-
-.file-link:hover:not(:disabled) {
-  color: var(--accent-hover);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.file-link--plain,
-.file-link:disabled {
-  cursor: default;
-  color: var(--text);
-}
-
-.file-time {
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-
-.file-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
 }
 
 /* Square, quiet until pointed at. Three of them per row, in the same order on
@@ -6610,186 +6290,33 @@ details[open]::details-content {
   color: var(--danger);
 }
 
-/* The empty-state row is not a file, so it does not light up like one. Typed
-   against the same ancestors as the hover rule it is overriding. */
-.data-table tbody tr.file-empty__row:hover {
-  background: none;
-}
-
-/* Cells in .data-table are nowrap, which is right for a file name and wrong for
-   the sentence that stands in for the whole listing: on a phone it ran straight
-   off the right edge of the card. A block of prose in a table cell has to opt
-   back into wrapping. */
-.file-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 30px 16px;
-  color: var(--text-dim);
-  text-align: center;
-  white-space: normal;
-}
-
-.file-empty p {
-  margin: 0;
-  font-size: 13px;
-}
-
-.file-empty__glyph {
-  width: 34px;
-  height: 34px;
-  color: var(--text-faint);
-  opacity: 0.7;
-}
-
-.files__foot {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  color: var(--text-faint);
-  font-size: 11.5px;
-}
-
-.files__root {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0 5px;
-  min-width: 0;
-}
-
-/* Only the path is allowed to be cut short; the sentence beside it is short,
-   fixed and the reason the path is worth showing at all. */
-.files__root code {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-}
-
-.files__root-note {
-  white-space: nowrap;
-}
-
 /* ---- drag and drop --------------------------------------------------- */
 
-.files--dropping {
-  border-color: var(--accent);
-}
-
-/* Over the panel rather than around it: an outline on a card this tall is
-   mostly off screen, and the one thing the operator needs told — *which*
-   directory these files are about to land in — has nowhere to go on an
-   outline. */
-.file-drop {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 20px;
-  background: color-mix(in srgb, var(--surface-1) 82%, transparent);
-  border-radius: var(--radius-lg);
-  pointer-events: none;
-  z-index: 2;
-  animation: fade var(--dur) var(--ease) both;
-}
-
-/* Sticky rather than centred: a directory of two hundred files makes this
-   overlay several screens tall, and the middle of it is nowhere near the
-   middle of what the operator is looking at. */
-.file-drop__card {
-  position: sticky;
-  top: 26vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 22px 34px;
-  background: var(--surface-1);
-  border: 2px dashed var(--accent);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
-  color: var(--text);
-  font-size: 14px;
-  text-align: center;
-}
-
-.file-drop__card small {
-  color: var(--text-faint);
-  font-size: 11.5px;
-}
-
-.file-drop__glyph {
-  width: 26px;
-  height: 26px;
-  color: var(--accent);
-}
-
 /* ---- the text editor -------------------------------------------------- */
-
-.editor__path {
-  margin: 2px 0 0;
-  color: var(--text-faint);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  word-break: break-all;
-}
-
-.editor__dot::before {
-  content: '';
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: var(--ok);
-  vertical-align: middle;
-}
-
-.editor__dot--dirty {
-  color: var(--caution-ink);
-}
-
-.editor__dot--dirty::before {
-  background: var(--caution);
-}
-
-.editor__hint {
-  color: var(--text-faint);
-  font-size: 11px;
-}
 
 /* The textarea is the only thing here that scrolls. The gutter and the
    coloured copy are translated to wherever it has got to (see FileEditor).
    All three must agree on font, size and line-height for that to line up —
    one declaration, three readers. */
+/* The box is the pane, not a widget inside one. It used to be a fixed height
+   you could drag taller, which is what a text box in the middle of a form is;
+   this one is the thing the screen is for, so it takes the height it is
+   given and the pane above it owns the frame. */
 .editor {
   display: flex;
-  height: min(58vh, 640px);
-  min-height: 240px;
+  flex: 1;
+  min-height: 0;
   background: var(--bg-input);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--inset);
   overflow: hidden;
-  resize: vertical;
 }
 
-.editor:focus-within {
-  border-color: var(--accent);
-  box-shadow: var(--ring);
-}
-
-/* Three layers that have to agree to the pixel: the numbers in the margin, the
-   colours underneath, and the text actually being typed into. One declaration,
-   three selectors — a second copy of any of these five properties is a drift
-   waiting to happen, and it shows up as colour sliding off the words. */
+/* Four layers that have to agree to the pixel: the numbers in the margin, the
+   tint behind the changed rows, the colours underneath, and the text actually
+   being typed into. One declaration, four selectors — a second copy of any of
+   these five properties is a drift waiting to happen, and it shows up as
+   colour sliding off the words, or as a change mark against the wrong line. */
 .editor__gutter,
+.editor__marks,
 .editor__hl,
 .editor__text {
   padding: 12px 0;
@@ -6807,9 +6334,9 @@ details[open]::details-content {
    layer costs more than the repaint the clip below already keeps small. */
 .editor__gutter {
   flex: 0 0 auto;
-  min-width: 44px;
+  width: 52px;
   padding-right: 10px;
-  padding-left: 12px;
+  padding-left: 8px;
   background: var(--surface-2);
   border-right: 1px solid var(--border);
   color: var(--text-faint);
@@ -6817,6 +6344,65 @@ details[open]::details-content {
   text-align: right;
   white-space: pre;
   user-select: none;
+}
+
+/* One element per line, which the old single text node did not need. The cost
+   is real — a 20 000-line log is 20 000 elements — and it is paid for by the
+   same threshold that already turns off the colouring: past 400 000
+   characters the gutter is not drawn at all (see FileEditor's `lines`). */
+.editor__ln {
+  position: relative;
+  padding-right: 2px;
+}
+
+.editor__ln--changed {
+  background: var(--caution-soft);
+  color: var(--caution-ink);
+  font-weight: 600;
+}
+
+/* Over the number rather than beside it: the rail is 52px and a button next to
+   four digits would take the rail to eighty. It only exists under the pointer,
+   which is also the only time anybody wants it. */
+.editor__undo {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--caution);
+  border: none;
+  color: var(--accent-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease);
+}
+
+.editor__ln:hover .editor__undo,
+.editor__undo:focus-visible {
+  opacity: 1;
+}
+
+/* The tint behind a changed row, as a layer of its own: .editor__hl is one
+   <pre> and a <pre> has no per-line box to paint. Empty rows, one per line,
+   sized by the shared line-height above — which is why 1.65em here is the
+   same number as the line box and not a guess at it. */
+.editor__marks {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
+.editor__mark {
+  height: 1.65em;
+}
+
+.editor__mark--on {
+  background: var(--caution-soft);
+  box-shadow: inset 2px 0 0 var(--caution);
 }
 
 .editor__text {
@@ -6888,6 +6474,38 @@ details[open]::details-content {
   color: var(--on-selection);
 }
 
+/* Soft wrap. The gutter and the marks are not drawn in this mode (a wrapped
+   line is two rows on screen and one number in the margin, and there is no
+   honest number for the second row), so only these two have to be told. */
+.editor[data-wrap] .editor__text,
+.editor[data-wrap] .editor__hl {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.editor[data-wrap] .editor__hl {
+  width: 100%;
+}
+
+/* A log's level word, and nothing else on the line. See highlightLog. */
+.editor__hl .token.log-info {
+  color: var(--code-key);
+}
+
+.editor__hl .token.log-warn {
+  color: var(--caution-ink);
+  font-weight: 600;
+}
+
+.editor__hl .token.log-error {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.editor__hl .token.log-muted {
+  color: var(--text-faint);
+}
+
 .editor__hl .token.comment,
 .editor__hl .token.prolog {
   color: var(--code-comment);
@@ -6937,33 +6555,6 @@ details[open]::details-content {
    overrode it, so that has not been what any dialog did for some time. Widening
    the icon dialog again is a decision on its own, not a side effect of this
    one. */
-
-/* Renamed off `.preview`, which the plugin-source dialog also called its
-   release-asset box. Same name, two components, one stylesheet: the later rule
-   took the padding, background and radius, and this one handed that text box a
-   chequerboard and `place-items: center` in exchange. */
-.file-preview {
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  background: var(--sunken);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  /* The chequerboard behind a PNG: without it a transparent icon on a light
-     panel looks like an icon with a white background, which is exactly the
-     mistake a server icon gets uploaded with. */
-  background-image:
-    linear-gradient(45deg, var(--surface-3) 25%, transparent 25%),
-    linear-gradient(-45deg, var(--surface-3) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, var(--surface-3) 75%),
-    linear-gradient(-45deg, transparent 75%, var(--surface-3) 75%);
-  background-size: 16px 16px;
-  background-position:
-    0 0,
-    0 8px,
-    8px -8px,
-    -8px 0;
-}
 
 .preview img {
   max-width: 100%;
@@ -7471,19 +7062,6 @@ details[open]::details-content {
   margin-right: auto;
 }
 
-.namelist {
-  margin: 0 0 8px;
-  padding-left: 18px;
-  color: var(--text);
-  font-size: 12.5px;
-  line-height: 1.8;
-  word-break: break-all;
-}
-
-.namelist .muted {
-  font-size: 12px;
-}
-
 /* Typed as `small.field__bad` because `.field small` above already claims the
    colour, and a hint that has turned into an error has to win it back. */
 small.field__bad {
@@ -7518,158 +7096,986 @@ small.field__bad {
 
    The editor takes the largest share because it holds content; the two rails
    beside it are navigation. */
-.fm {
-  display: grid;
-  /* Three tracks always, so the third can be animated open instead of appearing
-     from nowhere — a column that is there or not there cannot be interpolated,
-     and the listing jumping a few hundred pixels on every open and every close
-     is what the empty placeholder used to be paid to prevent. Paying for it in
-     width instead was the worse half of that trade: the editor column spent a
-     third of the pane saying "click a file", and the listing dropped 修改时间
-     to afford it. */
-  grid-template-columns: 220px minmax(340px, 1fr) minmax(0, 0fr);
+/* ---- the bar across the top ------------------------------------------
+
+   One row, 56px, and the same row in every state of the pane. What it
+   replaced was two toolbars — one per mode — with different button counts, a
+   different order and a different amount of text on each, which is the
+   reliable way to break the muscle memory a tool somebody opens daily runs
+   on. */
+.fbar {
+  display: flex;
+  flex: none;
+  align-items: center;
   gap: 12px;
+  height: 56px;
+  min-width: 0;
+}
+
+.fbar__up {
+  flex: none;
+}
+
+/* The trail never wraps. The bar is one row tall by design, and a trail that
+   wraps takes the toolbar down with it — which is why the middle of a deep
+   path is dropped (see Crumbs) rather than folded onto a second line. */
+.fbar__crumbs,
+.fbar__path {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+  flex-wrap: nowrap;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.fbar__path {
+  position: relative;
+  gap: 0;
+}
+
+.fbar__step {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fbar__crumb {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 3px 6px;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: var(--accent-hover);
+  cursor: pointer;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    background var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.fbar__crumb:hover {
+  background: var(--accent-soft);
+}
+
+.fbar__crumb:active {
+  transform: scale(0.94);
+}
+
+/* Where you already are: still clickable, because pressing it is how you get
+   back from a filtered view, but it stops advertising itself as somewhere to
+   go. */
+.fbar__crumb--here {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.fbar__sep,
+.fbar__fold {
+  flex: none;
+  color: var(--text-faint);
+  padding: 0 1px;
+}
+
+/* The click target that turns the trail into a box. It takes the rest of the
+   row so the target is the whole empty stretch after the path rather than a
+   button somebody has to aim at. */
+.fbar__blank {
+  flex: 1 1 auto;
+  min-width: 24px;
+  align-self: stretch;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: text;
+  font: inherit;
+  text-align: left;
+  padding: 0 8px;
+}
+
+.fbar__blank:hover {
+  background: var(--surface-2);
+}
+
+.fbar__hint {
+  color: var(--text-faint);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.fbar__blank:hover .fbar__hint,
+.fbar__blank:focus-visible .fbar__hint {
+  opacity: 1;
+}
+
+.fbar__input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-family: var(--font-mono);
+}
+
+.fbar__input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+/* Under the box rather than beside it: beside it, the message and the path
+   share a width neither of them has. */
+.fbar__bad {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 3;
+  padding: 3px 8px;
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-edge);
+  border-radius: var(--radius-sm);
+  color: var(--danger-ink);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* A label, not a filter — hence not .chip, which is a control. */
+.fbar__stats {
+  flex: none;
+  padding: 3px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.fbar__tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.fbar__search {
+  width: 200px;
+}
+
+/* The one button in the row that opens a sheet instead of doing something.
+   It keeps the button face rather than becoming a Select: the two items behind
+   it are actions, and a Select would be claiming they are a value. */
+.fbar__new {
+  gap: 4px;
+}
+
+.fbar__caret {
+  width: 14px;
+  height: 14px;
+  color: var(--text-faint);
+}
+
+@media (max-width: 1024px) {
+  /* The search box is the first thing to go: the bar has four controls that
+     do something and one that narrows what is already on screen, and on a
+     phone the four win. It comes back through ⋯. */
+  .fbar__search {
+    display: none;
+  }
+
+  .fbar__stats {
+    display: none;
+  }
+}
+
+/* On a phone the four buttons and the path cannot share a line — the path
+   loses, and a file manager whose path is two characters wide is a file
+   manager that cannot say where it is. So the bar becomes two rows, with the
+   trail on the second one at full width. The buttons stay in the same group,
+   the same order and the same shape; only where the row breaks changes. */
+@media (max-width: 700px) {
+  .fbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 56px;
+    row-gap: 6px;
+    padding-bottom: 6px;
+  }
+
+  .fbar__crumbs,
+  .fbar__path {
+    order: 3;
+    flex-basis: 100%;
+  }
+}
+
+/* ---- the listing ------------------------------------------------------
+
+   A grid of rows rather than a <table>. The table bought column alignment and
+   charged for it in the two things this panel actually needs: a row cannot
+   change height with a density switch without every cell agreeing, and the
+   hover actions had to live in a column that was reserved whether or not
+   anything was in it. `grid-template-columns` on the row gives the alignment
+   back for free, and the two densities are one declaration apart. */
+.flist {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   min-height: 0;
-  align-items: start;
-  transition: grid-template-columns var(--dur-4) var(--ease);
+  overflow: hidden;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
-/* Even shares between the listing and the editor. The editor holding more
-   content is not a reason to give it more width here: the listing has five
-   columns and a toolbar, and starving it is what made 修改时间 fall off the
-   right edge of its own panel. */
-.fm--open {
-  grid-template-columns: 220px minmax(340px, 1fr) minmax(0, 1fr);
+.flist__head,
+.flist__bulk {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--border);
 }
 
-/* Edit mode: the tree and the editor, and nothing between them. The listing is
-   not narrowed here, it is gone — a column of file sizes beside an open config
-   is exactly the width that was making the config scroll sideways. */
-.fm--editing {
-  grid-template-columns: 260px minmax(0, 1fr);
+/* 36px is the head's height, not its ceiling. In 状态 B this column is 264px
+   and the bulk bar is a count plus three buttons plus a way out, which does
+   not fit on one row at that width — and a bar that clips is a bar with a
+   delete button somewhere off the right edge. It wraps instead. */
+.flist__bulk {
+  flex-wrap: wrap;
+  row-gap: 4px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.flist__head {
+  background: var(--surface-2);
+}
+
+.flist__where {
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.flist__head .segmented {
+  margin-left: auto;
+}
+
+/* Tinted rather than plain, so it reads as a mode the list is in and not as
+   another row of tools that is always there. */
+.flist__bulk {
+  background: var(--accent-soft);
+  border-bottom-color: var(--border-accent);
+  animation: rise var(--dur-3) var(--ease) both;
+}
+
+.flist__bulk .btn {
+  flex: none;
+}
+
+.flist__bulk-count {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.flist__bulk-clear {
+  margin-left: auto;
+}
+
+/* The same track list as .frow, per density. Two declarations that have to
+   agree; they are kept next to each other for that reason. */
+.flist__cols {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  flex: none;
+  align-items: center;
+  gap: 9px;
+  height: 26px;
+  padding: 0 10px 0 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+}
+
+.flist__cols[data-density='detail'] {
+  grid-template-columns: 20px minmax(0, 1fr) auto minmax(0, 130px) 60px;
+}
+
+.flist__col {
+  min-width: 0;
+}
+
+.flist__col--mark {
+  width: 20px;
+}
+
+.flist__col--ops {
+  width: 60px;
+}
+
+.flist__col--end {
+  text-align: right;
+}
+
+.flist__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.flist__sort:hover {
+  color: var(--text-dim);
+}
+
+.flist__col--end .flist__sort {
+  flex-direction: row-reverse;
+}
+
+/* The inactive arrow is kept rather than hidden, so the head does not change
+   width the first time it is pressed. */
+.flist__mark[data-off] {
+  opacity: 0;
+}
+
+.flist__sort:hover .flist__mark[data-off] {
+  opacity: 0.4;
+}
+
+.flist__body {
   flex: 1;
   min-height: 0;
-  /* Both panes run the full height of the pane rather than sitting at the top
-     of it: what the mode buys is vertical room, and `start` would hand it back. */
+  overflow: auto;
+}
+
+.flist__error {
+  margin: 10px;
+}
+
+.flist__foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+/* ---- one row ---------------------------------------------------------- */
+
+.frow {
+  position: relative;
+  display: grid;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px 0 12px;
+  cursor: pointer;
+  /* The two densities, and the whole of the difference between them. */
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  height: 34px;
+  font-size: 12.5px;
+}
+
+.frow[data-density='detail'] {
+  grid-template-columns: 20px minmax(0, 1fr) auto minmax(0, 130px) 60px;
+  height: 40px;
+}
+
+.frow:hover {
+  background: var(--surface-2);
+}
+
+.frow[data-ticked] {
+  background: var(--accent-soft);
+}
+
+/* The file the editor is showing. The inset bar rather than a border so the
+   row does not move by a pixel when it becomes the current one. */
+.frow[data-on] {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.frow[data-on] .frow__name {
+  color: var(--accent-hover);
+  font-weight: 600;
+}
+
+/* Where the arrow keys are. Quieter than the open file's tint because it is a
+   position rather than a state — nothing has happened to this row yet. */
+.frow[data-cursor]:not([data-on]):not([data-ticked]) {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--border-strong);
+}
+
+.frow__mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+}
+
+/* The shared mark is sized for a 40px table row; these rows are 34. */
+.frow__mark .fileicon {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+}
+
+.frow__mark .fileicon svg {
+  width: 13px;
+  height: 13px;
+}
+
+.frow__mark .fileicon,
+.frow__tick {
+  grid-area: 1 / 1;
+  transition: opacity var(--dur-1) var(--ease);
+}
+
+.frow__tick {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.frow:hover .frow__tick,
+.frow:focus-within .frow__tick,
+.frow[data-ticked] .frow__tick {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.frow:hover .frow__mark .fileicon,
+.frow:focus-within .frow__mark .fileicon,
+.frow[data-ticked] .frow__mark .fileicon {
+  opacity: 0;
+}
+
+.frow__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.frow__dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--caution);
+}
+
+.frow__size,
+.frow__time {
+  color: var(--text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.frow__size {
+  text-align: right;
+}
+
+.frow__time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.frow__ops {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-1) var(--ease);
+}
+
+/* 紧凑 has no column for these, so they float over the right end of the row
+   and fade the name out from under themselves. The size is what they cover,
+   and it is the number you are least likely to be reading at the moment your
+   hand is already on the row. */
+.frow[data-density='compact'] .frow__ops {
+  position: absolute;
+  right: 10px;
+  padding-left: 16px;
+  background: linear-gradient(90deg, transparent, var(--surface-2) 12px);
+}
+
+.frow[data-density='compact'][data-ticked] .frow__ops,
+.frow[data-density='compact'][data-on] .frow__ops {
+  background: linear-gradient(90deg, transparent, var(--surface-3) 12px);
+}
+
+.frow:hover .frow__ops,
+.frow:focus-within .frow__ops {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ---- dropping files on it --------------------------------------------- */
+
+.flist[data-dropping] {
+  border-color: var(--accent);
+}
+
+.flist__drop {
+  position: absolute;
+  inset: 6px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--accent-soft);
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.flist__drop-glyph {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+}
+
+/* ---- the editor half --------------------------------------------------
+
+   Panes hold paths, not copies, so a file open in both halves of a split is
+   one buffer. What the two halves each own is which tab is in front. */
+.fedit {
+  display: flex;
+  gap: 14px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.fedit__pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Which half the keyboard is in. Only drawn when there are two — a ring
+   around the only pane on screen is a ring that means nothing. */
+.fedit__pane[data-focused] {
+  border-color: var(--border-accent);
+}
+
+.fedit__bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Scrolls sideways rather than wrapping: a tab strip that grows downwards
+   takes the editor's height with it every time somebody opens a fourth file.
+   The cap that keeps this from becoming a scroll race lives in FileManager. */
+.fedit__tabs {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.fedit__tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.fedit__sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+}
+
+.fedit__history {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.fedit__history svg {
+  width: 13px;
+  height: 13px;
+}
+
+.fedit__stale {
+  flex: none;
+  margin: 8px;
+}
+
+.fedit__blank {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.fedit__blank svg {
+  width: 28px;
+  height: 28px;
+  opacity: 0.6;
+}
+
+.fedit__blank p {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* ---- one tab ---------------------------------------------------------- */
+
+.etab {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 30px;
+  padding-right: 4px;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  max-width: 200px;
+}
+
+.etab:hover {
+  background: var(--surface-2);
+}
+
+.etab--on {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.etab__pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 4px 0 10px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.etab--on .etab__pick {
+  font-weight: 600;
+}
+
+.etab__pick .fileicon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+}
+
+.etab__pick .fileicon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.etab__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.etab__dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--caution);
+}
+
+.etab__close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.etab__close:hover {
+  background: var(--surface-4);
+  color: var(--text);
+}
+
+/* ---- find and replace -------------------------------------------------- */
+
+.efind {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.efind__box {
+  width: 150px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.efind__box:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.efind__case {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.efind__count {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+/* ---- the foot ---------------------------------------------------------- */
+
+/* 38px is its height on a desktop, not a ceiling. It wraps — a narrow pane
+   cannot hold the facts, the badges and two buttons on one line — and a fixed
+   height plus wrapping is a second row drawn underneath the bottom edge, with
+   保存 in it. */
+.editor__status {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  min-height: 38px;
+  padding: 4px 10px;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+}
+
+.editor__facts {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.editor__facts--end {
+  margin-left: auto;
+}
+
+/* ---- a file the editor will not open ------------------------------------ */
+
+.fcard {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 0;
+  padding: 24px;
+  overflow: auto;
+  text-align: center;
+}
+
+.fcard .fileicon {
+  width: 34px;
+  height: 34px;
+}
+
+.fcard__name {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  word-break: break-all;
+}
+
+.fcard__note {
+  max-width: 42ch;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.fcard__shot {
+  max-width: min(100%, 420px);
+  max-height: 40vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  /* Server icons and resource-pack art are pixel art, and a browser's default
+     smoothing turns a 64px icon into a blur when it is scaled up to be read. */
+  image-rendering: pixelated;
+  object-fit: contain;
+}
+
+/* ---- the three columns ------------------------------------------------
+
+   No mode, so no third track kept empty to animate into. What is on screen is
+   what is being worked on: a tree and a listing while you are looking for
+   something, a tree, a narrow listing and an editor once you have found it.
+   The switch between the two is `open` in FileManager, which is nothing more
+   than "is a tab open" — there is no state to set and none to remember.
+
+   The widths come from JS rather than from a rule, because they are draggable
+   and stored per instance. Everything else about the grid is here. */
+.fm {
+  /* No gap. The handles *are* the gutters — a 14px track each, with the line
+     drawn down the middle — rather than 6px handles sitting inside 14px gaps.
+     Two gutters instead of four plus two handles is 40 pixels, and at a 1600px
+     viewport those 40 are the difference between an editor of 760 and one of
+     800: bukkit.yml opens with an 85-character comment, and 780 is where that
+     line stops needing a horizontal scrollbar. */
+  display: grid;
+  gap: 0;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   align-items: stretch;
 }
 
-.fm--editing .fm__tree {
-  display: flex;
-  flex-direction: column;
-  max-height: none;
+/* Each column has to give up its content height or the editor sizes to its
+   text and pushes a second scrollbar onto the page. This is the repo's most
+   frequent layout bug and a grid of tall panes is where it likes to happen. */
+.fm > * {
+  min-width: 0;
   min-height: 0;
 }
 
-/* Every layer from the pane down has to give up its content height, or the
-   editor sizes to its text and pushes a second scrollbar onto the page. This
-   is the repo's most frequent layout bug, and a four-deep flex column is where
-   it likes to happen. */
-.fm--editing .fm__editor,
-.fm--editing .fm__editor > .stack,
-.fm--editing .editor-pane {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
+/* A track of its own rather than a border on a pane: a border cannot be
+   grabbed, and a pane with a resize cursor over its own edge starts a drag
+   when somebody meant to click the row underneath it. */
+/* The gutter and the handle in one. The line is a child pseudo-element rather
+   than the track's own background, so the grabbable area is the full 14px
+   while what you see is 2px — a 2px hit target is a handle nobody catches. */
+.fm__grip {
+  position: relative;
+  align-self: stretch;
+  cursor: col-resize;
+  touch-action: none;
 }
 
-/* .stack's own 40px foot, again — the editor wraps in one of its own, and the
-   padding there is 40px the box cannot reach the bottom of the pane through. */
-.fm--editing .fm__editor > .stack {
-  padding-top: 0;
-  padding-bottom: 0;
+.fm__grip::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  transition: background var(--dur) var(--ease);
 }
 
-/* Outside the mode the editor is a fixed box you can drag taller. Inside it,
-   it is the page. */
-.fm--editing .editor {
-  height: auto;
-  flex: 1;
-  min-height: 0;
-  resize: none;
+.fm__grip:hover::after {
+  background: var(--border-accent);
 }
 
-/* Only the layout below 1024 hides the listing behind a button. In edit mode
-   the listing is not somewhere else, it is off. */
-.fm--editing .editor__back {
-  display: none;
+/* Below 1280 the three columns fit but have nothing spare between them, so
+   the handles stop offering width that is not there to take. */
+.fm__grip[data-off] {
+  cursor: default;
+  pointer-events: none;
 }
 
-.fm--editing .fm__blank {
-  flex: 1;
-  min-height: 0;
-}
-
-/* Folded away: the editor takes the whole row. The button that brings the tree
-   back lives on the editor's own head, because with the tree gone there is
-   nothing else on screen to put it on. */
-.fm--editing[data-tree='off'] {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.fm--editing[data-tree='off'] .fm__tree {
-  display: none;
-}
-
-.editor__tree {
-  align-self: flex-start;
-}
-
-/* Two columns fit here, but not two comfortable ones. So the tree comes back
-   *over* the editor instead of taking a quarter of a width that is already
-   short — the editor keeps the row either way, and nothing reflows when the
-   tree opens and shuts. 1240 is the sheet's own step (the sidebar narrows
-   there too), not a number of this pane's own. */
-@media (max-width: 1240px) {
-  .fm--editing {
-    position: relative;
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .fm--editing[data-tree='on'] .fm__tree {
-    position: absolute;
-    z-index: 2;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: 260px;
-    box-shadow: var(--shadow-lg);
-  }
-}
-
-/* The listing's own column-dropping is keyed to the viewport, which stopped
-   being a fair proxy for its width the moment it became one of three panes: at
-   a 1440px window this panel is about 450px wide, which is the width the
-   viewport rules call 820. So the same column goes at the same width, judged
-   where it actually applies. 修改时间 is still on each row's tooltip.
-
-   Only while a file is actually open, though — with the editor column
-   collapsed the listing has two thirds of the pane, and a column dropped to
-   make room for nothing is a column dropped for nothing. */
-.fm--open .data-table--files col.col--time,
-.fm--open .data-table--files th:nth-child(4),
-.fm--open .data-table--files td:nth-child(4) {
-  display: none;
-}
-
-/* Below the three-pane layout the listing has the page to itself again, so the
-   column comes back and the viewport rules take over. */
 @media (max-width: 1024px) {
-  .fm--open .data-table--files col.col--time,
-  .fm--open .data-table--files th:nth-child(4),
-  .fm--open .data-table--files td:nth-child(4) {
-    display: table-cell;
-  }
-
-  .fm--open .data-table--files col.col--time {
-    display: table-column;
+  .fm {
+    gap: 10px;
   }
 }
 
 .fm__tree {
-  min-width: 0;
-  max-height: 70vh;
   overflow: auto;
   padding: 8px 6px;
   background: var(--surface-1);
@@ -7678,80 +8084,100 @@ small.field__bad {
   box-shadow: var(--shadow-sm);
 }
 
+/* A folded column: the name of what is behind it, turned on its side, and the
+   chevron that brings it back. It keeps a column in the grid rather than
+   leaving one, so nothing reflows on the way in or out. */
+.fm__rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font: inherit;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.fm__rail:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.fm__rail-mark {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  transform: rotate(-90deg);
+}
+
+.fm__rail-text {
+  font-size: 12px;
+  /* Down the rail rather than across it — 36px has room for one character and
+     these labels are two. */
+  writing-mode: vertical-rl;
+  letter-spacing: 0.1em;
+}
+
+/* Below the drawer width the listing is not a column, it is something you
+   pull over the editor for one pick. Same reasoning as the navigation drawer
+   in App: at this width a second permanent column is two slivers instead of
+   one usable pane. 1024 is App.tsx's DRAWER_QUERY. */
+.fm__drawer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+}
+
+.fm__drawer-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.fm[data-narrow] {
+  position: relative;
+}
+
+/* The page frame. Both states are one screen doing one job — a file manager
+   with nothing open is still a workspace, not a column of prose — so it is
+   .stack--full either way and the height belongs to the columns. */
+.fmpage {
+  min-height: 0;
+}
+
+.fmpage__progress {
+  flex: none;
+}
+
+/* ---- the tree ---------------------------------------------------------- */
+
 .ftree {
   display: flex;
   flex-direction: column;
-  font-size: 13px;
-}
-
-/* Edit mode only: the four buttons the listing's toolbar was carrying, at icon
-   size because the tree column is 260px and five labels do not fit in it. */
-.ftree__bar {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 4px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border);
-}
-
-/* Pushed to the far end of the row: leaving the mode is not one of the four
-   things you do inside it. */
-.ftree__leave {
-  margin-left: auto;
-}
-
-/* Where 上传 and 新建 will land. The listing used to say this in its
-   breadcrumb; in edit mode the breadcrumb is off screen. Truncated from the
-   left, because when plugins/Atalanta/artifact/model/armor does not fit, the
-   part worth keeping is the end. */
-.ftree__where {
-  flex: 0 0 auto;
-  overflow: hidden;
-  margin: 6px 0 4px;
-  color: var(--text-faint);
-  font-size: 11.5px;
-  direction: rtl;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ftree__find {
-  flex: 0 0 auto;
-  width: 100%;
-  margin-bottom: 6px;
-}
-
-/* The tree itself takes what is left and scrolls inside it, so the toolbar and
-   the filter box stay put while a long tree moves under them. */
-.fm--editing .ftree {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
-/* Out of the way until the row is under the pointer or the keyboard. Hidden
-   with opacity rather than display so the row does not change width when it
-   appears — a tree that reflows under the pointer is a tree you misclick. */
-.ftree__more {
-  flex: 0 0 auto;
-  padding: 0 4px;
-  background: none;
-  border: none;
-  color: var(--text-faint);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity var(--dur) var(--ease);
-}
-
-.ftree__row:hover .ftree__more,
-.ftree__row:focus-within .ftree__more,
-.ftree__more:focus-visible {
-  opacity: 1;
-}
-
-.ftree__more:hover {
-  color: var(--text);
+  font-size: 12.5px;
 }
 
 .ftree__row {
@@ -7759,7 +8185,7 @@ small.field__bad {
   align-items: center;
   gap: 2px;
   min-width: 0;
-  height: 26px;
+  height: 30px;
   padding-right: 6px;
   border-radius: var(--radius-sm);
   color: var(--text-dim);
@@ -7775,21 +8201,18 @@ small.field__bad {
   white-space: nowrap;
 }
 
-/* The same mark the tab strip uses, for the same fact. Pushed to the right
-   edge so a column of them reads as one list of "these are unsaved". */
-.ftree__dot {
-  flex: 0 0 auto;
-  width: 6px;
-  height: 6px;
-  margin-left: auto;
-  background: var(--accent);
-  border-radius: 50%;
-}
-
-/* The tree's icons sit in a 26px row rather than a table cell, so they must
+/* The tree's icons sit in a 30px row rather than a table cell, so they must
    not take the listing's own sizing with them. */
 .ftree .fileicon {
   flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+}
+
+.ftree .fileicon svg {
+  width: 13px;
+  height: 13px;
 }
 
 .ftree__row:hover {
@@ -7830,9 +8253,9 @@ small.field__bad {
   cursor: default;
 }
 
-/* A row of three now — icon, name, unsaved dot — rather than a bare label, so
-   it lays them out itself. The ellipsis moved onto .ftree__label with the
-   text: a flex container cannot truncate what it does not directly hold. */
+/* A row of two — icon and name — rather than a bare label, so it lays them
+   out itself. The ellipsis lives on .ftree__label with the text: a flex
+   container cannot truncate what it does not directly hold. */
 .ftree__name {
   display: flex;
   flex: 1;
@@ -7858,195 +8281,117 @@ small.field__bad {
   animation: pulse 1.2s var(--ease) infinite;
 }
 
-.fm__editor {
-  min-width: 0;
-  /* The track is animated to zero rather than removed, so whatever is still in
-     it on the way out has to be clipped instead of spilling over the listing. */
-  overflow: hidden;
+/* The same tree, inside the 移动到… dialog. Picking a folder there is the same
+   act as walking to one here, so it is the same control rather than a path
+   box — a typo in a box is a file in a directory nobody meant to create. */
+.fmove {
+  max-height: 40vh;
+  overflow: auto;
+  padding: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
 
-/* Edit mode's, now: browse mode collapses the track instead. Both columns of
-   edit mode are permanent — the tree and the thing it opens — so the empty one
-   says what it is waiting for rather than sitting blank. */
-.fm__blank {
+/* ---- the conflict view -------------------------------------------------- */
+
+.ediff {
+  max-height: 46vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.ediff__head,
+.ediff__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+}
+
+.ediff__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-3);
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ediff__head span {
+  padding: 5px 8px;
+}
+
+/* The rows scroll; the head above them does not (it is sticky), and it is
+   inside the same scroller so the two columns cannot come apart. */
+.ediff__body {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 280px;
-  padding: 24px;
-  background: var(--surface-1);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-lg);
-  color: var(--text-dim);
-  text-align: center;
 }
 
-.fm__blank svg {
-  width: 28px;
-  height: 28px;
-  color: var(--text-faint);
+.ediff__side {
+  padding: 1px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
 }
 
-.fm__blank p {
+/* Only the rows that differ are coloured. A diff where every row carries a
+   tint is a diff with no signal in it — the same reason the panel's badges
+   default to colourless. */
+.ediff__row--differs .ediff__side:first-child {
+  background: var(--danger-soft);
+}
+
+.ediff__row--differs .ediff__side:last-child {
+  background: var(--ok-soft);
+}
+
+/* ---- the shortcut sheet -------------------------------------------------- */
+
+.fkeys {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin: 0;
 }
 
-.editor-pane {
-  min-width: 0;
+.fkeys__row {
+  display: grid;
+  grid-template-columns: minmax(0, 170px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
 }
 
-/* One row per open file, scrolling sideways rather than wrapping: a wrapped
-   tab strip changes height as files are opened and shoves the editor down. */
-.etabs {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
-.etabs__tab {
-  display: flex;
-  align-items: center;
-  flex: none;
-  max-width: 220px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  color: var(--text-dim);
-  transition:
-    background var(--dur) var(--ease),
-    border-color var(--dur) var(--ease),
-    color var(--dur) var(--ease);
-}
-
-.etabs__tab:hover {
-  background: var(--surface-2);
+.fkeys__row dt {
   color: var(--text);
-}
-
-.etabs__tab--on {
-  background: var(--accent-soft);
-  border-color: var(--border-accent);
-  color: var(--accent);
-}
-
-/* The editor convention for the same thing, and the only warning that the next
-   file somebody clicks will land in this tab rather than beside it. */
-.etabs__tab--preview .etabs__pick {
-  font-style: italic;
-}
-
-.etabs__pick {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 6px 4px 6px 8px;
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  font-size: 12.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.etabs__pick .fileicon {
-  flex: none;
-}
-
-/* The one unsaved marker that survives switching away from a file: the line at
-   the foot only ever describes whichever tab is in front. */
-.etabs__dot {
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-.etabs__close {
-  padding: 0 6px 0 2px;
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  font-size: 15px;
-  line-height: 1;
-  opacity: 0.6;
-}
-
-.etabs__close:hover {
-  opacity: 1;
-}
-
-.editor__back {
-  /* Wide layouts show the listing beside this, so the way back is to look
-     left. It only earns a row where the listing is off screen. */
-  display: none;
-  align-self: flex-start;
-  padding: 4px 8px;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-dim);
-  cursor: pointer;
-  font: inherit;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 
-.editor__back:hover {
-  background: var(--surface-2);
-  color: var(--text);
+.fkeys__row dd {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12.5px;
 }
 
-.editor__status {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  padding-top: 2px;
-  color: var(--text-faint);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.editor__status-right {
-  margin-left: auto;
-}
-
-/* Below this the three columns cannot all be useful — the listing alone wants
-   300px and the editor more — so the page shows one at a time: whatever is
-   open, or the listing when nothing is. The tree goes entirely; the listing's
-   own breadcrumb and 返回上一级 already walk the tree, and the tree was the
-   addition, not the replacement.
-
-   Kept in step with App.tsx's DRAWER_QUERY, which is the same 1024. */
-@media (max-width: 1024px) {
-  .fm {
+@media (max-width: 560px) {
+  .fkeys__row {
     grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
   }
+}
 
-  .fm__tree {
-    display: none;
-  }
-
-  .fm[data-pane='editor'] .files {
-    display: none;
-  }
-
-  .fm[data-pane='list'] .fm__editor {
-    display: none;
-  }
-
-  .editor__back {
-    display: inline-flex;
+/* Below the drawer width there is room for one pane, so the split goes and
+   the two halves stack — which is the one arrangement that keeps both
+   readable rather than giving each of them half a phone. */
+@media (max-width: 1024px) {
+  .fedit {
+    flex-direction: column;
   }
 }
 
@@ -14319,6 +14664,27 @@ select.input-slim option {
 .toast__body {
   flex: 1;
   min-width: 0;
+}
+
+/* The one thing to do about what just landed. A link rather than a button
+   face: the toast is already an interruption, and a filled control in the
+   corner would be a second first-thing-to-press competing with the page. */
+.toast__action {
+  flex: none;
+  padding: 2px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background var(--dur-1) var(--ease);
+}
+
+.toast__action:hover {
+  background: var(--accent-soft);
 }
 
 .toast__close {

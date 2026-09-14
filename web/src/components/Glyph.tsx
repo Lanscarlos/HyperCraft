@@ -15,6 +15,11 @@ import type { ReactElement } from 'react'
 export type GlyphName =
   | 'cube'
   | 'up'
+  | 'left'
+  | 'clock'
+  | 'split'
+  | 'ellipsis'
+  | 'chevron'
   | 'home'
   | 'upload'
   | 'download'
@@ -152,6 +157,30 @@ const GLYPHS: Record<GlyphName, ReactElement> = {
       <path d="M12 12.6v8.2" />
     </>
   ),
+  left: <path d="M20 12H5m0 0 6-6m-6 6 6 6" />,
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.4V12l3.2 1.9" />
+    </>
+  ),
+  split: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <path d="M12 4.5v15" />
+    </>
+  ),
+  // The one glyph in the set that is filled rather than stroked: three dots
+  // drawn as rings at this size read as three tiny doughnuts. Filling them is
+  // a property of the shape, so it is set here and not by a caller.
+  ellipsis: (
+    <>
+      <circle cx="5.5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="18.5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    </>
+  ),
+  chevron: <path d="m6 9.5 6 6 6-6" />,
 }
 
 /**

@@ -36,8 +36,9 @@ const LANGS: Record<string, { label: string; prism: string | null }> = {
   sh: { label: 'Shell', prism: 'bash' },
   txt: { label: '纯文本', prism: null },
   // A server log is the one thing here that is *not* a config, and Prism has no
-  // grammar that fits it. Colouring it as something else would be worse than
-  // leaving it plain.
+  // grammar that fits it. What a log is read for is the level — INFO scrolls
+  // past, WARN is looked at, ERROR is why the page was opened — so it gets
+  // highlightLog below instead of a grammar, and the null stays.
   log: { label: '日志', prism: null },
   kts: { label: 'Kotlin Script', prism: null },
 }
@@ -68,4 +69,40 @@ export function highlight(code: string, lang: string): string {
 
 function escapeHTML(text: string): string {
   return text.replace(/[&<>]/g, (ch) => (ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : '&gt;'))
+}
+
+/**
+ * Colours a server log by level, and by nothing else.
+ *
+ * A log is read for one thing: which of these lines is the one that broke the
+ * server. Tokenising the rest of the line — timestamps, thread names, the
+ * plugin's own prose — would be a second colour scheme competing with the
+ * answer, on the one screen in the panel where the answer is already hard to
+ * find. So the level word gets a class and everything else stays ink.
+ *
+ * Safe for dangerouslySetInnerHTML: the input is escaped first, and the only
+ * tags added afterwards are the spans below.
+ */
+export function highlightLog(code: string): string {
+  const painted = escapeHTML(code).replace(
+    /\b(INFO|WARN|WARNING|ERROR|SEVERE|FATAL|DEBUG|TRACE)\b/g,
+    (word) => `<span class="token log-${LOG_TONE[word]}">${word}</span>`,
+  )
+  // The same trailing newline highlight() adds, for the same reason: <pre>
+  // eats it, and an overlay one line shorter than the textarea above it drifts
+  // by a line at the bottom of every file that ends the way files end.
+  return painted + '\n'
+}
+
+/** Three tones, not eight. Anything below a warning is either the normal case
+ *  or noise, and both of those are things to skip past. */
+const LOG_TONE: Record<string, string> = {
+  INFO: 'info',
+  DEBUG: 'muted',
+  TRACE: 'muted',
+  WARN: 'warn',
+  WARNING: 'warn',
+  ERROR: 'error',
+  SEVERE: 'error',
+  FATAL: 'error',
 }
