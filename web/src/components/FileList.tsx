@@ -10,6 +10,7 @@ import { EmptyState } from './EmptyState'
 import { FileIcon } from './FileIcon'
 import { Glyph } from './Glyph'
 import { Menu } from './Menu'
+import { Note } from './Note'
 import type { MenuItem } from './Menu'
 
 /**
@@ -267,13 +268,15 @@ export function FileList({
       >
         {error ? (
           // Inline, not a screen of its own: what failed is one directory, and
-          // the tree beside it is still a way out.
-          <div className="alert alert--error flist__error">
+          // the tree beside it is still a way out. A Note rather than .alert —
+          // it is a condition this panel is in, and .alert is the one slot
+          // under a page head for that page's own load failure.
+          <Note tone="error" className="flist__error">
             <span>{error}</span>
             <Button size="small" onClick={onRetry}>
               重试
             </Button>
-          </div>
+          </Note>
         ) : entries.length === 0 ? (
           query ? (
             <EmptyState

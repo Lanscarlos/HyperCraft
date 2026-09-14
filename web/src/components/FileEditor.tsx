@@ -20,6 +20,7 @@ import { Button } from './Button'
 import { FileIcon } from './FileIcon'
 import { Glyph } from './Glyph'
 import { Menu } from './Menu'
+import { Note } from './Note'
 import type { MenuItem } from './Menu'
 
 /**
@@ -365,7 +366,7 @@ function Pane({
       ) : (
         <>
           {file.stale && (
-            <div className="alert alert--warn fedit__stale">
+            <Note tone="warn" className="fedit__stale">
               <span>磁盘上的这个文件已经变了，而你这里还有没保存的改动。</span>
               <Button size="small" onClick={() => onReload(file.path)}>
                 重新加载
@@ -373,7 +374,7 @@ function Pane({
               <Button size="small" onClick={() => onKeepMine(file.path)}>
                 保留我的版本
               </Button>
-            </div>
+            </Note>
           )}
           {file.kind === 'text' ? (
             <Body

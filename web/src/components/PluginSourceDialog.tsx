@@ -7,6 +7,7 @@ import type { PluginInput } from '../usePlugins'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Modal } from './Modal'
+import { Note } from './Note'
 import { Select } from './Select'
 
 /**
@@ -139,7 +140,7 @@ export function PluginSourceDialog({
           </label>
         )}
 
-        {lookError && <div className="alert alert--error">{lookError}</div>}
+        {lookError && <div className="alert">{lookError}</div>}
         {preview && <Preview preview={preview} onUsePattern={setAssetPattern} />}
 
         {/* The rest of the form only matters once there is something to add,
@@ -240,7 +241,7 @@ function Preview({
 }) {
   if (!preview.reachable || preview.error) {
     return (
-      <div className="alert alert--error">
+      <Note tone="error">
         <strong>读不到 {preview.repo}</strong>
         <p>{preview.error || '仓库不存在，或者面板没有权限。'}</p>
         {preview.needsToken && (
@@ -249,7 +250,7 @@ function Preview({
             的给这个仓库 <code>Contents: Read-only</code> 就够 —— 再回来用它查看一次。
           </p>
         )}
-      </div>
+      </Note>
     )
   }
 

@@ -132,7 +132,7 @@ export function ResourcePanel({ instance, active }: Props) {
     return (
       <div className="stack">
         {head}
-        <div className="alert alert--error">{error}</div>
+        <div className="alert">{error}</div>
       </div>
     )
   }

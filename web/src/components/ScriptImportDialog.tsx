@@ -201,7 +201,7 @@ export function ScriptImportDialog({
             </div>
           )}
 
-          {error && <div className="alert alert--error">{error}</div>}
+          {error && <div className="alert">{error}</div>}
 
           <ScriptDraft parsed={parsed} parsing={parsing} mode="settings" />
 

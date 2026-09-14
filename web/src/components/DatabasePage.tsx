@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { ask, askWithToggle } from '../confirm'
 import { formatBytes, formatDate } from '../format'
-import { toast } from '../toast'
+import { toast, toastWarn } from '../toast'
 import type {
   DatabaseEngine,
   DatabaseInstall,
@@ -15,6 +15,7 @@ import { Badge } from './Badge'
 import { Button } from './Button'
 import { EmptyState } from './EmptyState'
 import { FieldHelp } from './FieldHelp'
+import { Note } from './Note'
 import { Page } from './Page'
 import { Section } from './Section'
 import { Select } from './Select'
@@ -104,8 +105,8 @@ export function DatabasePage({ databases }: { databases: DatabaseController }) {
         </>
       }
     >
-      {platform.warning && <div className="alert alert--error">{platform.warning}</div>}
-      {databases.error && <div className="alert alert--error">{databases.error}</div>}
+      {platform.warning && <Note tone="warn">{platform.warning}</Note>}
+      {databases.error && <div className="alert">{databases.error}</div>}
 
       {/* An install keeps running after you navigate away, so it is reported at
           the top of the page rather than inside the card that started it. */}
@@ -390,7 +391,7 @@ function ServiceDetail({
 
       {service.error && (
         <div className="dbdetail__sec">
-          <div className="alert alert--error">{service.error}</div>
+          <div className="alert">{service.error}</div>
         </div>
       )}
 
@@ -491,7 +492,7 @@ function Connection({ service }: { service: DatabaseService }) {
     } catch {
       // Clipboard access needs a secure context, and a panel reached over plain
       // HTTP on a LAN address is not one. The value is on screen either way.
-      toast('复制失败，手动选中复制吧')
+      toastWarn('复制失败，手动选中复制吧')
     }
   }
 
@@ -756,7 +757,7 @@ function EngineList({
                 check exists: these tarballs link against system libraries they
                 do not ship, and a missing one only shows up at exec time. */}
             {install.problem && (
-              <div className="alert alert--error">
+              <Note tone="error">
                 {install.problem}
                 {install.hint && (
                   <>
@@ -764,7 +765,7 @@ function EngineList({
                     {install.hint}
                   </>
                 )}
-              </div>
+              </Note>
             )}
 
             {/* The hole goes first, not last. An engine row has two facts for
@@ -1032,23 +1033,23 @@ function InstallStatus({ job, engines }: { job: DownloadJob; engines: DatabaseEn
 
   if (job.state === 'extracting') {
     return (
-      <div className="alert alert--ok">
+      <Note tone="ok">
         正在解压 {name} {version}…（大的包解压比下载还慢，别关面板）
-      </div>
+      </Note>
     )
   }
 
   if (job.state === 'done') {
     return (
-      <div className="alert alert--ok">
+      <Note tone="ok">
         {name} {version} 已安装，去「我的数据库」建一个库就能用了。
-      </div>
+      </Note>
     )
   }
 
   if (job.state === 'cancelled') {
-    return <div className="alert alert--ok">已取消安装 {name}，没有留下任何文件。</div>
+    return <Note tone="ok">已取消安装 {name}，没有留下任何文件。</Note>
   }
 
-  return <div className="alert alert--error">安装失败：{job.error ?? '未知错误'}</div>
+  return <Note tone="error">安装失败：{job.error ?? '未知错误'}</Note>
 }

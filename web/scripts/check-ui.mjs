@@ -309,6 +309,49 @@ function ruleBadgesAreComponents() {
   }
 }
 
+/** Rule: the three message surfaces keep their names apart.
+ *
+ *  `.alert` is one thing — the slot under a page head where that page's own
+ *  load failure goes — and a modifier on it means somebody is using it for
+ *  something else. That is not hypothetical: 「这超过了本机内存的八成」 (a
+ *  condition that moves with a slider) and 「已保存」 (a moment) were both
+ *  `.alert--*` divs, and two fields named `warning` were painted `alert--error`
+ *  for months because a wrong tone, unlike a wrong class name, had nothing to
+ *  fail on.
+ *
+ *  `.note` goes through its component for the same reason badges and sections
+ *  do: a tone is a decision, and decisions belong somewhere a reviewer can see
+ *  all of them at once.
+ *
+ *  What is deliberately NOT checked here is "an .alert must sit directly under
+ *  the page head". That is a claim about position in JSX, and the honest
+ *  renderings of it include ternaries — ConfigHistory, NetworkPage and
+ *  VelocityConfig all write `cond ? <div className="alert"/> : <Skeleton/>`.
+ *  A rule that false-positives teaches people to route around the guard, which
+ *  costs more than the rule is worth. It lives in docs/design-system.md. */
+function ruleMessageSurfaces() {
+  for (const file of tsxFiles(SRC)) {
+    const rel = path.relative(SRC, file)
+    const src = withoutComments(fs.readFileSync(file, 'utf8'))
+    for (const m of src.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
+      // Interpolations out first, so `alert--${level}` still reads as a
+      // modifier rather than sailing past as an unparseable token.
+      const tokens = (m[1] ?? m[2] ?? '').replace(/\$\{[^}]*\}/g, ' ').split(/\s+/)
+      const line = src.slice(0, m.index).split('\n').length
+      if (tokens.some((t) => t.startsWith('alert--'))) {
+        problems.push(
+          `${rel}:${line} .alert 带了修饰符 —— 它只有一个含义（页面级错误）；` +
+            `条件说明改用 <Note tone="…">，操作结果改用 toast`,
+        )
+      }
+      if (rel === 'components/Note.tsx') continue
+      if (tokens.some((t) => t === 'note' || t.startsWith('note--'))) {
+        problems.push(`${rel}:${line} 手写了 .note —— 改用 <Note tone="…">`)
+      }
+    }
+  }
+}
+
 /** How many filled buttons a file may declare, and why more than one of them
  *  is still not more than one *screen*.
  *
@@ -374,6 +417,7 @@ const RULES = [
   ruleEmptyStatesAreComponents,
   ruleDropdownsAreOurs,
   ruleBadgesAreComponents,
+  ruleMessageSurfaces,
   rulePrimaryButtons,
 ]
 

@@ -92,7 +92,7 @@ export function DownloadsPage({
         </Button>
       }
     >
-      {downloads.error && <div className="alert alert--error">{downloads.error}</div>}
+      {downloads.error && <div className="alert">{downloads.error}</div>}
 
       <div className="dlfilter" role="group" aria-label="按类型筛选">
         <FilterChip active={!only} label="全部" count={downloads.active} onClick={() => onFilter(undefined)} />

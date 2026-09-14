@@ -10,6 +10,7 @@ import { Badge } from './Badge'
 import { Button } from './Button'
 import { CoreCatalogue, useCoreCatalogue } from './CoreCatalogue'
 import { EmptyState } from './EmptyState'
+import { Note } from './Note'
 import { Page } from './Page'
 import { DirectoryField } from './PathPicker'
 import { Section } from './Section'
@@ -876,10 +877,10 @@ function CoreStep({
           {catalogue.loading ? (
             <p className="muted">正在读取可下载的核心…</p>
           ) : catalogue.projects.length === 0 ? (
-            <div className="alert alert--error">
+            <Note tone="error">
               没能取到可下载的核心列表 —— 通常是这台机器连不上外网。可以切到「核心库」用已经下好的，
               或者「先不放核心」，自己把 jar 传进目录。
-            </div>
+            </Note>
           ) : (
             <>
               <CoreCatalogue
@@ -887,7 +888,7 @@ function CoreStep({
                 disabled={downloading}
                 javaNote={(major) => `该版本至少需要 Java ${major}，下一步就装它。`}
               />
-              {cores.error && <div className="alert alert--error">{cores.error}</div>}
+              {cores.error && <div className="alert">{cores.error}</div>}
               {awaiting && job && <DownloadStatus job={job} />}
               <div className="actions">
                 {downloading ? (
@@ -952,10 +953,10 @@ function DownloadStatus({ job }: { job: NonNullable<CoreController['job']> }) {
     )
   }
   if (job.state === 'failed') {
-    return <div className="alert alert--error">下载失败：{job.error ?? '未知错误'}</div>
+    return <Note tone="error">下载失败：{job.error ?? '未知错误'}</Note>
   }
   if (job.state === 'cancelled') {
-    return <div className="alert">已取消下载，没有写入任何文件。</div>
+    return <Note>已取消下载，没有写入任何文件。</Note>
   }
   return null
 }
@@ -1033,10 +1034,10 @@ function JavaStep({
       }
     >
       {required > 0 && !covered && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           机器上还没有能跑这个版本的 Java。下面装一个 Java {required}，几十秒的事，
           装的是面板自己的一份，不动系统环境。
-        </div>
+        </Note>
       )}
 
       <div className="field">
@@ -1094,17 +1095,17 @@ function JavaStep({
       </div>
 
       {tooOld && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           选中的这个 Java 比 {core ? coreLabel(core) : '这个核心'} 要求的低，
           服务端启动时会直接报 UnsupportedClassVersionError。可以继续，但建议先装一个新的。
-        </div>
+        </Note>
       )}
 
       {tooNew && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           {core ? coreLabel(core) : '1.16 及以下的服务端'} 是 Java 17 之前的东西，
           在新版 Java 上通常直接起不来。装一个 Java 8 给它，别的实例照样用新的。
-        </div>
+        </Note>
       )}
 
       <div className="panel__sub">
@@ -1137,7 +1138,7 @@ function JavaStep({
               ))}
             </div>
 
-            {java.error && <div className="alert alert--error">{java.error}</div>}
+            {java.error && <div className="alert">{java.error}</div>}
             {awaiting && job && <InstallStatus job={job} />}
 
             <div className="actions">
@@ -1194,13 +1195,13 @@ function InstallStatus({ job }: { job: NonNullable<JavaController['job']> }) {
     )
   }
   if (job.state === 'extracting') {
-    return <div className="alert alert--ok">正在解压 {job.title}…</div>
+    return <Note tone="ok">正在解压 {job.title}…</Note>
   }
   if (job.state === 'failed') {
-    return <div className="alert alert--error">安装失败：{job.error ?? '未知错误'}</div>
+    return <Note tone="error">安装失败：{job.error ?? '未知错误'}</Note>
   }
   if (job.state === 'cancelled') {
-    return <div className="alert">已取消安装，没有留下任何文件。</div>
+    return <Note>已取消安装，没有留下任何文件。</Note>
   }
   return null
 }
@@ -1336,10 +1337,10 @@ function BasicsStep({
       </div>
 
       {tooMuch && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           这超过了本机内存的八成。系统、面板和别的实例也要吃内存，给到这么高的话，
           真用满时会被系统直接杀掉进程。
-        </div>
+        </Note>
       )}
 
       <label className="checkbox checkbox--stacked">
@@ -1708,10 +1709,10 @@ function ConfirmStep({
       </dl>
 
       {!proxy && !eula && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           EULA 还没同意，这个服务端启动后会立刻退出。可以现在回上一步勾一下，
           也可以之后在「服务器配置」页里勾。
-        </div>
+        </Note>
       )}
 
       {tasks && (
@@ -1728,7 +1729,7 @@ function ConfirmStep({
         </ul>
       )}
 
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
     </Section>
   )
 }
@@ -1778,23 +1779,23 @@ function Finished({
       </ul>
 
       {failed.length > 0 && (
-        <div className="alert alert--error">
+        <Note tone="error">
           实例本身建好了，但有 {failed.length} 步没做成。进去之后在「实例设置」和「服务器配置」里
           可以把它们补上。
-        </div>
+        </Note>
       )}
 
       {!hasCore && (
-        <div className="alert">
+        <Note>
           目录里还没有服务端 jar。用「文件」页传一个进去，或者在「实例设置 → 从核心库安装」里装一个，
           然后才能开服。
-        </div>
+        </Note>
       )}
 
       {!proxy && !eula && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           EULA 还没同意，现在启动的话服务端会立刻退出。去「服务器配置」页勾一下就行。
-        </div>
+        </Note>
       )}
 
       <div className="actions">

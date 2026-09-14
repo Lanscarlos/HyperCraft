@@ -19,6 +19,7 @@ import { JavaPage } from './components/JavaPage'
 import { Login } from './components/Login'
 import { NetworkPage } from './components/NetworkPage'
 import { NewInstanceWizard } from './components/NewInstanceWizard'
+import { Note } from './components/Note'
 import { PluginLibraryPage } from './components/PluginLibraryPage'
 import { SchematicLibraryPage } from './components/SchematicLibraryPage'
 import { SchematicMarket } from './components/SchematicMarket'
@@ -44,6 +45,7 @@ import {
 } from './routes'
 import type { InstanceSection, LibrarySection, LibraryView, Route, StateFilter } from './routes'
 import { captureScope } from './scopeMorph'
+import { toastError } from './toast'
 import type { InstanceStatus, User } from './types'
 import { isLive, mergeState } from './types'
 import { useCores } from './useCores'
@@ -445,7 +447,6 @@ export default function App() {
   // than in a toast because toasts expire — toast.ts keeps errors out for
   // exactly that reason, and a start that did not happen has to still be on
   // screen when the operator looks back at it.
-  const [powerError, setPowerError] = useState<string | null>(null)
 
   const selectedId = route.kind === 'instance' ? route.id : null
   const selected = instances.find((item) => item.id === selectedId) ?? null
@@ -575,7 +576,7 @@ export default function App() {
             instance={selected}
             metrics={metrics}
             onInstanceChanged={applyInstance}
-            onPowerError={setPowerError}
+            onPowerError={toastError}
             user={user}
             compact={compact}
             navOpen={navOpen}
@@ -592,20 +593,7 @@ export default function App() {
           />
 
           <main className="main" id="main" tabIndex={-1}>
-            {loadError && <div className="alert alert--error">{loadError}</div>}
-            {powerError && (
-              <div className="alert alert--error alert--dismiss" role="alert">
-                <span>{powerError}</span>
-                <button
-                  className="alert__close"
-                  onClick={() => setPowerError(null)}
-                  aria-label="关闭"
-                >
-                  ×
-                </button>
-              </div>
-            )}
-
+            {loadError && <div className="alert">{loadError}</div>}
             {/* The shell survives a crashed page, and navigating away is what
                 recovers from one — hence the route as the reset key. */}
             <ErrorBoundary resetKey={pathOf(route)}>
@@ -781,7 +769,7 @@ export default function App() {
                     onOpenCoreLibrary={() => openLibrary('cores', 'stock')}
                   />
                 ) : (
-                  <div className="alert">
+                  <Note>
                     找不到这个实例，它可能已经被删除了。
                     <button
                       className="link"
@@ -789,7 +777,7 @@ export default function App() {
                     >
                       回到实例列表
                     </button>
-                  </div>
+                  </Note>
                 )
               ) : (
                 <Dashboard

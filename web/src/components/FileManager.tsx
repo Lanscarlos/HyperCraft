@@ -4,7 +4,7 @@ import { ApiError, api, downloadURL, uploadFiles } from '../api'
 import { ask } from '../confirm'
 import { sideBySide } from '../filediff'
 import { readPref, writePref } from '../localPrefs'
-import { toast } from '../toast'
+import { toast, toastError, toastWarn } from '../toast'
 import { useMediaQuery } from '../useMediaQuery'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
 import { Button } from './Button'
@@ -18,6 +18,7 @@ import { FileTree } from './FileTree'
 import { Glyph } from './Glyph'
 import type { MenuItem } from './Menu'
 import { Modal } from './Modal'
+import { Note } from './Note'
 import { SchematicPreview } from './SchematicPreview'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
 
@@ -135,6 +136,10 @@ export function FileManager({
 }) {
   const [dir, setDir] = useState('')
   const [listing, setListing] = useState<FileListing | null>(null)
+  // One thing only: this directory would not load. Everything else that can
+  // fail here — a save, an upload, a delete — is something somebody just did,
+  // and that goes to the corner rather than to a slot at the top of a page
+  // they may already have scrolled past.
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
@@ -221,6 +226,8 @@ export function FileManager({
       try {
         setListing(await api.listFiles(instance.id, target))
         setDir(target)
+        // The slot holds one thing — "this directory would not load" — so a
+        // directory that did load is the only thing that clears it.
         setError(null)
         // A tick against a row that is no longer on screen is a delete waiting
         // to happen in a directory nobody is looking at.
@@ -384,7 +391,7 @@ export function FileManager({
         try {
           content = (await api.readFile(instance.id, path)).content
         } catch (err) {
-          setError(err instanceof Error ? err.message : '打开文件失败')
+          toastError(err instanceof Error ? err.message : '打开文件失败')
           return
         }
       }
@@ -396,7 +403,6 @@ export function FileManager({
       })
       showTab(path, background)
       setDrawer(false)
-      setError(null)
     },
     [instance.id, kindOf, mtimeOf, showTab],
   )
@@ -434,7 +440,7 @@ export function FileManager({
       await api.power(instance.id, 'restart')
       toast('已请求重启')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '重启失败')
+      toastError(err instanceof Error ? err.message : '重启失败')
     }
   }, [instance.id])
 
@@ -443,7 +449,6 @@ export function FileManager({
       const file = filesNow.current.get(path)
       if (!file || file.content === file.original || file.readOnly) return
       setBusy(true)
-      setError(null)
       try {
         const now = await mtimeOf(path)
         if (now !== null && file.modified !== '' && now !== file.modified) {
@@ -458,7 +463,12 @@ export function FileManager({
           stale: false,
         })
         if (instance.state === 'running' && needsRestart(path)) {
-          toast('已保存 · 需重启服务器后生效', { label: '重启', onSelect: () => void restart() })
+          toast('已保存 · 需重启服务器后生效', {
+            // Keyed so saving four configs in a row is one reminder rather
+            // than four identical ones stacked in the corner.
+            key: 'files-needs-restart',
+            action: { label: '重启', onSelect: () => void restart() },
+          })
         } else {
           toast(`已保存 ${baseName(path)}`)
         }
@@ -467,7 +477,7 @@ export function FileManager({
         // on screen: a save in plugins/Foo does not need the root re-read.
         if (parentOf(path) === dirRef.current) void load(dirRef.current)
       } catch (err) {
-        setError(err instanceof Error ? err.message : '保存失败')
+        toastError(err instanceof Error ? err.message : '保存失败')
       } finally {
         setBusy(false)
       }
@@ -486,7 +496,7 @@ export function FileManager({
           stale: false,
         })
       } catch (err) {
-        setError(err instanceof Error ? err.message : '重新读取失败')
+        toastError(err instanceof Error ? err.message : '重新读取失败')
       }
     },
     [instance.id, mtimeOf, patchFile],
@@ -744,13 +754,12 @@ export function FileManager({
 
   const guard = async (action: () => Promise<void>, done: string) => {
     setBusy(true)
-    setError(null)
     try {
       await action()
       toast(done)
       await load(dirRef.current)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '操作失败')
+      toastError(err instanceof Error ? err.message : '操作失败')
     } finally {
       setBusy(false)
     }
@@ -759,7 +768,6 @@ export function FileManager({
   const upload = async (picked: File[]) => {
     if (picked.length === 0) return
     setBusy(true)
-    setError(null)
     setProgress(0)
     try {
       try {
@@ -787,7 +795,7 @@ export function FileManager({
       toast(picked.length === 1 ? `已上传 ${picked[0].name}` : `已上传 ${picked.length} 个文件`)
       await load(dir)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '上传失败')
+      toastError(err instanceof Error ? err.message : '上传失败')
     } finally {
       setBusy(false)
       setProgress(null)
@@ -823,7 +831,6 @@ export function FileManager({
     if (!name) return
     const path = joinPath(dir, name)
     setBusy(true)
-    setError(null)
     try {
       await api.writeFile(instance.id, path, '')
       await load(dir)
@@ -835,7 +842,7 @@ export function FileManager({
       showTab(path, false)
       toast(`已创建 ${name}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建失败')
+      toastError(err instanceof Error ? err.message : '创建失败')
     } finally {
       setBusy(false)
     }
@@ -898,7 +905,6 @@ export function FileManager({
     if (!ok) return
 
     setBusy(true)
-    setError(null)
     const failed: string[] = []
     for (const entry of targets) {
       try {
@@ -909,7 +915,7 @@ export function FileManager({
       }
     }
     const done = targets.length - failed.length
-    if (failed.length > 0) setError(`${failed.length} 项删除失败：${failed.join('、')}`)
+    if (failed.length > 0) toastError(`${failed.length} 项删除失败：${failed.join('、')}`)
     if (done > 0) toast(`已删除 ${done} 项`)
     setBusy(false)
     setTreeKey((key) => key + 1)
@@ -921,7 +927,6 @@ export function FileManager({
    *  same reason removeMany is. */
   const moveTo = async (targets: FileEntry[], into: string) => {
     setBusy(true)
-    setError(null)
     const failed: string[] = []
     for (const entry of targets) {
       const to = joinPath(into, entry.name)
@@ -934,7 +939,7 @@ export function FileManager({
       }
     }
     const done = targets.length - failed.length
-    if (failed.length > 0) setError(`${failed.length} 项移动失败：${failed.join('、')}`)
+    if (failed.length > 0) toastError(`${failed.length} 项移动失败：${failed.join('、')}`)
     if (done > 0) toast(`已移动 ${done} 项到 ${into === '' ? '实例根目录' : into}`)
     setBusy(false)
     setTreeKey((key) => key + 1)
@@ -949,7 +954,7 @@ export function FileManager({
   const downloadMany = async (targets: FileEntry[]) => {
     const picked = targets.filter((entry) => !entry.isDir)
     if (picked.length === 0) {
-      setError('选中的都是文件夹。面板没有打包下载，文件夹要进去逐个下载。')
+      toastWarn('选中的都是文件夹。面板没有打包下载，文件夹要进去逐个下载。')
       return
     }
     for (const [index, entry] of picked.entries()) {
@@ -1161,7 +1166,7 @@ export function FileManager({
                 })
                 toast(`已保存 ${baseName(path)}`)
               } catch (err) {
-                setError(err instanceof Error ? err.message : '保存失败')
+                toastError(err instanceof Error ? err.message : '保存失败')
               } finally {
                 setBusy(false)
               }
@@ -1196,7 +1201,7 @@ export function FileManager({
   )
 
   if (!listing) {
-    if (error) return <div className="alert alert--error">{error}</div>
+    if (error) return <div className="alert">{error}</div>
     return (
       <SkeletonScreen label="正在读取目录…">
         <SkeletonPanel title={false}>
@@ -1518,10 +1523,10 @@ function TypedDeleteDialog({
         <h2 className="modal__title">删除文件夹「{entry.name}」？</h2>
         <p className="modal__lead">里面的所有内容会一起删除，而且无法撤销。</p>
         {PRECIOUS.has(entry.name) && (
-          <div className="alert alert--error">
+          <Note tone="error">
             <b>{entry.name}</b> 是服务器跑起来要用的目录。删掉它，这台服务器很可能起不来，
             而且里面的东西不是从下载页能装回来的。
-          </div>
+          </Note>
         )}
         <label className="field">
           <span>

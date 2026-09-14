@@ -10,6 +10,7 @@ import type { TerminalController } from '../useTerminal'
 import { DataTable, DataTableHead, DataTableRow } from './DataTable'
 import { EmptyState } from './EmptyState'
 import { Meter } from './Meter'
+import { Note } from './Note'
 import { Page } from './Page'
 import { Section } from './Section'
 import { SkeletonPanel, SkeletonScreen } from './Skeleton'
@@ -92,7 +93,7 @@ function HostMetrics({
     return (
       <Page wide title="监控" lead={system.error ?? '正在读取本机状态…'}>
         {system.error ? (
-          <div className="alert alert--error">{system.error}</div>
+          <div className="alert">{system.error}</div>
         ) : (
           <SkeletonScreen inPage>
             <SkeletonPanel />
@@ -154,11 +155,11 @@ function HostMetrics({
         </dl>
 
         {memory.overcommitted ? (
-          <div className="alert alert--warn">
+          <Note tone="warn">
             运行中的实例被允许申请 {formatBytes(memory.committedLive)}，超过本机的{' '}
             {formatBytes(memory.total)}。真正用满时内核会挑一个进程杀掉，而它挑中的
             通常就是最大的那台服 —— 表现为服务器「无缘无故」消失。
-          </div>
+          </Note>
         ) : memory.committedAll > memory.total && memory.total > 0 ? (
           <p className="chart-note">
             现在没问题，但所有实例同时启动会需要 {formatBytes(memory.committedAll)}，
@@ -470,8 +471,8 @@ function HostDisk({
       lead="磁盘写满会让世界保存失败，正在写入的区块可能直接损坏 —— 这是本面板能遇到的破坏性最大的故障，所以它按告警级别处理，而不只是一根进度条。"
     >
       {level !== 'ok' && (
-        <div className={`alert alert--${level}`}>
-          <div className="alert__body">
+        <Note tone={level}>
+          <div className="note__body">
             <strong>
               {level === 'error' ? '立刻清理' : '该清理了'}：{system.disk.path} 只剩{' '}
               {formatBytes(system.disk.free)}（{formatPercent(free * 100)}）
@@ -480,7 +481,7 @@ function HostDisk({
               先看旧的世界备份和实例目录里的日志 —— 十有八九是它们。清完再回来刷新。
             </span>
           </div>
-        </div>
+        </Note>
       )}
 
       {/* Headless on purpose: the meter's label is the path, and a title over

@@ -4,6 +4,7 @@ import { ApiError, api } from '../api'
 import { ask } from '../confirm'
 import { formatBytes } from '../format'
 import type { InstanceStatus, ServerCore } from '../types'
+import { toast } from '../toast'
 import type { CoreController } from '../useCores'
 import { Button } from './Button'
 import { Select } from './Select'
@@ -45,7 +46,6 @@ export function InstanceCorePicker({
 }: Props) {
   const [coreId, setCoreId] = useState('')
   const [setAsJar, setSetAsJar] = useState(!jarIgnored)
-  const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // Shut by default: copying a core is a thing you do once, and this page is
@@ -72,13 +72,13 @@ export function InstanceCorePicker({
     if (!coreId) return
     setBusy(true)
     setError(null)
-    setStatus(null)
     try {
       const result = await api.applyCore(instance.id, { coreId, setAsJar, overwrite })
-      setStatus(
+      toast(
         setAsJar
           ? `已复制 ${result.fileName} 到实例目录，并设为启动 jar`
           : `已复制 ${result.fileName} 到实例目录`,
+        { key: 'core-picker.save' },
       )
       onApplied(result.fileName, result.instance, setAsJar)
     } catch (err) {
@@ -174,8 +174,7 @@ export function InstanceCorePicker({
               </div>
             </label>
 
-            {error && <div className="alert alert--error">{error}</div>}
-            {status && <div className="alert alert--ok">{status}</div>}
+            {error && <div className="alert">{error}</div>}
 
             <div className="actions">
               <Button

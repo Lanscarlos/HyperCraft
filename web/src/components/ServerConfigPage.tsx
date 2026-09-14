@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api'
+import { toast } from '../toast'
 import type { InstanceStatus, ServerConfigFile } from '../types'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { ConfigLayout, ConfigRow, ConfigSaveBar, changedKeys } from './ConfigLayout'
+import { Note } from './Note'
 import { PageHead } from './Page'
 import { PropertiesEditor } from './PropertiesEditor'
 import { Section } from './Section'
@@ -105,7 +107,7 @@ export function ServerConfigPage({ instance }: { instance: InstanceStatus }) {
       </div>
       {currentTab && <p className="muted">{currentTab.blurb}</p>}
 
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
 
       {open === PROPERTIES ? (
         <PropertiesEditor instance={instance} />
@@ -163,7 +165,6 @@ function ServerConfigForm({
   // change nobody asked for.
   const [dirty, setDirty] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
-  const [status, setStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [onlyChanged, setOnlyChanged] = useState(false)
 
@@ -195,7 +196,6 @@ function ServerConfigForm({
   const discard = () => {
     setValues(Object.fromEntries(data.entries.map((entry) => [entry.key, entry.value])))
     setDirty(new Set())
-    setStatus(null)
     setError(null)
   }
 
@@ -215,19 +215,18 @@ function ServerConfigForm({
     event.preventDefault()
     setBusy(true)
     setError(null)
-    setStatus(null)
     try {
       const entries = Object.entries(values)
         .filter(([key]) => dirty.has(key))
         .map(([key, value]) => ({ key, value }))
       if (entries.length === 0) {
-        setStatus('没有修改')
+        toast('没有修改', { key: 'server-config.save' })
         return
       }
       const saved = await api.saveServerConfig(instance.id, data.id, entries)
       adopt(saved)
       if (saved.exists) onCreated()
-      setStatus('已保存，重启服务器后生效')
+      toast('已保存，重启服务器后生效', { key: 'server-config.save' })
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')
     } finally {
@@ -251,11 +250,11 @@ function ServerConfigForm({
       <p className="muted">{data.lead}</p>
 
       {!data.exists && (
-        <div className="alert">
+        <Note>
           <code>{data.path}</code> 还不存在 —— 服务端首次启动时才会生成它。
           下面显示的是服务端自己的默认值；保存只会写入你改过的那几项，
           剩下的等服务端启动时自己补齐。
-        </div>
+        </Note>
       )}
 
       <ConfigLayout
@@ -289,8 +288,7 @@ function ServerConfigForm({
           )
         })}
 
-        {error && <div className="alert alert--error">{error}</div>}
-        {status && <div className="alert alert--ok">{status}</div>}
+        {error && <div className="alert">{error}</div>}
 
         <div className="actions">
           <Button type="button" onClick={() => void reload()}>
