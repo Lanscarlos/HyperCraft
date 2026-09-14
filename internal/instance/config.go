@@ -330,45 +330,109 @@ func (c *Config) consoleJVMArgs(tty bool) []string {
 	return args
 }
 
-// commandLine builds the argv used to launch the server. tty says which
-// console transport the process is about to get, since some of the JVM flags
-// exist only to paper over not having a terminal.
-func (c *Config) commandLine(tty bool) (string, []string, error) {
+// Segment is a stretch of the command line together with where it came from.
+//
+// The launch settings page shows the command it is about to run and claims it
+// is the real one. That claim only survives if there is a single assembly:
+// spawn flattens these, the preview endpoint serves them, and neither can grow
+// a flag the other does not have.
+type Segment struct {
+	Origin string   `json:"origin"`
+	Args   []string `json:"args"`
+}
+
+// Where a stretch of the command line comes from. The UI pairs each with the
+// card that owns it — panel being the one nobody typed, so it is the one the
+// page has to admit to rather than hide.
+const (
+	OriginPanel  = "panel"
+	OriginMemory = "memory"
+	OriginJVM    = "jvm"
+	OriginJar    = "jar"
+	OriginServer = "server"
+)
+
+// commandSegments builds the argv in labelled pieces. tty says which console
+// transport the process is about to get, since some of the JVM flags exist
+// only to paper over not having a terminal.
+func (c *Config) commandSegments(tty bool) (string, []Segment, error) {
+	segments := make([]Segment, 0, 5)
+	add := func(origin string, args ...string) {
+		if len(args) == 0 {
+			return
+		}
+		segments = append(segments, Segment{Origin: origin, Args: args})
+	}
+
 	console := c.consoleJVMArgs(tty)
 
 	if len(c.ArgFiles) > 0 {
-		args := make([]string, 0, len(console)+len(c.JVMArgs)+len(c.ArgFiles)+len(c.ServerArgs))
-		args = append(args, console...)
-		args = append(args, c.JVMArgs...)
+		add(OriginPanel, console...)
+		add(OriginJVM, c.JVMArgs...)
 		// No -Xms/-Xmx here on purpose. An @file is expanded in place and the
 		// JVM lets the last -Xmx win, so the one inside user_jvm_args.txt
 		// would override anything put in front of it. A heap flag that loses
 		// is worse than none: the panel would then report a ceiling the server
 		// never ran with. In this mode the heap is edited in the argfile — see
 		// EffectiveMaxMemoryMB and internal/jvmargs.
+		files := make([]string, 0, len(c.ArgFiles))
 		for _, file := range c.ArgFiles {
-			args = append(args, "@"+file)
+			files = append(files, "@"+file)
 		}
-		args = append(args, c.ServerArgs...)
-		return c.Java, args, nil
+		add(OriginJar, files...)
+		add(OriginServer, c.ServerArgs...)
+		return c.Java, segments, nil
 	}
 
 	if strings.TrimSpace(c.Jar) == "" {
 		return "", nil, fmt.Errorf("%w: no launch target configured: set either jar or argFiles", ErrInvalidConfig)
 	}
 
-	args := make([]string, 0, len(console)+len(c.JVMArgs)+len(c.ServerArgs)+4)
+	memory := make([]string, 0, 2)
 	if c.MinMemoryMB > 0 {
-		args = append(args, fmt.Sprintf("-Xms%dM", c.MinMemoryMB))
+		memory = append(memory, fmt.Sprintf("-Xms%dM", c.MinMemoryMB))
 	}
 	if c.MaxMemoryMB > 0 {
-		args = append(args, fmt.Sprintf("-Xmx%dM", c.MaxMemoryMB))
+		memory = append(memory, fmt.Sprintf("-Xmx%dM", c.MaxMemoryMB))
 	}
-	args = append(args, console...)
-	args = append(args, c.JVMArgs...)
-	args = append(args, "-jar", c.Jar)
-	args = append(args, c.ServerArgs...)
-	return c.Java, args, nil
+	add(OriginMemory, memory...)
+	add(OriginPanel, console...)
+	add(OriginJVM, c.JVMArgs...)
+	add(OriginJar, "-jar", c.Jar)
+	add(OriginServer, c.ServerArgs...)
+	return c.Java, segments, nil
+}
+
+// PreviewSegments is commandSegments for callers outside the package: the
+// launch settings page, which shows this exact argv before anyone starts
+// anything. tty is decided the way spawn decides it, so what is previewed is
+// what will run — except where the PTY itself fails to allocate and the
+// daemon retries on pipes (see Instance.start), which is a runtime failure
+// rather than a setting and is not modelled here.
+func (c Config) PreviewSegments() (string, []Segment, error) {
+	return c.commandSegments(c.wantsTTY())
+}
+
+// FlattenSegments is the argv as the kernel wants it.
+func FlattenSegments(segments []Segment) []string {
+	size := 0
+	for _, s := range segments {
+		size += len(s.Args)
+	}
+	args := make([]string, 0, size)
+	for _, s := range segments {
+		args = append(args, s.Args...)
+	}
+	return args
+}
+
+// commandLine builds the argv used to launch the server.
+func (c *Config) commandLine(tty bool) (string, []string, error) {
+	bin, segments, err := c.commandSegments(tty)
+	if err != nil {
+		return "", nil, err
+	}
+	return bin, FlattenSegments(segments), nil
 }
 
 // StateInfo is the observable runtime status of an instance.

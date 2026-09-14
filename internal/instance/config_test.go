@@ -149,3 +149,75 @@ func write(t *testing.T, path, body string) {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
+
+func TestCommandSegmentsCarryOriginsAndFlattenToTheCommandLine(t *testing.T) {
+	cfg := launchConfig(t)
+	cfg.Jar = "paper.jar"
+	cfg.MinMemoryMB, cfg.MaxMemoryMB = 2048, 4096
+	cfg.JVMArgs = []string{"-XX:+UseG1GC"}
+	cfg.ServerArgs = []string{"--nogui"}
+
+	bin, segments, err := cfg.commandSegments(true)
+	if err != nil {
+		t.Fatalf("commandSegments: %v", err)
+	}
+	if bin != "java" {
+		t.Errorf("bin = %q", bin)
+	}
+
+	// The origins the UI colours by, in the order the JVM receives them.
+	want := []Segment{
+		{Origin: OriginMemory, Args: []string{"-Xms2048M", "-Xmx4096M"}},
+		{Origin: OriginJVM, Args: []string{"-XX:+UseG1GC"}},
+		{Origin: OriginJar, Args: []string{"-jar", "paper.jar"}},
+		{Origin: OriginServer, Args: []string{"--nogui"}},
+	}
+	got := make([]Segment, 0, len(segments))
+	for _, s := range segments {
+		// tty=true emits no console flags beyond the encoding ones, which are
+		// asserted in encoding_test.go; this test is about the other four.
+		if s.Origin == OriginPanel {
+			continue
+		}
+		got = append(got, s)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("segments = %+v, want %d non-panel segments", segments, len(want))
+	}
+	for at := range want {
+		if got[at].Origin != want[at].Origin || !slices.Equal(got[at].Args, want[at].Args) {
+			t.Errorf("segment %d = %+v, want %+v", at, got[at], want[at])
+		}
+	}
+
+	// The whole point: what launches and what is previewed cannot drift,
+	// because one is the other flattened.
+	_, args, err := cfg.commandLine(true)
+	if err != nil {
+		t.Fatalf("commandLine: %v", err)
+	}
+	if !slices.Equal(FlattenSegments(segments), args) {
+		t.Errorf("flatten(segments) = %q, commandLine = %q", FlattenSegments(segments), args)
+	}
+}
+
+func TestCommandSegmentsOmitTheHeapInArgFileMode(t *testing.T) {
+	// An @file is expanded in place and the last -Xmx wins, so the panel does
+	// not put one in front of it. The preview has to show the same thing.
+	cfg := launchConfig(t)
+	cfg.ArgFiles = []string{"user_jvm_args.txt"}
+	cfg.MinMemoryMB, cfg.MaxMemoryMB = 2048, 4096
+
+	_, segments, err := cfg.commandSegments(true)
+	if err != nil {
+		t.Fatalf("commandSegments: %v", err)
+	}
+	for _, s := range segments {
+		if s.Origin == OriginMemory {
+			t.Fatalf("argfile mode emitted a memory segment: %+v", s)
+		}
+	}
+	if !slices.Contains(FlattenSegments(segments), "@user_jvm_args.txt") {
+		t.Errorf("argfile missing from %q", FlattenSegments(segments))
+	}
+}
