@@ -19,9 +19,7 @@ import { Badge } from './Badge'
 import { Button } from './Button'
 import { FileIcon, extensionOf } from './FileIcon'
 import { FileTree } from './FileTree'
-import type { TreeNode } from './FileTree'
 import { Glyph } from './Glyph'
-import type { MenuItem } from './Menu'
 import { Modal } from './Modal'
 import { PageHead } from './Page'
 import { SchematicPreview } from './SchematicPreview'
@@ -126,21 +124,12 @@ export function FileManager({
   // Deliberately not persisted. Landing on 文件 in a mode set last week, with
   // no listing and no toolbar, is a page that looks broken.
   const [editing, setEditing] = useState(false)
-  // Edit mode's own filter, separate from the listing's 在当前目录中查找: that
-  // one filters rows of one directory, this one filters the tree — and only
-  // what the tree has already read.
-  const [treeQuery, setTreeQuery] = useState('')
   // Below the drawer breakpoint the pane already shows one column at a time
   // (see narrowPane), which is what edit mode is *for* — offering it there
   // would be a second state that changes nothing. The number is the one in
   // App's DRAWER_QUERY; the media queries in styles.css are the third place it
   // lives, and all three have to move together.
   const roomy = !useMediaQuery('(max-width: 1024px)')
-  // Between the two breakpoints there is room for two columns but not for two
-  // comfortable ones: 260 of tree out of 1100 is a quarter of the width spent
-  // on a column you glance at. So it starts folded there and opens over the
-  // editor rather than squeezing it.
-  const tight = useMediaQuery('(max-width: 1200px)')
   const [treeOpen, setTreeOpen] = useState(true)
 
   useEffect(() => {
@@ -222,14 +211,6 @@ export function FileManager({
   const editor = useMemo(
     () => tabs.find((tab) => tab.path === activeTab) ?? null,
     [tabs, activeTab],
-  )
-
-  // The tabs already show this; the tree shows it too because in edit mode the
-  // tree is what gets scanned, and an unsaved file you cannot see is one you
-  // lose by walking away from the page.
-  const dirtyPaths = useMemo(
-    () => new Set(tabs.filter((tab) => tab.content !== tab.original).map((tab) => tab.path)),
-    [tabs],
   )
 
   // Folding the tree away buys room for the editor, so with no file open there
@@ -508,10 +489,10 @@ export function FileManager({
       taken: takenNames,
     })
     if (!next || next === entry.name) return
-    await guard(
-      () => api.renameFile(instance.id, entry.path, joinPath(dir, next)),
-      `已重命名为 ${next}`,
-    )
+    const to = joinPath(dir, next)
+    await guard(() => api.renameFile(instance.id, entry.path, to), `已重命名为 ${next}`)
+    retab(entry.path, to)
+    setTreeKey((key) => key + 1)
   }
 
   const remove = async (entry: FileEntry) => {
@@ -525,59 +506,7 @@ export function FileManager({
     })
     if (!ok) return
     await guard(() => api.deleteFile(instance.id, entry.path), `已删除 ${entry.name}`)
-  }
-
-  /**
-   * The row actions the listing keeps in its 操作 column, for a tree that is
-   * standing in for the listing.
-   *
-   * Deliberately not reusing `rename`/`remove`: those two are written for a row
-   * of the *current* directory and join new names onto `dir`. A tree row can be
-   * three levels away from where the listing is standing, and renaming
-   * plugins/Foo/bar.yml would have moved it to the root.
-   */
-  const renameInTree = async (node: TreeNode) => {
-    const parent = parentOf(node.path)
-    // Names already in that directory, so a clash is caught in the dialog
-    // rather than as a 409 afterwards. One extra listing on a rename is
-    // cheaper than the round trip it saves.
-    let taken: string[] = takenNames
-    if (parent !== dir) {
-      try {
-        taken = (await api.listFiles(instance.id, parent)).entries.map((entry) => entry.name)
-      } catch {
-        // Unreadable from here: let the server be the one to refuse.
-        taken = []
-      }
-    }
-    const next = await askName({
-      title: `重命名${node.isDir ? '文件夹' : '文件'}`,
-      label: '新名称',
-      initial: node.name,
-      confirmLabel: '重命名',
-      taken,
-    })
-    if (!next || next === node.name) return
-    await guard(
-      () => api.renameFile(instance.id, node.path, joinPath(parent, next)),
-      `已重命名为 ${next}`,
-    )
-    retab(node.path, joinPath(parent, next))
-    setTreeKey((key) => key + 1)
-  }
-
-  const removeInTree = async (node: TreeNode) => {
-    const ok = await ask({
-      title: `删除${node.isDir ? '文件夹' : '文件'}「${node.name}」？`,
-      lead: node.isDir
-        ? '文件夹里的所有内容会一起删除，无法撤销。'
-        : '删除后无法撤销，请确认这不是存档或配置。',
-      confirmLabel: '删除',
-      danger: true,
-    })
-    if (!ok) return
-    await guard(() => api.deleteFile(instance.id, node.path), `已删除 ${node.name}`)
-    retab(node.path, null)
+    retab(entry.path, null)
     setTreeKey((key) => key + 1)
   }
 
@@ -605,44 +534,6 @@ export function FileManager({
     )
     setActiveTab((current) => (current === null ? null : moved(current)))
   }
-
-  const treeMenu = useCallback(
-    (node: TreeNode): MenuItem[] => [
-      {
-        label: '重命名',
-        disabled: busy || !listing?.writable,
-        onSelect: () => void renameInTree(node),
-      },
-      {
-        label: '复制路径',
-        onSelect: () => {
-          void navigator.clipboard?.writeText(node.path)
-          toast(`已复制 ${node.path}`)
-        },
-      },
-      ...(node.isDir
-        ? []
-        : [
-            {
-              label: '下载',
-              onSelect: () => {
-                const link = document.createElement('a')
-                link.href = downloadURL(instance.id, node.path)
-                link.download = node.name
-                link.click()
-              },
-            },
-          ]),
-      {
-        label: '删除',
-        danger: true,
-        disabled: busy || !listing?.writable,
-        onSelect: () => void removeInTree(node),
-      },
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [busy, listing?.writable, instance.id, dir, takenNames],
-  )
 
   /**
    * Deleting a selection, one request at a time.
@@ -987,37 +878,13 @@ export function FileManager({
               <p className="ftree__where" title={dir || '实例根目录'}>
                 {dir === '' ? '实例根目录' : dir}
               </p>
-              <input
-                className="ftree__find"
-                type="search"
-                value={treeQuery}
-                placeholder="筛选已展开的目录"
-                aria-label="筛选已展开的目录"
-                onChange={(event) => setTreeQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape') setTreeQuery('')
-                }}
-              />
             </>
           )}
           <FileTree
             instanceId={instance.id}
             path={dir}
             reloadKey={treeKey}
-            showFiles={editing}
-            openPath={activeTab}
-            dirtyPaths={dirtyPaths}
-            filter={editing ? treeQuery : ''}
-            menuFor={editing ? treeMenu : undefined}
             onOpen={(next) => void load(next)}
-            onOpenFile={(next, pin) => {
-              // Below 1200 the tree is an overlay sitting on top of the editor,
-              // so picking a file is also how it gets dismissed — the same
-              // reasoning as the navigation drawer in App. Above it the tree
-              // has a column of its own and nothing is covered.
-              if (tight) setTreeOpen(false)
-              void openPath(next, pin)
-            }}
           />
         </aside>
 
