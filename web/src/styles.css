@@ -8374,63 +8374,164 @@ small.field__bad {
   pointer-events: none;
 }
 
+/* The same handle, turned. It divides the two sections of the navigation
+   column rather than two columns, so it is a row of the flex column and its
+   line runs across instead of down. */
+.fm__grip--row {
+  flex: none;
+  height: var(--fm-grip, 14px);
+  align-self: auto;
+  cursor: row-resize;
+}
+
+.fm__grip--row::after {
+  top: 50%;
+  bottom: auto;
+  left: 0;
+  width: auto;
+  right: 0;
+  height: 2px;
+  margin-top: -1px;
+  margin-left: 0;
+}
+
 @media (max-width: 1024px) {
   .fm {
     gap: 10px;
   }
 }
 
-.fm__tree {
-  overflow: auto;
-  padding: 8px 6px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-}
+/* ---- the navigation column --------------------------------------------
 
-/* A folded column: the name of what is behind it, turned on its side, and the
-   chevron that brings it back. It keeps a column in the grid rather than
-   leaving one, so nothing reflows on the way in or out. */
-.fm__rail {
+   Tree above, listing below, one column. They were two, and in a deep plugin
+   path that spent 264px on a listing holding a single file while the tree
+   beside it wanted 780px of height and had 740. The two are anti-correlated —
+   the deeper the tree, the fewer files at the leaf — so stacked they share one
+   column and the editor keeps the width the second one was costing it.
+
+   The price is height, and the heads are the answer to it: a section collapses
+   to its own 28px bar and hands its whole share to the other. */
+.fm__nav {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  color: var(--text-dim);
-  cursor: pointer;
-  font: inherit;
-  transition:
-    background var(--dur) var(--ease),
-    color var(--dur) var(--ease);
 }
 
-.fm__rail:hover {
-  background: var(--surface-2);
-  color: var(--text);
+.fm__sec {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Collapsed is its head and nothing else. The flex-grow of an open one is
+     set inline, because it is the divider's ratio and only JS knows it. */
+  flex: 0 0 auto;
 }
 
-.fm__rail-mark {
-  width: 14px;
-  height: 14px;
+.fm__sec[data-open] {
+  flex-basis: 0;
+  flex-shrink: 1;
+}
+
+.fm__sec-head {
+  display: flex;
   flex: none;
-  transform: rotate(-90deg);
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
 }
 
-.fm__rail-text {
-  font-size: 12px;
-  /* Down the rail rather than across it — 36px has room for one character and
-     these labels are two. */
-  writing-mode: vertical-rl;
-  letter-spacing: 0.1em;
+/* The twisty and the label. Only this part toggles — the controls beside it
+   belong to what is in the section, not to whether it is open. */
+.fm__sec-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-align: left;
 }
 
-/* Below the drawer width the listing is not a column, it is something you
+.fm__sec-toggle:hover {
+  color: var(--text-dim);
+}
+
+.fm__sec-tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The second section's head is also a boundary between two scrollers, so it
+   carries the line above it as well as the one below. */
+.fm__sec + .fm__sec .fm__sec-head {
+  border-top: 1px solid var(--border);
+}
+
+/* The same chevron the tree's own twists use, turned the same way: pointing
+   down means open, right means closed. One mark, one meaning, two controls. */
+.fm__sec-twist {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  transition: transform var(--dur) var(--ease);
+}
+
+.fm__sec[data-open] .fm__sec-twist {
+  transform: rotate(90deg);
+}
+
+/* The switch sits in a 28px bar rather than a 36px one, so it loses the pad
+   the card head gave it. */
+.fm__sec-tools .segmented {
+  padding: 2px;
+}
+
+.fm__sec-tools .segmented__option {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.fm__sec-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 6px 8px;
+}
+
+/* The listing brings its own frame, which would be a second card inside this
+   one. Here it is a section body like the tree's. */
+.fm__sec-body > .flist {
+  height: 100%;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.fm__sec-body:has(> .flist) {
+  padding: 0;
+}
+
+/* Below the drawer width the navigation is not a column, it is something you
    pull over the editor for one pick. Same reasoning as the navigation drawer
    in App: at this width a second permanent column is two slivers instead of
    one usable pane. 1024 is App.tsx's DRAWER_QUERY. */
@@ -8441,6 +8542,14 @@ small.field__bad {
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-lg);
+}
+
+/* The drawer is a box the column has to fill. Without this the column takes
+   its content height, which for two sections whose flex-basis is 0 is zero —
+   a drawer with two heads in it and nothing under them. */
+.fm__drawer > .fm__nav {
+  flex: 1;
+  min-height: 0;
 }
 
 .fm__drawer-close {
