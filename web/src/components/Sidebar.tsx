@@ -168,7 +168,6 @@ export function Sidebar(props: Props) {
         className="sidebar__mark"
         href={pathOf({ kind: 'overview' })}
         onClick={props.follow(() => props.navigate({ kind: 'overview' }))}
-        title="HyperCraft"
         aria-label="HyperCraft 概览"
       >
         <span className="sidebar__logo">
@@ -179,7 +178,28 @@ export function Sidebar(props: Props) {
             面板设置 · 更新, which is where the button to do anything about it
             is. */}
         {props.updateNotice && <span className="sidebar__mark-dot" aria-hidden="true" />}
-        <span className="sidebar__mark-name">HyperCraft</span>
+        {/* The name, and under it the version it is hiding.
+            
+            Which panel this is, is a fact you read once; which build it is, is
+            one you want twice a year and want *immediately* when you want it.
+            Stacking them puts the second one a hover away instead of costing
+            the column's top row a second line. The status bar still carries the
+            version outright — this is a shortcut to it, not its only home.
+
+            No `title` on the link any more: a native tooltip would open in the
+            same place a moment after the swap and say the word that just left. */}
+        <span className="sidebar__mark-name">
+          <span className="sidebar__mark-title">HyperCraft</span>
+          {/* The one `title` left on this row, and it belongs to the half
+              that can be truncated: 220px does not always hold a build string
+              like 0.6.0-snapshot.4631+linux-arm64. It only ever opens while
+              the version is the thing on screen, so it answers the question
+              being asked rather than repeating the word that just left. The
+              status bar carries the full string at all times either way. */}
+          <span className="sidebar__mark-version" title={user.version}>
+            {user.version}
+          </span>
+        </span>
       </a>
 
       {/* The way out, above the header of the scope it leaves: the top-left

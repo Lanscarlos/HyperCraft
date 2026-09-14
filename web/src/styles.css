@@ -1225,11 +1225,63 @@ a:hover {
   text-decoration: none;
 }
 
+/* One cell holding two labels, and the hover decides which of them you see.
+
+   A grid with both children in `1 / 1` rather than an absolute overlay: the
+   cell then sizes to the wider of the two, so a long build string cannot make
+   the row jump when it slides in. `min-width: 0` because it can still be wider
+   than the 220px column has left, and the ellipsis below is what catches that.
+
+   The whole row is the trigger, not just the text. The row is one link, and a
+   hover effect that only fires over part of a link reads as broken from the
+   half of it that does nothing. */
 .sidebar__mark-name {
+  display: grid;
+  min-width: 0;
   font-size: 14.5px;
   font-weight: 600;
   letter-spacing: -0.01em;
   white-space: nowrap;
+}
+
+.sidebar__mark-title,
+.sidebar__mark-version {
+  grid-area: 1 / 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* --dur, not --dur-3: this is a control changing state where it stands, not
+     something arriving into an empty spot. The pair moves 4px in the direction
+     it is travelling so the swap reads as one label giving way to the other
+     rather than as two that happen to be cross-fading. */
+  transition:
+    opacity var(--dur) var(--ease),
+    translate var(--dur) var(--ease);
+}
+
+.sidebar__mark-version {
+  /* Quieter and monospaced, the way every other version in the panel is set —
+     it is a value you compare against a release note, not a name you read. */
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  translate: 0 6px;
+}
+
+.sidebar__mark:hover .sidebar__mark-title,
+.sidebar__mark:focus-visible .sidebar__mark-title {
+  opacity: 0;
+  translate: 0 -6px;
+}
+
+.sidebar__mark:hover .sidebar__mark-version,
+.sidebar__mark:focus-visible .sidebar__mark-version {
+  opacity: 1;
+  translate: 0 0;
 }
 
 /* 有新版本, as a mark on the logo. The rail has no room for the words and the
@@ -1350,8 +1402,17 @@ a:hover {
 
 
 
-.sidebar__new {
-  width: 100%;
+/* The column's gutter, for the blocks that are not inside the scrolling
+   region and so cannot take it from there.
+   
+   The mark and the foot are deliberately not in this list: their rules are
+   meant to run the full width of the column. .sidebar__scroll is not in it
+   either — it takes the same 8px as *padding*, because the active row's marker
+   is drawn 8px to the left of its row and has to land inside the box that
+   clips it rather than outside. Same number, two mechanisms, and the reason
+   they differ is that one of them has something to catch. */
+.sidebar > :is(.sidebar__exit, .sidebar__scope, .sidebar__search-btn, .sidebar__new) {
+  margin-inline: 8px;
 }
 
 /* The sidebar's one scrolling region. Everything above it (brand, search, the
@@ -1364,8 +1425,19 @@ a:hover {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  margin: 0 -2px;
-  padding: 0 2px;
+  /* `clip`, not the `auto` this axis would otherwise inherit from the one
+     above: for a few frames in the middle of the fold the rows are wider than
+     the column, and `auto` answered that by flashing a horizontal scrollbar
+     across the foot of the navigation. `clip` is the one value that can sit
+     beside `auto` on the other axis without being turned into it. */
+  overflow-x: clip;
+  /* 8px, and it is load-bearing rather than rhythm: the active row's marker is
+     drawn at -8px so that it lands flush on the column's own edge, and the
+     column has no side padding of its own to measure back from. It used to be
+     2px here and 8px added to .sidebar in the folded form only — which is why
+     the marker was visible folded and clipped away entirely when the labels
+     were showing. One number, both forms. */
+  padding: 0 8px;
 }
 
 .sidebar__nav {
@@ -1554,10 +1626,12 @@ a:hover {
 
 /* Folded, both are rows that have to stay findable with their labels gone —
    the fold is the only way back out of the fold, the exit the only way back out
-   of the scope — so both centre like every other folded row. */
+   of the scope — so both centre like every other folded row. Centred by
+   `justify-content`, not by becoming a grid: see the note on the folded rows
+   below, of which these two are the worst case — they carry a keyboard hint as
+   well, so as grids they spent the fold as three stacked lines. */
 .sidebar[data-form='rail'] :is(.sidebar__fold, .sidebar__exit) {
-  display: grid;
-  place-items: center;
+  justify-content: center;
   gap: 0;
   padding: 9px 0;
 }
@@ -1689,7 +1763,10 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
+  /* Not `width: 100%`: it sits in the column's 8px gutter (see the rule near
+     .sidebar__scroll), and 100% of the column plus two 8px margins is a button
+     16px wider than the column it is in. Stretching is the flex column's
+     default anyway. */
   padding: 7px 9px;
   background: var(--bg-input);
   border: 1px solid var(--border);
@@ -1745,6 +1822,10 @@ a:hover {
 }
 
 .sidebar__name {
+  /* A flex item will not shrink below its content without this, and for most
+     of the fold the column is narrower than the label. Without it the row
+     stays label-wide and overflows instead of squeezing. */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1848,8 +1929,10 @@ a:hover {
    is switched off in one place rather than each row being rebuilt, so a row
    added later folds correctly without knowing this section exists. */
 
+/* The side padding lives on .sidebar__scroll now, in both forms; adding it
+   again here would indent the folded rows by 16px and take the marker off the
+   edge it is supposed to sit on. */
 .sidebar[data-form='rail'] {
-  padding: 14px 8px;
   align-items: stretch;
 }
 
@@ -1951,19 +2034,34 @@ a:hover {
   padding: 8px 0;
 }
 
+/* A folded row is the same row, centred — not a different kind of box.
+
+   These were `display: grid; place-items: center`, which is the same thing at
+   rest and something else entirely for the length of the fold. The labels are
+   still on screen for the first 90ms of it, and under grid auto-placement each
+   one dropped onto a row of its own: every entry briefly became two or three
+   centred lines, the list grew to twice its height, the names hung off both
+   edges of a column already narrower than they were, and a horizontal
+   scrollbar flashed underneath. The fold read as the navigation coming apart
+   and reassembling rather than as a column closing.
+
+   Kept as flex rows, the only thing that happens in those 90ms is the label
+   fading and squeezing: one movement, in one direction. */
 .sidebar[data-form='rail'] .sidebar__link,
 .sidebar[data-form='rail'] .sidebar__new {
-  display: grid;
-  place-items: center;
+  justify-content: center;
   gap: 0;
   padding: 9px 0;
 }
 
 /* The dot rides the corner of the initial instead of sitting in a column of
-   its own, so state survives the fold. */
+   its own, so state survives the fold. Flex rather than the wide form's
+   three-column grid, for the reason above: `grid-template-columns: none` left
+   its four children auto-placing into four stacked rows. */
 .sidebar[data-form='rail'] .sidebar__link--instance {
   position: relative;
-  grid-template-columns: none;
+  display: flex;
+  justify-content: center;
 }
 
 .sidebar[data-form='rail'] .sidebar__initial {
