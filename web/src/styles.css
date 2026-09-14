@@ -14265,6 +14265,40 @@ select.input-slim option {
   content: '✓';
 }
 
+/* Which of the three kinds of news this is, before the sentence is read. Both
+   hues already exist in light and dark; nothing new is minted here. */
+.toast[data-tone='warn'] {
+  border-left-color: var(--caution);
+}
+
+.toast[data-tone='warn'] .toast__mark {
+  background: var(--caution-soft);
+  color: var(--caution-ink);
+}
+
+.toast[data-tone='warn'] .toast__mark::before {
+  content: '!';
+}
+
+.toast[data-tone='error'] {
+  border-left-color: var(--danger);
+}
+
+.toast[data-tone='error'] .toast__mark {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+
+.toast[data-tone='error'] .toast__mark::before {
+  content: '×';
+}
+
+/* Sits in the sentence rather than beside it: the acknowledgement is the last
+   word of the message, not a control bolted to the card. */
+.toast__ack {
+  margin-left: 8px;
+}
+
 .toast[data-state='out'] {
   animation: toast-out var(--dur-3) var(--ease-in) both;
   pointer-events: none;
