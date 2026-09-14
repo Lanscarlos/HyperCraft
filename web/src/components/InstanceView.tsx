@@ -28,6 +28,9 @@ interface Props {
    *  other server, and the page has to notice when one is created or deleted
    *  somewhere else. */
   instances: InstanceStatus[]
+  /** The machine's physical memory, for 启动方式's allocation bar. From the
+   *  host poll rather than this instance's, which only runs while it does. */
+  hostMemoryTotal: number
   section: InstanceSection
   cores: CoreController
   /** The panel-wide plugin library: what this server can be given. */
@@ -69,6 +72,7 @@ export function InstanceView({
   instance,
   metrics,
   instances,
+  hostMemoryTotal,
   section,
   cores,
   plugins,
@@ -231,6 +235,8 @@ export function InstanceView({
         <Pane id="startup" active={section === 'startup'} leaving={leaving === 'startup'} scroll>
           <StartupSettings
             instance={instance}
+            hostMemoryTotal={hostMemoryTotal}
+            instances={instances}
             cores={cores}
             onSaved={onChanged}
             onOpenLibrary={onOpenCoreLibrary}

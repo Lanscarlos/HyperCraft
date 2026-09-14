@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api } from '../api'
 import { ask } from '../confirm'
-import { formatBytes } from '../format'
 import { changedKeys, fromLines, toInput, toLines } from '../instanceForm'
 import { JVM_PRESETS } from '../jvmPresets'
 import type { InstanceSection } from '../routes'
@@ -18,10 +17,11 @@ import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
 import { useLaunchPreview } from '../useLaunchPreview'
 import { Button } from './Button'
+import { JavaCoreCard } from './JavaCoreCard'
+import { JvmArgsCard } from './JvmArgsCard'
 import { LaunchConsole } from './LaunchConsole'
+import { MemoryCard } from './MemoryCard'
 import { InstanceCorePicker } from './InstanceCorePicker'
-import { JVMArgsEditor } from './JVMArgsEditor'
-import { FieldHelp } from './FieldHelp'
 import { PageHead } from './Page'
 import { ScriptImportDialog } from './ScriptImportDialog'
 import { Section } from './Section'
@@ -29,6 +29,15 @@ import { Select } from './Select'
 
 interface Props {
   instance: InstanceStatus
+  /** The machine's physical memory in bytes, 0 before the first read.
+   *
+   *  From the host's own numbers rather than from this instance's metrics:
+   *  those are only polled while the server is running, and this is the page
+   *  you are on precisely when it is not. */
+  hostMemoryTotal: number
+  /** Every server on the machine: what the rest of them already claim is the
+   *  missing half of "is this heap reasonable". */
+  instances: InstanceStatus[]
   cores: CoreController
   onSaved: (updated: InstanceStatus) => void
   onOpenLibrary: () => void
@@ -51,6 +60,8 @@ const JVM_VIEW_KEY = 'hc.jvmargs.view'
  */
 export function StartupSettings({
   instance,
+  hostMemoryTotal,
+  instances,
   cores,
   onSaved,
   onOpenLibrary,
@@ -79,9 +90,6 @@ export function StartupSettings({
   // stored until 保存 is. So every drafted value goes through the same fields,
   // and the same eyes, as one typed by hand.
   const [importing, setImporting] = useState(false)
-  // Which preset was last pressed, so its one line of "why you would pick
-  // this" can sit under the row instead of on twenty hover targets.
-  const [preset, setPreset] = useState<string | null>(null)
   const [jvm, setJvm] = useState<JVMArgs | null>(null)
   const [jvmMin, setJvmMin] = useState(0)
   const [jvmMax, setJvmMax] = useState(0)
@@ -94,6 +102,12 @@ export function StartupSettings({
   // half of offering the choice at all.
   const [jvmRows, setJvmRows] = useState(
     () => window.localStorage.getItem(JVM_VIEW_KEY) !== 'text',
+  )
+  // Seeded from the stored pair rather than from a preference: an instance
+  // already running Xms = Xmx is one somebody set that way on purpose, and
+  // starting it unlocked invites the next edit to break it.
+  const [heapLocked, setHeapLocked] = useState(
+    () => instance.minMemoryMB > 0 && instance.minMemoryMB === instance.maxMemoryMB,
   )
 
   const setJvmView = (rows: boolean) => {
@@ -259,11 +273,9 @@ export function StartupSettings({
       if (!ok) return
     }
     setJvmText(toLines(chosen.args(form.maxMemoryMB)))
-    setPreset(chosen.id)
     setStatus(`已填上「${chosen.label}」，确认无误再点保存`)
   }
 
-  const presetNote = JVM_PRESETS.find((entry) => entry.id === preset)?.note ?? null
 
   // The one server argument worth a shortcut. --forceUpgrade and --eraseCache
   // are deliberately not offered: they are one-shot conversions, and a control
@@ -277,11 +289,6 @@ export function StartupSettings({
       )
     })
 
-  // Aikar's set assumes -Xms equals -Xmx. Checked against the box rather than
-  // against `preset`, so it also catches the case that actually bites: the
-  // flags arrived by reading somebody's run.sh, not by pressing the button.
-  const aikarNeedsEqualHeap =
-    jvmText.includes('using.aikars.flags') && form.minMemoryMB !== form.maxMemoryMB
 
   // Back to what is stored.
   const revert = () => {
@@ -415,56 +422,38 @@ export function StartupSettings({
 
       <div className="startup">
         <div className="startup__form">
-      <Section form title="启动方式" note="面板拼出来的那条命令行：用哪个 Java、跑哪个 jar、给多少内存。">
-        <div className="segmented" role="group" aria-label="启动方式">
-          {[
-            { value: false, label: '核心 jar', note: 'java -Xmx… -jar server.jar' },
-            { value: true, label: '参数文件', note: 'Forge / NeoForge 的 @user_jvm_args.txt' },
-          ].map((entry) => (
-            <button
-              key={String(entry.value)}
-              type="button"
-              className={`segmented__option${
-                argFileMode === entry.value ? ' segmented__option--active' : ''
-              }`}
-              aria-pressed={argFileMode === entry.value}
-              onClick={() => setArgFileMode(entry.value)}
-            >
-              <strong>{entry.label}</strong>
-              <small>{entry.note}</small>
-            </button>
-          ))}
-        </div>
+      <JavaCoreCard
+          argFileMode={argFileMode}
+          onMode={setArgFileMode}
+          javaField={javaField}
+          jar={form.jar}
+          jars={jars}
+          onJar={(next) => update('jar', next)}
+          argFileText={argFileText}
+          onArgFileText={setArgFileText}
+          onImportScript={() => setImporting(true)}
+          corePicker={
+            <InstanceCorePicker
+              instance={instance}
+              cores={cores}
+              onApplied={onCoreApplied}
+              onOpenLibrary={onOpenLibrary}
+              jarIgnored={argFileMode}
+            />
+          }
+        />
 
         {argFileMode ? (
-          <>
-            {javaField}
-
-            <label className="field">
-              <span>参数文件</span>
-              <textarea
-                rows={3}
-                value={argFileText}
-                onChange={(e) => setArgFileText(e.target.value)}
-                placeholder={'user_jvm_args.txt\nlibraries/net/minecraftforge/forge/1.20.1-47.2.0/unix_args.txt'}
-                spellCheck={false}
-              />
-              <small>
-                一行一个，路径从实例目录算起，面板会按顺序拼成
-                <code> java @第一个 @第二个 …</code>。
-              </small>
-              <FieldHelp summary="为什么 Forge 没有 jar？">
-                Forge 和 NeoForge 从 1.17 起就没有可以 直接跑的 jar 了，安装器留下的就是这两个文件
-                —— 照 <code>run.sh</code> 里那行抄过来即可。
-              </FieldHelp>
-            </label>
-
-            <div className="actions">
-              <Button type="button" onClick={() => setImporting(true)}>
-                从启动脚本读参数…
-              </Button>
-            </div>
-
+          <Section
+            form
+            title={
+              <>
+                <span className="originmark originmark--memory" aria-hidden="true" />
+                内存
+              </>
+            }
+            note="这个服务端的内存写在参数文件里 —— 面板的 -Xmx 到不了 JVM，所以它改的是那个文件。"
+          >
             <ArgFileMemory
               jvm={jvm}
               min={jvmMin}
@@ -475,129 +464,71 @@ export function StartupSettings({
               onMax={setJvmMax}
               onSave={saveJVMArgs}
             />
-          </>
+          </Section>
         ) : (
-          <>
-            {/* 用哪个 Java、跑哪个 jar — one decision, one row. Stacked, each was
-                a 380px control ending at the same place three rows running, with
-                the rest of the line empty beside it. */}
-            <div className="field-row">
-              {javaField}
-
-              <label className="field field--md">
-                <span>服务端 jar</span>
-                <Select
-                  allowCustom
-                  ariaLabel="服务端 jar"
-                  value={form.jar}
-                  placeholder="server.jar"
-                  options={jars.map((jar) => ({
-                    value: jar.name,
-                    label: jar.name,
-                    note: formatBytes(jar.size),
-                  }))}
-                  onChange={(next) => update('jar', next)}
-                />
-                <small>
-                  {jars.length > 0
-                    ? `上面这个目录下找到 ${jars.length} 个 jar 文件，点输入框可以直接选`
-                    : '目录下暂时没有 jar 文件，从上面装一个核心，或自己传一个'}
-                </small>
-              </label>
-            </div>
-
-            <div className="field-row">
-              <label className="field field--num">
-                <span>最小内存 (MB)</span>
-                <input
-                  type="number"
-                  min={0}
-                  step={256}
-                  value={form.minMemoryMB}
-                  onChange={(e) => update('minMemoryMB', Number(e.target.value))}
-                />
-              </label>
-              <label className="field field--num">
-                <span>最大内存 (MB)</span>
-                <input
-                  type="number"
-                  min={0}
-                  step={256}
-                  value={form.maxMemoryMB}
-                  onChange={(e) => update('maxMemoryMB', Number(e.target.value))}
-                />
-              </label>
-            </div>
-
-            <div className="field">
-              <span>JVM 参数</span>
-              <JVMPresets
-                activeNote={presetNote}
-                rows={jvmRows}
-                onPick={(id) => void applyPreset(id)}
-                onImport={() => setImporting(true)}
-                onView={setJvmView}
-              />
-              {jvmRows ? (
-                <JVMArgsEditor value={jvmText} onChange={setJvmText} />
-              ) : (
-                <textarea
-                  rows={4}
-                  value={jvmText}
-                  onChange={(e) => setJvmText(e.target.value)}
-                  placeholder={'-XX:+UseG1GC\n-XX:MaxGCPauseMillis=200'}
-                  aria-label="JVM 参数"
-                />
-              )}
-              {aikarNeedsEqualHeap && (
-                <div className="alert alert--warn">
-                  这套参数的前提是最小内存和最大内存一样大，现在填的是 {form.minMemoryMB} /{' '}
-                  {form.maxMemoryMB} MB。把上面的最小内存也改成 {form.maxMemoryMB} 再保存。
-                </div>
-              )}
-              {!jvmRows && <small>一行一个参数，会放在 -jar 之前。</small>}
-            </div>
-
-            <div className="field">
-              <span>服务端参数</span>
-              {!proxy && (
-                <div className="presets">
-                  <div className="presets__row">
-                    <button
-                      className={`chip${hasNogui ? ' chip--on' : ''}`}
-                      type="button"
-                      aria-pressed={hasNogui}
-                      onClick={toggleNogui}
-                    >
-                      --nogui
-                    </button>
-                  </div>
-                </div>
-              )}
-              <textarea
-                rows={2}
-                value={serverText}
-                onChange={(e) => setServerText(e.target.value)}
-                placeholder={proxy ? '' : '--nogui'}
-                aria-label="服务端参数"
-              />
-              <small>
-                一行一个参数，会放在 jar 之后。
-                {proxy
-                  ? ' Velocity 遇到不认识的参数会直接退出，一般这里留空。'
-                  : ' --nogui 关掉服务端自带的那个 Swing 窗口，无头机器上基本都要。'}
-              </small>
-            </div>
-          </>
+          <MemoryCard
+            min={form.minMemoryMB}
+            max={form.maxMemoryMB}
+            onMin={(value) => update('minMemoryMB', value)}
+            onMax={(value) => update('maxMemoryMB', value)}
+            locked={heapLocked}
+            onLocked={setHeapLocked}
+            hostTotalBytes={hostMemoryTotal}
+            others={instances
+              .filter((one) => one.id !== instance.id)
+              .map((one) => ({ name: one.name, mb: one.effectiveMaxMemoryMB }))}
+          />
         )}
 
-        <InstanceCorePicker
-          instance={instance}
-          cores={cores}
-          onApplied={onCoreApplied}
-          onOpenLibrary={onOpenLibrary}
-          jarIgnored={argFileMode}
+        <JvmArgsCard
+          text={jvmText}
+          onText={setJvmText}
+          count={pending.jvmArgs.length}
+          rows={jvmRows}
+          onView={setJvmView}
+          onPick={(id) => void applyPreset(id)}
+          onImport={() => setImporting(true)}
         />
+
+        <Section
+          form
+          title={
+            <>
+              <span className="originmark originmark--server" aria-hidden="true" />
+              服务端参数
+            </>
+          }
+          meta="跟在 jar 之后"
+          note="传给服务端自己的参数，不是给 JVM 的。"
+        >
+          {!proxy && (
+            <div className="presets">
+              <div className="presets__row">
+                <button
+                  className={`chip${hasNogui ? ' chip--on' : ''}`}
+                  type="button"
+                  aria-pressed={hasNogui}
+                  onClick={toggleNogui}
+                >
+                  --nogui
+                </button>
+              </div>
+            </div>
+          )}
+          <textarea
+            rows={2}
+            value={serverText}
+            onChange={(e) => setServerText(e.target.value)}
+            placeholder={proxy ? '' : '--nogui'}
+            aria-label="服务端参数"
+          />
+          <small>
+            一行一个参数，会放在 jar 之后。
+            {proxy
+              ? ' Velocity 遇到不认识的参数会直接退出，一般这里留空。'
+              : ' --nogui 关掉服务端自带的那个 Swing 窗口，无头机器上基本都要。'}
+          </small>
+        </Section>
 
         {importing && (
           <ScriptImportDialog
@@ -606,7 +537,6 @@ export function StartupSettings({
             onClose={() => setImporting(false)}
           />
         )}
-      </Section>
         </div>
 
         <aside className="startup__rail">
@@ -651,54 +581,6 @@ export function StartupSettings({
         </div>
       )}
     </form>
-  )
-}
-
-function JVMPresets({
-  activeNote,
-  rows,
-  onPick,
-  onImport,
-  onView,
-}: {
-  activeNote: string | null
-  rows: boolean
-  onPick: (id: string) => void
-  onImport: () => void
-  onView: (rows: boolean) => void
-}) {
-  return (
-    <div className="presets">
-      <div className="presets__row">
-        {JVM_PRESETS.map((entry) => (
-          <button key={entry.id} className="chip" type="button" onClick={() => onPick(entry.id)}>
-            {entry.label}
-          </button>
-        ))}
-        <button className="chip chip--right" type="button" onClick={onImport}>
-          从启动脚本读…
-        </button>
-        <div className="presets__view" role="group" aria-label="JVM 参数的显示方式">
-          <button
-            className={`chip${rows ? ' chip--on' : ''}`}
-            type="button"
-            aria-pressed={rows}
-            onClick={() => onView(true)}
-          >
-            卡片
-          </button>
-          <button
-            className={`chip${rows ? '' : ' chip--on'}`}
-            type="button"
-            aria-pressed={!rows}
-            onClick={() => onView(false)}
-          >
-            文本
-          </button>
-        </div>
-      </div>
-      {activeNote && <small className="presets__note">{activeNote}</small>}
-    </div>
   )
 }
 

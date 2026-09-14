@@ -109,3 +109,18 @@ export const JVM_PRESETS: JVMPreset[] = [
     ],
   },
 ]
+
+/**
+ * Which preset these arguments came from, or null for a hand-rolled set.
+ *
+ * By marker rather than by comparing the whole list: Aikar's set is computed
+ * from the heap, so an exact comparison would stop matching the moment
+ * somebody changed -Xmx — and a preset that unselects itself because you
+ * edited your memory is lying about what is in the box.
+ */
+export function detectPreset(args: string[]): string | null {
+  if (args.some((arg) => arg.startsWith('-Dusing.aikars.flags'))) return 'aikar'
+  if (args.includes('-XX:+UseZGC')) return 'zgc'
+  if (args.includes('-XX:+UseG1GC')) return 'g1'
+  return null
+}

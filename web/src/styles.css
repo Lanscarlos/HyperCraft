@@ -3218,6 +3218,143 @@ a:hover {
   gap: 5px;
 }
 
+/* A card's legend square sits on its heading. The title is a flex line so the
+   square keeps its size and stays on the text's baseline rather than being
+   stretched by it. */
+.panel__title .originmark {
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* ---- the three JVM presets, as a pick-one -------------------------------
+
+   They used to be three plain chips with the chosen one's note appearing
+   underneath, which said what you had picked but never which one was in
+   effect — reload the page and every chip looked the same. These carry the
+   note inline and mark the active one, which is detected from the arguments
+   rather than from the last click. */
+.presetpick {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.presetpick__one {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 11px;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.presetpick__one:hover {
+  border-color: var(--border-strong);
+}
+
+.presetpick__one:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.presetpick__one strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.presetpick__one small {
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.presetpick__one--on {
+  background: var(--accent-soft);
+  border-color: var(--border-accent);
+}
+
+/* ---- what this heap costs the machine -----------------------------------
+
+   Configured ceilings, not live usage: the question being answered while you
+   type a number is whether these servers can coexist, not what is resident
+   right now. */
+.memorybar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.memorybar__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.memorybar__total {
+  font-variant-numeric: tabular-nums;
+}
+
+.memorybar__track {
+  display: flex;
+  gap: 1px;
+  height: 8px;
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.memorybar__fill {
+  display: block;
+  height: 100%;
+}
+
+.memorybar__fill--others {
+  background: var(--border-strong);
+}
+
+.memorybar__fill--self {
+  background: var(--ok);
+}
+
+/* The ceilings already add up to more than the box has. Rare enough, and
+   consequential enough, to be the one thing on this card that is coloured. */
+.memorybar__fill--over {
+  background: var(--caution);
+}
+
+.memorybar__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.memorybar__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.memorybar__key--end {
+  margin-left: auto;
+}
+
+.memorybar__swatch--others {
+  background: var(--border-strong);
+}
+
 .status {
   display: flex;
   align-items: center;
