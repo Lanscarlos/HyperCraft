@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import type { PanelAlert } from '../alerts'
+import type { AlertLevel, PanelAlert } from '../alerts'
 import { DISK_CRITICAL_FREE, diskFreeRatio, diskUsedPercent, hostMemory } from '../alerts'
 import { formatBytes, formatPercent } from '../format'
 import type { Route } from '../routes'
@@ -13,6 +13,8 @@ import { useUptime } from '../useUptime'
 import { Button } from './Button'
 import { Card } from './Card'
 import { EmptyState } from './EmptyState'
+import type { NoteTone } from './Note'
+import { Note } from './Note'
 import { Page } from './Page'
 import { PowerControls } from './PowerControls'
 import { Section } from './Section'
@@ -38,6 +40,14 @@ interface Props {
  * (network, per-core CPU, IO wait) are a floor down on the host page; a number
  * that does not change your next action does not belong on a home page.
  */
+
+/** Info gets no colour: it is a thing worth knowing, not a thing that is
+ *  wrong. The same three answers the 概览 badge already gives this list, and
+ *  the reason .alert--info was never defined — see .badge--alert in styles. */
+function noteTone(level: AlertLevel): NoteTone {
+  return level === 'info' ? 'neutral' : level
+}
+
 export function Dashboard({
   instances,
   system,
@@ -131,15 +141,15 @@ export function Dashboard({
       {alerts.length > 0 && (
         <section className="alerts" aria-label="待处理告警">
           {alerts.map((alert) => (
-            <div key={alert.id} className={`alert alert--${alert.level}`}>
-              <div className="alert__body">
+            <Note key={alert.id} tone={noteTone(alert.level)}>
+              <div className="note__body">
                 <strong>{alert.title}</strong>
                 {alert.detail && <span>{alert.detail}</span>}
               </div>
               <button className="link" onClick={() => onNavigate(alert.action.route)}>
                 {alert.action.label}
               </button>
-            </div>
+            </Note>
           ))}
         </section>
       )}

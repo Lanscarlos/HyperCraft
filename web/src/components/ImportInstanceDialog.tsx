@@ -5,6 +5,7 @@ import { formatBytes } from '../format'
 import type { HostInspection, InstanceStatus, ParsedScript } from '../types'
 import { Button } from './Button'
 import { Modal } from './Modal'
+import { Note } from './Note'
 import { DirectoryField } from './PathPicker'
 import { ScriptDraft } from './ScriptDraft'
 import { Select } from './Select'
@@ -269,7 +270,7 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
           </>
         )}
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
 
         <div className="modal__actions">
           <Button type="button" onClick={onCancel} disabled={busy}>
@@ -304,21 +305,21 @@ function Inspection({ found, scanning }: { found: HostInspection | null; scannin
   }
   if (found.takenBy) {
     return (
-      <div className="alert alert--error">
+      <Note tone="error">
         实例「{found.takenBy}」已经在用这个目录了。两个实例指向同一个世界，一起开服会把存档写坏
         —— 换一个目录，或者直接去用那个实例。
-      </div>
+      </Note>
     )
   }
   if (!found.exists) {
     return (
-      <div className="alert alert--error">
+      <Note tone="error">
         这个目录不存在。导入是接管已有的服务端；要新开一个服，用「新建实例」。
-      </div>
+      </Note>
     )
   }
   if (found.error) {
-    return <div className="alert alert--error">读不了这个目录：{found.error}</div>
+    return <Note tone="error">读不了这个目录：{found.error}</Note>
   }
 
   const facts = [
@@ -347,7 +348,7 @@ function Inspection({ found, scanning }: { found: HostInspection | null; scannin
   ].filter(Boolean)
 
   return (
-    <div className={found.server ? 'alert alert--ok' : 'alert'}>
+    <Note tone={found.server ? 'ok' : 'neutral'}>
       {found.proxy
         ? '这看着是一个 Velocity 代理端目录，会按代理端导入。'
         : found.server
@@ -364,7 +365,7 @@ function Inspection({ found, scanning }: { found: HostInspection | null; scannin
           EULA 还没同意，导入之后在「服务器配置」页勾一下就能启动。
         </p>
       )}
-    </div>
+    </Note>
   )
 }
 

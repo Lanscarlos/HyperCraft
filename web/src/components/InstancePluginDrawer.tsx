@@ -6,6 +6,7 @@ import type { InstancePlugin } from '../types'
 import { useDismiss } from '../useDismiss'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { Note } from './Note'
 import { loaderLabel } from './PluginBrowse'
 import { CompatBadge } from './PluginCompat'
 
@@ -104,7 +105,7 @@ export function InstancePluginDrawer({
               their own the heading and its explanation lay out side by side
               and break wherever the width happens to run out. */}
           {entry.failure && (
-            <div className="alert alert--error">
+            <Note tone="error">
               <div>
                 <strong>加载失败</strong>
                 <p className="jar-facts__note">{entry.failure.reason}</p>
@@ -112,14 +113,14 @@ export function InstancePluginDrawer({
                   去控制台看这一段日志
                 </button>
               </div>
-            </div>
+            </Note>
           )}
 
           {/* Above the descriptor, because a name clash makes every fact below
               it ambiguous: two jars answer to this name and the server picked
               one of them without saying which. */}
           {entry.conflicts && entry.conflicts.length > 0 && (
-            <div className="alert alert--warn">
+            <Note tone="warn">
               <div>
                 <strong>和别的 jar 重名</strong>
                 <p className="jar-facts__note">
@@ -136,7 +137,7 @@ export function InstancePluginDrawer({
                   删掉或停用多余的那一个，页面上的版本号才对得上跑着的那份。
                 </p>
               </div>
-            </div>
+            </Note>
           )}
 
           <section className="drawer__section">

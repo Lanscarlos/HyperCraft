@@ -2,13 +2,22 @@ import { useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
 import { DUR, reducedMotion } from '../motion'
-import type { ToastItem } from '../toast'
+import type { ToastItem, ToastTone } from '../toast'
 import { dismissToast, useToasts } from '../toast'
 import { useDismiss } from '../useDismiss'
 
 /** Long enough to look up from what you were doing, find the corner and read a
- *  sentence — which is a second or two more than it takes to read one. */
-const LINGER = 6000
+ *  sentence — which is a second or two more than it takes to read one.
+ *
+ *  Only consulted for a toast that leaves on its own; a sticky one never starts
+ *  a clock. An error that is explicitly not sticky gets the warn duration,
+ *  because what makes an error worth longer is the risk of going unread, and
+ *  this one has been declared readable at a glance. */
+const LINGER: Record<ToastTone, number> = {
+  ok: 6000,
+  warn: 10000,
+  error: 10000,
+}
 
 /**
  * Everything that has finished lately, in the corner.
@@ -52,9 +61,11 @@ export function ToastStack() {
  * land. A fixed width, a tick, and body text a step up from the page's is the
  * difference between a message in the corner and a message you notice.
  *
- * Errors are deliberately not routed here. Something that failed has to stay
- * on screen until it is read, and a message that removes itself is a message
- * that can be missed.
+ * Errors come through here now and do not leave on their own. The rule this
+ * replaces — errors stay in the page because a message that removes itself can
+ * be missed — was right that a failure has to stay, and wrong that the corner
+ * cannot hold one: 开关机失败 sat at the top of the instance page, which is the
+ * page you leave to go and look at why.
  */
 function Toast({ item }: { item: ToastItem }) {
   // Stable for the life of this toast, and it has to be: the effect below
@@ -68,17 +79,38 @@ function Toast({ item }: { item: ToastItem }) {
   useEffect(() => {
     // Reduced motion shortens the exit to nothing, not the reading time — the
     // preference is about movement, not about how fast someone reads.
-    const timer = window.setTimeout(close, LINGER)
+    if (item.sticky) return
+    const timer = window.setTimeout(close, LINGER[item.tone])
     return () => window.clearTimeout(timer)
-  }, [close])
+  }, [close, item.sticky, item.tone])
 
   return (
-    <div className="toast" data-state={leaving && !reducedMotion() ? 'out' : 'in'} role="status">
+    <div
+      className="toast"
+      data-tone={item.tone}
+      data-state={leaving && !reducedMotion() ? 'out' : 'in'}
+      // A failure has to reach a screen reader as it lands rather than waiting
+      // for a pause in whatever is being read.
+      role={item.tone === 'error' ? 'alert' : 'status'}
+    >
       <span className="toast__mark" aria-hidden="true" />
-      <span className="toast__body">{item.message}</span>
-      <button className="toast__close" onClick={close} aria-label="关闭">
-        ×
-      </button>
+      <span className="toast__body">
+        {item.message}
+        {/* A sticky toast closes by being acknowledged, not by being swatted:
+            × reads as "stop bothering me" and 知道了 reads as "I have read it",
+            and for the one kind of message that is not allowed to go unread
+            that difference is the whole point. */}
+        {item.sticky && (
+          <button className="link toast__ack" onClick={close}>
+            知道了
+          </button>
+        )}
+      </span>
+      {!item.sticky && (
+        <button className="toast__close" onClick={close} aria-label="关闭">
+          ×
+        </button>
+      )}
     </div>
   )
 }

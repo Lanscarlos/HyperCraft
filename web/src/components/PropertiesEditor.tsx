@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api'
+import { toast } from '../toast'
 import type {
   EulaStatus,
   InstanceStatus,
@@ -9,6 +10,7 @@ import type {
 } from '../types'
 import { Button } from './Button'
 import { ConfigLayout, ConfigRow, ConfigSaveBar, changedKeys } from './ConfigLayout'
+import { Note } from './Note'
 import { Section } from './Section'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
@@ -30,7 +32,6 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
   const [present, setPresent] = useState<Set<string>>(new Set())
   const [eula, setEula] = useState<EulaStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [status, setStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // Hides every row that still reads the way it did on disk. Off by default:
   // the page is also how you find a setting you have never touched.
@@ -108,14 +109,13 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
     event.preventDefault()
     setBusy(true)
     setError(null)
-    setStatus(null)
     try {
       const entries = Object.entries(values)
         .filter(([key]) => dirty.has(key) || present.has(key))
         .map(([key, value]) => ({ key, value }))
 
       if (entries.length === 0) {
-        setStatus('没有修改')
+        toast('没有修改', { key: 'properties-editor.save' })
         return
       }
 
@@ -124,7 +124,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
       setValues(Object.fromEntries(saved.entries.map((e) => [e.key, e.value])))
       setPresent(new Set(saved.entries.map((e) => e.key)))
       setDirty(new Set())
-      setStatus('已保存，重启服务器后生效')
+      toast('已保存，重启服务器后生效', { key: 'properties-editor.save' })
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')
     } finally {
@@ -137,7 +137,6 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
     if (!data) return
     setValues(Object.fromEntries(data.entries.map((e) => [e.key, e.value])))
     setDirty(new Set())
-    setStatus(null)
     setError(null)
   }
 
@@ -150,7 +149,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
   }
 
   if (!data) {
-    if (error) return <div className="alert alert--error">{error}</div>
+    if (error) return <div className="alert">{error}</div>
     return (
       <SkeletonScreen label="正在读取 server.properties…">
         <SkeletonPanel title={false}>
@@ -193,10 +192,10 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
       )}
 
       {!data.exists && (
-        <div className="alert">
+        <Note>
           <code>server.properties</code> 还不存在。
           服务端首次启动会生成它；你现在填的值会在保存时直接写入文件。
-        </div>
+        </Note>
       )}
 
       <ConfigLayout
@@ -262,8 +261,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
           </Section>
         )}
 
-        {error && <div className="alert alert--error">{error}</div>}
-        {status && <div className="alert alert--ok">{status}</div>}
+        {error && <div className="alert">{error}</div>}
 
         <div className="actions">
           <Button type="button" onClick={() => void load()}>

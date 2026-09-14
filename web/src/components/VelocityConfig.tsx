@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api'
-import { toast } from '../toast'
+import { toast, toastWarn } from '../toast'
 import type {
   InstanceStatus,
   VelocityResponse,
@@ -11,6 +11,7 @@ import type {
 } from '../types'
 import { Button } from './Button'
 import { EmptyState } from './EmptyState'
+import { Note } from './Note'
 import { PageHead } from './Page'
 import { Section } from './Section'
 import { Select } from './Select'
@@ -59,7 +60,6 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
   const [secret, setSecret] = useState('')
   const [secretDirty, setSecretDirty] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [status, setStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const adopt = (loaded: VelocityResponse) => {
@@ -156,7 +156,6 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
     event.preventDefault()
     setBusy(true)
     setError(null)
-    setStatus(null)
     try {
       const saved = await api.saveVelocity(instance.id, {
         entries: Object.entries(values)
@@ -168,7 +167,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
         forwardingSecret: secretDirty ? secret.trim() : '',
       })
       adopt(saved)
-      setStatus('已保存，重启代理端后生效')
+      toast('已保存，重启代理端后生效', { key: 'velocity-config.save' })
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')
     } finally {
@@ -181,7 +180,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
       await navigator.clipboard.writeText(secret)
       toast('已复制转发密钥')
     } catch {
-      toast('复制失败，手动选中复制吧')
+      toastWarn('复制失败，手动选中复制吧')
     }
   }
 
@@ -194,7 +193,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
       <div className="stack">
         {head}
         {error ? (
-          <div className="alert alert--error">{error}</div>
+          <div className="alert">{error}</div>
         ) : (
           <SkeletonScreen inPage label="正在读取 velocity.toml…">
             <SkeletonPanel title={false}>
@@ -222,10 +221,10 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
       {head}
 
       {!data.exists && (
-        <div className="alert">
+        <Note>
           <code>velocity.toml</code> 还不存在。代理端首次启动会生成它；
           下面填的是 Velocity 的默认值，保存时会直接写成完整的配置文件。
-        </div>
+        </Note>
       )}
 
       <Section
@@ -506,10 +505,10 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
         </div>
 
         {needsSecret && secret.trim() === '' && (
-          <div className="alert alert--warn">
+          <Note tone="warn">
             转发模式是 <code>{forwarding}</code>，但还没有密钥。
             密钥为空时 Velocity 会拒绝启动。
-          </div>
+          </Note>
         )}
       </Section>
 
@@ -537,8 +536,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
         ))}
       </Section>
 
-      {error && <div className="alert alert--error">{error}</div>}
-      {status && <div className="alert alert--ok">{status}</div>}
+      {error && <div className="alert">{error}</div>}
 
       <div className="actions">
         <Button variant="primary" type="submit" disabled={busy}>

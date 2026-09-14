@@ -4,7 +4,7 @@ import { api, schematicDownloadURL, uploadSchematics } from '../api'
 import { bareName, blockColor } from '../blockcolors'
 import { ask } from '../confirm'
 import { formatBytes, formatSince } from '../format'
-import { toast } from '../toast'
+import { toast, toastError } from '../toast'
 import type {
   SchematicEntry,
   SchematicImportResult,
@@ -16,6 +16,7 @@ import { Button } from './Button'
 import { Card } from './Card'
 import { EmptyState } from './EmptyState'
 import { Modal } from './Modal'
+import { Note } from './Note'
 import { Page } from './Page'
 import { SchematicDialog } from './SchematicPreview'
 import { Section } from './Section'
@@ -78,7 +79,7 @@ export function SchematicLibraryPage({
       if (kept > 0) toast(`已入库 ${kept} 个建筑`)
       await schematics.refresh()
     } catch (err) {
-      toast(err instanceof Error ? err.message : '上传失败')
+      toastError(err instanceof Error ? err.message : '上传失败')
     } finally {
       setProgress(null)
     }
@@ -131,7 +132,7 @@ export function SchematicLibraryPage({
         </>
       }
     >
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
 
       <Section title="建筑列表" note="把 .schem 丢进建筑库目录，扫描一下也会出现在这里">
         <Toolbar>
@@ -379,18 +380,13 @@ function UploadReport({
   onDismiss: () => void
 }) {
   const failed = results.filter((result) => result.error)
-  if (failed.length === 0) {
-    return (
-      <div className="alert alert--ok">
-        已入库 {results.length} 个建筑。
-        <button className="link" onClick={onDismiss}>
-          知道了
-        </button>
-      </div>
-    )
-  }
+  // Nothing to report when nothing went wrong: 已入库 N 个建筑 is said once, as
+  // a toast, by the upload itself. This block used to say it a second time and
+  // then sit there until dismissed — two copies of one sentence, one of which
+  // had to be clicked away.
+  if (failed.length === 0) return null
   return (
-    <div className="alert alert--warn">
+    <Note tone="warn">
       <p>
         {results.length - failed.length} 个入库，{failed.length} 个没成：
       </p>
@@ -404,7 +400,7 @@ function UploadReport({
       <button className="link" onClick={onDismiss}>
         知道了
       </button>
-    </div>
+    </Note>
   )
 }
 
@@ -562,7 +558,7 @@ function InstallDialog({
         </p>
 
         {targets.length === 0 ? (
-          <div className="alert">还没有实例可以装。</div>
+          <Note>还没有实例可以装。</Note>
         ) : (
           <>
             <label className="field">
@@ -616,11 +612,11 @@ function InstallDialog({
               <span>覆盖同名文件</span>
             </label>
 
-            {error && <div className="alert alert--error">{error}</div>}
+            {error && <div className="alert">{error}</div>}
             {done && (
-              <div className="alert alert--ok">
+              <Note tone="ok">
                 装好了。进服打 <code>{done}</code> 就能贴出来。
-              </div>
+              </Note>
             )}
           </>
         )}

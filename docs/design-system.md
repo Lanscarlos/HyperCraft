@@ -228,6 +228,37 @@ chip 的选中态**只有 `chip--on`**（`chip--active` 已经没了）；chip �
 替掉的六套：`.device-row`、`.acct-row`（和前者逐字节相同）、`.tokenrow`、`.setting-row`、
 `.schemsource`、`.dlrow`、`.foreign__row`。
 
+### `Note` / `.alert` / `toast`——三个面的分工
+
+「给人看一句话」有三个载体。判据一句话：**能用 `if (条件)` 渲染的不是消息，
+只能在事件处理器里调用的才是消息。**
+
+| 面 | 回答的问题 | 载体 | 生命周期 |
+| --- | --- | --- | --- |
+| 消息 | 刚才发生了什么 | `toast()` / `toastWarn()` / `toastError()` | 弹出后自动淡出；error 常驻到点「知道了」 |
+| 状态 | 现在是什么情况 | `<Note tone>` | 条件为真时存在 |
+| 页面级错误 | 这一页没能加载 | `.alert` | 紧贴页头，上面不放别的 |
+| 任务 | 正在做什么 | 下载队列 + 页内进度 | 跟着 job 状态机 |
+
+```tsx
+<Note tone="warn">这超过了本机内存的八成。</Note>
+// tone: 'neutral'（默认，不上色）| 'ok' | 'warn' | 'error'
+
+toast('已保存，重启服务器后生效', { key: 'server-config.save' })
+toastWarn('复制失败，手动选中复制吧')
+toastError('启动失败：端口 25565 已被占用')   // 默认常驻
+```
+
+`.alert` **没有修饰符**，只有一个含义，也不需要「知道了」——下次成功加载会清掉它，
+而一条被点掉的加载失败留下的是一个无声的空页。`.note` 必须通过 `<Note>`。两条都由
+`check-ui.mjs` 的 `ruleMessageSurfaces` 执行。
+
+`toast` 的第二参数：`{ key }` 让同 key 的新消息替换旧的（连点保存只留一条），
+`{ sticky }` 让它不自动消失。`toastError` 默认 `sticky`。
+
+这三者曾经共用一个类名 `.alert`，用了 141 次。后果是可查的：两个名为 `warning` 的
+字段被画成红色「出错了」好几个月——拼错类名构建会失败，用错 tone 不会。
+
 ### `Card`
 
 ```tsx
@@ -412,6 +443,7 @@ flexbox 冻结，剩余空间全部分给唯一还能伸的项——也就是左
 | `rulePrimaryButtons` | 一个文件最多一个 `variant="primary"`，`PRIMARY_ALLOWED` 里登记过的按登记的配额。见第 6 节。 |
 | `ruleBadgesAreComponents` | `<span>` 不许手写 `.badge` / `.badge--*`，一律走 `<Badge>`。模板里的 `${…}` 先剥掉再分词，否则 `badge${TONE[x]}` 这种写法会整个溜过去。非 `<span>` 的放行——画成徽章的按钮不可能是 `Badge`。 |
 | `ruleDropdownsAreOurs` | 组件里不许出现原生 `<select>` / `<datalist>`，一律走 `Select`。`Select.tsx` 自身豁免 —— 它拥有两个分支，包括粗指针设备上回落的那个真 `<select>`。扫描前先剥注释：这份代码库的注释大量在讨论这两个标签（`InstancePlugins` 和 `JVMArgsEditor` 各自长篇解释了为什么**不**用），不剥就全是误报。 |
+| `ruleMessageSurfaces` | `.alert` 不许带任何修饰符——它只有一个含义（页面级错误）；`.note` / `.note--*` 只许 `Note.tsx` 写。模板里的 `${…}` 先剥掉再分词，否则 `alert--${level}` 会整个溜过去。见第 3 节。 |
 | `ruleNoSilentOverrides` | 同一个选择器不许重复声明同一个**属性**。写两遍本身不算错——这份样式表是按叙述组织的；但同一个属性写两遍，就一定有一块在悄悄失效。有意的覆盖写进 `OVERRIDE_ALLOWED` 并附理由。 |
 
 只校验 BEM 形状（含 `__` 或 `--`）的类名——单词形的 token 会被模板字符串里的对象键和状态名污染，全是误报。扫描 JSX 标签时先跳注释再跳字符串：属性之间的注释里有 "snapshot's copy"，把那个撇号当成字符串起始会吞掉整个文件。
@@ -421,4 +453,6 @@ flexbox 冻结，剩余空间全部分给唯一还能伸的项——也就是左
 ### 还没被守卫覆盖的
 
 - **表格家族不得重新声明 `.dtable__*` 已有的属性**。目前靠人看。合并时留下的两处有意例外：`.rows__head` 和 `.plugin-table__head` 用小型大写，其余表头不用——这是观感差异不是结构差异，等观感那一轮统一。
+- **`.alert` 必须紧贴页头**。位置关系的静态判定会误报——三元分支的写法在 `ConfigHistory.tsx`、
+  `NetworkPage.tsx`、`VelocityConfig.tsx` 都有（`cond ? <div className="alert"/> : <Skeleton/>`），一条会误报的守卫会教人绕过它。只作约定。
 - **`PRIMARY_ALLOWED` 的配额是按文件不是按屏**。脚本看不见「一屏」，所以对话框和互斥分支只能靠登记豁免。登记时看错了，规则就跟着错——这是这条规则唯一的软肋。

@@ -62,7 +62,7 @@ export function DevicesPage() {
       title="已配对设备"
       lead="桌面端和手机 App 用设备令牌登录，不像浏览器会话那样面板一重启就失效，所以自动更新不会把你从 App 里登出。配对方法见 README；改密码会解除所有设备的配对。"
     >
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
 
       <Section title="设备">
         {devices === null ? (

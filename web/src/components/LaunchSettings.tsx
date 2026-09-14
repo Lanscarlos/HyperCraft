@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { ask } from '../confirm'
 import { formatBytes } from '../format'
+import { toast } from '../toast'
 import type {
   InstanceInput,
   InstanceStatus,
@@ -17,6 +18,7 @@ import { JVM_PRESETS } from '../jvmPresets'
 import { Button } from './Button'
 import { JVMArgsEditor } from './JVMArgsEditor'
 import { FieldHelp } from './FieldHelp'
+import { Note } from './Note'
 import { ScriptImportDialog } from './ScriptImportDialog'
 import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
@@ -348,11 +350,9 @@ export function LaunchSettings({
         argFiles,
       }
       onSaved(await api.updateInstance(instance.id, payload))
-      setStatus(
-        isLive(instance.state)
-          ? '已保存，将在下次启动时生效'
-          : '已保存',
-      )
+      toast(isLive(instance.state) ? '已保存，将在下次启动时生效' : '已保存', {
+        key: 'launch-settings.save',
+      })
       setCheckRev((rev) => rev + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')
@@ -703,10 +703,10 @@ export function LaunchSettings({
               />
             )}
             {aikarNeedsEqualHeap && (
-              <div className="alert alert--warn">
+              <Note tone="warn">
                 这套参数的前提是最小内存和最大内存一样大，现在填的是 {form.minMemoryMB} /{' '}
                 {form.maxMemoryMB} MB。把上面的最小内存也改成 {form.maxMemoryMB} 再保存。
-              </div>
+              </Note>
             )}
             {!jvmRows && <small>一行一个参数，会放在 -jar 之前。</small>}
           </div>
@@ -870,8 +870,8 @@ export function LaunchSettings({
       </div>
       </Section>
 
-      {error && <div className="alert alert--error">{error}</div>}
-      {status && <div className="alert alert--ok">{status}</div>}
+      {error && <div className="alert">{error}</div>}
+      {status && <Note tone="ok">{status}</Note>}
 
       {dirty && (
         <div className="formbar">

@@ -22,6 +22,7 @@ import { useDismiss } from '../useDismiss'
 import type { PluginController } from '../usePlugins'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { Note } from './Note'
 import { loaderLabel, sourceLabel } from './PluginBrowse'
 import { PluginIcon } from './PluginIcon'
 import { Select } from './Select'
@@ -203,9 +204,9 @@ export function PluginLibraryDrawer({
         </nav>
 
         <div className="drawer__body">
-          {error && <div className="alert alert--error">{error}</div>}
+          {error && <div className="alert">{error}</div>}
           {item.checkError && (
-            <div className="alert alert--warn">检查更新失败：{item.checkError}</div>
+            <Note tone="warn">检查更新失败：{item.checkError}</Note>
           )}
 
           {tab === 'overview' && (
@@ -709,7 +710,7 @@ function VersionsTab({
         </div>
       </div>
 
-      {fetchError && <div className="alert alert--error">{fetchError}</div>}
+      {fetchError && <div className="alert">{fetchError}</div>}
       {!releases && !fetchError && item.source.kind !== 'local' && (
         <p className="chart-note">
           现在列的只是库里已经下载的。点 ⟳ 把上游发布过的版本一起列出来。

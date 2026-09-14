@@ -3,13 +3,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
 import { ask } from '../confirm'
 import { formatBytes, formatSince } from '../format'
-import { toast } from '../toast'
+import { toast, toastError } from '../toast'
 import type { SchematicItem, SchematicMarketResult, SchematicSource } from '../types'
 import type { SchematicController } from '../useSchematics'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Card } from './Card'
 import { EmptyState } from './EmptyState'
+import { Note } from './Note'
 import { Page } from './Page'
 import { Section } from './Section'
 import { Select } from './Select'
@@ -93,7 +94,7 @@ export function SchematicMarket({
         prev ? { ...prev, held: { ...(prev.held ?? {}), [item.id]: entry.id } } : prev,
       )
     } catch (err) {
-      toast(err instanceof Error ? err.message : '下载失败')
+      toastError(err instanceof Error ? err.message : '下载失败')
     } finally {
       setTaking(null)
     }
@@ -137,7 +138,7 @@ export function SchematicMarket({
         </>
       }
     >
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
 
       <section className="panel">
         <Toolbar>
@@ -170,9 +171,9 @@ export function SchematicMarket({
             and saying so under the results is the difference between "this
             index moved" and "建筑市场坏了". */}
         {notes.map(([id, note]) => (
-          <div className="alert alert--warn" key={id}>
+          <Note tone="warn" key={id}>
             {result?.sources.find((entry) => entry.id === id)?.name ?? id}：{note}
-          </div>
+          </Note>
         ))}
 
         {items.length === 0 ? (
@@ -325,7 +326,7 @@ function SourcesPage({
       await api.updateSchematicSource(source.id, { disabled: !source.disabled })
       onChanged()
     } catch (err) {
-      toast(err instanceof Error ? err.message : '保存失败')
+      toastError(err instanceof Error ? err.message : '保存失败')
     }
   }
 
@@ -342,7 +343,7 @@ function SourcesPage({
       await api.deleteSchematicSource(source.id)
       onChanged()
     } catch (err) {
-      toast(err instanceof Error ? err.message : '移除失败')
+      toastError(err instanceof Error ? err.message : '移除失败')
     }
   }
 
@@ -402,7 +403,7 @@ function SourcesPage({
           </label>
         </div>
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
 
         <div className="actions">
           <Button variant="primary" onClick={() => void add()} disabled={busy}>
