@@ -2959,6 +2959,72 @@ a:hover {
   font-size: 13px;
 }
 
+/* =================================================================== note
+
+   A condition, as opposed to an outcome.
+
+   It is the old .alert minus the one job that class keeps: 「这超过了本机内存
+   的八成」 moves with the memory slider, 「EULA 还没同意」 is true until
+   somebody ticks it, 「终端已开启」 is true for as long as it is. None of them
+   is news, and none of them can be said in the corner and taken away — a toast
+   that reappeared every time a slider moved would be unusable.
+
+   Identical to .alert on purpose: the split is about what a name lets the
+   guard tell apart, not about how these look. */
+.note {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 13px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  animation: rise 200ms var(--ease) both;
+}
+
+.note--error {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 34%, transparent);
+  border-left-color: var(--danger);
+  color: var(--danger-ink);
+}
+
+.note--ok {
+  background: var(--ok-soft);
+  border-color: color-mix(in srgb, var(--ok) 34%, transparent);
+  border-left-color: var(--ok);
+  color: var(--ok-ink);
+}
+
+.note--warn {
+  background: var(--caution-soft);
+  border-color: color-mix(in srgb, var(--caution) 36%, transparent);
+  border-left-color: var(--caution);
+  color: var(--caution-ink);
+}
+
+.note .link {
+  color: inherit;
+  font-size: 13px;
+}
+
+/* The stacked body a note grows when it carries a heading and its explanation:
+   .note is a wrapping flex row, so without this the two sit side by side. */
+.note__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.note__body span {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
 /* The launch check's findings.
    A list rather than a stack of .alert because each finding carries a line
    copied verbatim out of the operator's own script, and that line has to be
