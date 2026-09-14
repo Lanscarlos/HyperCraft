@@ -1199,13 +1199,6 @@ a:hover {
   color: var(--caution-ink);
 }
 
-@media (max-width: 768px) {
-  /* On a phone the version is the first thing to go: it is the least useful
-     fact in the bar and the only one nobody is ever mid-task about. */
-  .statusbar__version {
-    display: none;
-  }
-}
 
 /* The mark, in the same 48px slot on every page. It is the rail's own
    furniture rather than the panel scope's header, which is what it used to be:
@@ -1250,20 +1243,34 @@ a:hover {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  /* --dur, not --dur-3: this is a control changing state where it stands, not
-     something arriving into an empty spot. The pair moves 4px in the direction
-     it is travelling so the swap reads as one label giving way to the other
-     rather than as two that happen to be cross-fading. */
+  /* --dur-4, and the reason is the curve rather than the distance.
+
+     By the table above this is a thing arriving into a fixed spot, which is
+     --dur-3's category, and 140ms (--dur) then 220ms both read as a flicker.
+     --ease is emphasized — cubic-bezier(0.32, 0.72, 0, 1) is at 72% of the way
+     by a third of the way — so three quarters of the change lands in the first
+     third and the felt duration is far shorter than the number. What is being
+     revealed here is a string somebody has to *read*, which is the one thing
+     the categories do not have a row for, so the nominal duration has to be
+     long enough that the front-loaded part is still legible.
+
+     The pair moves 6px in the direction it is travelling, so it reads as one
+     label giving way to the other rather than as two that happen to be
+     cross-fading. */
   transition:
-    opacity var(--dur) var(--ease),
-    translate var(--dur) var(--ease);
+    opacity var(--dur-4) var(--ease),
+    translate var(--dur-4) var(--ease);
 }
 
 .sidebar__mark-version {
-  /* Quieter and monospaced, the way every other version in the panel is set —
-     it is a value you compare against a release note, not a name you read. */
+  /* No font-family of its own, which is the whole point: it inherits --font-ui
+     and therefore wears the pixel face when that preference is on, exactly as
+     the version under the old brand block did. --font-mono was the wrong
+     reach — see the note on the pixel font: that token is for machine text
+     read for exactness (paths, SHAs, diff hunks) and is deliberately left out
+     of the pixel swap, so setting it here put a plain monospace string in the
+     one row of the panel whose neighbour is the product name. */
   color: var(--text-dim);
-  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0;

@@ -5,25 +5,28 @@ import type { ReactNode } from 'react'
 /**
  * The strip along the foot of every page.
  *
- * It carries two kinds of fact. One the shell always knows — which version of
- * the panel this is. The other only the page knows: where the caret is in the
- * file being edited, how many buffers are unsaved, which directory is open.
- * The second kind is what the bar exists for, and it is the reason the editor
- * no longer prints a caret position of its own: with two groups on screen
- * there were two of those lines and one caret, and a reader had to work out
- * which half was theirs before reading either.
+ * Everything in it comes from the page: where the caret is in the file being
+ * edited, how many buffers are unsaved, which directory is open. That is what
+ * the bar exists for, and it is the reason the editor no longer prints a caret
+ * position of its own — with two groups on screen there were two of those
+ * lines and one caret, and a reader had to work out which half was theirs
+ * before reading either.
  *
- * A page that contributes nothing leaves the halves empty and the bar still
+ * It used to end with the panel's version as well. That went when the product
+ * name in the rail learnt to show the version on hover: a fact with two homes
+ * is a fact that can disagree with itself, and of the two the rail's is where
+ * somebody looks for it — beside the name of the thing it is the version of.
+ *
+ * A page that contributes nothing leaves both halves empty and the bar still
  * stands. Furniture that comes and goes is furniture the eye has to re-find
  * after every navigation, and this one is 26px.
  */
-export function StatusBar({ version }: { version: string }) {
+export function StatusBar() {
   return (
     <footer className="statusbar">
       <div className="statusbar__half" id="statusbar-left" />
       <div className="statusbar__half statusbar__half--end">
         <span id="statusbar-right" className="statusbar__slot" />
-        <span className="statusbar__version">{version}</span>
       </div>
     </footer>
   )

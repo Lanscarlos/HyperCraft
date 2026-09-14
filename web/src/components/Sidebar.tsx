@@ -194,8 +194,13 @@ export function Sidebar(props: Props) {
               that can be truncated: 220px does not always hold a build string
               like 0.6.0-snapshot.4631+linux-arm64. It only ever opens while
               the version is the thing on screen, so it answers the question
-              being asked rather than repeating the word that just left. The
-              status bar carries the full string at all times either way. */}
+              being asked rather than repeating the word that just left.
+
+              It is load-bearing rather than a nicety now: this row is the only
+              place in the shell that shows the version at all, so a truncated
+              one with no tooltip would be a version nobody can read. 主机 ·
+              面板版本 still spells it out in full for anyone who needs to copy
+              it. */}
           <span className="sidebar__mark-version" title={user.version}>
             {user.version}
           </span>

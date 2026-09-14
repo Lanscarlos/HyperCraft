@@ -816,7 +816,7 @@ export default function App() {
             </ErrorBoundary>
           </main>
 
-          <StatusBar version={user.version} />
+          <StatusBar />
         </div>
 
         {paletteOpen && (
