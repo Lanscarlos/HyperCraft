@@ -6,7 +6,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/lanscarlos/hypercraft/internal/confighist"
 	"github.com/lanscarlos/hypercraft/internal/instance"
@@ -78,6 +81,23 @@ func (s *Server) handleLatestCoreBuild(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, build)
 }
 
+// handleListCoreBuilds answers a version's whole build list, newest first.
+//
+// The 添加核心 dialog shows versions and builds as the parent and child they
+// are, so it needs all of them rather than the one handleLatestCoreBuild
+// resolves.
+func (s *Server) handleListCoreBuilds(w http.ResponseWriter, r *http.Request) {
+	if !s.downloadsAvailable(w) {
+		return
+	}
+	builds, err := s.jars.Client().Builds(r.Context(), r.PathValue("project"), r.PathValue("version"))
+	if err != nil {
+		s.writeJarError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, builds)
+}
+
 // coreView is a stored core plus which instances are running a copy of it, so
 // the library page can say what a jar is actually being used for.
 type coreView struct {
@@ -134,9 +154,12 @@ func (s *Server) handleCoreLibrary(w http.ResponseWriter, r *http.Request) {
 }
 
 type startDownloadRequest struct {
-	Project   string `json:"project"`
-	Version   string `json:"version"`
-	Overwrite bool   `json:"overwrite"`
+	Project string `json:"project"`
+	Version string `json:"version"`
+	// Build is which build to fetch, 0 or absent for the newest. The 添加核心
+	// dialog names one; the creation wizard does not.
+	Build     int  `json:"build"`
+	Overwrite bool `json:"overwrite"`
 }
 
 // handleStartCoreDownload begins fetching a server core into the library. It
@@ -156,6 +179,7 @@ func (s *Server) handleStartCoreDownload(w http.ResponseWriter, r *http.Request)
 	job, err := s.jars.Start(serverjar.Request{
 		Project:   req.Project,
 		Version:   req.Version,
+		Build:     req.Build,
 		Overwrite: req.Overwrite,
 	})
 	if err != nil {
@@ -179,6 +203,83 @@ func (s *Server) handleDeleteCore(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("core removed from library", "core", id)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// uploadLimit caps an uploaded core. Paper is around 50 MB and a modpack
+// server jar can be several hundred, so this is generous on purpose; what it
+// exists to stop is a stream with no end writing until the disk is full.
+const uploadLimit = 1 << 30 // 1 GiB
+
+// handleUploadCore stores a jar the operator uploaded, with the metadata they
+// filled in.
+//
+// The panel's catalogue is Paper and Velocity; everything else — Forge,
+// Fabric, a modpack's own server jar — arrives this way. Dropping a file into
+// the cores directory has always worked and still does, but it leaves a row
+// with no version and no Java requirement on it, which is the one thing the
+// library page cannot work out for itself. So the form asks.
+func (s *Server) handleUploadCore(w http.ResponseWriter, r *http.Request) {
+	if !s.downloadsAvailable(w) {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, uploadLimit)
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "上传里没有找到 jar 文件")
+		return
+	}
+	defer file.Close()
+
+	// Only the base name: a browser sends what the operator picked, and on
+	// some of them that is a whole path.
+	name := filepath.Base(header.Filename)
+	kind := r.FormValue("kind")
+	if kind != "server" && kind != "proxy" {
+		kind = ""
+	}
+	javaMin, _ := strconv.Atoi(r.FormValue("javaMinimum"))
+	if javaMin < 0 {
+		javaMin = 0
+	}
+
+	core, err := s.jars.Library().Import(name, file, serverjar.Core{
+		Kind:        kind,
+		Version:     strings.TrimSpace(r.FormValue("version")),
+		JavaMinimum: javaMin,
+		Minecraft:   strings.TrimSpace(r.FormValue("minecraft")),
+	})
+	if err != nil {
+		s.writeJarError(w, err)
+		return
+	}
+	s.log.Info("core uploaded to library", "core", core.ID, "size", core.Size)
+	writeJSON(w, http.StatusCreated, core)
+}
+
+// handleFetchCore serves a core's bytes, for 下载到本地 in the row menu.
+//
+// The panel downloads onto the machine it runs on, which is the whole point of
+// the library — but that leaves no way to get a jar back off it, and an
+// operator who wants to run the same build somewhere else should not have to
+// go and find it upstream again.
+func (s *Server) handleFetchCore(w http.ResponseWriter, r *http.Request) {
+	if !s.downloadsAvailable(w) {
+		return
+	}
+	file, core, err := s.jars.Library().Open(r.PathValue("id"))
+	if err != nil {
+		s.writeJarError(w, err)
+		return
+	}
+	defer file.Close()
+
+	w.Header().Set("Content-Type", "application/java-archive")
+	w.Header().Set("Content-Length", strconv.FormatInt(core.Size, 10))
+	// The file name is a validated core id — no separators, no quotes — so it
+	// is safe to put in the header as it stands.
+	w.Header().Set("Content-Disposition", `attachment; filename="`+core.FileName+`"`)
+	http.ServeContent(w, r, core.FileName, core.AddedAt, file)
 }
 
 type applyCoreRequest struct {

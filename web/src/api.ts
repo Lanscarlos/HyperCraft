@@ -74,6 +74,7 @@ import type {
   SchematicSource,
   ServerConfigFile,
   ServerConfigResponse,
+  ServerCore,
   SystemInfo,
   TerminalStatus,
   UpdateChannel,
@@ -344,11 +345,23 @@ export const api = {
       `/api/downloads/projects/${project}/versions/${encodeURIComponent(version)}/build`,
     ),
 
+  listCoreBuilds: (project: string, version: string) =>
+    request<CoreBuild[]>(
+      'GET',
+      `/api/downloads/projects/${project}/versions/${encodeURIComponent(version)}/builds`,
+    ),
   coreLibrary: () => request<CoreLibrary>('GET', '/api/cores'),
-  startCoreDownload: (input: { project: string; version: string; overwrite?: boolean }) =>
+  startCoreDownload: (input: {
+    project: string
+    version: string
+    /** Which build, or absent for the newest. The 添加核心 dialog names one. */
+    build?: number
+    overwrite?: boolean
+  }) =>
     request<CoreDownloadJob>('POST', '/api/cores', {
       project: input.project,
       version: input.version,
+      build: input.build ?? 0,
       overwrite: input.overwrite ?? false,
     }),
   deleteCore: (id: string) => request<void>('DELETE', `/api/cores/${encodeURIComponent(id)}`),
@@ -1014,4 +1027,63 @@ export function uploadFiles(
     xhr.onerror = () => reject(new ApiError(0, '上传失败：网络错误'))
     xhr.send(form)
   })
+}
+
+/**
+ * Uploads a jar straight into the core library, with what the operator knows
+ * about it.
+ *
+ * The catalogue is Paper and Velocity; Forge, Fabric and a modpack's own
+ * server jar arrive this way. The metadata is on the form rather than read out
+ * of the jar because nothing in the jar reliably says which Minecraft version
+ * it serves or which Java it needs — and a guess in those two columns is
+ * exactly the guess that makes a server fail to boot with a stack trace that
+ * mentions neither.
+ *
+ * XHR for the same reason the other three uploads use it: only XHR reports
+ * progress, and a jar with no progress bar looks like a hang.
+ */
+export function uploadCore(
+  file: File,
+  meta: { kind: string; version: string; javaMinimum: number; minecraft: string },
+  onProgress: (fraction: number) => void,
+): Promise<ServerCore> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    form.append('kind', meta.kind)
+    form.append('version', meta.version)
+    form.append('javaMinimum', meta.javaMinimum > 0 ? String(meta.javaMinimum) : '')
+    form.append('minecraft', meta.minecraft)
+
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/cores/upload')
+    xhr.setRequestHeader(CSRF_HEADER, '1')
+    xhr.withCredentials = true
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded / event.total)
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText))
+        return
+      }
+      let message = `上传失败 (HTTP ${xhr.status})`
+      try {
+        const parsed = JSON.parse(xhr.responseText)
+        if (parsed?.error) message = parsed.error
+      } catch {
+        /* non-JSON error body */
+      }
+      reject(new ApiError(xhr.status, message))
+    }
+    xhr.onerror = () => reject(new ApiError(0, '上传失败：网络错误'))
+    xhr.send(form)
+  })
+}
+
+/** Where a core's bytes are, for 下载到本地 in the row menu. */
+export function coreFileURL(id: string): string {
+  return `/api/cores/${encodeURIComponent(id)}/file`
 }

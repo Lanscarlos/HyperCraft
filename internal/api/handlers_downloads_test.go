@@ -1,9 +1,12 @@
 package api
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -43,6 +46,21 @@ func newFakeFill(t *testing.T) *fakeFill {
 		fmt.Fprintf(w, `{"id":132,"channel":"STABLE","time":"2026-05-11T11:43:09Z","downloads":{"server:default":{
 			"name":"%s-1.21.11-132.jar","url":"%s/artifact","size":%d,"checksums":{"sha256":"%s"}}}}`,
 			r.PathValue("project"), fill.URL(), len(fill.body), hex.EncodeToString(sum[:]))
+	})
+	mux.HandleFunc("GET /projects/{project}/versions/{version}/builds", func(w http.ResponseWriter, r *http.Request) {
+		if r.PathValue("version") != "1.21.11" {
+			http.NotFound(w, r)
+			return
+		}
+		sum := sha256.Sum256(fill.body)
+		// Oldest first, the way upstream returns them: the client is what puts
+		// them the right way round.
+		fmt.Fprintf(w, `[
+			{"id":131,"channel":"STABLE","time":"2026-05-10T11:43:09Z","commits":[{"message":"Earlier build"}],
+			 "downloads":{"server:default":{"name":"%[1]s-1.21.11-131.jar","url":"%[2]s/artifact","size":%[3]d,"checksums":{"sha256":"%[4]s"}}}},
+			{"id":132,"channel":"STABLE","time":"2026-05-11T11:43:09Z","commits":[{"message":"Newer build"}],
+			 "downloads":{"server:default":{"name":"%[1]s-1.21.11-132.jar","url":"%[2]s/artifact","size":%[3]d,"checksums":{"sha256":"%[4]s"}}}}
+		]`, r.PathValue("project"), fill.URL(), len(fill.body), hex.EncodeToString(sum[:]))
 	})
 	mux.HandleFunc("GET /artifact", func(w http.ResponseWriter, r *http.Request) {
 		w.Write(fill.body)
@@ -370,5 +388,132 @@ func TestCancellingANonexistentDownloadIsNotFound(t *testing.T) {
 
 	if got := env.status(http.MethodPost, "/api/downloads/no-such-job/cancel", nil); got != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", got)
+	}
+}
+
+func TestDownloadedCoreRecordsItsRunningRequirements(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	env.downloadCore("paper", "1.21.11")
+
+	var library coreLibraryResponse
+	decodeBody(t, env.do(http.MethodGet, "/api/cores", nil), &library)
+	if len(library.Cores) != 1 {
+		t.Fatalf("library holds %d cores, want 1", len(library.Cores))
+	}
+	// Read off the version listing at download time, so the row can say what it
+	// needs on a machine that is offline afterwards.
+	if got := library.Cores[0].JavaMinimum; got != 21 {
+		t.Errorf("javaMinimum = %d, want 21", got)
+	}
+	if got := library.Cores[0].Minecraft; got != "1.21.11" {
+		t.Errorf("minecraft = %q, want the version id for a world server", got)
+	}
+}
+
+// uploadCore posts a jar the way the 添加核心 dialog's upload branch does.
+func (e *testEnv) uploadCore(name string, fields map[string]string) *http.Response {
+	e.t.Helper()
+
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	for key, value := range fields {
+		if err := form.WriteField(key, value); err != nil {
+			e.t.Fatalf("write field %s: %v", key, err)
+		}
+	}
+	part, err := form.CreateFormFile("file", name)
+	if err != nil {
+		e.t.Fatalf("create file part: %v", err)
+	}
+	part.Write([]byte("not really a jar, but bytes are bytes"))
+	if err := form.Close(); err != nil {
+		e.t.Fatalf("close form: %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, e.server.URL+"/api/cores/upload", &body)
+	if err != nil {
+		e.t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	req.Header.Set(csrfHeader, "1")
+	resp, err := e.client.Do(req)
+	if err != nil {
+		e.t.Fatalf("upload: %v", err)
+	}
+	return resp
+}
+
+func TestUploadedCoreKeepsTheMetadataTheOperatorFilledIn(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	resp := env.uploadCore("forge-1.20.1-47.2.0.jar", map[string]string{
+		"kind":        "server",
+		"version":     "1.20.1",
+		"javaMinimum": "17",
+		"minecraft":   "1.20.1",
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("upload returned %d, want 201", resp.StatusCode)
+	}
+
+	var library coreLibraryResponse
+	decodeBody(t, env.do(http.MethodGet, "/api/cores", nil), &library)
+	if len(library.Cores) != 1 {
+		t.Fatalf("library holds %d cores, want 1", len(library.Cores))
+	}
+	core := library.Cores[0]
+	// Nothing upstream knows this jar, so every one of these came off the form.
+	if core.Version != "1.20.1" || core.JavaMinimum != 17 || core.Kind != "server" {
+		t.Errorf("uploaded core lost its metadata: %+v", core)
+	}
+	// The panel holds the bytes but did not choose them, which is what the
+	// 手动放入 chip on the row reads.
+	if !core.Imported {
+		t.Errorf("an uploaded core should still read as imported: %+v", core)
+	}
+	if core.SHA256 == "" {
+		t.Errorf("an uploaded core should be checksummed: %+v", core)
+	}
+}
+
+func TestUploadedCoreCanBeFetchedBack(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	env.uploadCore("custom.jar", map[string]string{"kind": "server"}).Body.Close()
+
+	resp := env.do(http.MethodGet, "/api/cores/custom.jar/file", nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("fetch returned %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "not really a jar, but bytes are bytes" {
+		t.Errorf("fetched %q", body)
+	}
+}
+
+func TestUploadRejectsSomethingThatIsNotAJar(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	resp := env.uploadCore("notes.txt", nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("uploading a non-jar returned %d", resp.StatusCode)
+	}
+}
+
+func TestCoreBuildsAreListedNewestFirst(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+
+	resp := env.do(http.MethodGet, "/api/downloads/projects/paper/versions/1.21.11/builds", nil)
+	var builds []serverjar.Build
+	decodeBody(t, resp, &builds)
+	if len(builds) != 2 || builds[0].Build != 132 || builds[1].Build != 131 {
+		t.Fatalf("unexpected builds: %+v", builds)
 	}
 }

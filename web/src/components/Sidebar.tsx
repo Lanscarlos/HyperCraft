@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import type { MouseEvent, ReactNode, Ref } from 'react'
 
 import type { AlertLevel } from '../alerts'
+import { formatBytes } from '../format'
 import { DUR } from '../motion'
 import type { LibrarySection, Route, Scope } from '../routes'
 import {
@@ -19,7 +20,7 @@ import {
 } from '../routes'
 import { captureScope, playScope } from '../scopeMorph'
 import type { Capability, InstanceStatus, SystemInfo, User } from '../types'
-import { STATE_LABELS, isLive } from '../types'
+import { STATE_LABELS, isLive, versionSize } from '../types'
 import type { CoreController } from '../useCores'
 import type { DatabaseController } from '../useDatabases'
 import type { JavaController } from '../useJava'
@@ -618,43 +619,64 @@ interface ShelfRow {
  * that could have told you about it.
  */
 function shelfRows(props: Props): ShelfRow[] {
-  const { java, databases, cores, plugins } = props
+  const { java, databases, cores, plugins, schematics } = props
   return [
-    {
-      section: 'java',
-      cap: CAP.panelJava,
-      icon: 'java',
-      label: 'Java 环境',
-      target: { kind: 'library', section: 'java', view: 'installed' },
-      badge: java.installing ? <Badge tone="update">安装中</Badge> : null,
-    },
+    // The order and the names are LIBRARY_SECTIONS' — see the note there for
+    // why 服务端核心 leads and why none of the five carries a 「库」 or a
+    // 「环境」 any more. Kept as two lists rather than one because a row here
+    // also carries an icon and a badge, and the command palette wants neither.
     {
       section: 'cores',
       cap: CAP.libraryCores,
       icon: 'cores',
       label: '服务端核心',
       target: { kind: 'library', section: 'cores', view: 'stock' },
-      badge: cores.downloading ? <Badge tone="update">下载中</Badge> : null,
+      badge: cores.downloading ? (
+        <Badge tone="update">下载中</Badge>
+      ) : (
+        <Count n={cores.cores.length} />
+      ),
+    },
+    {
+      section: 'java',
+      cap: CAP.panelJava,
+      icon: 'java',
+      label: 'Java 运行时',
+      target: { kind: 'library', section: 'java', view: 'installed' },
+      badge: java.installing ? (
+        <Badge tone="update">安装中</Badge>
+      ) : (
+        <Count n={java.overview?.runtimes.length ?? 0} />
+      ),
     },
     {
       section: 'database',
       cap: CAP.panelDatabases,
       icon: 'database',
-      label: '数据库环境',
+      label: '数据库',
       target: { kind: 'library', section: 'database', view: 'databases' },
-      badge: databases.installing ? <Badge tone="update">安装中</Badge> : null,
+      badge: databases.installing ? (
+        <Badge tone="update">安装中</Badge>
+      ) : (
+        <Count n={databases.overview?.services.length ?? 0} />
+      ),
     },
     {
       section: 'plugins',
       cap: CAP.libraryPlugins,
       icon: 'plugins',
-      label: '插件库',
+      label: '插件',
       target: { kind: 'library', section: 'plugins', view: 'list' },
+      // The one row where the count is not the interesting number: a plugin
+      // with an update waiting is something to do, and it keeps the coloured
+      // badge it has always had.
       badge: plugins.downloading ? (
         <Badge tone="update">下载中</Badge>
       ) : plugins.updates > 0 ? (
         <Badge tone="update">{plugins.updates}</Badge>
-      ) : null,
+      ) : (
+        <Count n={plugins.plugins.length} />
+      ),
     },
     // Last of the five, and the only one a server can start without: the other
     // four are what a server *is*, this is what somebody puts inside one.
@@ -662,11 +684,24 @@ function shelfRows(props: Props): ShelfRow[] {
       section: 'schematics',
       cap: CAP.librarySchematics,
       icon: 'schematics',
-      label: '建筑库',
+      label: '建筑与地图',
       target: { kind: 'library', section: 'schematics', view: 'list' },
-      badge: null,
+      badge: <Count n={schematics.entries.length} />,
     },
   ]
+}
+
+/**
+ * How many are on a shelf, as the quietest thing a badge can be.
+ *
+ * Not a Badge: a badge is a state, and every one of these rows would be
+ * wearing one permanently — five coloured pills down the column, saying
+ * nothing except that there are things in the panel. Zero is dropped for the
+ * same reason, an empty shelf has nothing to report.
+ */
+function Count({ n }: { n: number }) {
+  if (n <= 0) return null
+  return <span className="sidebar__tally">{n}</span>
 }
 
 /**
@@ -782,6 +817,8 @@ function LibraryScope(props: Props) {
 
         {section === 'plugins' && <ApiBudget plugins={plugins} />}
       </div>
+
+      <LibraryFootprint {...props} />
     </>
   )
 }
@@ -800,6 +837,76 @@ function LibraryScope(props: Props) {
  * Only shown once GitHub has actually said something. A meter reading 0/0 on a
  * panel that has never called out is a warning about nothing.
  */
+/**
+ * What the five shelves cost on disk, at the foot of the column.
+ *
+ * The panel downloads onto the machine it runs on, so every shelf grows and
+ * none of them ever shrinks by itself — and until now no page anywhere added
+ * the four together. A self-hosted panel is usually somebody's VPS with 40 GB
+ * on it, and "which of these is the 1.3 GB" is the question that gets asked
+ * the week the disk fills up.
+ *
+ * The bar is a share of the total rather than of the disk: the panel has no
+ * quota, so a percentage of anything else would be a number we made up. What
+ * it is for is the comparison between the four, which is the part that is
+ * actually actionable.
+ */
+function LibraryFootprint({ java, cores, plugins, schematics }: Props) {
+  const parts = [
+    { key: 'cores', label: '核心', bytes: cores.cores.reduce((sum, core) => sum + core.size, 0) },
+    {
+      key: 'java',
+      label: 'Java',
+      bytes: (java.overview?.runtimes ?? []).reduce((sum, runtime) => sum + runtime.size, 0),
+    },
+    {
+      key: 'plugins',
+      label: '插件',
+      bytes: plugins.plugins.reduce(
+        (sum, plugin) => sum + plugin.versions.reduce((v, version) => v + versionSize(version), 0),
+        0,
+      ),
+    },
+    {
+      key: 'schem',
+      label: '建筑',
+      bytes: schematics.entries.reduce((sum, entry) => sum + entry.size, 0),
+    },
+  ].filter((part) => part.bytes > 0)
+
+  const total = parts.reduce((sum, part) => sum + part.bytes, 0)
+  // Nothing downloaded yet is not a fact worth a card; an empty bar would only
+  // look like something failed to load.
+  if (total === 0) return null
+
+  return (
+    <div className="footprint">
+      <div className="footprint__head">
+        <span>资源库占用</span>
+        <strong>{formatBytes(total)}</strong>
+      </div>
+      <div className="footprint__bar" aria-hidden="true">
+        {parts.map((part) => (
+          <span
+            key={part.key}
+            className={`footprint__seg footprint__seg--${part.key}`}
+            style={{ width: `${(part.bytes / total) * 100}%` }}
+          />
+        ))}
+      </div>
+      <ul className="footprint__list">
+        {parts.map((part) => (
+          <li key={part.key}>
+            <span className={`footprint__dot footprint__dot--${part.key}`} aria-hidden="true" />
+            {part.label}
+            <b>{formatBytes(part.bytes)}</b>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function ApiBudget({ plugins }: { plugins: PluginController }) {
   const budget = plugins.library?.budget
   if (!budget || budget.limit === 0) return null

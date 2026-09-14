@@ -111,8 +111,15 @@ func jobOf(j download.Job) Job {
 
 // Request describes one download.
 type Request struct {
-	Project   string
-	Version   string
+	Project string
+	Version string
+	// Build is which build to fetch, 0 for the newest.
+	//
+	// The 添加核心 dialog lists a version's builds and lets one be picked, so
+	// "newest" stopped being the only answer. It stays the default because
+	// that is what every caller before the dialog meant, and what the creation
+	// wizard still means.
+	Build     int
 	Overwrite bool
 }
 
@@ -200,12 +207,25 @@ func (d *Downloader) Start(req Request) (Job, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	build, err := d.client.LatestBuild(ctx, req.Project, req.Version)
+	build, err := d.resolve(ctx, req)
 	if err != nil {
 		return Job{}, err
 	}
 	if err := d.checkTarget(build.FileName, req.Overwrite); err != nil {
 		return Job{}, err
+	}
+
+	// Read off the version listing, which is cached, so a core downloaded today
+	// can still say what Java it needs on a machine that is offline tomorrow.
+	// A failure here is not a failure to download: the row shows 未知 instead.
+	javaMin := 0
+	if versions, err := d.client.Versions(ctx, project.ID); err == nil {
+		for _, version := range versions {
+			if version.ID == req.Version {
+				javaMin = version.JavaMinimum
+				break
+			}
+		}
 	}
 
 	// The metadata always comes from the origin — it is a few kilobytes, and it
@@ -249,7 +269,7 @@ func (d *Downloader) Start(req Request) (Job, error) {
 			return out, nil
 		},
 		Install: func(_ context.Context, temp, sum string, _ *download.Progress) (string, error) {
-			if err := d.record(build, project, req, temp, sum); err != nil {
+			if err := d.record(build, project, req, javaMin, temp, sum); err != nil {
 				return "", err
 			}
 			d.log.Info("core download finished", "file", build.FileName)
@@ -264,7 +284,7 @@ func (d *Downloader) Start(req Request) (Job, error) {
 
 // record moves a verified jar onto its final name and writes it into the
 // library. All of this used to be the back half of run().
-func (d *Downloader) record(build Build, project Project, req Request, temp, digest string) error {
+func (d *Downloader) record(build Build, project Project, req Request, javaMin int, temp, digest string) error {
 	root := d.library.Root()
 	final := filepath.Join(root, build.FileName)
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -285,6 +305,8 @@ func (d *Downloader) record(build Build, project Project, req Request, temp, dig
 		SHA256:      digest,
 		Size:        build.Size,
 		AddedAt:     time.Now(),
+		JavaMinimum: javaMin,
+		Minecraft:   MinecraftOf(project.ID, req.Version),
 	}); err != nil {
 		// The jar itself is fine, only its metadata is missing; say so rather
 		// than implying the download has to be repeated.
@@ -323,12 +345,29 @@ func (d *Downloader) Cancel() error {
 	return nil
 }
 
-// resolve looks up the build to fetch. It uses the job's context rather than
-// the request's, so a cancel lands even while metadata is still in flight.
+// resolve looks up the build to fetch: the newest one, or the exact build the
+// 添加核心 dialog picked. It uses the job's context rather than the request's,
+// so a cancel lands even while metadata is still in flight.
+//
+// A build the operator chose is fetched even once it has been superseded —
+// what was on screen when they pressed the button is what they asked for.
 func (d *Downloader) resolve(ctx context.Context, req Request) (Build, error) {
 	lookupCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	return d.client.LatestBuild(lookupCtx, req.Project, req.Version)
+	if req.Build <= 0 {
+		return d.client.LatestBuild(lookupCtx, req.Project, req.Version)
+	}
+	builds, err := d.client.Builds(lookupCtx, req.Project, req.Version)
+	if err != nil {
+		return Build{}, err
+	}
+	for _, build := range builds {
+		if build.Build == req.Build {
+			return build, nil
+		}
+	}
+	return Build{}, fmt.Errorf("%w: %s %s has no build #%d",
+		ErrUnknownVersion, req.Project, req.Version, req.Build)
 }
 
 func (d *Downloader) checkTarget(name string, overwrite bool) error {

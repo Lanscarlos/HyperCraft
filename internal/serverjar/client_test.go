@@ -175,3 +175,72 @@ func TestLookupProject(t *testing.T) {
 		t.Errorf("purpur is not in the catalogue")
 	}
 }
+
+func TestBuildsListsNewestFirstWithChangelog(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/projects/paper/versions/1.21.11/builds" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte(`[
+			{"id":130,"time":"2026-05-09T11:43:09Z","channel":"STABLE",
+			 "commits":[{"message":"Fix chunk ticking\n\nlong body"}],
+			 "downloads":{"server:default":{"name":"paper-1.21.11-130.jar",
+			  "url":"https://cdn.example/130.jar","size":40,"checksums":{"sha256":"AA"}}}},
+			{"id":132,"time":"2026-05-11T11:43:09Z","channel":"ALPHA",
+			 "downloads":{"server:default":{"name":"paper-1.21.11-132.jar",
+			  "url":"https://cdn.example/132.jar","size":42,"checksums":{"sha256":"BB"}}}}
+		]`))
+	}))
+	defer upstream.Close()
+
+	builds, err := NewClient(upstream.URL, "test").Builds(context.Background(), "paper", "1.21.11")
+	if err != nil {
+		t.Fatalf("Builds: %v", err)
+	}
+	if len(builds) != 2 {
+		t.Fatalf("got %d builds, want 2", len(builds))
+	}
+	if builds[0].Build != 132 || builds[1].Build != 130 {
+		t.Errorf("builds should be newest first, got %d then %d", builds[0].Build, builds[1].Build)
+	}
+	// Only the subject line: the body is a paragraph, and the column it lands
+	// in is one line tall.
+	if builds[1].Changelog != "Fix chunk ticking" {
+		t.Errorf("changelog = %q, want the commit subject", builds[1].Changelog)
+	}
+	if builds[0].Changelog != "" {
+		t.Errorf("a build with no commits should carry no changelog, got %q", builds[0].Changelog)
+	}
+	if builds[0].SHA256 != "bb" {
+		t.Errorf("checksum should be lowercased, got %q", builds[0].SHA256)
+	}
+}
+
+func TestBuildsRejectsBadVersionID(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("upstream should not have been called for %s", r.URL.Path)
+	}))
+	defer upstream.Close()
+
+	client := NewClient(upstream.URL, "test")
+	if _, err := client.Builds(context.Background(), "paper", "../../secret"); !errors.Is(err, ErrUnknownVersion) {
+		t.Errorf("got %v, want ErrUnknownVersion", err)
+	}
+}
+
+func TestVersionsCarryMinecraftRange(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(versionsPayload))
+	}))
+	defer upstream.Close()
+
+	versions, err := NewClient(upstream.URL, "test").Versions(context.Background(), "paper")
+	if err != nil {
+		t.Fatalf("Versions: %v", err)
+	}
+	// A server core's version id *is* the Minecraft version it runs.
+	if versions[0].Minecraft != versions[0].ID {
+		t.Errorf("server version %q carries minecraft %q", versions[0].ID, versions[0].Minecraft)
+	}
+}

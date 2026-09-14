@@ -367,6 +367,7 @@ const PRIMARY_ALLOWED = new Map([
   ['components/ConfigHistory.tsx', [2, '页面上的「打快照」，和二次确认对话框里的那一下']],
   ['components/FileManager.tsx', [3, '新建/重命名、移动到…、快捷键三个对话框各一个，彼此互斥']],
   ['components/NewInstanceWizard.tsx', [3, '页脚的「下一步」与「创建实例」互斥，加上完成页的「进入控制台」']],
+  ['components/AddCoreDialog.tsx', [2, '同一个对话框的两条互斥分支：从目录下载，与上传自定义 jar']],
   ['components/PluginImportDialog.tsx', [2, '同一个对话框的两个状态：导入前与导入后']],
   ['components/PluginLibraryPage.tsx', [3, '批量条，加上批量安装与批量升级两个确认对话框']],
   ['components/SchematicLibraryPage.tsx', [3, '页面的「上传建筑」，加上编辑与安装两个对话框']],

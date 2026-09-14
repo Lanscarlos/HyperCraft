@@ -1,9 +1,12 @@
 package serverjar
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -54,6 +57,18 @@ type Core struct {
 	// Dropping a Forge or Fabric jar in there is a supported way to use the
 	// library with a core the catalogue does not offer.
 	Imported bool `json:"imported"`
+	// JavaMinimum is the lowest Java major this jar runs on, 0 when unknown.
+	//
+	// Recorded here rather than looked up per render because the catalogue it
+	// came from is a network call and this list is not: a jar downloaded a
+	// month ago has to be able to say what it needs while the machine is
+	// offline. 0 is a real answer — a hand-dropped jar nobody filled in — and
+	// the UI shows it as 未知 rather than filling in a guess.
+	JavaMinimum int `json:"javaMinimum"`
+	// Minecraft is which game versions this jar serves, as a label. See
+	// MinecraftOf: the version id for a world server, a range for a proxy,
+	// empty when nothing knows.
+	Minecraft string `json:"minecraft"`
 }
 
 // IsProxy reports whether this core is a proxy rather than a world server.
@@ -167,6 +182,63 @@ func (l *Library) Has(fileName string) bool {
 	}
 	info, err := os.Stat(filepath.Join(l.root, fileName))
 	return err == nil && !info.IsDir()
+}
+
+// Import writes a jar the operator uploaded into the library.
+//
+// The metadata cannot come from anywhere but them: a jar the catalogue does
+// not offer has no upstream to ask, which is exactly why the 添加核心 dialog
+// makes them fill it in. Whatever they leave blank stays blank and the row
+// says 信息不全 — the library never invents a version or a Java requirement.
+func (l *Library) Import(name string, src io.Reader, meta Core) (Core, error) {
+	if err := validCoreID(name); err != nil {
+		return Core{}, err
+	}
+	if !strings.EqualFold(filepath.Ext(name), ".jar") {
+		return Core{}, fmt.Errorf("%w: %q is not a .jar", ErrInvalidID, name)
+	}
+	if l.Has(name) {
+		return Core{}, fmt.Errorf("%w: %s", ErrExists, name)
+	}
+	if err := os.MkdirAll(l.root, 0o755); err != nil {
+		return Core{}, err
+	}
+
+	// Written under the part suffix and renamed, for the same reason a download
+	// is: nothing with that suffix is ever listed or launched, so an upload cut
+	// off halfway cannot leave a truncated jar looking like a core.
+	temp := filepath.Join(l.root, name+partSuffix)
+	file, err := os.OpenFile(temp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return Core{}, err
+	}
+	digest := sha256.New()
+	size, err := io.Copy(file, io.TeeReader(src, digest))
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		_ = os.Remove(temp)
+		return Core{}, err
+	}
+	if err := os.Rename(temp, filepath.Join(l.root, name)); err != nil {
+		_ = os.Remove(temp)
+		return Core{}, err
+	}
+
+	core := meta
+	core.ID = name
+	core.FileName = name
+	core.Size = size
+	core.SHA256 = hex.EncodeToString(digest.Sum(nil))
+	core.AddedAt = time.Now()
+	// Imported is what the row's 手动放入 chip reads, and an uploaded jar is
+	// one: the panel holds the bytes but did not choose them.
+	core.Imported = true
+	if err := l.record(core); err != nil {
+		return core, fmt.Errorf("文件已存入核心库，但记录核心信息失败: %w", err)
+	}
+	return core, nil
 }
 
 // record stores what a finished download was, so the listing can show a

@@ -1,271 +1,393 @@
-import { useEffect } from 'react'
+import { useMemo, useState } from 'react'
 
+import { coreFileURL } from '../api'
 import { ask } from '../confirm'
-import { formatBytes, formatDate } from '../format'
-import type { DownloadJob, ServerCore } from '../types'
+import { formatBytes } from '../format'
+import { toast, toastError } from '../toast'
+import type { ServerCore } from '../types'
 import type { CoreController } from '../useCores'
+import type { JavaController } from '../useJava'
+import { AddCoreDialog } from './AddCoreDialog'
 import { Badge } from './Badge'
 import { Button } from './Button'
-import { CoreCatalogue, isRecommended, useCoreCatalogue } from './CoreCatalogue'
+import { isRecommended } from './CoreCatalogue'
+import { DataTableEmpty } from './DataTable'
 import { EmptyState } from './EmptyState'
-import { Note } from './Note'
 import { Page } from './Page'
-import { Section } from './Section'
-import { Shelf } from './Shelf'
-import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
+import {
+  ResourceHint,
+  ResourcePendingRow,
+  ResourceRow,
+  ResourceTable,
+  StorageHygiene,
+  confirmResourceDelete,
+} from './ResourceList'
+import type { ResourceEntry } from './ResourceList'
+import { Select } from './Select'
+import { Toolbar } from './Toolbar'
 
 /**
- * Panel-wide server core management: what has been downloaded, and a one-click
- * fetch of a new build.
+ * The panel's server cores: what is on the shelf.
  *
- * It is its own page for the same reason the Java one is — a core is shared.
- * Download Paper 1.21.11 once and every instance you create afterwards can be
- * stamped out of it, offline and instantly, instead of pulling the same 60 MB
- * again per server. Instances are handed their own copy, so deleting a core
- * here never touches a server that is already running one.
+ * The page used to be two cards, and the ratio between them was backwards. The
+ * shelf — the thing you come here to look at — was two rows and about 200px of
+ * a screen; the download form under it, which anybody opens perhaps once a
+ * month, had five hundred. So the form is a dialog now (see AddCoreDialog) and
+ * the list is the page.
  *
- * The shelf and the catalogue are two cards on one page — see LIBRARY_VIEWS
- * for why they stopped being two pages. The catalogue itself lives in
- * useCoreCatalogue/CoreCatalogue, shared with the creation wizard, which
- * downloads a core from the same three requests.
+ * The two paragraphs that used to stand at the top went with it. "下载一次，
+ * 开十个服" describes how the library is implemented, which is not a thing
+ * anybody reads twice; "把自己的 jar 丢进目录也会出现在这里" was the only way
+ * in for a core the catalogue does not offer, and an instruction with no
+ * button on it. Now there is a button, and what is left of the sentence sits
+ * under the list where it has something to act on.
+ *
+ * The columns are the panel's shared shelf shape — see ResourceList — and the
+ * one that earns its place here is 运行要求: a Java that is too old is the
+ * commonest reason a core will not boot, and until now the only way to find
+ * out was to start the server and read the stack trace.
  */
+
+/** How the list can be ordered. Newest first is what a shelf is for. */
+type Sort = 'recent' | 'name' | 'size' | 'used'
+
+const SORTS: { value: Sort; label: string }[] = [
+  { value: 'recent', label: '最近加入' },
+  { value: 'name', label: '名称' },
+  { value: 'size', label: '体积' },
+  { value: 'used', label: '使用最多' },
+]
+
+/** The segments across the top. `idle` is not a type but it is the question
+ *  people come to a full shelf with, so it sits with them. */
+type Segment = 'all' | 'server' | 'proxy' | 'imported' | 'idle'
+
+const SEGMENTS: { id: Segment; label: string }[] = [
+  { id: 'all', label: '全部' },
+  { id: 'server', label: '服务端' },
+  { id: 'proxy', label: '代理端' },
+  { id: 'imported', label: '手动放入' },
+  { id: 'idle', label: '未使用' },
+]
+
 export function CoreLibraryPage({
   cores,
+  java,
   onOpenJava,
+  onOpenInstances,
 }: {
   cores: CoreController
-  onOpenJava: () => void
+  java: JavaController
+  /** Java 运行时, with `major` already picked when the warning sent them. */
+  onOpenJava: (major?: number) => void
+  /** 所有实例, narrowed to one name when there is exactly one to look at. */
+  onOpenInstances: (query: string) => void
 }) {
-  // Three chained fetches — projects, then versions, then the build — so the
-  // hook holds them for as long as the page is mounted rather than re-running
-  // them per render. The wizard keeps it alive across its five steps for the
-  // same reason.
-  const catalogue = useCoreCatalogue(true)
-  const { projects, projectId, versionId, project, loading } = catalogue
+  // Which tile the dialog opens on. 上传 jar is the same dialog arriving one
+  // card to the right, rather than a second dialog with its own copy of the
+  // metadata form.
+  const [adding, setAdding] = useState<'catalogue' | 'upload' | null>(null)
+  const [query, setQuery] = useState('')
+  const [segment, setSegment] = useState<Segment>('all')
+  const [sort, setSort] = useState<Sort>('recent')
 
-  const { library, job, downloading, busy } = cores
+  const { job, downloading, busy } = cores
+  const stored = cores.cores
+  const total = stored.reduce((sum, core) => sum + core.size, 0)
+  const idle = stored.filter((core) => core.usedBy.length === 0)
 
-  // A finished download adds a core; the library list has to catch up.
-  useEffect(() => {
-    if (job?.state !== 'done') return
-    void cores.refresh()
-  }, [job?.state, job?.ref, cores])
+  const counts = useMemo(
+    () => ({
+      all: stored.length,
+      server: stored.filter((core) => core.kind === 'server').length,
+      proxy: stored.filter((core) => core.kind === 'proxy').length,
+      imported: stored.filter((core) => core.imported).length,
+      idle: idle.length,
+    }),
+    [stored, idle.length],
+  )
+
+  const shown = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    const matched = stored.filter((core) => {
+      if (segment === 'server' && core.kind !== 'server') return false
+      if (segment === 'proxy' && core.kind !== 'proxy') return false
+      if (segment === 'imported' && !core.imported) return false
+      if (segment === 'idle' && core.usedBy.length > 0) return false
+      if (!needle) return true
+      return (
+        core.fileName.toLowerCase().includes(needle) ||
+        core.projectName.toLowerCase().includes(needle) ||
+        core.version.toLowerCase().includes(needle)
+      )
+    })
+
+    const sorted = [...matched]
+    switch (sort) {
+      case 'name':
+        sorted.sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'zh-CN'))
+        break
+      case 'size':
+        sorted.sort((a, b) => b.size - a.size)
+        break
+      case 'used':
+        sorted.sort((a, b) => b.usedBy.length - a.usedBy.length)
+        break
+      default:
+        // The listing already arrives newest first.
+        break
+    }
+    return sorted
+  }, [stored, segment, query, sort])
 
   const remove = async (core: ServerCore) => {
-    const ok = await ask({
-      title: '从核心库删除这个 jar？',
-      lead: `${core.fileName}（${formatBytes(core.size)}）`,
+    const ok = await confirmResourceDelete({
+      name: `${nameOf(core)}（${formatBytes(core.size)}）`,
       detail:
-        core.usedBy.length > 0
-          ? `实例「${core.usedBy.join('、')}」正在用同名的 jar 启动，不过它们各自有一份副本，删掉库里的这个不影响它们。`
-          : '没有实例在用它。之后还要的话可以从下载页再取一次。',
-      confirmLabel: '删除',
-      danger: true,
+        '库里的这份 jar 会被删掉，之后想再要就得重新下载一次。已经复制进实例目录的副本不受影响。',
+      usedBy: core.usedBy,
+      // Deliberately not "删除后该实例无法启动": on this shelf it would be a
+      // lie. An instance launches its own copy, so what is actually lost is
+      // the ability to stamp out another server exactly like it — which is
+      // the whole reason the library exists, and reason enough to refuse.
+      usedByNote: (names) => (
+        <>
+          实例「{names.join('、')}」正在用这个 jar 启动。它们各自有一份副本，所以删掉库里的这一份
+          不会让它们停机 —— 但也就没法再复制出一台一模一样的服了。要删的话，先把这些实例换到别的核心上。
+        </>
+      ),
+      onInspect: (names) => onOpenInstances(names.length === 1 ? names[0] : ''),
     })
     if (!ok) return
     await cores.remove(core.id)
   }
 
-  const stored = cores.cores
-  const totalSize = stored.reduce((sum, core) => sum + core.size, 0)
+  const clean = async () => {
+    const names = idle.slice(0, 3).map((core) => core.fileName)
+    const bytes = idle.reduce((sum, core) => sum + core.size, 0)
+    const ok = await ask({
+      title: `清理 ${idle.length} 个没人用的核心？`,
+      lead: names.join('、') + (idle.length > 3 ? ` 等 ${idle.length} 项` : ''),
+      detail: `合计 ${formatBytes(bytes)}。只删没有实例在用的，正在被使用的一个都不动。`,
+      confirmLabel: '清理',
+      danger: true,
+    })
+    if (!ok) return
+    await cores.removeMany(idle.map((core) => core.id))
+  }
 
   return (
     <Page
       wide
       title="服务端核心"
-      lead="面板下载的服务端 jar 都在这里存一份。创建实例时直接从这里挑一个复制过去，同一个核心开十个服也只下载一次。"
+      count={stored.length > 0 ? stored.length : undefined}
       facts={
         <>
-          <span>{stored.length > 0 ? `${stored.length} 个核心` : '核心库还是空的'}</span>
-          {stored.length > 0 && <span>共 {formatBytes(totalSize)}</span>}
-          {library?.root && <span title={library.root}>存放于 {library.root}</span>}
+          <span>{stored.length > 0 ? `${stored.length} 个 · ${formatBytes(total)}` : '还是空的'}</span>
+          {cores.library?.root && (
+            <span title={cores.library.root}>
+              <code>{cores.library.root}</code>
+            </span>
+          )}
+        </>
+      }
+      actions={
+        <>
+          {downloading ? (
+            <Button variant="danger" type="button" onClick={() => void cores.cancel()} disabled={busy}>
+              取消下载
+            </Button>
+          ) : (
+            <Button type="button" onClick={() => setAdding('upload')}>
+              上传 jar
+            </Button>
+          )}
+          <Button variant="primary" type="button" onClick={() => setAdding('catalogue')}>
+            添加核心
+          </Button>
         </>
       }
     >
-      {/* A download keeps going after you navigate away, so it is reported at
-          the top of the page rather than inside the card that started it —
-          coming back to the shelf from another section has to show it too. */}
-      {job && <JobStatus job={job} />}
       {cores.error && <div className="alert">{cores.error}</div>}
 
-      <Section title="核心库" note="把自己的 jar 丢进核心库目录，也会出现在这里">
-        {stored.length === 0 ? (
-          <EmptyState title="核心库还是空的。">
-            下面挑一个下载，或者把自己的 jar（Forge、Fabric、模组整合包的服务端）直接放进核心库目录。
-          </EmptyState>
-        ) : (
-          <Shelf head={['核心', '构建', '体积', '加入于', '使用中的实例', '']}>
-            {stored.map((core) => (
-              <CoreRow key={core.id} core={core} busy={busy} onRemove={() => void remove(core)} />
-            ))}
-          </Shelf>
-        )}
-      </Section>
-
-      {/* The list of downloadable projects comes from upstream, so this card
-          is the one thing on the page that waits on the network — and it used
-          to simply not be there until it was, which reads as the page having
-          finished a card short. */}
-      {loading && (
-        <SkeletonScreen inPage label="正在读取可下载的核心…">
-          <SkeletonPanel head title={false}>
-            <Skeleton w="100%" h={34} />
-            <Skeleton w="72%" h={34} />
-          </SkeletonPanel>
-        </SkeletonScreen>
-      )}
-
-      {!loading && projects.length === 0 && (
-        <Note tone="error">
-          没能取到可下载的核心列表 —— 通常是这台机器连不上外网。已经下载过的核心不受影响，
-          在「核心库」里照常可用。
-        </Note>
-      )}
-
-      {!loading && projects.length > 0 && (
-        <Section
-          title="下载核心"
-          note="走服务器自己的网络，不经过你的浏览器，关掉网页也会继续。下载完成后，新建实例时选它，或在实例的「实例设置 → 从核心库安装」里装上。"
+      {stored.length === 0 && !downloading ? (
+        <EmptyState
+          title="还没有任何核心"
+          action={
+            <>
+              <Button type="button" onClick={() => setAdding('catalogue')}>
+                添加核心
+              </Button>
+              <Button type="button" onClick={() => setAdding('upload')}>
+                上传 jar
+              </Button>
+            </>
+          }
         >
+          下载一个 Paper 或 Velocity，或者把自己的 jar（Forge、Fabric、整合包自带的服务端）
+          上传进来。核心下好之后，新建实例时选它就行。
+        </EmptyState>
+      ) : (
+        <>
+          <Toolbar>
+            <input
+              className="toolbar__search"
+              type="search"
+              value={query}
+              placeholder="筛选核心"
+              aria-label="筛选核心"
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <div className="toolbar__chips">
+              {SEGMENTS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`chip${segment === item.id ? ' chip--on' : ''}`}
+                  aria-pressed={segment === item.id}
+                  onClick={() => setSegment(item.id)}
+                >
+                  {item.label}
+                  <b>{counts[item.id]}</b>
+                </button>
+              ))}
+            </div>
+            <div className="toolbar__tools">
+              <Select
+                value={sort}
+                onChange={(value) => setSort(value as Sort)}
+                options={SORTS}
+                className="input-slim"
+                ariaLabel="排序"
+              />
+            </div>
+          </Toolbar>
 
-          {catalogue.error && <div className="alert">{catalogue.error}</div>}
-
-          <CoreCatalogue catalogue={catalogue} disabled={downloading} onOpenJava={onOpenJava} />
-
-          <div className="actions">
-            {downloading ? (
-              <Button
-                variant="danger"
-                type="button"
-                onClick={() => void cores.cancel()}
-                disabled={busy}
-              >
-                取消下载
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                type="button"
-                onClick={() => projectId && versionId && void cores.download(projectId, versionId)}
-                disabled={busy || !versionId}
-              >
-                下载 {project?.name ?? ''} {versionId}
-              </Button>
+          <ResourceTable heads={{ compat: '支持 MC', requires: '运行要求' }} label="核心库">
+            {downloading && job && (
+              <ResourcePendingRow
+                title={`${job.title}${job.subtitle ? ` ${job.subtitle}` : ''}`}
+                fileName={job.fileName}
+                downloaded={job.downloaded}
+                total={job.total}
+              />
             )}
+            {shown.length === 0 ? (
+              <DataTableEmpty>没有符合条件的核心。</DataTableEmpty>
+            ) : (
+              shown.map((core) => (
+                <ResourceRow key={core.id} entry={entryOf(core, () => void remove(core))} />
+              ))
+            )}
+          </ResourceTable>
+
+          <div className="rescards">
+            <StorageHygiene
+              idle={idle.length}
+              bytes={idle.reduce((sum, core) => sum + core.size, 0)}
+              unit="个核心"
+              onClean={() => void clean()}
+              busy={busy}
+            />
+            <ResourceHint>
+              手动丢进核心库目录的 jar 也会出现在这里，但它的版本和 Java 要求需要你补一下 ——
+              从「添加核心 → 上传自定义 jar」传进来的会带上这些信息。
+            </ResourceHint>
           </div>
-        </Section>
+        </>
+      )}
+
+      {adding !== null && (
+        <AddCoreDialog
+          java={java}
+          busy={busy}
+          upload={adding === 'upload'}
+          onClose={() => setAdding(null)}
+          onDownload={(project, version, build) => cores.download(project, version, build)}
+          onUploaded={() => void cores.refresh()}
+          onOpenJava={(major) => {
+            setAdding(null)
+            onOpenJava(major)
+          }}
+        />
       )}
     </Page>
   )
 }
 
-function CoreRow({
-  core,
-  busy,
-  onRemove,
-}: {
-  core: ServerCore
-  busy: boolean
-  onRemove: () => void
-}) {
-  // An imported jar has no project and no version, so its file name is the only
-  // name it has — which is also why it is the one row that does not repeat the
-  // file name underneath.
-  const title = core.imported ? core.fileName : `${core.projectName} ${core.version}`
-
-  return (
-    <article className="asset">
-      <div className="asset__head">
-        <span className="asset__tile asset__tile--accent">
-          {(core.projectName || core.fileName).slice(0, 1).toUpperCase()}
-        </span>
-        <div className="asset__title">
-          <span className="asset__label">
-            <strong title={title}>{title}</strong>
-            {core.kind === 'proxy' && <Badge>代理端</Badge>}
-            {core.imported && <Badge>自行放入</Badge>}
-            {!core.imported && !isRecommended(core.channel) && (
-              <Badge tone="warn">{core.channel}</Badge>
-            )}
-          </span>
-          <span className="asset__sub">
-            <span>{core.imported ? '自行放入的 jar' : core.projectName || '未知来源'}</span>
-            {!core.imported && <code title={core.fileName}>{core.fileName}</code>}
-          </span>
-        </div>
-      </div>
-
-      <dl className="asset__facts asset__facts--split">
-        <div>
-          <dt>构建</dt>
-          {/* A dash rather than a missing pair: the column has to stay a column
-              even on the row that has nothing to put in it. */}
-          <dd>{core.imported ? '—' : `#${core.build}`}</dd>
-        </div>
-        <div>
-          <dt>体积</dt>
-          <dd>{formatBytes(core.size)}</dd>
-        </div>
-        <div>
-          <dt>加入于</dt>
-          <dd>{formatDate(core.addedAt)}</dd>
-        </div>
-      </dl>
-
-      <footer className="asset__actions asset__actions--split">
-        {core.usedBy.length > 0 ? (
-          <span className="asset__users">
-            使用中：
-            {core.usedBy.map((name) => (
-              <Badge key={name}>
-                {name}
-              </Badge>
-            ))}
-          </span>
-        ) : (
-          <span className="muted">暂时没有实例用它</span>
-        )}
-        <button className="link link--danger" disabled={busy} onClick={onRemove}>
-          删除
-        </button>
-      </footer>
-    </article>
-  )
+/** An imported jar has no project and no version, so its file name is the only
+ *  name it has. */
+function nameOf(core: ServerCore): string {
+  if (core.imported) return core.version ? `${core.fileName} ${core.version}` : core.fileName
+  return `${core.projectName} ${core.version}`
 }
 
-function JobStatus({ job }: { job: DownloadJob }) {
-  if (job.state === 'downloading') {
-    const fraction = job.total > 0 ? job.downloaded / job.total : 0
-    return (
-      <div className="download-status">
-        <div className="progress">
-          <div className="progress__bar" style={{ width: `${Math.round(fraction * 100)}%` }} />
-          <span className="progress__label">
-            {job.total > 0
-              ? `${Math.round(fraction * 100)}% · ${formatBytes(job.downloaded)} / ${formatBytes(job.total)}`
-              : formatBytes(job.downloaded)}
-          </span>
-        </div>
-        <p className="chart-note">
-          正在下载 {job.fileName}（{job.title}
-          {job.subtitle ? ` 构建 ${job.subtitle}` : ''}）
-        </p>
-      </div>
-    )
-  }
+function entryOf(core: ServerCore, onRemove: () => void): ResourceEntry {
+  // 信息不全 is about the two columns that decide whether it will start, not
+  // about the row being sparse: a jar with no Java requirement on it is one
+  // nobody can check before pressing 启动.
+  const incomplete = core.javaMinimum <= 0 || core.minecraft === ''
 
-  if (job.state === 'done') {
-    return <Note tone="ok">已下载 {job.fileName}，现在可以复制到任意实例。</Note>
+  return {
+    id: core.id,
+    tile: core.projectName || core.fileName,
+    name: nameOf(core),
+    fileName: core.fileName,
+    chips: (
+      <>
+        {core.kind === 'proxy' && <Badge>代理端</Badge>}
+        {core.imported && <Badge>手动放入</Badge>}
+        {!core.imported && !isRecommended(core.channel) && <Badge tone="warn">{core.channel}</Badge>}
+        {incomplete && <Badge tone="warn">信息不全</Badge>}
+      </>
+    ),
+    version: core.imported ? (
+      core.version || <span className="reslist__idle">未知</span>
+    ) : (
+      <>
+        {core.version}
+        <span className="reslist__sub">#{core.build}</span>
+      </>
+    ),
+    compat: core.minecraft || <span className="reslist__idle">未知</span>,
+    requires:
+      core.javaMinimum > 0 ? (
+        `Java ${core.javaMinimum}+`
+      ) : (
+        <span className="reslist__idle">未知</span>
+      ),
+    size: core.size,
+    usedBy: core.usedBy,
+    addedAt: core.addedAt,
+    menu: [
+      {
+        label: '复制文件路径',
+        onSelect: () => void copy(core.fileName, '文件名已复制'),
+      },
+      {
+        label: '复制 SHA-256',
+        onSelect: () => void copy(core.sha256, '校验和已复制'),
+        disabled: core.sha256 === '',
+      },
+      {
+        label: '下载到本地',
+        // The panel downloads onto the machine it runs on, which leaves no way
+        // to get a build back off it — and an operator moving a server
+        // elsewhere should not have to go and find it upstream again.
+        onSelect: () => window.open(coreFileURL(core.id), '_blank', 'noopener'),
+      },
+      { label: '删除', onSelect: onRemove, danger: true },
+    ],
   }
+}
 
-  if (job.state === 'cancelled') {
-    return <Note tone="ok">已取消下载 {job.fileName}，未写入任何文件。</Note>
+async function copy(text: string, done: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast(done)
+  } catch {
+    // Clipboard access is refused outside a secure context, which is exactly
+    // where a self-hosted panel on a LAN address lives.
+    toastError('这个浏览器不让复制，手动选一下吧。')
   }
-
-  return (
-    <Note tone="error">
-      下载失败：{job.error ?? '未知错误'}
-      {job.fileName && `（${job.fileName}）`}
-    </Note>
-  )
 }

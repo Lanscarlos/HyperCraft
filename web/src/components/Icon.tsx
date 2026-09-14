@@ -18,6 +18,7 @@ export type IconName =
   | 'bolt'
   | 'settings'
   | 'menu'
+  | 'close'
   | 'collapse'
   | 'expand'
   | 'instances'
@@ -117,6 +118,10 @@ const PATHS: Record<IconName, ReactElement> = {
     </>
   ),
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
+  // Two strokes, same weight as the rest of the set. The dialogs that grew a
+  // close button were reaching for `collapse`, which is a chevron and reads as
+  // "fold this away" rather than "I am done here".
+  close: <path d="M6 6l12 12M18 6 6 18" />,
   collapse: <path d="m14 6-6 6 6 6" />,
   expand: <path d="m10 6 6 6-6 6" />,
   // Stacked rack units: several servers, as opposed to the one you are in.

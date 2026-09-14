@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -89,6 +90,13 @@ type Version struct {
 	Stable bool `json:"stable"`
 	// Builds is how many builds exist for this version.
 	Builds int `json:"builds"`
+	// Minecraft is which game versions this one runs, as a label. For a world
+	// server the version id *is* the game version, so it repeats it; for a
+	// proxy it is a range off proxyMinecraft, and empty when nothing here
+	// knows. Empty means the UI says 未知 rather than showing a guess — a
+	// wrong range here is worse than no range, because it is the answer to
+	// "will my players be able to join".
+	Minecraft string `json:"minecraft"`
 }
 
 // Build is a single build of a version, together with its artifact.
@@ -101,6 +109,10 @@ type Build struct {
 	URL      string    `json:"url"`
 	SHA256   string    `json:"sha256"`
 	Size     int64     `json:"size"`
+	// Changelog is the subject line of this build's first commit, which is as
+	// much as the one-line column it lands in can hold. Empty when upstream
+	// reports no commits.
+	Changelog string `json:"changelog"`
 }
 
 // Recommended reports whether this build is one upstream considers fit for
@@ -213,6 +225,7 @@ func (c *Client) Versions(ctx context.Context, projectID string) ([]Version, err
 			JavaMinimum: entry.Version.Java.Version.Minimum,
 			Stable:      isStable(id),
 			Builds:      len(entry.Builds),
+			Minecraft:   MinecraftOf(projectID, id),
 		})
 	}
 	if len(versions) == 0 {
@@ -223,33 +236,27 @@ func (c *Client) Versions(ctx context.Context, projectID string) ([]Version, err
 	return versions, nil
 }
 
-// LatestBuild resolves the newest build of a version and the artifact to fetch.
-func (c *Client) LatestBuild(ctx context.Context, projectID, versionID string) (Build, error) {
-	if _, ok := LookupProject(projectID); !ok {
-		return Build{}, fmt.Errorf("%w: %s", ErrUnknownProject, projectID)
-	}
-	if !versionPattern.MatchString(versionID) {
-		return Build{}, fmt.Errorf("%w: %q is not a valid version", ErrUnknownVersion, versionID)
-	}
+// buildJSON is one build as the Fill API reports it. Shared by LatestBuild
+// and Builds: the two endpoints differ only in whether the body is one of
+// these or an array of them.
+type buildJSON struct {
+	ID      int       `json:"id"`
+	Time    time.Time `json:"time"`
+	Channel string    `json:"channel"`
+	Commits []struct {
+		Message string `json:"message"`
+	} `json:"commits"`
+	Downloads map[string]struct {
+		Name      string `json:"name"`
+		URL       string `json:"url"`
+		Size      int64  `json:"size"`
+		Checksums struct {
+			SHA256 string `json:"sha256"`
+		} `json:"checksums"`
+	} `json:"downloads"`
+}
 
-	var payload struct {
-		ID        int       `json:"id"`
-		Time      time.Time `json:"time"`
-		Channel   string    `json:"channel"`
-		Downloads map[string]struct {
-			Name      string `json:"name"`
-			URL       string `json:"url"`
-			Size      int64  `json:"size"`
-			Checksums struct {
-				SHA256 string `json:"sha256"`
-			} `json:"checksums"`
-		} `json:"downloads"`
-	}
-	err := c.getJSON(ctx, "/projects/"+projectID+"/versions/"+versionID+"/builds/latest", &payload)
-	if err != nil {
-		return Build{}, err
-	}
-
+func (c *Client) toBuild(payload buildJSON) (Build, error) {
 	download, ok := payload.Downloads["server:default"]
 	if !ok {
 		// Fill names the primary artifact "server:default" for both projects we
@@ -272,14 +279,89 @@ func (c *Client) LatestBuild(ctx context.Context, projectID, versionID string) (
 	}
 
 	return Build{
-		Build:    payload.ID,
-		Channel:  payload.Channel,
-		Time:     payload.Time,
-		FileName: name,
-		URL:      download.URL,
-		SHA256:   strings.ToLower(download.Checksums.SHA256),
-		Size:     download.Size,
+		Build:     payload.ID,
+		Channel:   payload.Channel,
+		Time:      payload.Time,
+		FileName:  name,
+		URL:       download.URL,
+		SHA256:    strings.ToLower(download.Checksums.SHA256),
+		Size:      download.Size,
+		Changelog: subject(payload.Commits),
 	}, nil
+}
+
+// subject is the first commit's first line. Upstream messages carry a body
+// under a blank line, and the column this lands in is one line tall.
+func subject(commits []struct {
+	Message string `json:"message"`
+}) string {
+	if len(commits) == 0 {
+		return ""
+	}
+	line, _, _ := strings.Cut(commits[0].Message, "\n")
+	return strings.TrimSpace(line)
+}
+
+// LatestBuild resolves the newest build of a version and the artifact to fetch.
+func (c *Client) LatestBuild(ctx context.Context, projectID, versionID string) (Build, error) {
+	if err := c.checkTarget(projectID, versionID); err != nil {
+		return Build{}, err
+	}
+
+	var payload buildJSON
+	err := c.getJSON(ctx, "/projects/"+projectID+"/versions/"+versionID+"/builds/latest", &payload)
+	if err != nil {
+		return Build{}, err
+	}
+	return c.toBuild(payload)
+}
+
+// Builds is every build of one version, newest first.
+//
+// The library page's 添加核心 dialog needs the whole list rather than only the
+// newest: a version and its builds are parent and child, and picking a build
+// is the second half of picking what to download. Upstream returns them
+// oldest-first, which is the wrong end to read a changelog from.
+func (c *Client) Builds(ctx context.Context, projectID, versionID string) ([]Build, error) {
+	if err := c.checkTarget(projectID, versionID); err != nil {
+		return nil, err
+	}
+
+	var payload []buildJSON
+	if err := c.getJSON(ctx, "/projects/"+projectID+"/versions/"+versionID+"/builds", &payload); err != nil {
+		return nil, err
+	}
+
+	builds := make([]Build, 0, len(payload))
+	for _, entry := range payload {
+		build, err := c.toBuild(entry)
+		if err != nil {
+			// One unusable build does not make the list unusable: the operator
+			// is choosing among the others, and a hard failure here would take
+			// the whole dialog down over a build nobody asked for.
+			continue
+		}
+		builds = append(builds, build)
+	}
+	if len(builds) == 0 {
+		return nil, fmt.Errorf("%w: no downloadable builds for %s %s", ErrUpstream, projectID, versionID)
+	}
+
+	sort.Slice(builds, func(a, b int) bool { return builds[a].Build > builds[b].Build })
+	return builds, nil
+}
+
+// checkTarget rejects a project or version we would not put in an upstream URL.
+// Version IDs are operator-supplied, so an unexpected shape means a bug or an
+// attack, not a version.
+func (c *Client) checkTarget(projectID, versionID string) error {
+	if _, ok := LookupProject(projectID); !ok {
+		return fmt.Errorf("%w: %s", ErrUnknownProject, projectID)
+	}
+	if !versionPattern.MatchString(versionID) {
+		return fmt.Errorf("%w: %q is not a valid version", ErrUnknownVersion, versionID)
+	}
+	return nil
 }
 
 // Fetch opens the artifact body. The caller closes it.
@@ -410,4 +492,37 @@ func (c *Client) store(projectID string, versions []Version) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.cache[projectID] = cacheEntry{versions: versions, expires: time.Now().Add(c.ttl)}
+}
+
+// proxyMinecraft is which Minecraft versions each Velocity release line speaks.
+//
+// A world server's version id is the game version, so it needs no table. A
+// proxy's is its own — Velocity 3.4.0 is not a Minecraft version — and
+// upstream's API does not carry the range anywhere, so this is maintained by
+// hand against Velocity's release notes. Keyed on the major line, because that
+// is the granularity the range actually changes at.
+//
+// An entry missing from here is not guessed at. The column shows 未知 and the row
+// gets an 信息不全 chip, which is the honest answer: a wrong range here is the
+// answer to "can my players join", and being confidently wrong about that
+// costs more than saying nothing.
+var proxyMinecraft = map[string]string{
+	"1": "1.7 – 1.12.2",
+	"3": "1.7 – 1.21.x",
+	"4": "1.20 – 1.21.x",
+}
+
+// MinecraftOf is which game versions a project's version runs, as a label, or
+// empty when nothing here knows.
+func MinecraftOf(projectID, versionID string) string {
+	project, ok := LookupProject(projectID)
+	if !ok {
+		return ""
+	}
+	if !project.IsProxy() {
+		// The version id of a world server *is* the Minecraft version.
+		return versionID
+	}
+	major, _, _ := strings.Cut(versionID, ".")
+	return proxyMinecraft[major]
 }

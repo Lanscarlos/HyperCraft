@@ -200,8 +200,13 @@ func (s *Server) protectedRoutes() []route {
 		rt("GET /api/downloads/projects", s.handleListCoreProjects, authz.CapLibraryCores),
 		rt("GET /api/downloads/projects/{project}/versions", s.handleListCoreVersions, authz.CapLibraryCores),
 		rt("GET /api/downloads/projects/{project}/versions/{version}/build", s.handleLatestCoreBuild, authz.CapLibraryCores),
+		rt("GET /api/downloads/projects/{project}/versions/{version}/builds", s.handleListCoreBuilds, authz.CapLibraryCores),
 		rt("GET /api/cores", s.handleCoreLibrary, authz.CapLibraryCores),
 		rt("POST /api/cores", s.handleStartCoreDownload, authz.CapLibraryCores),
+		rt("POST /api/cores/upload", s.handleUploadCore, authz.CapLibraryCores),
+		// Two segments deep, for the same reason the config routes are: "upload"
+		// must not be reachable as a core id.
+		rt("GET /api/cores/{id}/file", s.handleFetchCore, authz.CapLibraryCores),
 		rt("DELETE /api/cores/{id}", s.handleDeleteCore, authz.CapLibraryCores),
 		// Deciding which jar a server runs is a launch setting that happens to
 		// be spelled as a copy out of the library, so it needs both.

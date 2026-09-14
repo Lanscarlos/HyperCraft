@@ -82,3 +82,36 @@ export function formatTime(iso: string): string {
     second: '2-digit',
   })
 }
+
+/**
+ * How long ago, all the way out.
+ *
+ * formatSince hands back to a date after a week, because "47 天前" is not a
+ * date anybody can place and the thing it describes — a session, an edit — is
+ * something you want to place. A library row is the other case: what you want
+ * off 加入 is "is this old", the answer is compared against the rows above and
+ * below it, and eight dates in a column are eight things to read rather than
+ * one shape. So this one keeps counting, and the exact date is on the title.
+ */
+export function formatAgo(iso: string, now: number = Date.now()): string {
+  const at = new Date(iso).getTime()
+  if (Number.isNaN(at)) return ''
+
+  const elapsed = now - at
+  const minute = 60_000
+  const hour = 60 * minute
+  const day = 24 * hour
+  // Calendar months are uneven, and a row that flips between 「1 个月前」 and
+  // 「4 周前」 depending on which months it spans is worse than one that is
+  // approximately right all year.
+  const month = 30 * day
+  const year = 365 * day
+
+  if (elapsed < 0) return formatDate(iso)
+  if (elapsed < minute) return '刚刚'
+  if (elapsed < hour) return `${Math.floor(elapsed / minute)} 分钟前`
+  if (elapsed < day) return `${Math.floor(elapsed / hour)} 小时前`
+  if (elapsed < month) return `${Math.floor(elapsed / day)} 天前`
+  if (elapsed < year) return `${Math.floor(elapsed / month)} 个月前`
+  return `${Math.floor(elapsed / year)} 年前`
+}

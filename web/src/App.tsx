@@ -645,7 +645,11 @@ export default function App() {
                 )
               ) : route.kind === 'library' ? (
                 route.section === 'java' ? (
-                  <JavaPage java={java} onOpenCores={() => openLibrary('cores', 'stock')} />
+                  <JavaPage
+                    java={java}
+                    want={route.want}
+                    onOpenCores={() => openLibrary('cores', 'stock')}
+                  />
                 ) : route.section === 'database' ? (
                   <DatabasePage databases={databases} />
                 ) : route.section === 'schematics' ? (
@@ -673,7 +677,14 @@ export default function App() {
                     />
                   )
                 ) : route.section === 'cores' ? (
-                  <CoreLibraryPage cores={cores} onOpenJava={() => openLibrary('java', 'installed')} />
+                  <CoreLibraryPage
+                    cores={cores}
+                    java={java}
+                    onOpenJava={(want) =>
+                      navigate({ kind: 'library', section: 'java', view: 'installed', want })
+                    }
+                    onOpenInstances={(query) => navigate({ kind: 'instances', query, state: 'all' })}
+                  />
                 ) : (
                   <PluginLibraryPage
                     plugins={plugins}

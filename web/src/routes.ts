@@ -136,6 +136,16 @@ export type Route =
        * case — a fleet on the same version — into four separate visits.
        */
       against?: string[]
+      /**
+       * Which Java major the 运行时 page should arrive with already picked.
+       *
+       * A view filter rather than a destination, like `against`: it is the
+       * 添加核心 dialog's warning saying "this core needs Java 25" and handing
+       * the operator somewhere that is already about Java 25. Dropping them on
+       * the page and letting them find it again is the half-measure that made
+       * that warning grey text at the bottom of a page for so long.
+       */
+      want?: number
     }
   /**
    * What the panel is downloading. Panel-wide, because a download belongs to
@@ -218,14 +228,26 @@ export function instanceSections(
  *  and the command palette both read this, so someone setting a server up for
  *  the first time meets the four in the order they need them. */
 export const LIBRARY_SECTIONS: { id: LibrarySection; label: string; cap: Capability }[] = [
-  { id: 'java', label: 'Java 环境', cap: CAP.panelJava },
+  // 服务端核心 first, and the order is no longer build order.
+  //
+  // Build order — Java, then the core, then the plugins — is the right reading
+  // of the *first* hour with the panel and the wrong one of every hour after
+  // it. A core is the shelf that is actually opened: it grows a row per
+  // version tested, it is what a new instance is stamped out of, and it is the
+  // one people arrive at from the creation wizard. Java is installed twice a
+  // year and then forgotten, which is exactly what its position now says.
   { id: 'cores', label: '服务端核心', cap: CAP.libraryCores },
-  { id: 'database', label: '数据库环境', cap: CAP.panelDatabases },
-  { id: 'plugins', label: '插件库', cap: CAP.libraryPlugins },
+  // No 「库」 and no 「环境」 on any of these. The panel used to say 服务端核心,
+  // Java 环境, 数据库环境, 插件库 and 建筑库 — three suffixes across five rows
+  // of one list, none of them carrying a distinction, and the first row
+  // wearing none at all. The thing on the shelf is the name.
+  { id: 'java', label: 'Java 运行时', cap: CAP.panelJava },
+  { id: 'database', label: '数据库', cap: CAP.panelDatabases },
+  { id: 'plugins', label: '插件', cap: CAP.libraryPlugins },
   // Last, because it is the only shelf a server does not need to start: Java,
   // the core and the plugins are what a server *is*, and a building is what
   // somebody puts inside one afterwards.
-  { id: 'schematics', label: '建筑库', cap: CAP.librarySchematics },
+  { id: 'schematics', label: '建筑与地图', cap: CAP.librarySchematics },
 ]
 
 /** The pages inside each library section, in order. The first is the default —
@@ -255,8 +277,8 @@ export const LIBRARY_VIEWS: Record<LibrarySection, { id: LibraryView; label: str
   // that card's head. So all of it fits above the fold, and what the split was
   // protecting — 已安装 first, never a form — is protected by the order of the
   // cards instead.
-  java: [{ id: 'installed', label: 'Java 环境' }],
-  database: [{ id: 'databases', label: '数据库环境' }],
+  java: [{ id: 'installed', label: 'Java 运行时' }],
+  database: [{ id: 'databases', label: '数据库' }],
   // Three pages, and they are three questions rather than three lists: 插件列表
   // is "what is the state of what I run", 插件市场 is "is this worth
   // installing", 下载队列 is "where did the five I just asked for get to".
@@ -283,7 +305,7 @@ export const LIBRARY_VIEWS: Record<LibrarySection, { id: LibraryView; label: str
   // is a *shelf* somebody added, and adding one is browsing rather than
   // configuring.
   schematics: [
-    { id: 'list', label: '建筑列表' },
+    { id: 'list', label: '建筑与地图' },
     { id: 'browse', label: '建筑市场' },
     { id: 'source', label: '索引源' },
   ],
@@ -482,6 +504,10 @@ function readRoute(path: string, search: string): Route {
       if (section === 'schematics' && view === 'list' && library[3]) {
         return { kind: 'library', section, view, schemId: decodeURIComponent(library[3]) }
       }
+      const want = Number(params.get('want') ?? '')
+      if (view === 'installed' && Number.isFinite(want) && want > 0) {
+        return { kind: 'library', section, view, want }
+      }
       const against = (params.get('against') ?? '')
         .split(',')
         .map((entry) => decodeURIComponent(entry).trim())
@@ -579,9 +605,10 @@ export function pathOf(route: Route): string {
         return `/library/schematics/list/${encodeURIComponent(route.schemId)}`
       }
       const base = `/library/${route.section}/${route.view}`
-      return route.view === 'browse' && route.against?.length
-        ? `${base}?against=${route.against.map(encodeURIComponent).join(',')}`
-        : base
+      if (route.view === 'browse' && route.against?.length) {
+        return `${base}?against=${route.against.map(encodeURIComponent).join(',')}`
+      }
+      return route.want ? `${base}?want=${route.want}` : base
     }
     case 'settings':
       return `/settings/${route.section}`
@@ -617,7 +644,10 @@ export function samePage(a: Route, b: Route): boolean {
         a.section === b.section &&
         a.view === b.view &&
         a.pluginId === b.pluginId &&
-        a.schemId === b.schemId
+        a.schemId === b.schemId &&
+        // Not a list filter: it changes which row the page opens on, and
+        // arriving with a different one has to count as going somewhere.
+        a.want === b.want
       )
     case 'settings':
       return b.kind === 'settings' && a.section === b.section

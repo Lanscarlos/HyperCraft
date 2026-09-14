@@ -685,6 +685,10 @@ export interface CoreVersion {
   /** False for pre-releases, release candidates and snapshots. */
   stable: boolean
   builds: number
+  /** Which Minecraft versions this one runs, as a label. The version id itself
+   *  for a world server, a range for a proxy, empty when nothing knows —
+   *  empty means the UI says 未知 rather than showing a guess. */
+  minecraft: string
 }
 
 export interface CoreBuild {
@@ -695,6 +699,8 @@ export interface CoreBuild {
   url: string
   sha256: string
   size: number
+  /** The first commit's subject line, empty when upstream reports none. */
+  changelog: string
 }
 
 // --------------------------------------------------------- java runtimes
@@ -967,6 +973,11 @@ export interface ServerCore {
   addedAt: string
   /** True for a jar dropped into the library by hand, which has no build info. */
   imported: boolean
+  /** Lowest Java major this jar runs on, 0 when nobody knows — a hand-dropped
+   *  jar whose form was left blank. Shown as 未知 rather than guessed at. */
+  javaMinimum: number
+  /** Which Minecraft versions it serves, as a label. Empty when unknown. */
+  minecraft: string
   /** Instances whose launch jar has this file name. */
   usedBy: string[]
 }

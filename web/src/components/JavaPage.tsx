@@ -55,7 +55,19 @@ const IMAGE_TYPES: { value: 'jre' | 'jdk'; label: string; note: string }[] = [
  * navigation step for nothing. The order still carries what the split was
  * protecting: what you have first, never a form.
  */
-export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCores: () => void }) {
+export function JavaPage({
+  java,
+  want,
+  onOpenCores,
+}: {
+  java: JavaController
+  /** The major to arrive with already picked, when something sent the operator
+   *  here to install a specific one — the 添加核心 dialog's warning does. A
+   *  button that drops you on this page and leaves you to find Java 25 in the
+   *  list is the half-measure that warning used to be. */
+  want?: number
+  onOpenCores: () => void
+}) {
   const { overview, majors, distributions, job, installing, busy } = java
   // Shut by default: adding a Java by hand is a thing you do once, and
   // this page is mostly opened to install one or to read what is there.
@@ -73,6 +85,17 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
     if (majors.length === 0) return
     setMajor((current) => current ?? (majors.find((m) => m.lts) ?? majors[0]).major)
   }, [majors])
+
+  // A major asked for in the URL wins over that default, and over whatever was
+  // picked on a previous visit: it is the whole content of the link that got
+  // them here. Shown even when upstream does not offer it — the list has a
+  // switch for the majors it hides, and silently picking something else would
+  // be worse than an empty selection.
+  useEffect(() => {
+    if (!want) return
+    setMajor(want)
+    setShowAllMajors(true)
+  }, [want])
 
   // The source the last install used, until this page picks another. It comes
   // from the panel rather than this browser: it describes the server's route

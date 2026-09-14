@@ -15,9 +15,13 @@ export interface CoreController {
   busy: boolean
   error: string | null
   refresh: () => Promise<void>
-  download: (project: string, version: string, overwrite?: boolean) => Promise<void>
+  download: (project: string, version: string, build?: number, overwrite?: boolean) => Promise<void>
   cancel: () => Promise<void>
   remove: (id: string) => Promise<void>
+  /** Deletes several at once, for 清理未使用. Sequential rather than parallel:
+   *  the library writes one index file, and five concurrent deletes racing to
+   *  rewrite it is how entries go missing from it. */
+  removeMany: (ids: string[]) => Promise<void>
 }
 
 /**
@@ -75,10 +79,10 @@ export function useCores(enabled: boolean, downloads: DownloadController): CoreC
   }, [])
 
   const download = useCallback(
-    (project: string, version: string, overwrite = false) =>
+    (project: string, version: string, build = 0, overwrite = false) =>
       act(async () => {
         try {
-          await api.startCoreDownload({ project, version, overwrite })
+          await api.startCoreDownload({ project, version, build, overwrite })
           // Ask the queue at once rather than waiting for its next tick, so the
           // row appears under the button that was just pressed.
           await downloads.refresh()
@@ -94,7 +98,7 @@ export function useCores(enabled: boolean, downloads: DownloadController): CoreC
               confirmLabel: '重新下载',
             })
             if (!ok) return
-            await api.startCoreDownload({ project, version, overwrite: true })
+            await api.startCoreDownload({ project, version, build, overwrite: true })
             await downloads.refresh()
             return
           }
@@ -122,6 +126,15 @@ export function useCores(enabled: boolean, downloads: DownloadController): CoreC
     [act, refresh],
   )
 
+  const removeMany = useCallback(
+    (ids: string[]) =>
+      act(async () => {
+        for (const id of ids) await api.deleteCore(id)
+        await refresh()
+      }, '清理失败').catch(() => undefined),
+    [act, refresh],
+  )
+
   return {
     library,
     cores: library?.cores ?? [],
@@ -133,5 +146,6 @@ export function useCores(enabled: boolean, downloads: DownloadController): CoreC
     download,
     cancel,
     remove,
+    removeMany,
   }
 }

@@ -16484,3 +16484,800 @@ select.input-slim option {
 .progress--slim .progress__label {
   font-size: 11px;
 }
+
+/* ------------------------------------------------------------- 资源库列表
+
+   One table for all five shelves — 服务端核心, Java 运行时, 数据库, 插件,
+   建筑与地图. They list different things and ask the same eight questions
+   about them, so the columns live here rather than five times over in five
+   page blocks. See components/ResourceList.tsx for what fills them.
+
+   The widths are fixed past the first column on purpose: a shelf is read down
+   a column (which of these is big, which is old, which is unused), and
+   fractional columns put those answers at a different x on every page. */
+
+.reslist__head,
+.reslist__row {
+  grid-template-columns:
+    minmax(0, 1fr) 148px 128px 84px 78px
+    176px 76px 34px;
+}
+
+/* Two lines of text per row — the name and the file under it — which is what
+   makes 56 rather than the table default. */
+.reslist__row {
+  min-height: 56px;
+}
+
+.reslist__name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* The one column that holds a name somebody else chose. Without this a long
+     jar name pushes every fixed column off the right edge. */
+  min-width: 0;
+}
+
+.reslist__tile {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.reslist__tile--pending {
+  background: var(--surface-3);
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+
+.reslist__label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.reslist__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.reslist__title strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reslist__file {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reslist__cell {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reslist__sub {
+  margin-left: 5px;
+  color: var(--text-faint);
+}
+
+.reslist__num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Not a blank cell. "Nothing is using this" and "the panel could not tell" are
+   different answers, and only one of them makes it safe to delete. */
+.reslist__idle {
+  color: var(--text-faint);
+}
+
+.reslist__users {
+  display: flex;
+  gap: 4px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* A row that is not there yet. It carries no menu and no columns of its own —
+   the bar takes the width the seven of them would have had. */
+.reslist__row--pending {
+  color: var(--text-dim);
+}
+
+.reslist__progress {
+  display: flex;
+  grid-column: 2 / -1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.reslist__progress .progress {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 8px;
+}
+
+/* The menu button is not there until the row is. A delete link sitting in
+   every row at rest is a target the cursor finds by accident, and this list is
+   mostly read rather than acted on. */
+.reslist__more {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  opacity: 0;
+  transition:
+    opacity var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.reslist__row:hover .reslist__more,
+.reslist__more:focus-visible,
+.reslist__more[aria-expanded='true'] {
+  opacity: 1;
+}
+
+.reslist__more:hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.reslist__more:focus-visible {
+  outline: var(--ring);
+  outline-offset: 1px;
+}
+
+/* Dropping columns rather than scrolling sideways, and only ones whose answer
+   is somewhere else on the row: 加入 and 兼容性 go first (the file name under
+   the name carries the version), then 运行要求 and 使用中. The name, the size
+   and the menu survive to the narrowest width — they are what the row is. */
+@media (max-width: 1240px) {
+  .reslist__head > :nth-child(7),
+  .reslist__row > :nth-child(7) {
+    display: none;
+  }
+
+  .reslist__head,
+  .reslist__row {
+    grid-template-columns: minmax(0, 1fr) 148px 128px 84px 78px 176px 34px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .reslist__head > :nth-child(3),
+  .reslist__row > :nth-child(3) {
+    display: none;
+  }
+
+  .reslist__head,
+  .reslist__row {
+    grid-template-columns: minmax(0, 1fr) 130px 84px 78px 160px 34px;
+  }
+}
+
+@media (max-width: 820px) {
+  .reslist__head > :nth-child(4),
+  .reslist__row > :nth-child(4),
+  .reslist__head > :nth-child(6),
+  .reslist__row > :nth-child(6) {
+    display: none;
+  }
+
+  .reslist__head,
+  .reslist__row {
+    grid-template-columns: minmax(0, 1fr) 110px 72px 34px;
+  }
+
+  /* No hover on a touch screen, so the menu has nothing to appear on. */
+  .reslist__more {
+    opacity: 1;
+  }
+}
+
+/* The two cards under a shelf: what could be cleaned up, and the one standing
+   sentence that used to be a paragraph at the top of the page. */
+.rescards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.reshint {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.reshint__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.reshint__body strong {
+  font-size: 13px;
+}
+
+.reshint__note {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+/* --------------------------------------------------------------- 添加核心
+
+   Type, version and build on one screen. Three panes rather than three steps:
+   they are one decision, and paging them hides the two you are comparing
+   against. See components/AddCoreDialog.tsx. */
+
+.modal__card--addcore {
+  gap: 0;
+  width: min(1040px, 100%);
+  max-height: min(760px, 90vh);
+  padding: 0;
+  overflow: hidden;
+}
+
+.addcore__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.addcore__head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.addcore__lead {
+  margin: 2px 0 0;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+/* The scroll is here rather than on the card, so the head and the confirmation
+   bar stay put while the build list moves. */
+.addcore__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  padding: 14px 18px;
+  overflow-y: auto;
+}
+
+.addcore__kinds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+}
+
+.kindcard {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.kindcard:hover {
+  background: var(--surface-2);
+}
+
+.kindcard--on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.kindcard:focus-visible {
+  outline: var(--ring);
+  outline-offset: 1px;
+}
+
+.kindcard__tile {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  background: var(--surface-3);
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.kindcard__tile--quiet {
+  color: var(--text-faint);
+}
+
+.kindcard__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.kindcard__note {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+/* Versions on the left, that version's builds on the right. They are parent
+   and child; the row of pills this replaced read as peers. */
+.addcore__pick {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 260px;
+}
+
+.addcore__versions,
+.addcore__builds {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.addcore__tools {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.addcore__vlist,
+.addcore__blist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  max-height: 300px;
+  padding: 4px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-y: auto;
+}
+
+.addcore__group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.addcore__grouphead {
+  padding: 6px 8px 2px;
+  color: var(--text-faint);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.vrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 8px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+
+.vrow:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.vrow--on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.vrow:focus-visible {
+  outline: var(--ring);
+  outline-offset: -1px;
+}
+
+.vrow__id {
+  font-variant-numeric: tabular-nums;
+}
+
+.addcore__bhead,
+.brow {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 132px 72px;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.addcore__bhead {
+  padding: 0 8px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.brow {
+  min-height: 34px;
+  padding: 0 8px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+
+.brow:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.brow--on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.brow:focus-visible {
+  outline: var(--ring);
+  outline-offset: -1px;
+}
+
+/* The rows standing in for a list that has not arrived. A sentence in their
+   place would move everything under it the moment it does. */
+.brow--ghost {
+  cursor: default;
+}
+
+.brow__id {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.brow__log,
+.brow__when {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brow__when {
+  color: var(--text-faint);
+}
+
+.addcore__num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.addcore__none {
+  margin: 0;
+  padding: 16px 8px;
+  color: var(--text-faint);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* The check that decides whether this jar will start, directly above the
+   button that fetches it. */
+.addcore__warn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 18px;
+}
+
+.addcore__warn > span {
+  min-width: 0;
+}
+
+.addcore__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px 18px;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+}
+
+.addcore__target {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.addcore__tile {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.addcore__what {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.addcore__what strong {
+  font-size: 13px;
+}
+
+.addcore__what code {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.addcore__acts {
+  display: flex;
+  gap: 8px;
+}
+
+/* The upload branch. The form is most of it: a jar the catalogue does not know
+   has nobody to ask about its version or its Java. */
+.addcore__upload {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.addcore__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.addcore__formlead {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.addcore__kindpick {
+  display: flex;
+  gap: 6px;
+}
+
+.drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 200px;
+  padding: 20px;
+  background: var(--surface-1);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  text-align: center;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.drop--over {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.drop__note {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.drop__progress {
+  width: 100%;
+  height: 8px;
+}
+
+@media (max-width: 900px) {
+  /* One column under the type cards: 236px of version list beside a
+     four-column build table has nowhere left to put a changelog. */
+  .addcore__pick {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .addcore__bhead,
+  .brow {
+    grid-template-columns: 84px minmax(0, 1fr) 72px;
+  }
+
+  .addcore__bhead > :nth-child(3),
+  .brow > :nth-child(3) {
+    display: none;
+  }
+}
+
+/* --------------------------------------------------------- 资源库占用
+
+   What the five shelves cost, at the foot of the library column. The bar is
+   each shelf's share of the total rather than of the disk: the panel has no
+   quota, and a percentage of anything else would be invented. */
+
+.footprint {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: none;
+  margin: 0 10px 10px;
+  padding: 10px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.footprint__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.footprint__head strong {
+  color: var(--text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.footprint__bar {
+  display: flex;
+  height: 6px;
+  background: var(--surface-4);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.footprint__seg {
+  height: 100%;
+}
+
+.footprint__list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.footprint__list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.footprint__list b {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.footprint__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+}
+
+/* Four shelves, four hues off the palette rather than four semantic colours:
+   nothing here is a warning, it is a legend. --caution and --ok keep their
+   meanings elsewhere and are borrowed only as pigment, which is why the
+   segments and the dots share them and nothing else on the card does. */
+.footprint__seg--cores,
+.footprint__dot--cores {
+  background: var(--accent);
+}
+
+.footprint__seg--java,
+.footprint__dot--java {
+  background: var(--ok);
+}
+
+.footprint__seg--plugins,
+.footprint__dot--plugins {
+  background: var(--caution);
+}
+
+.footprint__seg--schem,
+.footprint__dot--schem {
+  background: var(--outline);
+}
+
+/* A quiet tally at the end of a shelf row. Not a Badge: every one of the five
+   rows would wear one permanently, and a badge that is always on is furniture
+   rather than a state. */
+.sidebar__tally {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
