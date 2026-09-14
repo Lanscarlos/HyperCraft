@@ -250,6 +250,7 @@ export function InstanceView({
             instance={instance}
             onSaved={onChanged}
             onDeleted={onDeleted}
+            onOpenSection={onOpenSection}
           />
         </Pane>
       )}

@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { ask } from '../confirm'
 import { changedKeys, toInput } from '../instanceForm'
-import type { InstanceInput, InstanceStatus } from '../types'
+import type { InstanceSection } from '../routes'
+import type { InstanceInput, InstanceStatus, LaunchIssue } from '../types'
 import { ENCODING_OPTIONS, isLive, LOADER_OPTIONS } from '../types'
 import { Button } from './Button'
 import { FieldHelp } from './FieldHelp'
@@ -17,6 +18,7 @@ interface Props {
   instance: InstanceStatus
   onSaved: (updated: InstanceStatus) => void
   onDeleted: () => void
+  onOpenSection: (section: InstanceSection) => void
 }
 
 /**
@@ -28,11 +30,20 @@ interface Props {
  * over. Keeping them on one page meant scrolling past the first to reach the
  * second every time.
  */
-export function InstanceSettings({ instance, onSaved, onDeleted }: Props) {
+export function InstanceSettings({ instance, onSaved, onDeleted, onOpenSection }: Props) {
   const [form, setForm] = useState<InstanceInput>(() => toInput(instance))
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // The one thing from the launch check that still belongs on this page.
+  //
+  // The panel is worth nothing to somebody whose server will not start, and
+  // this is the page they open looking for the reason — it is called 实例设置
+  // and it used to hold the whole check. It does not any more, so what stays
+  // is a pointer: the first fatal finding and the way to the page that can
+  // actually fix it. Not the whole panel, which is the rail's job on 启动方式
+  // and would be two places to keep saying the same thing.
+  const [fatal, setFatal] = useState<LaunchIssue | null>(null)
 
   // A proxy answers "end" rather than "stop", which is worth saying in the
   // placeholder.
@@ -73,6 +84,24 @@ export function InstanceSettings({ instance, onSaved, onDeleted }: Props) {
     reseed(instance)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storedKey])
+
+  // Re-read after every save: a fatal finding is usually about a file on disk,
+  // and the save may have been the thing that fixed it.
+  useEffect(() => {
+    let cancelled = false
+    api
+      .launchCheck(instance.id)
+      .then((check) => {
+        if (cancelled) return
+        setFatal(check.issues.find((issue) => issue.level === 'fatal') ?? null)
+      })
+      .catch(() => {
+        if (!cancelled) setFatal(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [instance.id, storedKey])
 
   // Back to what is stored.
   const revert = () => {
@@ -148,6 +177,15 @@ export function InstanceSettings({ instance, onSaved, onDeleted }: Props) {
         title="实例设置"
         lead="名称、目录、控制台编码，以及面板什么时候替你开关机。怎么启动在「启动方式」那页。"
       />
+
+      {fatal && (
+        <div className="alert alert--error">
+          <span>{fatal.message}</span>
+          <Button size="row" type="button" onClick={() => onOpenSection('startup')}>
+            去启动方式
+          </Button>
+        </div>
+      )}
 
       <Section form title="基本信息" note="这台服务器叫什么、是什么服务端、文件放在哪。">
       {/* Who it is, on one line: a name, a kind and a version are one answer,
