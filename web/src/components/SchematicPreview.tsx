@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { ApiError, api, downloadURL } from '../api'
 import { bareName, blockColor, isAirBlock, isTranslucentBlock } from '../blockcolors'
 import { formatBytes, formatDate } from '../format'
-import { toast } from '../toast'
+import { toast, toastError } from '../toast'
 import type { FileEntry, SchematicPreview as Schematic } from '../types'
 import { Button } from './Button'
 import { Modal } from './Modal'
@@ -133,7 +133,7 @@ export function SchematicPreview({
         setImported(true)
         toast(err.message)
       } else {
-        toast(err instanceof Error ? err.message : '入库失败')
+        toastError(err instanceof Error ? err.message : '入库失败')
       }
     } finally {
       setImporting(false)

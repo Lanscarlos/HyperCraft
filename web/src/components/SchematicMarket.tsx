@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
 import { ask } from '../confirm'
 import { formatBytes, formatSince } from '../format'
-import { toast } from '../toast'
+import { toast, toastError } from '../toast'
 import type { SchematicItem, SchematicMarketResult, SchematicSource } from '../types'
 import type { SchematicController } from '../useSchematics'
 import { Badge } from './Badge'
@@ -93,7 +93,7 @@ export function SchematicMarket({
         prev ? { ...prev, held: { ...(prev.held ?? {}), [item.id]: entry.id } } : prev,
       )
     } catch (err) {
-      toast(err instanceof Error ? err.message : '下载失败')
+      toastError(err instanceof Error ? err.message : '下载失败')
     } finally {
       setTaking(null)
     }
@@ -325,7 +325,7 @@ function SourcesPage({
       await api.updateSchematicSource(source.id, { disabled: !source.disabled })
       onChanged()
     } catch (err) {
-      toast(err instanceof Error ? err.message : '保存失败')
+      toastError(err instanceof Error ? err.message : '保存失败')
     }
   }
 
@@ -342,7 +342,7 @@ function SourcesPage({
       await api.deleteSchematicSource(source.id)
       onChanged()
     } catch (err) {
-      toast(err instanceof Error ? err.message : '移除失败')
+      toastError(err instanceof Error ? err.message : '移除失败')
     }
   }
 

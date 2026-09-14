@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api'
-import { toast } from '../toast'
+import { toast, toastWarn } from '../toast'
 import type {
   InstanceStatus,
   VelocityResponse,
@@ -181,7 +181,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
       await navigator.clipboard.writeText(secret)
       toast('已复制转发密钥')
     } catch {
-      toast('复制失败，手动选中复制吧')
+      toastWarn('复制失败，手动选中复制吧')
     }
   }
 

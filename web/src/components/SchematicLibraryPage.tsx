@@ -4,7 +4,7 @@ import { api, schematicDownloadURL, uploadSchematics } from '../api'
 import { bareName, blockColor } from '../blockcolors'
 import { ask } from '../confirm'
 import { formatBytes, formatSince } from '../format'
-import { toast } from '../toast'
+import { toast, toastError } from '../toast'
 import type {
   SchematicEntry,
   SchematicImportResult,
@@ -78,7 +78,7 @@ export function SchematicLibraryPage({
       if (kept > 0) toast(`已入库 ${kept} 个建筑`)
       await schematics.refresh()
     } catch (err) {
-      toast(err instanceof Error ? err.message : '上传失败')
+      toastError(err instanceof Error ? err.message : '上传失败')
     } finally {
       setProgress(null)
     }

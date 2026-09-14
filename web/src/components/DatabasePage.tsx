@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { ask, askWithToggle } from '../confirm'
 import { formatBytes, formatDate } from '../format'
-import { toast } from '../toast'
+import { toast, toastWarn } from '../toast'
 import type {
   DatabaseEngine,
   DatabaseInstall,
@@ -491,7 +491,7 @@ function Connection({ service }: { service: DatabaseService }) {
     } catch {
       // Clipboard access needs a secure context, and a panel reached over plain
       // HTTP on a LAN address is not one. The value is on screen either way.
-      toast('复制失败，手动选中复制吧')
+      toastWarn('复制失败，手动选中复制吧')
     }
   }
 
