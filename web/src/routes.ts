@@ -23,6 +23,7 @@ export type InstanceSection =
   | 'network'
   | 'properties'
   | 'config-history'
+  | 'startup'
   | 'settings'
 
 /** The shared-asset pages. Stock, as opposed to what one server has chosen. */
@@ -186,6 +187,12 @@ export const INSTANCE_SECTIONS: { id: InstanceSection; label: string; cap: Capab
   // you edit a file, the server stops booting, and the next thing you want is
   // what the file looked like yesterday.
   { id: 'config-history', label: '配置历史', cap: CAP.instanceHistory },
+  // Before 实例设置 and not inside it: what a server runs is a different
+  // question from what it is called, and it is the only half of that form
+  // anybody opens twice — once to pick a jar, then again on every heap and
+  // GC change after that. They stay adjacent because whoever wants one
+  // often wants the other in the same sitting.
+  { id: 'startup', label: '启动方式', cap: CAP.instanceSettings },
   { id: 'settings', label: '实例设置', cap: CAP.instanceSettings },
 ]
 

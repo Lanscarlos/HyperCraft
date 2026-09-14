@@ -121,6 +121,14 @@ func (s *Server) protectedRoutes() []route {
 		// script mode that needed the script to be executable.
 		rt("GET /api/instances/{id}/launch-check", s.handleLaunchCheck, authz.CapInstanceView),
 
+		// The same question asked of settings nobody has saved yet, plus the
+		// argv they would produce. Writes nothing — it echoes the caller's own
+		// draft back with the panel's additions made visible, which is the
+		// whole reason the page can claim the command it shows is the real
+		// one. Hence CapInstanceView and not CapInstanceLaunch: nothing here
+		// tells the caller anything they did not just send.
+		rt("POST /api/instances/{id}/launch/preview", s.handleLaunchPreview, authz.CapInstanceView),
+
 		// Forge's user_jvm_args.txt, which is where the heap of an
 		// argfile-launched server lives. Two boundaries, so both are named: it
 		// writes a config file in the server directory, and what it writes is

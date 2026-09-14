@@ -12,10 +12,11 @@ import type { FileJump } from './FileManager'
 import { FileManager } from './FileManager'
 import { InstanceCockpit } from './InstanceCockpit'
 import { InstancePlugins } from './InstancePlugins'
-import { LaunchSettings } from './LaunchSettings'
+import { InstanceSettings } from './InstanceSettings'
 import { NetworkPage } from './NetworkPage'
 import { ResourcePanel } from './ResourcePanel'
 import { ServerConfigPage } from './ServerConfigPage'
+import { StartupSettings } from './StartupSettings'
 import { VelocityConfig } from './VelocityConfig'
 
 interface Props {
@@ -27,6 +28,9 @@ interface Props {
    *  other server, and the page has to notice when one is created or deleted
    *  somewhere else. */
   instances: InstanceStatus[]
+  /** The machine's physical memory, for 启动方式's allocation bar. From the
+   *  host poll rather than this instance's, which only runs while it does. */
+  hostMemoryTotal: number
   section: InstanceSection
   cores: CoreController
   /** The panel-wide plugin library: what this server can be given. */
@@ -67,6 +71,7 @@ export function InstanceView({
   instance,
   metrics,
   instances,
+  hostMemoryTotal,
   section,
   cores,
   plugins,
@@ -223,14 +228,26 @@ export function InstanceView({
           />
         </Pane>
       )}
-      {visited.has('settings') && (
-        <Pane id="settings" active={section === 'settings'} leaving={leaving === 'settings'} scroll>
-          <LaunchSettings
+      {visited.has('startup') && (
+        <Pane id="startup" active={section === 'startup'} leaving={leaving === 'startup'} scroll>
+          <StartupSettings
             instance={instance}
+            hostMemoryTotal={hostMemoryTotal}
+            instances={instances}
             cores={cores}
             onSaved={onChanged}
-            onDeleted={onDeleted}
             onOpenLibrary={onOpenCoreLibrary}
+            onOpenSection={onOpenSection}
+          />
+        </Pane>
+      )}
+      {visited.has('settings') && (
+        <Pane id="settings" active={section === 'settings'} leaving={leaving === 'settings'} scroll>
+          <InstanceSettings
+            instance={instance}
+            onSaved={onChanged}
+            onDeleted={onDeleted}
+            onOpenSection={onOpenSection}
           />
         </Pane>
       )}

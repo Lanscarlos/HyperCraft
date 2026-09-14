@@ -10,8 +10,8 @@ import {
   suggestFlags,
   wantsUnit,
   type Flag,
-  type KnownFlag,
 } from '../jvmFlags'
+import { ArgComplete, ArgGrid, ArgRemove } from './ArgShell'
 import { Card } from './Card'
 import { Select } from './Select'
 
@@ -103,9 +103,18 @@ export function JVMArgsEditor({
   }
 
   return (
-    <div className="jvmargs">
-      <div className="jvmargs__grid">
-        {rows.map((flag) => (
+    <ArgGrid
+      onAdd={add}
+      addLabel="+ 添加参数"
+      emptyNote="还没有 JVM 参数；上面的预设可以一次填好一套"
+      isEmpty={rows.length === 0}
+      footnote={
+        <>
+          面板不认识的参数照样能加，会原样保存。参数会放在 <code>-jar</code> 之前。
+        </>
+      }
+    >
+      {rows.map((flag) => (
           <ArgCard
             key={flag.id}
             flag={flag}
@@ -114,27 +123,10 @@ export function JVMArgsEditor({
             onEdit={() => edit(flag.id)}
             onCommit={(text) => commit(flag.id, text)}
             onPatch={(changes) => patch(flag.id, changes)}
-            onRemove={() => remove(flag.id)}
-          />
-        ))}
-
-        {/* The empty state and the way out of it are one box: an editor with no
-            arguments in it used to carry a centred paragraph saying so on top
-            of this, which is the same sentence twice and 250px of height. */}
-        <button
-          className={`jvmcard__add${rows.length === 0 ? ' jvmcard__add--empty' : ''}`}
-          type="button"
-          onClick={add}
-        >
-          + 添加参数
-          {rows.length === 0 && <small>还没有 JVM 参数；上面的预设可以一次填好一套</small>}
-        </button>
-      </div>
-
-      <small className="muted">
-        面板不认识的参数照样能加，会原样保存。参数会放在 <code>-jar</code> 之前。
-      </small>
-    </div>
+          onRemove={() => remove(flag.id)}
+        />
+      ))}
+    </ArgGrid>
   )
 }
 
@@ -171,13 +163,17 @@ function ArgCard({
   if (editing || flag.kind === 'raw') {
     return (
       <Card pad="tight" tone="sunken" className="jvmcard jvmcard--full">
-        <FreeText
-          flag={flag}
+        <ArgComplete
+          id={flag.id}
+          raw={flag.raw}
           editing={editing}
           focusing={focusing}
+          placeholder="-XX:+UseG1GC"
+          ariaLabel="JVM 参数"
+          suggest={suggestFlags}
           onEdit={onEdit}
           onCommit={onCommit}
-          onRemove={onRemove}
+          trailing={<RemoveButton flag={flag} onRemove={onRemove} />}
         />
         {!editing && (
           <div className="jvmcard__note">面板不认识这个参数的写法，按原文保存。</div>
@@ -261,144 +257,6 @@ function ArgCard({
   )
 }
 
-/**
- * The one field that takes a whole argument, and the completion under it.
- *
- * Its own popup rather than a <datalist>: a native one cannot be themed, so it
- * arrived in the panel's pixel face and left in the browser's, and it has
- * nowhere to put the line of Chinese that is most of why the list is worth
- * offering. The interaction is the one a datalist gave — arrow keys, Enter,
- * and anything at all still typeable — so the list stays a shortcut and never
- * becomes a gate.
- */
-function FreeText({
-  flag,
-  editing,
-  focusing,
-  onEdit,
-  onCommit,
-  onRemove,
-}: {
-  flag: Flag
-  editing: boolean
-  focusing: MutableRefObject<string | null>
-  onEdit: () => void
-  onCommit: (text: string) => void
-  onRemove: () => void
-}) {
-  const [draft, setDraft] = useState(flag.raw)
-  const [open, setOpen] = useState(false)
-  const [active, setActive] = useState(-1)
-  const input = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (editing) setDraft(flag.raw)
-  }, [editing, flag.raw])
-
-  useEffect(() => {
-    if (focusing.current === flag.id) {
-      focusing.current = null
-      input.current?.focus()
-    }
-  })
-
-  const hits: KnownFlag[] = open && editing ? suggestFlags(draft) : []
-
-  const pick = (entry: KnownFlag) => {
-    setOpen(false)
-    setDraft(entry.sample)
-    onCommit(entry.sample)
-  }
-
-  return (
-    <div className="jvmpick">
-      <div className="jvmcard__head">
-        <input
-          ref={input}
-          className="input-slim jvmpick__input"
-          value={editing ? draft : flag.raw}
-          spellCheck={false}
-          placeholder="-XX:+UseG1GC"
-          aria-label="JVM 参数"
-          autoComplete="off"
-          role="combobox"
-          aria-expanded={hits.length > 0}
-          onFocus={() => {
-            onEdit()
-            setOpen(true)
-            setActive(-1)
-          }}
-          onChange={(e) => {
-            setDraft(e.target.value)
-            setOpen(true)
-            setActive(-1)
-          }}
-          onBlur={(e) => {
-            setOpen(false)
-            onCommit(e.target.value)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-              if (hits.length === 0) return
-              e.preventDefault()
-              const step = e.key === 'ArrowDown' ? 1 : -1
-              setActive((i) => (i + step + hits.length) % hits.length)
-              return
-            }
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              if (active >= 0 && hits[active]) pick(hits[active])
-              else e.currentTarget.blur()
-              return
-            }
-            if (e.key === 'Escape') {
-              // One Escape closes the list; a second puts the card back the way
-              // it was, which for one added by mistake means it disappears.
-              if (open && hits.length > 0) {
-                setOpen(false)
-                return
-              }
-              setDraft(flag.raw)
-              onCommit(flag.raw)
-            }
-          }}
-        />
-        <RemoveButton flag={flag} onRemove={onRemove} />
-      </div>
-
-      {hits.length > 0 && (
-        <div className="jvmpick__pop" role="listbox">
-          {hits.map((entry, index) => (
-            <button
-              key={entry.sample}
-              type="button"
-              role="option"
-              aria-selected={index === active}
-              className={`jvmpick__item${index === active ? ' jvmpick__item--active' : ''}`}
-              // The input must keep focus through the press, or its own blur
-              // commits the half-typed text before the click ever lands.
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => pick(entry)}
-            >
-              <b>{entry.sample}</b>
-              <small>{entry.note}</small>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 function RemoveButton({ flag, onRemove }: { flag: Flag; onRemove: () => void }) {
-  return (
-    <button
-      className="jvmcard__del"
-      type="button"
-      aria-label={`删除 ${flag.raw || '这一行'}`}
-      onClick={onRemove}
-    >
-      ✕
-    </button>
-  )
+  return <ArgRemove label={flag.raw} onRemove={onRemove} />
 }

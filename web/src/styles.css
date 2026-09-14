@@ -3108,6 +3108,277 @@ a:hover {
   white-space: pre;
 }
 
+/* Checked and fine. Neutral apart from the left edge: a panel that painted
+   every passing row green would be a wall of colour saying nothing, and the
+   whole point of listing them is that the eye skips them and lands on the one
+   that is not green. */
+.launchcheck__item--ok {
+  border-left-color: var(--ok);
+}
+
+/* ------------------------------------------------------------- 启动方式
+   Two columns: the form, and the answer it produces. Wrapping rather than a
+   breakpoint — the rail stops being readable below a width that does not
+   depend on the screen, so the container is what should decide. Both sides
+   need min-width: 0 or a long Java path pushes the row open. */
+.startup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+/* Grows three times as fast as the rail: both need a floor to stay readable,
+   but spare width belongs to the form. Split evenly the rail ends up wider
+   than the fields it explains, which reads as the page being about the
+   command rather than about the settings that produce it. */
+.startup__form {
+  flex: 3 1 420px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.startup__rail {
+  flex: 1 1 340px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: sticky;
+  top: 0;
+}
+
+/* The legend key, in two places at once: the square on a card's heading and
+   the square in front of that card's stretch of the command. One class, so the
+   pairing cannot drift apart when an origin is added. */
+.originmark {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
+  display: inline-block;
+  background: var(--text-faint);
+}
+
+.originmark--memory {
+  background: var(--ok);
+}
+
+.originmark--jvm {
+  background: var(--code-key);
+}
+
+.originmark--jar {
+  background: var(--code-number);
+}
+
+.originmark--server {
+  background: var(--code-string);
+}
+
+/* Not yours to edit — the console flags the daemon adds. The muted square
+   matches the muted line. */
+.originmark--panel {
+  background: var(--term-bright-black);
+}
+
+/* The command, on the console's own dark ground. A third dark surface in a
+   panel whose rule is that the two terminals stay visibly apart — allowed
+   here because this one takes no input: there is nothing to type into the
+   wrong one. It borrows --term-* rather than starting a palette, which is
+   also what keeps it from reading as the host shell. */
+.launchcmd {
+  background: var(--term-bg);
+  color: var(--term-fg);
+  border: 1px solid var(--term-edge);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.8;
+  /* The one element allowed to be wider than the page: a Java path plus twenty
+     Aikar flags has no wrap that reads well. */
+  overflow-x: auto;
+}
+
+/* Refreshing. The last good command stays legible underneath rather than
+   blinking out — a beat behind beats a flicker. */
+.launchcmd--stale {
+  opacity: 0.55;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.launchcmd__line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: pre;
+}
+
+.launchcmd__line--muted {
+  color: var(--term-bright-black);
+}
+
+.launchcmd__args {
+  min-width: 0;
+}
+
+.launchcmd__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--term-edge);
+  color: var(--term-bright-black);
+  font-size: 11px;
+}
+
+.launchcmd__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* A card's legend square sits on its heading. The title is a flex line so the
+   square keeps its size and stays on the text's baseline rather than being
+   stretched by it. */
+.panel__title .originmark {
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* ---- the three JVM presets, as a pick-one -------------------------------
+
+   They used to be three plain chips with the chosen one's note appearing
+   underneath, which said what you had picked but never which one was in
+   effect — reload the page and every chip looked the same. These carry the
+   note inline and mark the active one, which is detected from the arguments
+   rather than from the last click. */
+.presetpick {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.presetpick__one {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 11px;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.presetpick__one:hover {
+  border-color: var(--border-strong);
+}
+
+.presetpick__one:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.presetpick__one strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.presetpick__one small {
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.presetpick__one--on {
+  background: var(--accent-soft);
+  border-color: var(--border-accent);
+}
+
+/* ---- what this heap costs the machine -----------------------------------
+
+   Configured ceilings, not live usage: the question being answered while you
+   type a number is whether these servers can coexist, not what is resident
+   right now. */
+.memorybar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.memorybar__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.memorybar__total {
+  font-variant-numeric: tabular-nums;
+}
+
+.memorybar__track {
+  display: flex;
+  gap: 1px;
+  height: 8px;
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.memorybar__fill {
+  display: block;
+  height: 100%;
+}
+
+.memorybar__fill--others {
+  background: var(--border-strong);
+}
+
+.memorybar__fill--self {
+  background: var(--ok);
+}
+
+/* The ceilings already add up to more than the box has. Rare enough, and
+   consequential enough, to be the one thing on this card that is coloured. */
+.memorybar__fill--over {
+  background: var(--caution);
+}
+
+.memorybar__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.memorybar__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.memorybar__key--end {
+  margin-left: auto;
+}
+
+.memorybar__swatch--others {
+  background: var(--border-strong);
+}
+
 .status {
   display: flex;
   align-items: center;
