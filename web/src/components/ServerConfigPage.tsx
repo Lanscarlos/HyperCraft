@@ -6,6 +6,7 @@ import type { InstanceStatus, ServerConfigFile } from '../types'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { ConfigLayout, ConfigRow, ConfigSaveBar, changedKeys } from './ConfigLayout'
+import { Note } from './Note'
 import { PageHead } from './Page'
 import { PropertiesEditor } from './PropertiesEditor'
 import { Section } from './Section'
@@ -249,11 +250,11 @@ function ServerConfigForm({
       <p className="muted">{data.lead}</p>
 
       {!data.exists && (
-        <div className="alert">
+        <Note>
           <code>{data.path}</code> 还不存在 —— 服务端首次启动时才会生成它。
           下面显示的是服务端自己的默认值；保存只会写入你改过的那几项，
           剩下的等服务端启动时自己补齐。
-        </div>
+        </Note>
       )}
 
       <ConfigLayout

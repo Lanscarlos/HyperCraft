@@ -19,6 +19,7 @@ import { JavaPage } from './components/JavaPage'
 import { Login } from './components/Login'
 import { NetworkPage } from './components/NetworkPage'
 import { NewInstanceWizard } from './components/NewInstanceWizard'
+import { Note } from './components/Note'
 import { PluginLibraryPage } from './components/PluginLibraryPage'
 import { SchematicLibraryPage } from './components/SchematicLibraryPage'
 import { SchematicMarket } from './components/SchematicMarket'
@@ -788,7 +789,7 @@ export default function App() {
                     onOpenCoreLibrary={() => openLibrary('cores', 'stock')}
                   />
                 ) : (
-                  <div className="alert">
+                  <Note>
                     找不到这个实例，它可能已经被删除了。
                     <button
                       className="link"
@@ -796,7 +797,7 @@ export default function App() {
                     >
                       回到实例列表
                     </button>
-                  </div>
+                  </Note>
                 )
               ) : (
                 <Dashboard

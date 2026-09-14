@@ -21,6 +21,7 @@ import { InstancePluginDrawer } from './InstancePluginDrawer'
 import { Menu } from './Menu'
 import type { MenuItem } from './Menu'
 import { Modal } from './Modal'
+import { Note } from './Note'
 import { PageHead } from './Page'
 import { PluginBrowse, loaderLabel } from './PluginBrowse'
 import { CompatBadge } from './PluginCompat'
@@ -323,7 +324,7 @@ export function InstancePlugins({
 
       {tab === 'market' ? (
         <>
-          <div className="alert">
+          <Note>
             <div>
               <strong>这里下载的插件进的是面板的插件库，不是这台服务器</strong>
               <p className="restart-banner__list">
@@ -331,7 +332,7 @@ export function InstancePlugins({
                 「已安装」用「从插件库安装」挑一个版本。下面的兼容性徽章按 {instance.name} 算。
               </p>
             </div>
-          </div>
+          </Note>
           <PluginBrowse
             against={[instance.id]}
             recents={[instance.id]}

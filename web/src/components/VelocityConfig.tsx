@@ -11,6 +11,7 @@ import type {
 } from '../types'
 import { Button } from './Button'
 import { EmptyState } from './EmptyState'
+import { Note } from './Note'
 import { PageHead } from './Page'
 import { Section } from './Section'
 import { Select } from './Select'
@@ -220,10 +221,10 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
       {head}
 
       {!data.exists && (
-        <div className="alert">
+        <Note>
           <code>velocity.toml</code> 还不存在。代理端首次启动会生成它；
           下面填的是 Velocity 的默认值，保存时会直接写成完整的配置文件。
-        </div>
+        </Note>
       )}
 
       <Section

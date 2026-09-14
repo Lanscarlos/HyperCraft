@@ -16,6 +16,7 @@ import { Button } from './Button'
 import { Card } from './Card'
 import { EmptyState } from './EmptyState'
 import { Modal } from './Modal'
+import { Note } from './Note'
 import { Page } from './Page'
 import { SchematicDialog } from './SchematicPreview'
 import { Section } from './Section'
@@ -557,7 +558,7 @@ function InstallDialog({
         </p>
 
         {targets.length === 0 ? (
-          <div className="alert">还没有实例可以装。</div>
+          <Note>还没有实例可以装。</Note>
         ) : (
           <>
             <label className="field">

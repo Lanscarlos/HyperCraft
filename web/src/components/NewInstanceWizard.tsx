@@ -10,6 +10,7 @@ import { Badge } from './Badge'
 import { Button } from './Button'
 import { CoreCatalogue, useCoreCatalogue } from './CoreCatalogue'
 import { EmptyState } from './EmptyState'
+import { Note } from './Note'
 import { Page } from './Page'
 import { DirectoryField } from './PathPicker'
 import { Section } from './Section'
@@ -1785,10 +1786,10 @@ function Finished({
       )}
 
       {!hasCore && (
-        <div className="alert">
+        <Note>
           目录里还没有服务端 jar。用「文件」页传一个进去，或者在「实例设置 → 从核心库安装」里装一个，
           然后才能开服。
-        </div>
+        </Note>
       )}
 
       {!proxy && !eula && (

@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import type { TerminalController } from '../useTerminal'
 import { Button } from './Button'
+import { Note } from './Note'
 import { Section } from './Section'
 
 interface Props {
@@ -59,7 +60,7 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
       {error && <div className="alert alert--error">{error}</div>}
 
       {!status.supported ? (
-        <div className="alert">{status.reason}</div>
+        <Note>{status.reason}</Note>
       ) : (
         <>
           {/* The same grid the 本机 card uses for its facts, so the two cards

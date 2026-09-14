@@ -10,6 +10,7 @@ import type {
 } from '../types'
 import { Button } from './Button'
 import { ConfigLayout, ConfigRow, ConfigSaveBar, changedKeys } from './ConfigLayout'
+import { Note } from './Note'
 import { Section } from './Section'
 import { Skeleton, SkeletonPanel, SkeletonScreen } from './Skeleton'
 
@@ -191,10 +192,10 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
       )}
 
       {!data.exists && (
-        <div className="alert">
+        <Note>
           <code>server.properties</code> 还不存在。
           服务端首次启动会生成它；你现在填的值会在保存时直接写入文件。
-        </div>
+        </Note>
       )}
 
       <ConfigLayout
