@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -183,5 +184,108 @@ func TestLaunchLevelOKExists(t *testing.T) {
 	// cannot say "I looked".
 	if launchLevelOK != "ok" {
 		t.Errorf("launchLevelOK = %q", launchLevelOK)
+	}
+}
+
+func (e *testEnv) launchPreview(id string, draft launchPreviewRequest) launchPreviewResponse {
+	e.t.Helper()
+	resp := e.do(http.MethodPost, "/api/instances/"+id+"/launch/preview", draft)
+	var out launchPreviewResponse
+	decodeBody(e.t, resp, &out)
+	if resp.StatusCode != http.StatusOK {
+		e.t.Fatalf("POST launch/preview: %d", resp.StatusCode)
+	}
+	return out
+}
+
+// The page sends what it holds; everything it does not own — the console
+// encoding, which lives on the other settings page now — comes off the stored
+// config. A draft that blanked those would preview a command nobody asked for.
+func TestLaunchPreviewOverlaysTheDraftOnTheStoredConfig(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	inst := env.newTestInstance("overlay")
+
+	out := env.launchPreview(inst.ID, launchPreviewRequest{
+		Java:        "java",
+		Jar:         "paper.jar",
+		MinMemoryMB: 2560,
+		MaxMemoryMB: 2560,
+		JVMArgs:     []string{"-XX:+UseG1GC"},
+		ServerArgs:  []string{"--nogui"},
+	})
+
+	if out.Mode != "jar" {
+		t.Errorf("mode = %q, want jar", out.Mode)
+	}
+	flat := instance.FlattenSegments(out.Segments)
+	for _, want := range []string{"-Xms2560M", "-Xmx2560M", "-XX:+UseG1GC", "-jar", "paper.jar", "--nogui"} {
+		if !slices.Contains(flat, want) {
+			t.Errorf("preview is missing %q: %q", want, flat)
+		}
+	}
+
+	// The instance still has the name and directory it had: previewing is not
+	// a save, and the draft carries neither.
+	var after instance.Status
+	decodeBody(t, env.do(http.MethodGet, "/api/instances/"+inst.ID, nil), &after)
+	if after.Name != "overlay" {
+		t.Errorf("name = %q — a preview must not touch what is stored", after.Name)
+	}
+	if after.Jar == "paper.jar" {
+		t.Errorf("the draft was saved; preview writes nothing")
+	}
+}
+
+// The claim the page makes is that the command shown is the command run. That
+// only holds if the flags the panel adds for its own console are in it.
+func TestLaunchPreviewShowsThePanelsOwnInjectedFlags(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	inst := env.newTestInstance("injected")
+
+	out := env.launchPreview(inst.ID, launchPreviewRequest{
+		Java: "java",
+		Jar:  "paper.jar",
+	})
+
+	var panel []string
+	for _, seg := range out.Segments {
+		if seg.Origin == instance.OriginPanel {
+			panel = append(panel, seg.Args...)
+		}
+	}
+	if len(panel) == 0 {
+		t.Fatalf("no panel segment: the injected flags would be invisible, and the page claims the command is complete: %#v", out.Segments)
+	}
+	if !slices.Contains(panel, "-Dfile.encoding=UTF-8") {
+		t.Errorf("panel segment = %q, want the encoding flags", panel)
+	}
+}
+
+// argfile mode does not get -Xms/-Xmx on the command line, so the preview must
+// not show them either — see the comment in Config.commandSegments.
+func TestLaunchPreviewOmitsTheHeapInArgFileMode(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	inst := env.newTestInstance("forge-preview")
+
+	out := env.launchPreview(inst.ID, launchPreviewRequest{
+		Java:        "java",
+		ArgFiles:    []string{"user_jvm_args.txt"},
+		MinMemoryMB: 2048,
+		MaxMemoryMB: 4096,
+	})
+
+	if out.Mode != "argfile" {
+		t.Fatalf("mode = %q, want argfile", out.Mode)
+	}
+	for _, seg := range out.Segments {
+		if seg.Origin == instance.OriginMemory {
+			t.Errorf("argfile preview showed a heap the JVM will not get: %+v", seg)
+		}
+	}
+	if !slices.Contains(instance.FlattenSegments(out.Segments), "@user_jvm_args.txt") {
+		t.Errorf("argfile missing: %q", instance.FlattenSegments(out.Segments))
 	}
 }
