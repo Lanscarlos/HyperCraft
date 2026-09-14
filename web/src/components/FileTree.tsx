@@ -1,28 +1,28 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '../api'
+import { readPref, writePref } from '../localPrefs'
 import { FileIcon } from './FileIcon'
 import { Icon } from './Icon'
-import { Menu } from './Menu'
-import type { MenuItem } from './Menu'
 
 /**
  * The directory tree beside the listing.
  *
- * Directories only, normally. The listing in the middle is the answer to "what
- * is in here"; this is the answer to "where is here", and mixing files into it
- * would make it a second, worse copy of the listing rather than a map of the
- * tree around it.
- *
- * Edit mode is the exception (`showFiles`): the listing is off screen there,
- * so the division of labour it was half of has nothing left to divide. The
- * cache keeps every entry either way and the filtering happens at render, so
- * switching modes does not re-read a single directory.
+ * Folders, and only ever folders. The listing in the middle answers "what is
+ * in here"; this answers "where is here". They used to trade jobs — the tree
+ * grew files whenever the listing stepped aside — and that cost twice: the
+ * same control meant two different things depending on a mode, and at this
+ * rail's width the filenames it gained arrived pre-truncated
+ * (`banned-players...`, `version_histor...`), which is a worse listing than
+ * the one it was standing in for.
  *
  * Children are fetched when a node is first opened and then kept: walking back
  * up and down a tree is the single most common thing anyone does on this page,
  * and re-reading plugins/ every time it is expanded makes the tree feel slower
- * than the ".." it replaced. 刷新 on the toolbar drops the cache.
+ * than the ".." it replaced. 刷新 on the bar drops the cache.
+ *
+ * Which folders are open is remembered per instance. A tree that is collapsed
+ * every time you come back is a tree you re-walk every time you come back.
  */
 
 interface Props {
@@ -30,51 +30,34 @@ interface Props {
   /** The directory the listing is showing, so the tree can mark it. */
   path: string
   onOpen: (path: string) => void
-  /** Bumped by the toolbar's refresh, to drop what was cached. */
+  /** Bumped by 刷新, to drop what was cached. */
   reloadKey?: number
-  /** Edit mode: files show up alongside the directories. */
-  showFiles?: boolean
-  /** The file in front of the editor, so the tree can mark that one too. */
-  openPath?: string | null
-  /** Open files with unsaved changes, marked the way the tabs mark them. */
-  dirtyPaths?: Set<string>
-  /** `pin` is a double click: the file pane opens a single click as a preview
-   *  tab that the next single click reuses. */
-  onOpenFile?: (path: string, pin?: boolean) => void
-  /**
-   * Filters names — but only among what has already been read. Walking every
-   * unopened directory to answer a keystroke is a request storm, not a search,
-   * and the filter box says so in as many words.
-   */
-  filter?: string
-  /** The per-row actions, as a menu. Absent outside edit mode: the listing has
-   *  its own 操作 column and two of them would be two places to look. */
-  menuFor?: (node: TreeNode) => MenuItem[]
+  /** Picking a folder here is the whole point of the 移动到… dialog, which
+   *  borrows this component rather than growing a second tree. */
+  compact?: boolean
 }
 
-/** One row of the tree. Exported because the row actions live in FileManager,
- *  which owns every request the panel makes about files. */
+/** One row of the tree. Exported because the file pane builds nodes of its own
+ *  to hand around. */
 export interface TreeNode {
   name: string
   path: string
   isDir: boolean
 }
 
-export function FileTree({
-  instanceId,
-  path,
-  onOpen,
-  reloadKey,
-  showFiles,
-  openPath,
-  dirtyPaths,
-  onOpenFile,
-  filter,
-  menuFor,
-}: Props) {
+export function FileTree({ instanceId, path, onOpen, reloadKey, compact }: Props) {
   const [children, setChildren] = useState<Record<string, TreeNode[]>>({})
-  const [open, setOpen] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState<Set<string>>(new Set())
+
+  // The root is always open — a tree whose only row is a collapsed root is a
+  // tree with nothing in it — so it is in the fallback rather than a special
+  // case further down.
+  const prefKey = `hc.files.tree.${instanceId}`
+  const [open, setOpen] = useState<Set<string>>(() => new Set(readPref<string[]>(prefKey, [''])))
+
+  useEffect(() => {
+    writePref(prefKey, [...open])
+  }, [prefKey, open])
 
   const read = useCallback(
     async (dir: string) => {
@@ -83,12 +66,13 @@ export function FileTree({
         const listing = await api.listFiles(instanceId, dir)
         setChildren((current) => ({
           ...current,
-          // Everything, not just the directories: which of the two modes is on
-          // is a rendering question, and filtering here would mean re-reading
-          // every directory on the way into edit mode and out of it again.
+          // Folders only, filtered here rather than at render: nothing in this
+          // component has a use for the files, and carrying them would be
+          // carrying a whole second listing per directory to throw away.
           [dir]: listing.entries
-            .map((entry) => ({ name: entry.name, path: entry.path, isDir: entry.isDir }))
-            .sort(byKindThenName),
+            .filter((entry) => entry.isDir)
+            .map((entry) => ({ name: entry.name, path: entry.path, isDir: true }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'zh')),
         }))
       } catch {
         // A directory that cannot be read collapses to a leaf rather than an
@@ -106,16 +90,29 @@ export function FileTree({
     [instanceId],
   )
 
-  // The root is always read, and the ancestors of wherever the listing is are
-  // opened with it — arriving at plugins/Vulpecula from 配置历史 should show
-  // that path standing open, not a collapsed root the reader has to re-walk.
+  // A new instance, or 刷新: drop the cache and read the root plus whatever is
+  // on the way to where the listing is standing. Arriving at plugins/Vulpecula
+  // from 配置历史 should show that path standing open, not a collapsed root the
+  // reader has to re-walk.
+  //
+  // `open` is deliberately not reset here. It is the remembered set, and
+  // overwriting it with the ancestors of the current path would be the
+  // persistence quietly not working.
   useEffect(() => {
     setChildren({})
-    setOpen(new Set(ancestors(path)))
     void read('')
     for (const dir of ancestors(path)) void read(dir)
+    setOpen((current) => {
+      const next = new Set(current)
+      for (const dir of ancestors(path)) next.add(dir)
+      return next
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instanceId, reloadKey, read])
 
+  // Walking into a directory opens the path to it. Separate from the effect
+  // above because that one also throws the cache away, and stepping into a
+  // folder must not re-read the whole tree.
   useEffect(() => {
     for (const dir of ancestors(path)) {
       if (!(dir in children)) void read(dir)
@@ -125,6 +122,7 @@ export function FileTree({
       for (const dir of ancestors(path)) next.add(dir)
       return next
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path])
 
   const toggle = (dir: string) => {
@@ -139,47 +137,31 @@ export function FileTree({
     })
   }
 
-  const visible = useCallback(
-    (dir: string): TreeNode[] => {
-      const all = children[dir] ?? []
-      const kept = showFiles ? all : all.filter((node) => node.isDir)
-      const needle = (filter ?? '').trim().toLowerCase()
-      if (needle === '') return kept
-      // Directories always survive the filter: hiding a folder hides the path
-      // to the file that did match, and the tree would read as empty for a
-      // name it is in fact showing one level down.
-      return kept.filter((node) => node.isDir || node.name.toLowerCase().includes(needle))
-    },
-    [children, showFiles, filter],
-  )
+  const visible = useCallback((dir: string): TreeNode[] => children[dir] ?? [], [children])
 
-  /** Whether a directory has been read at all. Distinct from "has no visible
-   *  children": one is a fact about the disk, the other about the filter. */
+  /** Whether a directory has been read at all. Distinct from "has no
+   *  children": one is a fact about the disk, the other about this cache. */
   const loaded = useCallback((dir: string) => dir in children, [children])
 
   const rowProps = {
     path,
-    openPath,
-    dirtyPaths,
     open,
     loading,
     visible,
     loaded,
     onToggle: toggle,
     onOpen,
-    onOpenFile,
-    menuFor,
   }
 
   return (
-    <nav className="ftree" aria-label="目录树">
+    <nav className={compact ? 'ftree ftree--compact' : 'ftree'} aria-label="目录树">
       <Row
         node={{ name: '实例根目录', path: '', isDir: true }}
         depth={0}
         open={open.has('')}
         loading={loading.has('')}
         current={path === ''}
-        hasChildren={visible('').length > 0}
+        hasChildren={!loaded('') || visible('').length > 0}
         onToggle={() => toggle('')}
         onOpen={() => onOpen('')}
       />
@@ -192,21 +174,16 @@ interface BranchProps {
   dirs: TreeNode[]
   depth: number
   path: string
-  openPath?: string | null
-  dirtyPaths?: Set<string>
   open: Set<string>
   loading: Set<string>
   visible: (dir: string) => TreeNode[]
   loaded: (dir: string) => boolean
   onToggle: (dir: string) => void
   onOpen: (dir: string) => void
-  onOpenFile?: (path: string, pin?: boolean) => void
-  menuFor?: (node: TreeNode) => MenuItem[]
 }
 
 function Branch({ dirs, depth, ...rest }: BranchProps) {
-  const { path, openPath, dirtyPaths, open, loading, visible, loaded } = rest
-  const { onToggle, onOpen, onOpenFile, menuFor } = rest
+  const { path, open, loading, visible, loaded, onToggle, onOpen } = rest
 
   return (
     <>
@@ -217,24 +194,15 @@ function Branch({ dirs, depth, ...rest }: BranchProps) {
             depth={depth}
             open={open.has(node.path)}
             loading={loading.has(node.path)}
-            // A directory is marked when the listing is in it; a file, when it
-            // is the one in front of the editor. Two different questions, and
-            // in edit mode both are on screen at once.
-            current={node.isDir ? path === node.path : openPath === node.path}
-            dirty={!node.isDir && dirtyPaths?.has(node.path)}
+            current={path === node.path}
             // Unknown until it has been read once, and an arrow that appears
             // after the fact is better than one that never does: a directory
-            // nobody has opened is drawn as openable.
-            hasChildren={node.isDir && (!loaded(node.path) || visible(node.path).length > 0)}
-            menu={menuFor?.(node)}
-            label={node.name}
+            // nobody has opened yet is drawn as openable.
+            hasChildren={!loaded(node.path) || visible(node.path).length > 0}
             onToggle={() => onToggle(node.path)}
-            onOpen={() => (node.isDir ? onOpen(node.path) : onOpenFile?.(node.path))}
-            // Directories have nothing to pin: the second click of a double
-            // one lands on a listing that the first click already moved.
-            onPin={node.isDir ? undefined : () => onOpenFile?.(node.path, true)}
+            onOpen={() => onOpen(node.path)}
           />
-          {node.isDir && open.has(node.path) && (
+          {open.has(node.path) && (
             <Branch dirs={visible(node.path)} depth={depth + 1} {...rest} />
           )}
         </div>
@@ -249,29 +217,18 @@ function Row({
   open,
   loading,
   current,
-  dirty,
   hasChildren,
-  menu,
-  label,
   onToggle,
   onOpen,
-  onPin,
 }: {
   node: TreeNode
   depth: number
   open: boolean
   loading: boolean
   current: boolean
-  dirty?: boolean
   hasChildren: boolean
-  /** Absent outside edit mode, and on the root row, which is not a thing that
-   *  can be renamed or deleted. */
-  menu?: MenuItem[]
-  label?: string
   onToggle: () => void
   onOpen: () => void
-  /** Double click, where that means something: see onOpenFile. */
-  onPin?: () => void
 }) {
   return (
     <div
@@ -282,54 +239,26 @@ function Row({
     >
       {/* One icon, turned. `expand` is the right-pointing chevron the sidebar
           uses; a tree twist pointing down is the same mark rotated, and adding
-          a second glyph to the shared set for one caller is not worth it.
-          A file keeps the empty button rather than losing it: without the
+          a second glyph to the shared set for one caller is not worth it. A
+          leaf keeps the empty button rather than losing it: without the
           placeholder its name would sit twelve pixels left of its siblings. */}
       <button
         type="button"
         className={`ftree__twist${open ? ' ftree__twist--open' : ''}`}
         onClick={onToggle}
         aria-label={open ? `收起 ${node.name}` : `展开 ${node.name}`}
-        aria-expanded={node.isDir ? open : undefined}
+        aria-expanded={open}
         disabled={!hasChildren}
       >
         {hasChildren && <Icon name="expand" />}
       </button>
-      <button
-        type="button"
-        className="ftree__name"
-        onClick={onOpen}
-        onDoubleClick={onPin}
-        title={node.path || '/'}
-      >
-        <FileIcon name={node.name} dir={node.isDir} />
+      <button type="button" className="ftree__name" onClick={onOpen} title={node.path || '/'}>
+        <FileIcon name={node.name} dir />
         <span className="ftree__label">{node.name}</span>
-        {dirty && <span className="ftree__dot" aria-label="有未保存的修改" />}
       </button>
       {loading && <span className="ftree__wait" aria-hidden="true" />}
-      {/* A button rather than a hijacked right-click: taking over the context
-          menu costs the reader "open in a new tab" and every habit like it,
-          and leaves a keyboard with no way in at all. */}
-      {menu && (
-        <Menu
-          className="ftree__more"
-          items={menu}
-          title={`${label ?? node.name} 的操作`}
-          ariaLabel={`${label ?? node.name} 的操作`}
-        >
-          ⋯
-        </Menu>
-      )}
     </div>
   )
-}
-
-/** Directories first, then names. Not the order the listing arrives in: that
- *  order is the listing's business, and a tree with files scattered between
- *  folders is a tree nobody can scan. */
-function byKindThenName(a: TreeNode, b: TreeNode): number {
-  if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
-  return a.name.localeCompare(b.name, 'zh')
 }
 
 /** Every directory on the way to `path`, root first, `path` included. */

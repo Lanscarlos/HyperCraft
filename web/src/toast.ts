@@ -31,6 +31,7 @@ export interface ToastItem {
    *  the danger and wrong about the remedy: what an error needs is to stay,
    *  not to be kept out of the one place people look. */
   sticky: boolean
+  action?: ToastAction
   /** Collapses repeats onto one row. The six 保存成功 slots this replaces were
    *  each "one slot, last write wins", and without a key a triple-click on
    *  保存 would stack three identical 已保存. Distinct from the list-vs-slot
@@ -39,9 +40,19 @@ export interface ToastItem {
   key?: string
 }
 
+/** One thing to do about what just happened — 重启 after saving a config a
+ *  running server has already read. Rare on purpose: an outcome that always
+ *  wants a follow-up is a state, and a state belongs in the page rather than
+ *  in a corner that expires. */
+export interface ToastAction {
+  label: string
+  onSelect: () => void
+}
+
 export interface ToastOptions {
   key?: string
   sticky?: boolean
+  action?: ToastAction
 }
 
 /** Past this the corner is a log rather than a report. Raised from four to six
@@ -87,6 +98,7 @@ function push(
     message,
     tone,
     sticky: opts.sticky ?? stickyByDefault,
+    action: opts.action,
     key: opts.key,
   }
   const kept = item.key ? items.filter((existing) => existing.key !== item.key) : items

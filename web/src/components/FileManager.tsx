@@ -1,69 +1,56 @@
-import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { ApiError, api, downloadURL, previewURL, uploadFiles } from '../api'
+import { ApiError, api, downloadURL, uploadFiles } from '../api'
 import { ask } from '../confirm'
-import { formatBytes, formatDate, formatSince } from '../format'
-import { highlight, langOf } from '../highlight'
+import { sideBySide } from '../filediff'
+import { readPref, writePref } from '../localPrefs'
 import { toast, toastError, toastWarn } from '../toast'
 import { useMediaQuery } from '../useMediaQuery'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
-import { Badge } from './Badge'
 import { Button } from './Button'
-import { FileIcon, extensionOf } from './FileIcon'
+import { extensionOf } from './FileIcon'
+import { FileBar } from './FileBar'
+import { FileEditor } from './FileEditor'
+import type { EditorPane, FileKind, OpenFile } from './FileEditor'
+import { FileList } from './FileList'
+import type { Density, SelectMode, Sort, SortKey } from './FileList'
 import { FileTree } from './FileTree'
-import type { TreeNode } from './FileTree'
 import { Glyph } from './Glyph'
 import type { MenuItem } from './Menu'
 import { Modal } from './Modal'
-import { PageHead } from './Page'
+import { Note } from './Note'
 import { SchematicPreview } from './SchematicPreview'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
-import { Toolbar, ToolbarSearch } from './Toolbar'
-
-interface EditorState {
-  path: string
-  content: string
-  original: string
-  /**
-   * A tab opened by a single click, which the next single click takes over.
-   *
-   * Walking a plugin's lang directory looking for the right file is a dozen
-   * clicks, and without this it was a dozen tabs to close afterwards. A double
-   * click opens the file for keeps, and so does the first keystroke typed into
-   * it — which is also why a preview tab is always clean, and can be replaced
-   * without asking anybody about unsaved work.
-   */
-  preview?: boolean
-}
-
-/** Which column the list is ordered by, and which way. */
-type SortKey = 'name' | 'size' | 'modified'
-interface Sort {
-  key: SortKey
-  asc: boolean
-}
 
 /**
- * `jump` is a directory another page wants opened here.
+ * The file pane: a tree, a listing and an editor, and no mode switch.
+ *
+ * There used to be one, called 编辑模式, and it did three unrelated things at
+ * once — folded the shell to its rail, swapped the tree from folders to
+ * folders-and-files, and gave the editor the listing's width. Reading code
+ * therefore began by pressing a button named after a state rather than after a
+ * job. What that button was really being asked for is here instead, as a fact
+ * rather than a setting: with nothing open the pane is a tree and a listing;
+ * open a file and the editor takes the room, because that is what the screen
+ * is now for.
+ *
+ * The rails are draggable and remembered per instance. The editor's floor is
+ * not a round number: Paper's own bukkit.yml opens with an 85-character
+ * comment, and at the editor's 12.5px monospace anything under about 780px
+ * starts that file on a horizontal scrollbar.
+ */
+
+/** `jump` is a directory another page wants opened here.
  *
  * A token rather than a bare path because the pane stays mounted: the plugin
  * list's 配置 link has to work the second time it is pressed on the same
- * plugin, and a path that has not changed would not re-trigger anything.
- */
+ * plugin, and a path that has not changed would not re-trigger anything. */
 export interface FileJump {
   path: string
   token: number
-  /** A file inside `path` to open in the editor on arrival. 配置历史 sends one:
-   *  landing in the right directory is not the answer to "let me edit the file
-   *  I was just looking at the diff of". */
+  /** A file inside `path` to open on arrival. 配置历史 sends one: landing in
+   *  the right directory is not the answer to "let me edit the file I was
+   *  just looking at the diff of". */
   file?: string
 }
 
@@ -80,23 +67,68 @@ interface NameState {
   resolve: (name: string | null) => void
 }
 
+/** A delete that has to be typed out, and what it is about. */
+interface TypedDelete {
+  entry: FileEntry
+  resolve: (ok: boolean) => void
+}
+
+/** A save that found the file changed underneath it. */
+interface Conflict {
+  path: string
+  mine: string
+  theirs: string
+}
+
 /** Long enough for the browser to start one download before the next click. */
 const DOWNLOAD_GAP = 400
+
+/** How wide each rail may be dragged, and the floor under the editor. */
+const TREE_MIN = 180
+const TREE_MAX = 360
+const LIST_MIN = 220
+const LIST_MAX = 560
+const EDITOR_MIN = 640
+/* The grid has no gap: each handle is its own 14px gutter track. See .fm. */
+const GAP = 0
+const GRIP = 14
+/** A folded rail: wide enough for the button that unfolds it, and nothing. */
+const RAIL = 36
+
+/**
+ * Twelve is where a tab strip stops being a strip and becomes a list you
+ * scroll to search. Past it the oldest *saved* tab goes — never one with
+ * unsaved work in it, which is the one thing a cap must not be allowed to
+ * throw away.
+ */
+const MAX_TABS = 12
+
+/** Folders whose contents are not replaceable from a download page. Deleting
+ *  one is still allowed; it just does not get to look like deleting `cache`. */
+const PRECIOUS = new Set(['world', 'world_nether', 'world_the_end', 'plugins', 'libraries'])
+
+/** The configs a running server has already read, which therefore keep serving
+ *  the old values until it restarts. Paper's are matched by prefix because the
+ *  set of paper-*.yml files changes between versions. */
+function needsRestart(path: string): boolean {
+  const name = path.slice(path.lastIndexOf('/') + 1)
+  if (name === 'server.properties' || name === 'bukkit.yml' || name === 'spigot.yml') return true
+  if (name.startsWith('paper-') && name.endsWith('.yml')) return true
+  return /^plugins\/[^/]+\/config\.ya?ml$/.test(path)
+}
 
 export function FileManager({
   instance,
   active,
   jump,
   onOpenHistory,
-  onWorkspaceChange,
 }: {
   instance: InstanceStatus
   /** Whether this section is the one on screen. Sections stay mounted behind
    *  whatever replaced them (see InstanceView), so "no longer visible" is not
-   *  the same event as unmounting — and edit mode has to end on both. */
+   *  the same event as unmounting — and the keyboard and the poll both have to
+   *  stand down on the first of the two. */
   active: boolean
-  /** Asks the shell to fold to the rail for as long as edit mode is on. */
-  onWorkspaceChange?: (full: boolean) => void
   jump?: FileJump
   /** Sends the open file to 配置历史. Absent when nothing upstream can switch
    *  sections, and when the panel has no config history at all. */
@@ -104,99 +136,89 @@ export function FileManager({
 }) {
   const [dir, setDir] = useState('')
   const [listing, setListing] = useState<FileListing | null>(null)
-  // Open files, in the order they were opened, and which one is in front.
-  //
-  // It used to be one file at a time, and the editor replaced the listing
-  // while it was open: comparing two configs meant closing one, finding the
-  // other, and remembering what the first one said. Tabs are the whole reason
-  // the pane beside the list is worth having.
-  const [tabs, setTabs] = useState<EditorState[]>([])
-  const [activeTab, setActiveTab] = useState<string | null>(null)
-  // Which of the two the narrow layout is showing. Only that layout reads it —
-  // wide shows all three panes at once — but it has to live here because
-  // opening a file is what flips it, and closing the last tab is not the only
-  // way back: with two files open there would otherwise be no way to reach the
-  // listing without closing both.
-  const [narrowPane, setNarrowPane] = useState<'list' | 'editor'>('list')
-  // The file pane has two jobs — managing files, and reading or writing one —
-  // and they want opposite layouts. Editing mode is the second one: the listing
-  // steps aside, the tree takes over answering "what is in here", and the
-  // editor gets the width that was being spent on a column of file sizes.
-  //
-  // Deliberately not persisted. Landing on 文件 in a mode set last week, with
-  // no listing and no toolbar, is a page that looks broken.
-  const [editing, setEditing] = useState(false)
-  // Edit mode's own filter, separate from the listing's 在当前目录中查找: that
-  // one filters rows of one directory, this one filters the tree — and only
-  // what the tree has already read.
-  const [treeQuery, setTreeQuery] = useState('')
-  // Below the drawer breakpoint the pane already shows one column at a time
-  // (see narrowPane), which is what edit mode is *for* — offering it there
-  // would be a second state that changes nothing. The number is the one in
-  // App's DRAWER_QUERY; the media queries in styles.css are the third place it
-  // lives, and all three have to move together.
-  const roomy = !useMediaQuery('(max-width: 1024px)')
-  // Between the two breakpoints there is room for two columns but not for two
-  // comfortable ones: 260 of tree out of 1100 is a quarter of the width spent
-  // on a column you glance at. So it starts folded there and opens over the
-  // editor rather than squeezing it.
-  const tight = useMediaQuery('(max-width: 1200px)')
-  const [treeOpen, setTreeOpen] = useState(true)
-
-  useEffect(() => {
-    if (!roomy) setEditing(false)
-  }, [roomy])
-
-  useEffect(() => {
-    if (editing) setTreeOpen(true)
-  }, [editing])
-
-  // Leaving the section leaves the mode. It could be remembered instead, but
-  // then coming back to 文件 would land on a page with no listing and no
-  // toolbar — the same thing persisting it would do.
-  useEffect(() => {
-    if (!active) setEditing(false)
-  }, [active])
-
-  // The shell follows the mode, and gets it back on the way out. Unmounting is
-  // the path a route change takes, and it has to hand the rail back too.
-  useEffect(() => {
-    onWorkspaceChange?.(editing)
-  }, [editing, onWorkspaceChange])
-
-  useEffect(() => () => onWorkspaceChange?.(false), [onWorkspaceChange])
+  // One thing only: this directory would not load. Everything else that can
+  // fail here — a save, an upload, a delete — is something somebody just did,
+  // and that goes to the corner rather than to a slot at the top of a page
+  // they may already have scrolled past.
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
-  // Said on the buttons rather than as a banner: the answer people want is
-  // "why is this greyed out", asked with the pointer already on it.
-  const readOnlyHere = '这个目录不在你的角色允许的范围内'
-  const [dragging, setDragging] = useState(false)
+  const [pending, setPending] = useState(false)
+  const [treeKey, setTreeKey] = useState(0)
 
-  // What the list is showing, as opposed to what the directory holds: the
-  // filter box and the column ordering. Both are view state, so they survive a
-  // refresh but not a change of directory (see load).
+  // What the list is showing, as opposed to what the directory holds.
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<Sort>({ key: 'name', asc: true })
+  // Two different things, and keeping them apart is what stops the bulk bar
+  // from appearing every time somebody opens a file. `cursor` is where the
+  // keyboard is and what a plain click moved; `selected` is what has actually
+  // been ticked, and it is what 批量操作 acts on.
+  const [cursor, setCursor] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Where a Shift-click measures from: the last row the cursor landed on.
+  const anchor = useRef<string | null>(null)
+
+  // One buffer per path; the panes hold paths. The same file in both halves of
+  // a split is therefore one piece of text rather than two that drift.
+  const [files, setFiles] = useState<Map<string, OpenFile>>(() => new Map())
+  const [panes, setPanes] = useState<EditorPane[]>([{ tabs: [], active: null }])
+  const [focusedPane, setFocusedPane] = useState(0)
 
   const [naming, setNaming] = useState<NameState | null>(null)
+  const [typed, setTyped] = useState<TypedDelete | null>(null)
+  const [moving, setMoving] = useState<FileEntry[] | null>(null)
+  const [conflict, setConflict] = useState<Conflict | null>(null)
+  const [keys, setKeys] = useState(false)
   const [preview, setPreview] = useState<FileEntry | null>(null)
+  // Bumped by the shortcut, to ask the editor to open its find box.
+  const [findTick, setFindTick] = useState(0)
 
   const fileInput = useRef<HTMLInputElement | null>(null)
+  const searchBox = useRef<HTMLInputElement | null>(null)
+  const listBody = useRef<HTMLDivElement | null>(null)
+  const grid = useRef<HTMLDivElement | null>(null)
   const dirRef = useRef('')
-  // Drag events fire on every element the pointer crosses, so a single drag
-  // over the table is a stream of enter/leave pairs. Counting them is what
-  // keeps the drop hint from flickering all the way down the page.
-  const dragDepth = useRef(0)
 
-  // Only ever true while a *different* directory is being fetched. Stepping
-  // into a folder used to be silent for as long as the listing took — nothing
-  // moved, nothing spun — so a slow disk read was indistinguishable from a
-  // click that missed, and the answer was to click again. The listing on
-  // screen is still correct until the new one lands, so it stays where it is
-  // and only says it is on its way out.
-  const [pending, setPending] = useState(false)
+  // Whether anything is open is the whole of the A/B decision. No switch, no
+  // preference, nothing to remember: the layout is a fact about the work.
+  const open = panes.some((pane) => pane.tabs.length > 0)
+
+  // 1024 is App.tsx's DRAWER_QUERY and the sheet's own step; all three move
+  // together. Below it there is room for one column, so the listing stops
+  // being one and becomes something you pull open.
+  const narrow = useMediaQuery('(max-width: 1024px)')
+  // Between the two there is room for three columns but not for three
+  // comfortable ones, so the listing is pinned compact and the grips stop
+  // taking width off the editor.
+  const tight = useMediaQuery('(max-width: 1280px)')
+
+  const widthKey = `hc.files.cols.${instance.id}`
+  const [cols, setCols] = useState(() => readPref(widthKey, { tree: 216, list: 264 }))
+  useEffect(() => {
+    writePref(widthKey, cols)
+  }, [widthKey, cols])
+
+  // null means "whatever the width calls for". Between 1024 and 1280 three
+  // columns fit but the third one is left with about 400px, which is not an
+  // editor — so the tree, which the breadcrumb can stand in for, goes to its
+  // rail until somebody asks for it back. Same shape as `density` below: the
+  // automatic answer is a default, not a rule that overrules a choice.
+  const [treeFold, setTreeFold] = useState<boolean | null>(null)
+  const [listFolded, setListFolded] = useState(false)
+  // Below the drawer width the listing is not a column at all; this is how it
+  // comes back over the editor for one pick.
+  const [drawer, setDrawer] = useState(false)
+
+  const densityKey = `hc.files.density.${instance.id}`
+  const [chosenDensity, setChosenDensity] = useState<Density | null>(() =>
+    readPref<Density | null>(densityKey, null),
+  )
+  // 详情 while the listing has the width, 紧凑 once the editor wants it — until
+  // somebody says otherwise, and then that is what it is in both. The
+  // automatic default is a convenience; it does not get to overrule a choice
+  // made on purpose.
+  const density: Density = chosenDensity ?? (open || tight ? 'compact' : 'detail')
+  const treeFolded = treeFold ?? (tight && open)
 
   const load = useCallback(
     async (target: string) => {
@@ -204,10 +226,14 @@ export function FileManager({
       try {
         setListing(await api.listFiles(instance.id, target))
         setDir(target)
+        // The slot holds one thing — "this directory would not load" — so a
+        // directory that did load is the only thing that clears it.
         setError(null)
         // A tick against a row that is no longer on screen is a delete waiting
         // to happen in a directory nobody is looking at.
         setSelected(new Set())
+        setCursor(null)
+        anchor.current = null
         if (target !== dirRef.current) setQuery('')
         dirRef.current = target
       } catch (err) {
@@ -219,108 +245,373 @@ export function FileManager({
     [instance.id],
   )
 
-  const editor = useMemo(
-    () => tabs.find((tab) => tab.path === activeTab) ?? null,
-    [tabs, activeTab],
+  /** Walks somewhere, saying whether it was there. The bar's path box needs
+   *  the answer — a directory that does not exist has to leave what was typed
+   *  on screen rather than clearing it and going quiet. */
+  const navigate = useCallback(
+    async (target: string): Promise<boolean> => {
+      setPending(true)
+      try {
+        const next = await api.listFiles(instance.id, target)
+        setListing(next)
+        setDir(target)
+        setError(null)
+        setSelected(new Set())
+        setCursor(null)
+        anchor.current = null
+        if (target !== dirRef.current) setQuery('')
+        dirRef.current = target
+        return true
+      } catch {
+        return false
+      } finally {
+        setPending(false)
+      }
+    },
+    [instance.id],
   )
 
-  // The tabs already show this; the tree shows it too because in edit mode the
-  // tree is what gets scanned, and an unsaved file you cannot see is one you
-  // lose by walking away from the page.
-  const dirtyPaths = useMemo(
-    () => new Set(tabs.filter((tab) => tab.content !== tab.original).map((tab) => tab.path)),
-    [tabs],
-  )
+  const patchFile = useCallback((path: string, patch: Partial<OpenFile>) => {
+    setFiles((current) => {
+      const file = current.get(path)
+      if (!file) return current
+      const next = new Map(current)
+      next.set(path, { ...file, ...patch })
+      return next
+    })
+  }, [])
 
-  // Folding the tree away buys room for the editor, so with no file open there
-  // is nothing to buy it for — and the button that brings the tree back lives
-  // on the editor's own head, which is not on screen either. Folded and empty
-  // is a dead end, so it is not a state that can be reached.
-  const treeShown = treeOpen || editor === null
+  const dirtyPaths = useMemo(() => {
+    const out = new Set<string>()
+    for (const file of files.values()) {
+      if (file.content !== file.original) out.add(file.path)
+    }
+    return out
+  }, [files])
+
+  const activePath = panes[focusedPane]?.active ?? null
+
+  // Read inside the callbacks rather than depended on: rebuilding them on
+  // every keystroke would re-run the effects that are keyed to them.
+  const filesNow = useRef(files)
+  filesNow.current = files
+
+  /* ---------------------------------------------------------- opening */
+
+  const kindOf = useCallback(
+    (entry: FileEntry): FileKind => {
+      if (isImage(entry.name)) return 'image'
+      if (entry.editable) return 'text'
+      // The daemon says "not editable" for two different reasons and does not
+      // say which, so the size decides: a .yml the editor refuses is one that
+      // is too big, and a .jar is one it was never going to open.
+      return entry.size > (listing?.maxEditableBytes ?? 0) && isTextName(entry.name)
+        ? 'oversize'
+        : 'binary'
+    },
+    [listing?.maxEditableBytes],
+  )
 
   /**
-   * Brings a file to the front, opening a tab for it if it has none. A file
-   * already open is never re-read: it may have unsaved edits in it.
+   * Drops the oldest saved tab once the strip is full.
    *
-   * `pin` is the difference between a double click and a single one — see
-   * EditorState.preview. Without it the tab strip is the one place in the pane
-   * that only ever grows.
+   * Nothing with unsaved work in it is ever a candidate. A cap that can throw
+   * away typing is a cap that eventually will, and being able to leave a file
+   * half-edited while you go and check another one is most of what the strip
+   * is for.
    */
-  const openEditor = useCallback((next: EditorState, pin = false) => {
-    setTabs((current) => {
-      const at = current.findIndex((tab) => tab.path === next.path)
-      if (at !== -1) {
-        // Already open. The only thing left for the click to do is pin it, and
-        // only a double one does that — re-previewing a file somebody double
-        // clicked would take the tab back off them.
-        if (!pin || !current[at].preview) return current
-        return current.map((tab, index) =>
-          index === at ? { ...tab, preview: false } : tab,
-        )
-      }
-      const opened = { ...next, preview: !pin }
-      const slot = current.findIndex((tab) => tab.preview)
-      // One preview slot, wherever it already sits: reusing it in place keeps
-      // the pinned tabs either side of it from shuffling under the pointer.
-      return slot === -1
-        ? [...current, opened]
-        : current.map((tab, index) => (index === slot ? opened : tab))
+  const capTabs = useCallback((tabs: string[]): string[] => {
+    if (tabs.length <= MAX_TABS) return tabs
+    const clean = tabs.find((path) => {
+      const file = filesNow.current.get(path)
+      return file !== undefined && file.content === file.original
     })
-    setActiveTab(next.path)
-    setNarrowPane('editor')
+    return clean === undefined ? tabs : tabs.filter((path) => path !== clean)
   }, [])
 
-  /** Keeps the tab in front: the double click that asked for it, and the first
-   *  keystroke typed into a file opened by a single one. */
-  const pinTab = useCallback((path: string) => {
-    setTabs((current) =>
-      current.map((tab) => (tab.path === path && tab.preview ? { ...tab, preview: false } : tab)),
-    )
-  }, [])
-
-  /** Edits the tab in front. */
-  const patchActive = useCallback(
-    (patch: Partial<EditorState>) => {
-      setTabs((current) =>
-        current.map((tab) => (tab.path === activeTab ? { ...tab, ...patch } : tab)),
-      )
+  /** Puts a path in front, opening a tab for it if it has none. A file already
+   *  open in one of the panes is brought forward there rather than duplicated
+   *  into the other. */
+  const showTab = useCallback(
+    (path: string, background: boolean) => {
+      setPanes((current) => {
+        const held = current.findIndex((pane) => pane.tabs.includes(path))
+        const into = held === -1 ? 0 : held
+        return current.map((pane, index) => {
+          if (index !== into) return pane
+          const tabs = pane.tabs.includes(path) ? pane.tabs : capTabs([...pane.tabs, path])
+          return { tabs, active: background && pane.active !== null ? pane.active : path }
+        })
+      })
     },
-    [activeTab],
+    [capTabs],
+  )
+
+  /**
+   * The file's mtime, read out of its directory listing.
+   *
+   * The read endpoint returns content and nothing else, and the write endpoint
+   * takes no precondition, so this is the only mtime the panel can get and the
+   * comparison happens on this side rather than on the server's. That makes it
+   * a check with a race in it: somebody can write the file between this
+   * listing and the PUT that follows. It is strictly better than not looking —
+   * the window is milliseconds rather than however long the tab was open — but
+   * it is not a guarantee, and it should be replaced the day the API carries
+   * an mtime or an ETag through read and write. See §9 of the design note in
+   * docs/superpowers/specs.
+   */
+  const mtimeOf = useCallback(
+    async (path: string): Promise<string | null> => {
+      try {
+        const listed = await api.listFiles(instance.id, parentOf(path))
+        return listed.entries.find((entry) => entry.name === baseName(path))?.modified ?? null
+      } catch {
+        return null
+      }
+    },
+    [instance.id],
+  )
+
+  const openPath = useCallback(
+    async (path: string, opts: { background?: boolean; hint?: FileEntry } = {}) => {
+      const background = opts.background === true
+      if (filesNow.current.has(path)) {
+        showTab(path, background)
+        setDrawer(false)
+        return
+      }
+
+      const hint = opts.hint
+      const kind = hint ? kindOf(hint) : 'text'
+      const modified = hint?.modified ?? (await mtimeOf(path)) ?? ''
+      const size = hint?.size ?? 0
+
+      let content = ''
+      if (kind === 'text') {
+        try {
+          content = (await api.readFile(instance.id, path)).content
+        } catch (err) {
+          toastError(err instanceof Error ? err.message : '打开文件失败')
+          return
+        }
+      }
+
+      setFiles((current) => {
+        const next = new Map(current)
+        next.set(path, { path, content, original: content, modified, kind, size })
+        return next
+      })
+      showTab(path, background)
+      setDrawer(false)
+    },
+    [instance.id, kindOf, mtimeOf, showTab],
+  )
+
+  const openEntry = useCallback(
+    (entry: FileEntry, background = false) => {
+      if (entry.isDir) {
+        void load(entry.path)
+        return
+      }
+      // A .schem is a thing you look at once rather than a thing you keep a
+      // tab of, and the daemon renders it for us. The modal is the right shape
+      // for that; a tab would not be.
+      if (isSchematic(entry.name)) {
+        setPreview(entry)
+        return
+      }
+      void openPath(entry.path, { background, hint: entry })
+    },
+    [load, openPath],
+  )
+
+  /* ----------------------------------------------------------- saving */
+
+  /** Restarting kicks everybody who is on the server, so it asks — even though
+   *  the offer arrived on a toast the reader went looking for. */
+  const restart = useCallback(async () => {
+    const ok = await ask({
+      title: '现在重启服务器？',
+      lead: '在线的玩家会被断开，重启期间服务器无法进入。',
+      confirmLabel: '重启',
+    })
+    if (!ok) return
+    try {
+      await api.power(instance.id, 'restart')
+      toast('已请求重启')
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : '重启失败')
+    }
+  }, [instance.id])
+
+  const save = useCallback(
+    async (path: string) => {
+      const file = filesNow.current.get(path)
+      if (!file || file.content === file.original || file.readOnly) return
+      setBusy(true)
+      try {
+        const now = await mtimeOf(path)
+        if (now !== null && file.modified !== '' && now !== file.modified) {
+          const theirs = (await api.readFile(instance.id, path)).content
+          setConflict({ path, mine: file.content, theirs })
+          return
+        }
+        await api.writeFile(instance.id, path, file.content)
+        patchFile(path, {
+          original: file.content,
+          modified: (await mtimeOf(path)) ?? file.modified,
+          stale: false,
+        })
+        if (instance.state === 'running' && needsRestart(path)) {
+          toast('已保存 · 需重启服务器后生效', {
+            // Keyed so saving four configs in a row is one reminder rather
+            // than four identical ones stacked in the corner.
+            key: 'files-needs-restart',
+            action: { label: '重启', onSelect: () => void restart() },
+          })
+        } else {
+          toast(`已保存 ${baseName(path)}`)
+        }
+        // The row beside the editor is now showing the old size and the old
+        // time for a file that was just written. Only when it is the directory
+        // on screen: a save in plugins/Foo does not need the root re-read.
+        if (parentOf(path) === dirRef.current) void load(dirRef.current)
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : '保存失败')
+      } finally {
+        setBusy(false)
+      }
+    },
+    [instance.id, instance.state, mtimeOf, patchFile, restart, load],
+  )
+
+  const reload = useCallback(
+    async (path: string) => {
+      try {
+        const fresh = await api.readFile(instance.id, path)
+        patchFile(path, {
+          content: fresh.content,
+          original: fresh.content,
+          modified: (await mtimeOf(path)) ?? '',
+          stale: false,
+        })
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : '重新读取失败')
+      }
+    },
+    [instance.id, mtimeOf, patchFile],
+  )
+
+  const revert = async (path: string) => {
+    const file = files.get(path)
+    if (!file || file.content === file.original) return
+    const ok = await ask({
+      title: `丢弃 ${baseName(path)} 的未保存改动？`,
+      lead: '编辑器会回到磁盘上的那一份，改动无法找回。',
+      confirmLabel: '还原',
+      danger: true,
+    })
+    if (!ok) return
+    patchFile(path, { content: file.original })
+  }
+
+  /* ------------------------------------------------------------- tabs */
+
+  const panesNow = useRef(panes)
+  panesNow.current = panes
+
+  /**
+   * Rewrites one pane's tabs, keeps the front one sensible, and forgets any
+   * buffer no pane is holding any more.
+   *
+   * The new arrangement is worked out here rather than inside a setPanes
+   * updater. An updater has to be pure — React runs it twice in development —
+   * and this has to move three pieces of state at once, so doing it in there
+   * would mean the other two being set as a side effect of a function that is
+   * allowed to be called again for no reason.
+   */
+  const dropTabs = useCallback((pane: number, rewrite: (tabs: string[]) => string[]) => {
+    const next = panesNow.current.map((one, index) => {
+      if (index !== pane) return one
+      const was = one.tabs.indexOf(one.active ?? '')
+      const tabs = rewrite(one.tabs)
+      if (one.active !== null && tabs.includes(one.active)) return { tabs, active: one.active }
+      // The neighbour on the left, or the new first one: closing the tab you
+      // were reading should leave you next to where you were, not nowhere.
+      return { tabs, active: tabs[Math.max(0, Math.min(was - 1, tabs.length - 1))] ?? null }
+    })
+    // A second pane that has run out of tabs is not a pane any more. The first
+    // one stays whatever happens — it is the one the empty state belongs to.
+    const kept = next.filter((one, index) => index === 0 || one.tabs.length > 0)
+    const live = new Set(kept.flatMap((one) => one.tabs))
+
+    setPanes(kept)
+    setFocusedPane((at) => Math.min(at, kept.length - 1))
+    setFiles((held) => {
+      if (held.size === live.size) return held
+      const out = new Map<string, OpenFile>()
+      for (const [path, file] of held) if (live.has(path)) out.set(path, file)
+      return out
+    })
+  }, [])
+
+  const closeTab = useCallback(
+    async (pane: number, path: string) => {
+      const file = filesNow.current.get(path)
+      if (file && file.content !== file.original) {
+        const ok = await ask({
+          title: '放弃未保存的修改？',
+          lead: `${baseName(path)} 有改动还没有保存，关掉这个标签会丢掉它们。`,
+          confirmLabel: '放弃修改',
+          danger: true,
+        })
+        if (!ok) return
+      }
+      dropTabs(pane, (tabs) => tabs.filter((one) => one !== path))
+    },
+    [dropTabs],
   )
 
   const closeAll = useCallback(() => {
-    setTabs([])
-    setActiveTab(null)
-    setNarrowPane('list')
+    setPanes([{ tabs: [], active: null }])
+    setFocusedPane(0)
+    setFiles(new Map())
   }, [])
 
-  // Read inside openPath rather than depended on: re-creating that callback on
-  // every keystroke would re-run the jump effect below, which is keyed to it.
-  const tabsNow = useRef(tabs)
-  tabsNow.current = tabs
+  /**
+   * Follows a path that moved or went away through the open tabs.
+   *
+   * A tab left pointing at a file that is no longer there fails at save time,
+   * which is the worst possible moment to find out — the text is in the box and
+   * the file it belongs to is gone. `to` of null closes them instead.
+   */
+  const retab = useCallback((from: string, to: string | null) => {
+    const moved = (path: string): string | null => {
+      if (path === from) return to
+      if (!path.startsWith(`${from}/`)) return path
+      return to === null ? null : to + path.slice(from.length)
+    }
+    setFiles((current) => {
+      const out = new Map<string, OpenFile>()
+      for (const [path, file] of current) {
+        const next = moved(path)
+        if (next !== null) out.set(next, { ...file, path: next })
+      }
+      return out
+    })
+    setPanes((current) =>
+      current.map((pane) => {
+        const tabs = pane.tabs.map(moved).filter((path): path is string => path !== null)
+        const active = pane.active === null ? null : moved(pane.active)
+        return {
+          tabs,
+          active: active !== null && tabs.includes(active) ? active : (tabs[0] ?? null),
+        }
+      }),
+    )
+  }, [])
 
-  /** Opens a file in the editor by path, for callers that never had a row to
-   *  click — the jump from 配置历史 arrives with a path and nothing else. */
-  const openPath = useCallback(
-    async (path: string, pin = false) => {
-      // Already open: hand its own state back rather than reading the file
-      // again over the wire. The second click of a double one would otherwise
-      // cost a request that can only be thrown away — what is in the tab may be
-      // edited, and openEditor keeps it either way.
-      const known = tabsNow.current.find((tab) => tab.path === path)
-      if (known) {
-        openEditor(known, pin)
-        return
-      }
-      try {
-        const file = await api.readFile(instance.id, path)
-        openEditor({ path, content: file.content, original: file.content }, pin)
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : '打开文件失败')
-      }
-    },
-    [instance.id, openEditor],
-  )
+  /* -------------------------------------------------------- lifecycle */
 
   useEffect(() => {
     closeAll()
@@ -334,429 +625,64 @@ export function FileManager({
   jumpTo.current = jump
   useEffect(() => {
     if (jump?.token === undefined) return
-    closeAll()
     const target = jumpTo.current
     void (async () => {
       await load(target?.path ?? '')
       // The directory first, always: if the file turns out to be unreadable —
       // binary, or deleted between the click and the request — the operator is
       // at least standing where it should be.
-      // Pinned: arriving here from 配置历史 is somebody who already knows which
-      // file they want, not somebody browsing for it.
-      if (target?.file) await openPath(target.file, true)
+      if (target?.file) await openPath(target.file)
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jump?.token, load])
 
-  // Bumped so the tree drops what it cached: 刷新 means "read the disk again",
-  // and a tree still showing a folder that was deleted elsewhere is exactly
-  // what the button is pressed about.
-  const [treeKey, setTreeKey] = useState(0)
-  const refresh = () => {
-    setTreeKey((key) => key + 1)
-    void load(dir)
-  }
-
-  // Escape leaves the mode, including from inside the editor — that is where
-  // the caret spends nearly all of its time in this mode, and a way out that
-  // only works when nothing is focused is not a way out.
-  //
-  // The filter box is the one exception: Escape there already means "clear what
-  // I typed", and that is the smaller, more local undo of the two. Press it
-  // twice and the second one leaves.
-  useEffect(() => {
-    if (!editing) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      const target = event.target as HTMLElement | null
-      if (target?.classList.contains('ftree__find')) return
-      setEditing(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [editing])
-
   /**
-   * "Type a name", as a promise — the same shape as `ask` in confirm.ts, and
-   * for the same reason. window.prompt cannot tell a name that is already
-   * taken from one that is free until the request comes back a 409, and on a
-   * phone it arrives as browser chrome with the panel's own address above it.
+   * Whether anything open has changed on disk behind the panel's back.
    *
-   * It stays local while the yes/no half moved out: a confirmation is the same
-   * card everywhere, whereas this one is the file pane's, down to the list of
-   * names already in the directory and the way it selects around a file
-   * extension.
+   * A poll, and deliberately a lazy one. There is no file-change stream to
+   * subscribe to — the WebSocket carries the console and nothing else — so the
+   * alternatives were this or nothing at all. Ten seconds, only while this
+   * section is the one on screen and the window has focus, and one listing per
+   * directory rather than one request per open file.
    */
-  const askName = useCallback(
-    (request: Omit<NameState, 'resolve'>) =>
-      new Promise<string | null>((resolve) => setNaming({ ...request, resolve })),
-    [],
-  )
+  useEffect(() => {
+    if (!active || files.size === 0) return
+    const tick = async () => {
+      const dirs = new Set([...files.values()].map((file) => parentOf(file.path)))
+      const seen = new Map<string, string>()
+      for (const parent of dirs) {
+        try {
+          const listed = await api.listFiles(instance.id, parent)
+          for (const entry of listed.entries) seen.set(entry.path, entry.modified)
+        } catch {
+          // A directory that has gone away is not this poll's news to break:
+          // the next thing the operator does in it will say so, with a button
+          // to press about it.
+        }
+      }
+      for (const file of filesNow.current.values()) {
+        const now = seen.get(file.path)
+        if (now === undefined || now === file.modified) continue
+        if (file.content === file.original) {
+          // Nothing of theirs to lose, so take the new bytes without asking.
+          // Somebody watching latest.log should see it grow.
+          void reload(file.path)
+        } else {
+          patchFile(file.path, { stale: true })
+        }
+      }
+    }
+    const timer = window.setInterval(() => {
+      if (document.hasFocus()) void tick()
+    }, 10_000)
+    return () => window.clearInterval(timer)
+  }, [active, files, instance.id, patchFile, reload])
 
-  const settleName = (name: string | null) => {
-    naming?.resolve(name)
-    setNaming(null)
-  }
+  /* --------------------------------------------------------- the list */
 
-  const entries = listing?.entries ?? []
+  const entries = useMemo(() => listing?.entries ?? [], [listing])
   const takenNames = useMemo(() => entries.map((entry) => entry.name), [entries])
 
-  const upload = async (files: File[]) => {
-    if (files.length === 0) return
-    setBusy(true)
-    setProgress(0)
-    try {
-      try {
-        await uploadFiles(instance.id, dir, files, setProgress)
-      } catch (err) {
-        // 409 means a file of that name is already there. Replacing a server
-        // jar with a newer build is the common case, so offer it rather than
-        // making the operator delete the old one first — but never do it
-        // without asking, since the same name could be a world file.
-        if (!(err instanceof ApiError) || err.status !== 409) throw err
-        const replace = await ask({
-          title: '目录里已经有同名文件',
-          lead: (
-            <>
-              <NameList names={files.map((file) => file.name)} />
-              覆盖会用新文件替换旧的，旧文件不会进回收站。
-            </>
-          ),
-          confirmLabel: '覆盖',
-          danger: true,
-        })
-        if (!replace) {
-          toast('已取消上传')
-          return
-        }
-        setProgress(0)
-        await uploadFiles(instance.id, dir, files, setProgress, true)
-      }
-      toast(files.length === 1 ? `已上传 ${files[0].name}` : `已上传 ${files.length} 个文件`)
-      await load(dir)
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : '上传失败')
-    } finally {
-      setBusy(false)
-      setProgress(null)
-    }
-  }
-
-  const guard = async (action: () => Promise<void>, done: string) => {
-    setBusy(true)
-    try {
-      await action()
-      toast(done)
-      await load(dir)
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : '操作失败')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const createFolder = async () => {
-    const name = await askName({
-      title: '新建文件夹',
-      lead: `新文件夹会建在「${dir === '' ? '实例根目录' : dir}」`,
-      label: '文件夹名称',
-      initial: '',
-      confirmLabel: '创建',
-      taken: takenNames,
-    })
-    if (!name) return
-    await guard(() => api.mkdir(instance.id, joinPath(dir, name)), `已创建 ${name}`)
-  }
-
-  // A new config is nearly always created in order to be typed into, so this
-  // writes the empty file and goes straight to the editor rather than leaving
-  // an empty row behind for the operator to find and click.
-  const createFile = async () => {
-    const name = await askName({
-      title: '新建文件',
-      lead: `新文件会建在「${dir === '' ? '实例根目录' : dir}」，创建后直接打开编辑器`,
-      label: '文件名称',
-      initial: '',
-      confirmLabel: '创建并编辑',
-      taken: takenNames,
-    })
-    if (!name) return
-    const path = joinPath(dir, name)
-    setBusy(true)
-    try {
-      await api.writeFile(instance.id, path, '')
-      await load(dir)
-      openEditor({ path, content: '', original: '' }, true)
-      toast(`已创建 ${name}`)
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : '创建失败')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const rename = async (entry: FileEntry) => {
-    const next = await askName({
-      title: `重命名${entry.isDir ? '文件夹' : '文件'}`,
-      label: '新名称',
-      initial: entry.name,
-      confirmLabel: '重命名',
-      taken: takenNames,
-    })
-    if (!next || next === entry.name) return
-    await guard(
-      () => api.renameFile(instance.id, entry.path, joinPath(dir, next)),
-      `已重命名为 ${next}`,
-    )
-  }
-
-  const remove = async (entry: FileEntry) => {
-    const ok = await ask({
-      title: `删除${entry.isDir ? '文件夹' : '文件'}「${entry.name}」？`,
-      lead: entry.isDir
-        ? '文件夹里的所有内容会一起删除，无法撤销。'
-        : '删除后无法撤销，请确认这不是存档或配置。',
-      confirmLabel: '删除',
-      danger: true,
-    })
-    if (!ok) return
-    await guard(() => api.deleteFile(instance.id, entry.path), `已删除 ${entry.name}`)
-  }
-
-  /**
-   * The row actions the listing keeps in its 操作 column, for a tree that is
-   * standing in for the listing.
-   *
-   * Deliberately not reusing `rename`/`remove`: those two are written for a row
-   * of the *current* directory and join new names onto `dir`. A tree row can be
-   * three levels away from where the listing is standing, and renaming
-   * plugins/Foo/bar.yml would have moved it to the root.
-   */
-  const renameInTree = async (node: TreeNode) => {
-    const parent = parentOf(node.path)
-    // Names already in that directory, so a clash is caught in the dialog
-    // rather than as a 409 afterwards. One extra listing on a rename is
-    // cheaper than the round trip it saves.
-    let taken: string[] = takenNames
-    if (parent !== dir) {
-      try {
-        taken = (await api.listFiles(instance.id, parent)).entries.map((entry) => entry.name)
-      } catch {
-        // Unreadable from here: let the server be the one to refuse.
-        taken = []
-      }
-    }
-    const next = await askName({
-      title: `重命名${node.isDir ? '文件夹' : '文件'}`,
-      label: '新名称',
-      initial: node.name,
-      confirmLabel: '重命名',
-      taken,
-    })
-    if (!next || next === node.name) return
-    await guard(
-      () => api.renameFile(instance.id, node.path, joinPath(parent, next)),
-      `已重命名为 ${next}`,
-    )
-    retab(node.path, joinPath(parent, next))
-    setTreeKey((key) => key + 1)
-  }
-
-  const removeInTree = async (node: TreeNode) => {
-    const ok = await ask({
-      title: `删除${node.isDir ? '文件夹' : '文件'}「${node.name}」？`,
-      lead: node.isDir
-        ? '文件夹里的所有内容会一起删除，无法撤销。'
-        : '删除后无法撤销，请确认这不是存档或配置。',
-      confirmLabel: '删除',
-      danger: true,
-    })
-    if (!ok) return
-    await guard(() => api.deleteFile(instance.id, node.path), `已删除 ${node.name}`)
-    retab(node.path, null)
-    setTreeKey((key) => key + 1)
-  }
-
-  /**
-   * Follows a path that moved or went away through the open tabs.
-   *
-   * A tab left pointing at a file that is no longer there fails at save time,
-   * which is the worst possible moment to find out — the text is in the box and
-   * the file it belongs to is gone. `to` of null closes them instead.
-   */
-  const retab = (from: string, to: string | null) => {
-    const moved = (path: string) =>
-      path === from ? to : path.startsWith(`${from}/`) && to !== null
-        ? to + path.slice(from.length)
-        : path.startsWith(`${from}/`)
-          ? null
-          : path
-    setTabs((current) =>
-      current
-        .map((tab) => {
-          const next = moved(tab.path)
-          return next === null ? null : { ...tab, path: next }
-        })
-        .filter((tab): tab is EditorState => tab !== null),
-    )
-    setActiveTab((current) => (current === null ? null : moved(current)))
-  }
-
-  const treeMenu = useCallback(
-    (node: TreeNode): MenuItem[] => [
-      {
-        label: '重命名',
-        disabled: busy || !listing?.writable,
-        onSelect: () => void renameInTree(node),
-      },
-      {
-        label: '复制路径',
-        onSelect: () => {
-          void navigator.clipboard?.writeText(node.path)
-          toast(`已复制 ${node.path}`)
-        },
-      },
-      ...(node.isDir
-        ? []
-        : [
-            {
-              label: '下载',
-              onSelect: () => {
-                const link = document.createElement('a')
-                link.href = downloadURL(instance.id, node.path)
-                link.download = node.name
-                link.click()
-              },
-            },
-          ]),
-      {
-        label: '删除',
-        danger: true,
-        disabled: busy || !listing?.writable,
-        onSelect: () => void removeInTree(node),
-      },
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [busy, listing?.writable, instance.id, dir, takenNames],
-  )
-
-  /**
-   * Deleting a selection, one request at a time.
-   *
-   * Sequential rather than parallel: these are directory operations on one
-   * disk, and twenty concurrent RemoveAll calls on a world folder buy nothing
-   * but a less useful error if one of them fails. Failures are collected
-   * instead of aborting the run — stopping half way through would leave the
-   * operator to work out which half.
-   */
-  const removeMany = async (targets: FileEntry[]) => {
-    if (targets.length === 0) return
-    const folders = targets.filter((entry) => entry.isDir).length
-    const ok = await ask({
-      title: `删除选中的 ${targets.length} 项？`,
-      lead: (
-        <>
-          <NameList names={targets.map((entry) => entry.name)} />
-          {folders > 0 && `其中 ${folders} 个是文件夹，里面的内容会一起删除。`}
-          删除后无法撤销。
-        </>
-      ),
-      confirmLabel: `删除 ${targets.length} 项`,
-      danger: true,
-    })
-    if (!ok) return
-
-    setBusy(true)
-    const failed: string[] = []
-    for (const entry of targets) {
-      try {
-        await api.deleteFile(instance.id, entry.path)
-      } catch {
-        failed.push(entry.name)
-      }
-    }
-    const done = targets.length - failed.length
-    if (failed.length > 0) toastError(`${failed.length} 项删除失败：${failed.join('、')}`)
-    if (done > 0) toast(`已删除 ${done} 项`)
-    setBusy(false)
-    await load(dir)
-  }
-
-  /** Downloads a selection by clicking one link after another. Spaced out
-   *  because a browser handed six navigations in the same tick treats the
-   *  last five as a popup. */
-  const downloadMany = async (targets: FileEntry[]) => {
-    const files = targets.filter((entry) => !entry.isDir)
-    if (files.length === 0) {
-      toastWarn('选中的都是文件夹，文件夹需要逐个进入下载。')
-      return
-    }
-    for (const [index, entry] of files.entries()) {
-      const link = document.createElement('a')
-      link.href = downloadURL(instance.id, entry.path)
-      link.download = entry.name
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      if (index < files.length - 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, DOWNLOAD_GAP))
-      }
-    }
-    toast(`已开始下载 ${files.length} 个文件`)
-  }
-
-  const openEntry = async (entry: FileEntry, pin = false) => {
-    if (entry.isDir) {
-      void load(entry.path)
-      return
-    }
-    if (isImage(entry.name) || isSchematic(entry.name)) {
-      setPreview(entry)
-      return
-    }
-    if (!entry.editable) return
-    await openPath(entry.path, pin)
-  }
-
-  const saveEditor = async () => {
-    if (!editor || editor.content === editor.original) return
-    setBusy(true)
-    try {
-      await api.writeFile(instance.id, editor.path, editor.content)
-      patchActive({ original: editor.content })
-      toast(`已保存 ${baseName(editor.path)}`)
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : '保存失败')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  /** Closes one tab, asking first if it still holds unsaved edits. */
-  const closeTab = async (path: string) => {
-    const target = tabs.find((tab) => tab.path === path)
-    if (target && target.content !== target.original) {
-      const ok = await ask({
-        title: '放弃未保存的修改？',
-        lead: `${baseName(path)} 有改动还没有保存，关掉这个标签会丢掉它们。`,
-        confirmLabel: '放弃修改',
-        danger: true,
-      })
-      if (!ok) return
-    }
-    const index = tabs.findIndex((tab) => tab.path === path)
-    const rest = tabs.filter((tab) => tab.path !== path)
-    setTabs(rest)
-    if (activeTab === path) {
-      // The neighbour on the left, or the new first one: closing the tab you
-      // were reading should leave you next to where you were, not nowhere.
-      setActiveTab(rest[Math.max(0, index - 1)]?.path ?? null)
-    }
-  }
-
-  const closeEditor = () => void closeTab(activeTab ?? '')
-
-  /** The rows actually on screen: the directory, filtered and ordered. */
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const visible = needle
@@ -780,48 +706,497 @@ export function FileManager({
     return visible
   }, [entries, query, sort])
 
-  const selectedEntries = useMemo(
-    () => rows.filter((entry) => selected.has(entry.path)),
-    [rows, selected],
+  const pick = useCallback(
+    (path: string, mode: SelectMode) => {
+      setCursor(path)
+      if (mode === 'replace') {
+        // A plain click moves the cursor and lets go of whatever was ticked.
+        // It does not tick this row: opening a file is not an instruction to
+        // delete it, and the head above the list should still be the head.
+        anchor.current = path
+        setSelected((current) => (current.size === 0 ? current : new Set()))
+        return
+      }
+      if (mode === 'toggle') {
+        anchor.current = path
+        setSelected((current) => {
+          const next = new Set(current)
+          if (!next.delete(path)) next.add(path)
+          return next
+        })
+        return
+      }
+      setSelected((current) => {
+        const from = rows.findIndex((entry) => entry.path === (anchor.current ?? path))
+        const to = rows.findIndex((entry) => entry.path === path)
+        if (from === -1 || to === -1) return new Set([path])
+        const next = new Set(current)
+        for (let i = Math.min(from, to); i <= Math.max(from, to); i++) next.add(rows[i].path)
+        return next
+      })
+    },
+    [rows],
   )
 
   const toggleSort = (key: SortKey) =>
     // Name reads best A→Z, but "which is the biggest" and "what changed last"
-    // are the questions the other two columns are clicked to answer, so they
-    // open on the descending end.
+    // are the questions the other two are clicked to answer, so they open on
+    // the descending end.
     setSort((prev) => (prev.key === key ? { key, asc: !prev.asc } : { key, asc: key === 'name' }))
 
-  const toggleOne = (path: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (!next.delete(path)) next.add(path)
-      return next
-    })
+  /* ------------------------------------------------------ file actions */
 
-  const allTicked = rows.length > 0 && rows.every((entry) => selected.has(entry.path))
-  const someTicked = selected.size > 0 && !allTicked
-  const tickAllRef = useRef<HTMLInputElement | null>(null)
+  const askName = useCallback(
+    (request: Omit<NameState, 'resolve'>) =>
+      new Promise<string | null>((resolve) => setNaming({ ...request, resolve })),
+    [],
+  )
+
+  const guard = async (action: () => Promise<void>, done: string) => {
+    setBusy(true)
+    try {
+      await action()
+      toast(done)
+      await load(dirRef.current)
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : '操作失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const upload = async (picked: File[]) => {
+    if (picked.length === 0) return
+    setBusy(true)
+    setProgress(0)
+    try {
+      try {
+        await uploadFiles(instance.id, dir, picked, setProgress)
+      } catch (err) {
+        // 409 means a file of that name is already there. Replacing a server
+        // jar with a newer build is the common case, so offer it rather than
+        // making the operator delete the old one first — but never do it
+        // without asking, since the same name could be a world file.
+        if (!(err instanceof ApiError) || err.status !== 409) throw err
+        const replace = await ask({
+          title: '目录里已经有同名文件',
+          lead: `${nameList(picked.map((file) => file.name))}会覆盖同名的旧文件。`,
+          detail: '旧文件不会进回收站。',
+          confirmLabel: '覆盖',
+          danger: true,
+        })
+        if (!replace) {
+          toast('已取消上传')
+          return
+        }
+        setProgress(0)
+        await uploadFiles(instance.id, dir, picked, setProgress, true)
+      }
+      toast(picked.length === 1 ? `已上传 ${picked[0].name}` : `已上传 ${picked.length} 个文件`)
+      await load(dir)
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : '上传失败')
+    } finally {
+      setBusy(false)
+      setProgress(null)
+    }
+  }
+
+  const createFolder = async () => {
+    const name = await askName({
+      title: '新建文件夹',
+      lead: `新文件夹会建在「${dir === '' ? '实例根目录' : dir}」`,
+      label: '文件夹名称',
+      initial: '',
+      confirmLabel: '创建',
+      taken: takenNames,
+    })
+    if (!name) return
+    await guard(() => api.mkdir(instance.id, joinPath(dir, name)), `已创建 ${name}`)
+    setTreeKey((key) => key + 1)
+  }
+
+  // A new config is nearly always created in order to be typed into, so this
+  // writes the empty file and goes straight to the editor rather than leaving
+  // an empty row behind for the operator to find and click.
+  const createFile = async () => {
+    const name = await askName({
+      title: '新建文件',
+      lead: `新文件会建在「${dir === '' ? '实例根目录' : dir}」，创建后直接打开编辑器`,
+      label: '文件名称',
+      initial: '',
+      confirmLabel: '创建并编辑',
+      taken: takenNames,
+    })
+    if (!name) return
+    const path = joinPath(dir, name)
+    setBusy(true)
+    try {
+      await api.writeFile(instance.id, path, '')
+      await load(dir)
+      setFiles((current) => {
+        const next = new Map(current)
+        next.set(path, { path, content: '', original: '', modified: '', kind: 'text', size: 0 })
+        return next
+      })
+      showTab(path, false)
+      toast(`已创建 ${name}`)
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : '创建失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const rename = async (entry: FileEntry) => {
+    const next = await askName({
+      title: `重命名${entry.isDir ? '文件夹' : '文件'}`,
+      label: '新名称',
+      initial: entry.name,
+      confirmLabel: '重命名',
+      taken: takenNames,
+    })
+    if (!next || next === entry.name) return
+    const to = joinPath(dir, next)
+    await guard(() => api.renameFile(instance.id, entry.path, to), `已重命名为 ${next}`)
+    retab(entry.path, to)
+    setTreeKey((key) => key + 1)
+  }
+
+  const remove = async (entry: FileEntry) => {
+    // A folder takes its whole tree with it and there is no undo anywhere in
+    // this panel, so it is the one delete a mis-aimed click does not get to
+    // do: the name has to be typed. A file gets the ordinary question.
+    const ok = entry.isDir
+      ? await new Promise<boolean>((resolve) => setTyped({ entry, resolve }))
+      : await ask({
+          title: `删除文件「${entry.name}」？`,
+          lead: '删除后无法撤销，请确认这不是存档或配置。',
+          confirmLabel: '删除',
+          danger: true,
+        })
+    if (!ok) return
+    await guard(() => api.deleteFile(instance.id, entry.path), `已删除 ${entry.name}`)
+    retab(entry.path, null)
+    setTreeKey((key) => key + 1)
+  }
+
+  /**
+   * Deleting a selection, one request at a time.
+   *
+   * Sequential rather than parallel: these are directory operations on one
+   * disk, and twenty concurrent RemoveAll calls on a world folder buy nothing
+   * but a less useful error if one of them fails. Failures are collected
+   * instead of aborting the run — stopping half way through would leave the
+   * operator to work out which half.
+   */
+  const removeMany = async (targets: FileEntry[]) => {
+    if (targets.length === 0) return
+    const folders = targets.filter((entry) => entry.isDir).length
+    const ok = await ask({
+      title: `删除选中的 ${targets.length} 项？`,
+      lead: nameList(targets.map((entry) => entry.name)),
+      detail:
+        (folders > 0 ? `其中 ${folders} 个是文件夹，里面的内容会一起删除。` : '') +
+        '删除后无法撤销。',
+      confirmLabel: `删除 ${targets.length} 项`,
+      danger: true,
+    })
+    if (!ok) return
+
+    setBusy(true)
+    const failed: string[] = []
+    for (const entry of targets) {
+      try {
+        await api.deleteFile(instance.id, entry.path)
+        retab(entry.path, null)
+      } catch {
+        failed.push(entry.name)
+      }
+    }
+    const done = targets.length - failed.length
+    if (failed.length > 0) toastError(`${failed.length} 项删除失败：${failed.join('、')}`)
+    if (done > 0) toast(`已删除 ${done} 项`)
+    setBusy(false)
+    setTreeKey((key) => key + 1)
+    await load(dirRef.current)
+  }
+
+  /** Moving is a rename across directories — the endpoint takes two paths
+   *  relative to the instance root, so it already is one. Sequential for the
+   *  same reason removeMany is. */
+  const moveTo = async (targets: FileEntry[], into: string) => {
+    setBusy(true)
+    const failed: string[] = []
+    for (const entry of targets) {
+      const to = joinPath(into, entry.name)
+      if (to === entry.path) continue
+      try {
+        await api.renameFile(instance.id, entry.path, to)
+        retab(entry.path, to)
+      } catch {
+        failed.push(entry.name)
+      }
+    }
+    const done = targets.length - failed.length
+    if (failed.length > 0) toastError(`${failed.length} 项移动失败：${failed.join('、')}`)
+    if (done > 0) toast(`已移动 ${done} 项到 ${into === '' ? '实例根目录' : into}`)
+    setBusy(false)
+    setTreeKey((key) => key + 1)
+    await load(dirRef.current)
+  }
+
+  /** Downloads a selection by clicking one link after another. Spaced out
+   *  because a browser handed six navigations in the same tick treats the last
+   *  five as a popup. Folders are skipped rather than faked: the daemon has no
+   *  endpoint that packs one, and pulling a world folder through the browser
+   *  file by file is not the same offer. */
+  const downloadMany = async (targets: FileEntry[]) => {
+    const picked = targets.filter((entry) => !entry.isDir)
+    if (picked.length === 0) {
+      toastWarn('选中的都是文件夹。面板没有打包下载，文件夹要进去逐个下载。')
+      return
+    }
+    for (const [index, entry] of picked.entries()) {
+      const link = document.createElement('a')
+      link.href = downloadURL(instance.id, entry.path)
+      link.download = entry.name
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      if (index < picked.length - 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, DOWNLOAD_GAP))
+      }
+    }
+    toast(`已开始下载 ${picked.length} 个文件`)
+  }
+
+  /* ---------------------------------------------------- dragging rails */
+
+  /**
+   * Drags one divider.
+   *
+   * The editor's floor is enforced here rather than in CSS, because CSS cannot
+   * say "take it out of whichever rail is being dragged": a minmax floor on
+   * the editor's own track would simply overflow the grid and push the pane
+   * sideways instead of stopping the drag.
+   */
+  const drag = (which: 'tree' | 'list') => (event: React.PointerEvent<HTMLDivElement>) => {
+    if (tight) return
+    const frame = grid.current
+    if (!frame) return
+    event.preventDefault()
+    const startX = event.clientX
+    const from = cols[which]
+    const room = frame.clientWidth
+    const floor = which === 'tree' ? TREE_MIN : LIST_MIN
+    const roof = which === 'tree' ? TREE_MAX : LIST_MAX
+
+    const move = (at: PointerEvent) => {
+      const other = which === 'tree' ? (open ? cols.list : 0) : cols.tree
+      const spent = other + (GRIP + GAP) * (open ? 2 : 1)
+      const ceiling = Math.max(floor, Math.min(roof, room - spent - (open ? EDITOR_MIN : 0)))
+      const next = Math.min(ceiling, Math.max(floor, from + (at.clientX - startX)))
+      setCols((current) => ({ ...current, [which]: next }))
+    }
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+  }
+
+  /* -------------------------------------------------------- shortcuts */
+
+  const activePathNow = useRef(activePath)
+  activePathNow.current = activePath
+  const focusedPaneNow = useRef(focusedPane)
+  focusedPaneNow.current = focusedPane
+  const selectedNow = useRef(selected)
+  selectedNow.current = selected
+  const cursorNow = useRef(cursor)
+  cursorNow.current = cursor
+  const rowsNow = useRef(rows)
+  rowsNow.current = rows
+
+  /** Moves the cursor one row, and scrolls it back into view. Deliberately not
+   *  a selection: walking a directory with the arrow keys is reading it, and
+   *  it should not end with twenty rows ticked. */
+  const step = useCallback((by: number) => {
+    const all = rowsNow.current
+    if (all.length === 0) return
+    const at = all.findIndex((entry) => entry.path === cursorNow.current)
+    const to = Math.max(0, Math.min(all.length - 1, at === -1 ? 0 : at + by))
+    setCursor(all[to].path)
+    anchor.current = all[to].path
+    const row = listBody.current?.children[to] as HTMLElement | undefined
+    row?.scrollIntoView({ block: 'nearest' })
+  }, [])
+
   useEffect(() => {
-    if (tickAllRef.current) tickAllRef.current.indeterminate = someTicked
-  }, [someTicked])
+    if (!active) return
+    const onKey = (event: KeyboardEvent) => {
+      const mod = event.metaKey || event.ctrlKey
+
+      if (mod && event.key.toLowerCase() === 's') {
+        event.preventDefault()
+        if (activePathNow.current) void save(activePathNow.current)
+        return
+      }
+      if (mod && event.key.toLowerCase() === 'w') {
+        if (!activePathNow.current) return
+        event.preventDefault()
+        void closeTab(focusedPaneNow.current, activePathNow.current)
+        return
+      }
+      if (mod && event.key.toLowerCase() === 'f') {
+        // Inside the editor the browser's own find is the wrong instrument: it
+        // searches the rendered mirror rather than the buffer, and it cannot
+        // replace. Everywhere else this means the directory filter.
+        event.preventDefault()
+        if (isInEditor(event.target)) setFindTick((n) => n + 1)
+        else searchBox.current?.focus()
+        return
+      }
+      if (event.key === 'Escape') {
+        // The path box and the find box handle their own Escape and stop it
+        // before it reaches here, so by this point the innermost thing left to
+        // back out of is the selection.
+        if (selectedNow.current.size > 0) setSelected(new Set())
+        return
+      }
+      // Everything below is a bare key, so it belongs to whatever is taking
+      // text if anything is.
+      if (isTyping(event.target)) return
+
+      if (event.key === 'Backspace') {
+        event.preventDefault()
+        void load(parentOf(dirRef.current))
+        return
+      }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        step(event.key === 'ArrowDown' ? 1 : -1)
+        return
+      }
+      if (event.key === 'Enter') {
+        const entry = rowsNow.current.find((one) => one.path === cursorNow.current)
+        if (entry) {
+          event.preventDefault()
+          openEntry(entry)
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [active, save, closeTab, load, openEntry, step])
+
+  /* ------------------------------------------------------------ render */
+
+  const more: MenuItem[] = [
+    ...(narrow && open
+      ? [{ label: '文件列表', onSelect: () => setDrawer(true) }]
+      : [
+          {
+            label: treeFolded ? '展开目录树' : '折叠目录树',
+            onSelect: () => setTreeFold(!treeFolded),
+          },
+        ]),
+    ...(open && !narrow
+      ? [
+          {
+            label: listFolded ? '展开文件列表' : '折叠文件列表',
+            onSelect: () => setListFolded(!listFolded),
+          },
+        ]
+      : []),
+    { label: '复制当前路径', onSelect: () => void navigator.clipboard?.writeText(dir || '/') },
+    { label: '快捷键', onSelect: () => setKeys(true) },
+  ]
 
   const dialogs = (
     <>
-      {naming && <NameDialog request={naming} onAnswer={settleName} />}
-      {preview &&
-        (isSchematic(preview.name) ? (
-          <SchematicPreview
-            instanceId={instance.id}
-            entry={preview}
-            onClose={() => setPreview(null)}
-          />
-        ) : (
-          <ImagePreview
-            instanceId={instance.id}
-            entry={preview}
-            onClose={() => setPreview(null)}
-          />
-        ))}
+      {naming && (
+        <NameDialog
+          request={naming}
+          onAnswer={(name) => {
+            naming.resolve(name)
+            setNaming(null)
+          }}
+        />
+      )}
+      {typed && (
+        <TypedDeleteDialog
+          entry={typed.entry}
+          onAnswer={(ok) => {
+            typed.resolve(ok)
+            setTyped(null)
+          }}
+        />
+      )}
+      {moving && (
+        <MoveDialog
+          instanceId={instance.id}
+          entries={moving}
+          from={dir}
+          onClose={() => setMoving(null)}
+          onMove={(into) => {
+            const targets = moving
+            setMoving(null)
+            void moveTo(targets, into)
+          }}
+        />
+      )}
+      {conflict && (
+        <ConflictDialog
+          conflict={conflict}
+          onClose={() => setConflict(null)}
+          onOverwrite={() => {
+            const { path, mine } = conflict
+            setConflict(null)
+            void (async () => {
+              setBusy(true)
+              try {
+                await api.writeFile(instance.id, path, mine)
+                patchFile(path, {
+                  original: mine,
+                  modified: (await mtimeOf(path)) ?? '',
+                  stale: false,
+                })
+                toast(`已保存 ${baseName(path)}`)
+              } catch (err) {
+                toastError(err instanceof Error ? err.message : '保存失败')
+              } finally {
+                setBusy(false)
+              }
+            })()
+          }}
+          onTakeTheirs={() => {
+            const { path } = conflict
+            setConflict(null)
+            void reload(path)
+          }}
+        />
+      )}
+      {keys && <KeysDialog onClose={() => setKeys(false)} />}
+      {preview && (
+        <SchematicPreview
+          instanceId={instance.id}
+          entry={preview}
+          onClose={() => setPreview(null)}
+        />
+      )}
+      <input
+        ref={fileInput}
+        type="file"
+        multiple
+        hidden
+        onChange={(event) => {
+          void upload(Array.from(event.target.files ?? []))
+          event.target.value = ''
+        }}
+      />
     </>
   )
 
@@ -830,459 +1205,212 @@ export function FileManager({
     return (
       <SkeletonScreen label="正在读取目录…">
         <SkeletonPanel title={false}>
-          {/* 实例根目录, the toolbar, then the listing — the same three bands
-              the real panel is, in the same order and at the same heights. */}
           <Skeleton w="88px" h={15} />
-          <div className="toolbar">
-            <Skeleton w="82px" h={30} />
-            <Skeleton w="96px" h={30} />
-            <Skeleton w="60px" h={30} />
-          </div>
           <SkeletonRows rows={8} />
         </SkeletonPanel>
       </SkeletonScreen>
     )
   }
 
-  const folders = entries.filter((entry) => entry.isDir).length
-  const files = entries.length - folders
-  const totalBytes = entries.reduce((sum, entry) => sum + (entry.isDir ? 0 : entry.size), 0)
+  // Below the drawer width there is room for one column, so the tree goes
+  // entirely — the breadcrumb walks the same tree and costs no width — and the
+  // listing is either that column or an overlay over the editor.
+  const treeShown = !narrow
+  const listShown = !narrow || !open || drawer
+  const template = [
+    ...(treeShown ? [treeFolded ? `${RAIL}px` : `${cols.tree}px`, `${GRIP}px`] : []),
+    ...(narrow
+      ? ['minmax(0, 1fr)']
+      : [
+          listFolded && open ? `${RAIL}px` : open ? `${cols.list}px` : 'minmax(0, 1fr)',
+          ...(open ? [`${GRIP}px`, 'minmax(0, 1fr)'] : []),
+        ]),
+  ].join(' ')
+
+  const stats = {
+    count: entries.length,
+    bytes: entries.reduce((sum, entry) => sum + (entry.isDir ? 0 : entry.size), 0),
+  }
+
+  const list = (
+    <FileList
+      instanceId={instance.id}
+      dir={dir}
+      entries={rows}
+      total={entries.length}
+      density={density}
+      onDensity={(next) => {
+        setChosenDensity(next)
+        writePref(densityKey, next)
+      }}
+      sort={sort}
+      onSort={toggleSort}
+      selected={selected}
+      cursor={cursor}
+      onSelect={pick}
+      onClearSelection={() => setSelected(new Set())}
+      activePath={activePath}
+      dirtyPaths={dirtyPaths}
+      onOpen={(entry) => openEntry(entry)}
+      onOpenBackground={(entry) => openEntry(entry, true)}
+      onRename={(entry) => void rename(entry)}
+      onDelete={(entry) => void remove(entry)}
+      onMove={(targets) => setMoving(targets)}
+      onDownload={(targets) => void downloadMany(targets)}
+      onBulkDelete={(targets) => void removeMany(targets)}
+      onUpload={() => fileInput.current?.click()}
+      onDropFiles={(picked) => void upload(picked)}
+      onRetry={() => void load(dir)}
+      onClearQuery={() => setQuery('')}
+      query={query}
+      error={error}
+      pending={pending}
+      busy={busy}
+      writable={listing.writable}
+      bodyRef={listBody}
+    />
+  )
 
   return (
-    <div
-      className={editing ? 'stack stack--full' : 'stack'}
-      onDragEnter={(event) => {
-        if (!hasFiles(event.dataTransfer)) return
-        dragDepth.current += 1
-        setDragging(true)
-      }}
-      onDragOver={(event) => {
-        if (!hasFiles(event.dataTransfer)) return
-        event.preventDefault()
-      }}
-      onDragLeave={() => {
-        dragDepth.current = Math.max(0, dragDepth.current - 1)
-        if (dragDepth.current === 0) setDragging(false)
-      }}
-      onDrop={(event) => {
-        if (!hasFiles(event.dataTransfer)) return
-        event.preventDefault()
-        dragDepth.current = 0
-        setDragging(false)
-        void upload(Array.from(event.dataTransfer.files))
-      }}
-    >
-      {/* The mode's whole point is vertical room, and the title plus the
-          sentence under it are the first eight lines it buys back. */}
-      {!editing && (
-        <PageHead
-          title="文件"
-          lead="服务器目录里的东西：jar、存档、配置和日志。点一个文件直接打开，可以同时开着几个对照。"
-          /* Not one more button in the listing's toolbar: 上传 / 新建 / 刷新 all
-             do something to a file, and this one changes what the screen is
-             for. It sat among them looking like one of them, which is how a
-             mode nobody finds stays a mode nobody finds. Beside the title is
-             where every other page in the panel keeps the thing it does, and
-             on this page that corner was empty. */
-          actions={
-            roomy ? (
+    <div className="stack stack--full fmpage">
+      <FileBar
+        dir={dir}
+        stats={stats}
+        query={query}
+        onQuery={setQuery}
+        searchRef={searchBox}
+        onNavigate={navigate}
+        onUpload={() => fileInput.current?.click()}
+        onNewFile={() => void createFile()}
+        onNewFolder={() => void createFolder()}
+        onRefresh={() => {
+          // 刷新 means "read the disk again", and a tree still showing a folder
+          // deleted somewhere else is exactly what the button gets pressed
+          // about.
+          setTreeKey((key) => key + 1)
+          void load(dir)
+        }}
+        more={more}
+        busy={busy}
+        pending={pending}
+        writable={listing.writable}
+      />
+
+      {progress != null && (
+        <div className="progress fmpage__progress">
+          <div className="progress__bar" style={{ width: `${Math.round(progress * 100)}%` }} />
+          <span className="progress__label">{Math.round(progress * 100)}%</span>
+        </div>
+      )}
+
+      <div
+        className="fm"
+        ref={grid}
+        style={{ gridTemplateColumns: template }}
+        data-narrow={narrow ? '' : undefined}
+      >
+        {treeShown && (
+          <>
+            {treeFolded ? (
+              <Rail label="目录" onOpen={() => setTreeFold(false)} />
+            ) : (
+              <aside className="fm__tree">
+                <FileTree
+                  instanceId={instance.id}
+                  path={dir}
+                  reloadKey={treeKey}
+                  onOpen={(next) => void load(next)}
+                />
+              </aside>
+            )}
+            <div
+              className="fm__grip"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整目录树宽度"
+              data-off={tight || treeFolded || undefined}
+              onPointerDown={drag('tree')}
+            />
+          </>
+        )}
+
+        {listShown &&
+          (listFolded && open && !narrow ? (
+            <Rail label="文件" onOpen={() => setListFolded(false)} />
+          ) : narrow && open ? (
+            <div className="fm__drawer">
+              {list}
               <button
                 type="button"
-                className="file-mode"
-                onClick={() => setEditing(true)}
-                title="把这一屏交给编辑器：列表让位，目录树带上文件"
+                className="fm__drawer-close"
+                onClick={() => setDrawer(false)}
+                aria-label="收起文件列表"
               >
-                <Glyph name="doc" className="file-mode__glyph" />
-                <span className="file-mode__text">
-                  <b>编辑模式</b>
-                  <small>列表让位，目录树带上文件</small>
-                </span>
-              </button>
-            ) : undefined
-          }
-        />
-      )}
-
-      {/* Tree, listing, editor. The editor used to replace the listing — one
-          file at a time, and comparing two configs meant closing the first and
-          remembering what it said. `data-pane` is what the narrow layout reads:
-          below 1024 there is only room for one of these, and which one depends
-          on whether anything is open. */}
-      <div
-        className={`fm${editing ? ' fm--editing' : editor ? ' fm--open' : ''}`}
-        data-pane={editor ? narrowPane : 'list'}
-        data-tree={editing ? (treeShown ? 'on' : 'off') : undefined}
-      >
-        <aside className="fm__tree">
-          {/* In edit mode the listing's toolbar is off screen, so the four
-              buttons that are pressed daily come here. They act on the
-              directory the tree is standing in, which is why it is named just
-              below them: a 上传 that writes into an unnamed directory is a
-              button nobody presses twice. */}
-          {editing && (
-            <>
-              <div className="ftree__bar">
-                <Button
-                  icon
-                  onClick={() => fileInput.current?.click()}
-                  disabled={busy || !listing.writable}
-                  title={listing.writable ? '上传到当前目录' : readOnlyHere}
-                  aria-label="上传文件"
-                >
-                  <Glyph name="upload" />
-                </Button>
-                <Button
-                  icon
-                  onClick={() => void createFile()}
-                  disabled={busy || !listing.writable}
-                  title={listing.writable ? '新建文件' : readOnlyHere}
-                  aria-label="新建文件"
-                >
-                  <Glyph name="new-file" />
-                </Button>
-                <Button
-                  icon
-                  onClick={() => void createFolder()}
-                  disabled={busy || !listing.writable}
-                  title={listing.writable ? '新建文件夹' : readOnlyHere}
-                  aria-label="新建文件夹"
-                >
-                  <Glyph name="new-folder" />
-                </Button>
-                <Button
-                  icon
-                  onClick={refresh}
-                  disabled={busy || pending}
-                  title="刷新"
-                  aria-label="刷新"
-                >
-                  <Glyph name="refresh" className={pending ? 'spin' : undefined} />
-                </Button>
-                {editor !== null && (
-                  <Button
-                    icon
-                    onClick={() => setTreeOpen(false)}
-                    title="收起目录树"
-                    aria-label="收起目录树"
-                  >
-                    <Glyph name="folder" />
-                  </Button>
-                )}
-                <Button
-                  icon
-                  className="ftree__leave"
-                  onClick={() => setEditing(false)}
-                  title="退出编辑模式（Esc）"
-                  aria-label="退出编辑模式"
-                >
-                  <Glyph name="up" />
-                </Button>
-              </div>
-              <p className="ftree__where" title={dir || '实例根目录'}>
-                {dir === '' ? '实例根目录' : dir}
-              </p>
-              <input
-                className="ftree__find"
-                type="search"
-                value={treeQuery}
-                placeholder="筛选已展开的目录"
-                aria-label="筛选已展开的目录"
-                onChange={(event) => setTreeQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape') setTreeQuery('')
-                }}
-              />
-            </>
-          )}
-          <FileTree
-            instanceId={instance.id}
-            path={dir}
-            reloadKey={treeKey}
-            showFiles={editing}
-            openPath={activeTab}
-            dirtyPaths={dirtyPaths}
-            filter={editing ? treeQuery : ''}
-            menuFor={editing ? treeMenu : undefined}
-            onOpen={(next) => void load(next)}
-            onOpenFile={(next, pin) => {
-              // Below 1200 the tree is an overlay sitting on top of the editor,
-              // so picking a file is also how it gets dismissed — the same
-              // reasoning as the navigation drawer in App. Above it the tree
-              // has a column of its own and nothing is covered.
-              if (tight) setTreeOpen(false)
-              void openPath(next, pin)
-            }}
-          />
-        </aside>
-
-      {/* Gone rather than narrowed in edit mode: a column of file sizes
-          beside an open config is the width that was making the config
-          scroll sideways. */}
-      {!editing && (
-        <section className={`panel files${dragging ? ' files--dropping' : ''}`}>
-          <div className="files__head">
-            <button
-              className="files__up"
-              onClick={() => void load(parentOf(dir))}
-              disabled={dir === '' || pending}
-              title="返回上一级"
-              aria-label="返回上一级"
-            >
-              <Glyph name="up" />
-            </button>
-            <Breadcrumb dir={dir} onNavigate={(next) => void load(next)} />
-          </div>
-
-          <Toolbar>
-            {/* A confined role can walk through the folders on the way to the one
-                it may edit, but not write in them. Offering the buttons there
-                would be offering a request the panel refuses. */}
-            {/* Plain: with a file open beside it the editor's 保存 is the
-                filled one, and a toolbar that is filled whether or not you
-                came here to upload competes with it on every screen. */}
-            <Button
-              onClick={() => fileInput.current?.click()}
-              disabled={busy || !listing.writable}
-              title={listing.writable ? undefined : readOnlyHere}
-            >
-              <Glyph name="upload" />
-              上传文件
-            </Button>
-            <input
-              ref={fileInput}
-              type="file"
-              multiple
-              hidden
-              onChange={(event) => {
-                void upload(Array.from(event.target.files ?? []))
-                event.target.value = ''
-              }}
-            />
-            <Button
-              disabled={busy || !listing.writable}
-              title={listing.writable ? undefined : readOnlyHere}
-              onClick={() => void createFolder()}
-            >
-              <Glyph name="new-folder" />
-              新建文件夹
-            </Button>
-            <Button
-              disabled={busy || !listing.writable}
-              title={listing.writable ? undefined : readOnlyHere}
-              onClick={() => void createFile()}
-            >
-              <Glyph name="new-file" />
-              新建文件
-            </Button>
-            <Button
-              icon
-              onClick={refresh}
-              disabled={busy || pending}
-              title="刷新"
-              aria-label="刷新"
-            >
-              <Glyph name="refresh" className={pending ? 'spin' : undefined} />
-            </Button>
-
-            {/* At the far end, away from the four buttons that act on the
-                listing: a hand reaching for 上传 must not land in the box that
-                filters it. */}
-            <ToolbarSearch
-              className="toolbar__search--end"
-              value={query}
-              placeholder="在当前目录中查找"
-              aria-label="在当前目录中查找"
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape') setQuery('')
-              }}
-            />
-          </Toolbar>
-
-          {selectedEntries.length > 0 && (
-            <div className="file-bulk">
-              <span className="file-bulk__count">已选择 {selectedEntries.length} 项</span>
-              <Button
-                disabled={busy}
-                onClick={() => void downloadMany(selectedEntries)}
-              >
-                <Glyph name="download" />
-                下载
-              </Button>
-              <Button
-                variant="danger"
-                disabled={busy}
-                onClick={() => void removeMany(selectedEntries)}
-              >
-                <Glyph name="trash" />
-                删除
-              </Button>
-              <button className="link file-bulk__clear" onClick={() => setSelected(new Set())}>
-                取消选择
+                ×
               </button>
             </div>
-          )}
-
-          {progress != null && (
-            <div className="progress">
-              <div className="progress__bar" style={{ width: `${Math.round(progress * 100)}%` }} />
-              <span className="progress__label">{Math.round(progress * 100)}%</span>
-            </div>
-          )}
-
-          {/* Only 读取目录失败 reaches here now; everything an operator
-              *did* — an upload, a delete, a save — reports as a toast, which
-              is what those are. A load failure needs no acknowledgement: the
-              next successful listing clears it. */}
-          {error && <div className="alert">{error}</div>}
-
-          <div className="table-scroll" data-pending={pending || undefined}>
-            <table className="data-table data-table--files">
-              <colgroup>
-                <col className="col--tick" />
-                <col />
-                <col className="col--size" />
-                <col className="col--time" />
-                <col className="col--ops" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th className="col--tick">
-                    <input
-                      ref={tickAllRef}
-                      type="checkbox"
-                      className="tick"
-                      checked={allTicked}
-                      disabled={rows.length === 0}
-                      aria-label="全选"
-                      onChange={() =>
-                        setSelected(
-                          allTicked ? new Set() : new Set(rows.map((entry) => entry.path)),
-                        )
-                      }
-                    />
-                  </th>
-                  <SortHeader label="名称" column="name" sort={sort} onSort={toggleSort} />
-                  <SortHeader label="大小" column="size" sort={sort} onSort={toggleSort} align="num" />
-                  <SortHeader label="修改时间" column="modified" sort={sort} onSort={toggleSort} />
-                  <th className="col--ops">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 && (
-                  <tr className="file-empty__row">
-                    <td colSpan={5}>
-                      {query ? (
-                        <div className="file-empty">
-                          <p>没有匹配「{query}」的文件。</p>
-                          <Button onClick={() => setQuery('')}>
-                            清除筛选
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="file-empty">
-                          <Glyph name="folder-open" className="file-empty__glyph" />
-                          <p>这个目录是空的。把服务端 jar 或插件拖进来就能开始。</p>
-                          <Button onClick={() => fileInput.current?.click()}>
-                            上传文件
-                          </Button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                )}
-                {rows.map((entry) => (
-                  <FileRow
-                    key={entry.path}
-                    entry={entry}
-                    instanceId={instance.id}
-                    busy={busy}
-                    ticked={selected.has(entry.path)}
-                    onTick={() => toggleOne(entry.path)}
-                    onOpen={() => void openEntry(entry)}
-                    onPin={() => void openEntry(entry, true)}
-                    onRename={() => void rename(entry)}
-                    onDelete={() => void remove(entry)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="files__foot">
-            <span>
-              {folders} 个文件夹 · {files} 个文件
-              {files > 0 && ` · 共 ${formatBytes(totalBytes)}`}
-              {query && rows.length !== entries.length && ` · 已筛选出 ${rows.length} 项`}
-            </span>
-            {/* The path and the promise about it are two elements rather than one
-                line, because one line means the path's ellipsis eats the promise:
-                on a phone the whole "所有操作都被限制在这个目录内" disappeared and
-                only a truncated path was left. */}
-            <span className="files__root" title={listing.root}>
-              <code>{listing.root}</code>
-              {/* Two different promises. Without a role rule the honest sentence
-                  is the instance directory; with one it is narrower, and saying
-                  the wider thing would be telling somebody they can reach files
-                  the panel will refuse them. */}
-              <span className="files__root-note">
-                {listing.scope.length > 0
-                  ? `· 你的角色只能操作 ${listing.scope.join('、')}`
-                  : '· 所有操作都被限制在这个目录内'}
-              </span>
-            </span>
-          </div>
-
-          {dragging && (
-            <div className="file-drop" aria-hidden="true">
-              <div className="file-drop__card">
-                <Glyph name="upload" className="file-drop__glyph" />
-                松开即可上传到 <b>{dir === '' ? '实例根目录' : dir}</b>
-                <small>单文件上限 {formatBytes(listing.maxUploadBytes)}</small>
-              </div>
-            </div>
-          )}
-        </section>
-      )}
-
-        <div className="fm__editor">
-          {editor ? (
-            <FileEditor
-              editor={editor}
-              tabs={tabs}
-              activeTab={activeTab}
-              onBackToList={() => setNarrowPane('list')}
-              onShowTree={editing && !treeShown ? () => setTreeOpen(true) : undefined}
-              onSelectTab={(path: string) => setActiveTab(path)}
-              onPinTab={pinTab}
-              onCloseTab={(path: string) => void closeTab(path)}
-              busy={busy}
-              error={error}
-              // Typing into a preview tab is the other way to keep it: nobody
-              // edits a file they meant to glance at.
-              onChange={(content) => patchActive({ content, preview: false })}
-              onSave={() => void saveEditor()}
-              onRevert={() => patchActive({ content: editor.original })}
-              onClose={() => void closeEditor()}
-              onOpenHistory={onOpenHistory && (() => onOpenHistory(editor.path))}
-            />
           ) : (
-            // Edit mode's two columns are both always there — the tree and the
-            // thing it opens — so an empty one says what it is waiting for. In
-            // browse mode the column collapses instead (see .fm), because a
-            // third of the width explaining that a click opens a file is a
-            // third of the width the listing was asking for.
-            editing && (
-              <div className="fm__blank">
-                <Glyph name="doc" />
-                <p>从左边的目录树里点一个文件，会在这里打开。</p>
-                <p className="muted">
-                  单击是预览，双击或者开始输入就固定成一个标签。
-                </p>
-              </div>
-            )
-          )}
-        </div>
+            list
+          ))}
+
+        {open && !narrow && (
+          <div
+            className="fm__grip"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整文件列表宽度"
+            data-off={tight || listFolded || undefined}
+            onPointerDown={drag('list')}
+          />
+        )}
+
+        {open && (
+          <FileEditor
+            findTick={findTick}
+            instanceId={instance.id}
+            files={files}
+            panes={panes}
+            focusedPane={focusedPane}
+            maxEditableBytes={listing.maxEditableBytes}
+            onFocusPane={setFocusedPane}
+            onSelectTab={(pane, path) =>
+              setPanes((current) =>
+                current.map((one, index) => (index === pane ? { ...one, active: path } : one)),
+              )
+            }
+            onCloseTab={(pane, path) => void closeTab(pane, path)}
+            onCloseOthers={(pane, path) => dropTabs(pane, () => [path])}
+            onCloseRight={(pane, path) =>
+              dropTabs(pane, (tabs) => tabs.slice(0, tabs.indexOf(path) + 1))
+            }
+            onSplit={() =>
+              setPanes((current) =>
+                current.length >= 2 || current[0].active === null
+                  ? current
+                  : [...current, { tabs: [current[0].active], active: current[0].active }],
+              )
+            }
+            onChange={(path, content) => patchFile(path, { content })}
+            onSave={(path) => void save(path)}
+            onRevert={(path) => void revert(path)}
+            onReload={(path) => void reload(path)}
+            onKeepMine={(path) => patchFile(path, { stale: false })}
+            onPatch={patchFile}
+            onOpenHistory={onOpenHistory}
+            onLocate={(path) => {
+              // After the walk, not before it: load clears the selection when
+              // it lands, so ticking the row first is ticking it for as long
+              // as the request takes.
+              void (async () => {
+                await load(parentOf(path))
+                setCursor(path)
+              })()
+              if (narrow) setDrawer(true)
+            }}
+            onShowKeys={() => setKeys(true)}
+            busy={busy}
+          />
+        )}
       </div>
 
       {dialogs}
@@ -1290,461 +1418,17 @@ export function FileManager({
   )
 }
 
-/* ------------------------------------------------------------------ rows */
+/* ------------------------------------------------------------- pieces */
 
-function FileRow({
-  entry,
-  instanceId,
-  busy,
-  ticked,
-  onTick,
-  onOpen,
-  onPin,
-  onRename,
-  onDelete,
-}: {
-  entry: FileEntry
-  instanceId: string
-  busy: boolean
-  ticked: boolean
-  onTick: () => void
-  onOpen: () => void
-  /** Double click: opens the file for keeps rather than as a preview tab. */
-  onPin: () => void
-  onRename: () => void
-  onDelete: () => void
-}) {
-  const openable = entry.isDir || entry.editable || isImage(entry.name) || isSchematic(entry.name)
-
+/** A folded rail: the name of what is behind it, and the way back. */
+function Rail({ label, onOpen }: { label: string; onOpen: () => void }) {
   return (
-    <tr data-ticked={ticked || undefined}>
-      <td className="col--tick">
-        <input
-          type="checkbox"
-          className="tick"
-          checked={ticked}
-          onChange={onTick}
-          aria-label={`选择 ${entry.name}`}
-        />
-      </td>
-      <td>
-        <div className="filecell">
-          <FileIcon name={entry.name} dir={entry.isDir} />
-          <button
-            className={`file-link${openable ? '' : ' file-link--plain'}`}
-            onClick={onOpen}
-            onDoubleClick={entry.isDir ? undefined : onPin}
-            disabled={!openable}
-            title={
-              entry.isDir
-                ? '打开目录'
-                : entry.editable
-                  ? '编辑'
-                  : isSchematic(entry.name)
-                    ? '预览建筑'
-                    : isImage(entry.name)
-                      ? '预览'
-                      : '此文件不支持在线打开，可以下载后查看'
-            }
-          >
-            {entry.name}
-          </button>
-          {entry.symlink && <Badge>符号链接</Badge>}
-        </div>
-      </td>
-      <td className="num">{entry.isDir ? '—' : formatBytes(entry.size)}</td>
-      <td>
-        <time className="file-time" dateTime={entry.modified} title={formatDate(entry.modified)}>
-          {formatSince(entry.modified)}
-        </time>
-      </td>
-      <td className="col--ops">
-        <div className="file-actions">
-          {!entry.isDir && (
-            <a
-              className="iconbtn"
-              href={downloadURL(instanceId, entry.path)}
-              download
-              title="下载"
-              aria-label={`下载 ${entry.name}`}
-            >
-              <Glyph name="download" />
-            </a>
-          )}
-          {/* A folder a confined role can only see because it leads to the one
-              it may edit is not renamable or deletable — the panel refuses
-              both, so the buttons say so before the click. */}
-          <button
-            className="iconbtn"
-            disabled={busy || !entry.writable}
-            onClick={onRename}
-            title={entry.writable ? '重命名' : '这一项不在你的角色允许的范围内'}
-            aria-label={`重命名 ${entry.name}`}
-          >
-            <Glyph name="rename" />
-          </button>
-          <button
-            className="iconbtn iconbtn--danger"
-            disabled={busy || !entry.writable}
-            onClick={onDelete}
-            title={entry.writable ? '删除' : '这一项不在你的角色允许的范围内'}
-            aria-label={`删除 ${entry.name}`}
-          >
-            <Glyph name="trash" />
-          </button>
-        </div>
-      </td>
-    </tr>
+    <button type="button" className="fm__rail" onClick={onOpen} title={`展开${label}`}>
+      <Glyph name="chevron" className="fm__rail-mark" />
+      <span className="fm__rail-text">{label}</span>
+    </button>
   )
 }
-
-function SortHeader({
-  label,
-  column,
-  sort,
-  onSort,
-  align,
-}: {
-  label: string
-  column: SortKey
-  sort: Sort
-  onSort: (key: SortKey) => void
-  align?: 'num'
-}) {
-  const active = sort.key === column
-  return (
-    <th
-      className={align === 'num' ? 'num' : undefined}
-      aria-sort={active ? (sort.asc ? 'ascending' : 'descending') : 'none'}
-    >
-      <button className="th-sort" onClick={() => onSort(column)}>
-        {label}
-        <span className="th-sort__mark" aria-hidden="true">
-          {active ? (sort.asc ? '▲' : '▼') : '▲'}
-        </span>
-      </button>
-    </th>
-  )
-}
-
-function Breadcrumb({ dir, onNavigate }: { dir: string; onNavigate: (next: string) => void }) {
-  const parts = dir === '' ? [] : dir.split('/')
-
-  return (
-    <nav className="breadcrumb" aria-label="目录路径">
-      <button
-        className={`breadcrumb__crumb${parts.length === 0 ? ' breadcrumb__crumb--here' : ''}`}
-        onClick={() => onNavigate('')}
-        aria-current={parts.length === 0 ? 'page' : undefined}
-      >
-        <Glyph name="home" />
-        实例根目录
-      </button>
-      {parts.map((part, index) => {
-        const here = index === parts.length - 1
-        return (
-          <span key={`${part}-${index}`} className="breadcrumb__step">
-            <span className="breadcrumb__sep">/</span>
-            <button
-              className={`breadcrumb__crumb${here ? ' breadcrumb__crumb--here' : ''}`}
-              onClick={() => onNavigate(parts.slice(0, index + 1).join('/'))}
-              aria-current={here ? 'page' : undefined}
-            >
-              {part}
-            </button>
-          </span>
-        )
-      })}
-    </nav>
-  )
-}
-
-/* ---------------------------------------------------------------- editor */
-
-/**
- * The text editor, with a gutter.
- *
- * Line numbers are not decoration here: what gets opened in this box is
- * server.properties and a plugin's config.yml, and what sends someone to it is
- * a console line that ends in "at line 42". The gutter is one text node rather
- * than one element per line — a 20 000-line log is a plausible thing to open,
- * and 20 000 spans is not — and it is kept in step with the textarea by
- * translating it. All three need identical type and line-height for that to
- * hold, which is why the rules in the stylesheet share a font declaration;
- * wrapping is off for the same reason, since a soft-wrapped line takes two
- * rows on screen and one number in the margin.
- *
- * `transform`, not `scrollTop`. The mirrors used to be scrolled to the
- * textarea's own offset, which is only the same number while both boxes can
- * reach it: `wrap="off"` puts a horizontal scrollbar inside the textarea, so
- * its client box is ~13px shorter than the mirrors' and it scrolls ~13px
- * further. Assigning that offset to a mirror clamped it, and at the bottom of
- * a file the colours — and the line numbers — sat a scrollbar's height below
- * the caret. A translate is not clamped by anything, so the three layers agree
- * at every offset, including the last one.
- */
-function FileEditor({
-  editor,
-  tabs,
-  activeTab,
-  onBackToList,
-  onShowTree,
-  onSelectTab,
-  onPinTab,
-  onCloseTab,
-  busy,
-  error,
-  onChange,
-  onSave,
-  onRevert,
-  onClose,
-  onOpenHistory,
-}: {
-  editor: EditorState
-  tabs: EditorState[]
-  activeTab: string | null
-  /** Narrow layouts only: the listing is off screen there, and closing every
-   *  tab must not be the only way back to it. */
-  onBackToList: () => void
-  /** Edit mode with the tree folded away: without this there is no way back to
-   *  it, and the only thing on screen is the file you are already looking at. */
-  onShowTree?: () => void
-  onSelectTab: (path: string) => void
-  /** Double click: the tab stops being a preview. The only pin that works on
-   *  every layout — below 1200 the tree closes itself on the first click. */
-  onPinTab: (path: string) => void
-  onCloseTab: (path: string) => void
-  busy: boolean
-  error: string | null
-  onChange: (content: string) => void
-  onSave: () => void
-  onRevert: () => void
-  onClose: () => void
-  onOpenHistory?: () => void
-}) {
-  const dirty = editor.content !== editor.original
-  const gutter = useRef<HTMLDivElement | null>(null)
-  const box = useRef<HTMLTextAreaElement | null>(null)
-  // Where the caret is, for the status line. Read off the textarea on every
-  // event that can move it rather than derived from the content: a click and
-  // an arrow key both move it without changing a character.
-  const [caret, setCaret] = useState(0)
-
-  // Past this the count is recomputed on every keystroke over a string big
-  // enough to feel it, and the numbers have stopped being useful anyway.
-  const lines = useMemo(
-    () => (editor.content.length > 400_000 ? 0 : editor.content.split('\n').length),
-    [editor.content],
-  )
-  const gutterText = useMemo(
-    () => (lines === 0 ? '' : Array.from({ length: lines }, (_, index) => index + 1).join('\n')),
-    [lines],
-  )
-  // Bytes, not characters: a config full of Chinese is three times the length
-  // it looks. Memoised because the Blob is an allocation per keystroke.
-  const bytes = useMemo(() => new Blob([editor.content]).size, [editor.content])
-
-  const hl = useRef<HTMLPreElement | null>(null)
-  const lang = useMemo(() => langOf(editor.path), [editor.path])
-
-  // Past the threshold the gutter is already off (see `lines`), and tokenising
-  // a 400 000-character log on every keystroke is the same bad trade twice.
-  const huge = lines === 0
-  // A frame behind the textarea on purpose: typing must never wait on a
-  // tokeniser, and a colour that lands one frame late is invisible.
-  const deferred = useDeferredValue(editor.content)
-  const painted = useMemo(
-    () => (huge || !lang.prism ? null : highlight(deferred, lang.prism)),
-    [deferred, huge, lang.prism],
-  )
-
-  /** Puts the two mirrors where the textarea is. See the note above the
-   *  component for why this is a transform and not a scroll offset. */
-  const mirror = useCallback(() => {
-    const text = box.current
-    if (!text) return
-    const { scrollTop, scrollLeft } = text
-    if (gutter.current) gutter.current.style.transform = `translateY(${-scrollTop}px)`
-    // The gutter never moves sideways: its numbers are right-aligned against a
-    // rail that stays put, and scrolling to column 300 must not scroll them off.
-    if (hl.current) hl.current.style.transform = `translate(${-scrollLeft}px, ${-scrollTop}px)`
-  }, [])
-
-  // Switching tabs, and the colours landing a frame late, both change the
-  // layers without a scroll event: the browser clamps the textarea's offset to
-  // the new file's height, and the mirrors have to be told about it.
-  useLayoutEffect(mirror, [mirror, editor.path, painted, gutterText])
-
-  // A tab away with unsaved changes is a browser-level event; the panel's own
-  // 返回 already asks.
-  useEffect(() => {
-    if (!dirty) return
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
-    window.addEventListener('beforeunload', warn)
-    return () => window.removeEventListener('beforeunload', warn)
-  }, [dirty])
-
-  return (
-    <div className="stack">
-      <section className="panel editor-pane">
-        {/* One row per open file. The dot is the only unsaved indicator that
-            survives switching away — the 有未保存的修改 line below only ever
-            describes the file in front. */}
-        {/* Only on the layout that hides the listing. */}
-        <button type="button" className="editor__back" onClick={onBackToList}>
-          ← 文件列表
-        </button>
-
-        {onShowTree && (
-          <Button
-            type="button"
-            icon
-            className="editor__tree"
-            onClick={onShowTree}
-            title="显示目录树"
-            aria-label="显示目录树"
-          >
-            <Glyph name="folder" />
-          </Button>
-        )}
-
-        <div className="etabs" role="tablist" aria-label="打开的文件">
-          {tabs.map((tab) => (
-            <div
-              className={`etabs__tab${tab.path === activeTab ? ' etabs__tab--on' : ''}${
-                tab.preview ? ' etabs__tab--preview' : ''
-              }`}
-              key={tab.path}
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab.path === activeTab}
-                className="etabs__pick"
-                onClick={() => onSelectTab(tab.path)}
-                onDoubleClick={() => onPinTab(tab.path)}
-                title={tab.preview ? `${tab.path}（预览，双击固定）` : tab.path}
-              >
-                <FileIcon name={baseName(tab.path)} />
-                {baseName(tab.path)}
-                {tab.content !== tab.original && (
-                  <span className="etabs__dot" aria-label="有未保存的修改" />
-                )}
-              </button>
-              <button
-                type="button"
-                className="etabs__close"
-                onClick={() => onCloseTab(tab.path)}
-                aria-label={`关闭 ${baseName(tab.path)}`}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-
-        {/* Only when it says something the tab does not: a file in the root
-            would otherwise print its own name twice. */}
-        {editor.path !== baseName(editor.path) && (
-          <p className="editor__path">{editor.path}</p>
-        )}
-
-        <div className="editor">
-          {lines > 0 && (
-            <div className="editor__gutter" aria-hidden="true">
-              <div className="editor__lines" ref={gutter}>
-                {gutterText}
-              </div>
-            </div>
-          )}
-          <div className="editor__wrap">
-            {/* Under the textarea, never in front of it: it must not take a
-                click, a selection, or a screen reader's attention. Safe as
-                innerHTML — see highlight(), which escapes every character Prism
-                does not wrap itself. */}
-            {painted !== null && (
-              <pre
-                className="editor__hl"
-                ref={hl}
-                aria-hidden="true"
-                dangerouslySetInnerHTML={{ __html: painted }}
-              />
-            )}
-            <textarea
-              ref={box}
-              className={painted !== null ? 'editor__text editor__text--lit' : 'editor__text'}
-              value={editor.content}
-              onChange={(event) => onChange(event.target.value)}
-              // Both mirrors, from the one event: three layers that scroll
-              // apart are three layers that say different things about the
-              // same line.
-              onScroll={mirror}
-              onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-              onClick={(event) => setCaret(event.currentTarget.selectionStart)}
-              onKeyUp={(event) => setCaret(event.currentTarget.selectionStart)}
-              onKeyDown={(event) => {
-                // The shortcut everyone's fingers already know, and without it
-                // the browser offers to save the whole page as HTML.
-                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
-                  event.preventDefault()
-                  onSave()
-                }
-              }}
-              spellCheck={false}
-              wrap="off"
-              aria-label={`编辑 ${editor.path}`}
-            />
-          </div>
-        </div>
-
-        {/* What an editor's foot is for: the facts you check before saving,
-            none of which are worth a line of prose. 行/列 is here because the
-            thing that sends someone to this box is usually a console line
-            ending in "at line 42". */}
-        <div className="editor__status">
-          <span>{lang.label}</span>
-          <span>UTF-8</span>
-          <span>{editor.content.includes('\r\n') ? 'CRLF' : 'LF'}</span>
-          <span>
-            行 {position(editor.content, caret).line}，列 {position(editor.content, caret).column}
-          </span>
-          <span className="editor__status-right">
-            {formatBytes(bytes)}
-            {lines > 0 && ` · ${lines} 行`}
-            {huge && ' · 文件过大，已关闭高亮'}
-          </span>
-          <span className={dirty ? 'editor__dot editor__dot--dirty' : 'editor__dot'}>
-            {dirty ? '有未保存的修改' : '已是最新'}
-          </span>
-        </div>
-
-        {error && <div className="alert">{error}</div>}
-
-        <div className="actions">
-          <Button variant="primary" onClick={onSave} disabled={busy || !dirty}>
-            保存
-          </Button>
-          <Button onClick={onRevert} disabled={busy || !dirty}>
-            撤销修改
-          </Button>
-          {/* The question you ask right before editing a config you did not
-              write: what did this look like before, and who moved it. */}
-          {onOpenHistory && (
-            <Button onClick={onOpenHistory} title="在配置历史里比较这个文件">
-              配置历史
-            </Button>
-          )}
-          <span className="editor__hint">Ctrl / ⌘ + S 也能保存</span>
-          <Button onClick={onClose}>
-            关闭
-          </Button>
-        </div>
-      </section>
-    </div>
-  )
-}
-
-/* --------------------------------------------------------------- dialogs */
 
 function NameDialog({
   request,
@@ -1806,41 +1490,101 @@ function NameDialog({
   )
 }
 
-function ImagePreview({
-  instanceId,
+/**
+ * Deleting a folder, with the name typed out.
+ *
+ * A folder takes everything under it and nothing in this panel has an undo, so
+ * this is the one delete that must not be reachable by a click landing in the
+ * wrong row. The typing is not ceremony: it is the step that makes the reader
+ * say which folder, out loud, before it goes.
+ */
+function TypedDeleteDialog({
   entry,
-  onClose,
+  onAnswer,
 }: {
-  instanceId: string
   entry: FileEntry
-  onClose: () => void
+  onAnswer: (ok: boolean) => void
 }) {
-  const [broken, setBroken] = useState(false)
+  const [value, setValue] = useState('')
+  const input = useRef<HTMLInputElement | null>(null)
+  useEffect(() => input.current?.focus(), [])
+
+  const matched = value === entry.name
 
   return (
-    <Modal onClose={onClose} label={`预览 ${entry.name}`}>
-      <div className="modal__card modal__card--wide">
-        <h2 className="modal__title">{entry.name}</h2>
-        <p className="modal__lead">
-          {formatBytes(entry.size)} · {formatDate(entry.modified)}
-        </p>
-        <div className="file-preview">
-          {broken ? (
-            <p className="muted">这张图片无法显示，可能已经损坏或格式不受支持。</p>
-          ) : (
-            <img
-              src={previewURL(instanceId, entry.path)}
-              alt={entry.name}
-              onError={() => setBroken(true)}
-            />
-          )}
-        </div>
+    <Modal onClose={() => onAnswer(false)} label={`删除文件夹 ${entry.name}`}>
+      <form
+        className="modal__card"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (matched) onAnswer(true)
+        }}
+      >
+        <h2 className="modal__title">删除文件夹「{entry.name}」？</h2>
+        <p className="modal__lead">里面的所有内容会一起删除，而且无法撤销。</p>
+        {PRECIOUS.has(entry.name) && (
+          <Note tone="error">
+            <b>{entry.name}</b> 是服务器跑起来要用的目录。删掉它，这台服务器很可能起不来，
+            而且里面的东西不是从下载页能装回来的。
+          </Note>
+        )}
+        <label className="field">
+          <span>
+            输入 <code>{entry.name}</code> 以确认
+          </span>
+          <input
+            ref={input}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            spellCheck={false}
+            autoComplete="off"
+          />
+        </label>
         <div className="modal__actions">
-          <a className="btn" href={downloadURL(instanceId, entry.path)} download>
-            下载
-          </a>
-          <Button variant="primary" onClick={onClose}>
-            关闭
+          <Button type="button" onClick={() => onAnswer(false)}>
+            取消
+          </Button>
+          <Button variant="danger" type="submit" disabled={!matched}>
+            删除
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+/** Where to move the selection. The tree does the picking rather than a path
+ *  box: a typo in a box is a file in a directory nobody meant to create. */
+function MoveDialog({
+  instanceId,
+  entries,
+  from,
+  onClose,
+  onMove,
+}: {
+  instanceId: string
+  entries: FileEntry[]
+  from: string
+  onClose: () => void
+  onMove: (into: string) => void
+}) {
+  const [into, setInto] = useState(from)
+
+  return (
+    <Modal onClose={onClose} label="移动到">
+      <div className="modal__card modal__card--wide">
+        <h2 className="modal__title">移动 {entries.length} 项</h2>
+        <p className="modal__lead">{nameList(entries.map((entry) => entry.name))}</p>
+        <div className="fmove">
+          <FileTree instanceId={instanceId} path={into} onOpen={setInto} compact />
+        </div>
+        <p className="modal__lead">
+          目标：<code>{into === '' ? '实例根目录' : into}</code>
+        </p>
+        <div className="modal__actions">
+          <Button onClick={onClose}>取消</Button>
+          <Button variant="primary" disabled={into === from} onClick={() => onMove(into)}>
+            移动到这里
           </Button>
         </div>
       </div>
@@ -1848,21 +1592,116 @@ function ImagePreview({
   )
 }
 
-/** The first few names of a batch, so a confirmation says what it is about. */
-function NameList({ names }: { names: string[] }) {
-  const shown = names.slice(0, 6)
+/**
+ * The file changed under a save.
+ *
+ * Three answers rather than two, because the third is the only one that is not
+ * a guess: somebody who can see both versions can decide, and somebody who
+ * cannot is being asked to gamble with whichever half they did not write.
+ */
+function ConflictDialog({
+  conflict,
+  onClose,
+  onOverwrite,
+  onTakeTheirs,
+}: {
+  conflict: Conflict
+  onClose: () => void
+  onOverwrite: () => void
+  onTakeTheirs: () => void
+}) {
+  const [showing, setShowing] = useState(false)
+  const rows = useMemo(
+    () => (showing ? sideBySide(conflict.theirs, conflict.mine) : []),
+    [showing, conflict],
+  )
+
   return (
-    <ul className="namelist">
-      {shown.map((name) => (
-        <li key={name}>{name}</li>
-      ))}
-      {names.length > shown.length && <li className="muted">…等共 {names.length} 项</li>}
-    </ul>
+    <Modal onClose={onClose} label="文件已被改动">
+      <div className="modal__card modal__card--wide">
+        <h2 className="modal__title">{baseName(conflict.path)} 在别处被改过了</h2>
+        <p className="modal__lead">
+          从你打开它到现在，磁盘上的这个文件变了。用你的版本覆盖会把那一次改动抹掉。
+        </p>
+
+        {showing && (
+          <div className="ediff">
+            <div className="ediff__head">
+              <span>磁盘上的版本</span>
+              <span>我的版本</span>
+            </div>
+            <div className="ediff__body">
+              {rows.map((row, index) => (
+                <div
+                  key={index}
+                  className={row.same ? 'ediff__row' : 'ediff__row ediff__row--differs'}
+                >
+                  <span className="ediff__side">{row.left ?? ''}</span>
+                  <span className="ediff__side">{row.right ?? ''}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="modal__actions">
+          {!showing && <Button onClick={() => setShowing(true)}>并排查看差异</Button>}
+          <Button onClick={onTakeTheirs}>放弃我的改动，重新加载</Button>
+          <Button variant="danger" onClick={onOverwrite}>
+            用我的覆盖
+          </Button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
-/** Only the types the panel serves inline; see previewTypes in handlers_fs.go.
- *  SVG is deliberately not among them, so it is a download here too. */
+function KeysDialog({ onClose }: { onClose: () => void }) {
+  const rows: Array<[string, string]> = [
+    ['⌘/Ctrl + F', '焦点在列表时聚焦搜索框；在编辑器里则打开查找替换'],
+    ['⌘/Ctrl + S', '保存当前标签'],
+    ['⌘/Ctrl + W', '关闭当前标签'],
+    ['⌘/Ctrl + Z / ⇧Z', '编辑器撤销 / 重做'],
+    ['↑ / ↓', '在文件列表里上下移动选择'],
+    ['Enter', '打开选中项'],
+    ['Backspace', '返回上一级目录'],
+    ['Shift / ⌘Ctrl + 点击', '区间选 / 加选'],
+    ['Esc', '退出路径编辑、关闭查找框、取消多选'],
+  ]
+
+  return (
+    <Modal onClose={onClose} label="快捷键">
+      <div className="modal__card">
+        <h2 className="modal__title">快捷键</h2>
+        <dl className="fkeys">
+          {rows.map(([key, what]) => (
+            <div className="fkeys__row" key={key}>
+              <dt>{key}</dt>
+              <dd>{what}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="modal__actions">
+          <Button variant="primary" onClick={onClose}>
+            知道了
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/* -------------------------------------------------------------- helpers */
+
+/** The first few names of a batch, so a confirmation says what it is about. */
+function nameList(names: string[]): string {
+  const shown = names.slice(0, 3)
+  return names.length > shown.length ? `${shown.join('、')} 等 ${names.length} 项` : shown.join('、')
+}
+
+/** Only the raster types the daemon agrees to serve inline; see previewTypes
+ *  in handlers_fs.go. SVG is deliberately not among them — it is a document
+ *  that carries script — so it is a download here too. */
 const PREVIEWABLE = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico'])
 
 function isImage(name: string): boolean {
@@ -1877,11 +1716,56 @@ function isSchematic(name: string): boolean {
   return SCHEMATICS.has(extensionOf(name))
 }
 
-/* -------------------------------------------------------------- helpers */
+/** Extensions the daemon would have opened had the file been small enough —
+ *  see editableExtensions in serverfiles/browser.go. Kept only to tell "too
+ *  big to edit" apart from "never was text", which the listing does not say. */
+const TEXTUAL = new Set([
+  '.yml',
+  '.yaml',
+  '.json',
+  '.properties',
+  '.toml',
+  '.conf',
+  '.cfg',
+  '.ini',
+  '.xml',
+  '.txt',
+  '.md',
+  '.log',
+  '.csv',
+  '.lang',
+  '.snbt',
+  '.sh',
+  '.bat',
+  '.cmd',
+  '.ps1',
+  '.env',
+  '.mcmeta',
+  '.kts',
+])
 
-function hasFiles(transfer: DataTransfer | null): boolean {
-  // Dragging selected text across the page is not an upload.
-  return transfer != null && Array.from(transfer.types).includes('Files')
+function isTextName(name: string): boolean {
+  return TEXTUAL.has(extensionOf(name))
+}
+
+/**
+ * Whether a key event landed somewhere that is taking text.
+ *
+ * Not a tagName check alone: `contenteditable` and `role="textbox"` are both
+ * places where a keystroke belongs to something other than the page's
+ * shortcuts, and neither of them is an <input>.
+ */
+function isTyping(target: EventTarget | null): boolean {
+  const node = target as HTMLElement | null
+  if (node === null) return false
+  const tag = node.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+  return node.isContentEditable === true || node.getAttribute?.('role') === 'textbox'
+}
+
+function isInEditor(target: EventTarget | null): boolean {
+  const node = target as HTMLElement | null
+  return node?.classList?.contains('editor__text') === true
 }
 
 function nameProblem(value: string, taken: string[], initial: string): string | null {
@@ -1909,14 +1793,3 @@ function baseName(path: string): string {
   const index = path.lastIndexOf('/')
   return index < 0 ? path : path.slice(index + 1)
 }
-
-/** Line and column of an offset, both 1-based, the way an editor counts. */
-function position(text: string, offset: number): { line: number; column: number } {
-  const before = text.slice(0, Math.min(offset, text.length))
-  const lines = before.split('\n')
-  return { line: lines.length, column: lines[lines.length - 1].length + 1 }
-}
-
-/** What the status line calls this file. Extension only — the panel does not
- *  parse these, and claiming to would be claiming a syntax check it has not
- *  got. */
