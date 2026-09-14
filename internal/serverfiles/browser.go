@@ -245,6 +245,7 @@ func (b *Browser) WriteText(rel, content string) error {
 		_ = root.Remove(tmp)
 		return translate(err)
 	}
+	forget(b.dir)
 	return nil
 }
 
@@ -343,7 +344,10 @@ func (b *Browser) Create(rel string, overwrite bool) (*os.File, func(), error) {
 		return nil, nil, translate(err)
 	}
 	// The root must outlive the file handle, so hand back a combined closer.
-	return file, func() { file.Close(); root.Close() }, nil
+	// Dropping the index goes in here rather than beside the open: the bytes
+	// arrive between the two, so an index rebuilt at open time would cache a
+	// zero-length file.
+	return file, func() { file.Close(); root.Close(); forget(b.dir) }, nil
 }
 
 // Open returns a file for download along with its metadata.
@@ -394,6 +398,7 @@ func (b *Browser) Mkdir(rel string) error {
 	if err := root.MkdirAll(name, 0o755); err != nil {
 		return translate(err)
 	}
+	forget(b.dir)
 	return nil
 }
 
@@ -423,6 +428,7 @@ func (b *Browser) Remove(rel string) error {
 	if err := root.RemoveAll(name); err != nil {
 		return translate(err)
 	}
+	forget(b.dir)
 	return nil
 }
 
@@ -451,6 +457,7 @@ func (b *Browser) Rename(from, to string) error {
 	if err := root.Rename(src, dst); err != nil {
 		return translate(err)
 	}
+	forget(b.dir)
 	return nil
 }
 

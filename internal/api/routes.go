@@ -346,6 +346,12 @@ func (s *Server) protectedRoutes() []route {
 		rt("POST /api/instances/{id}/files/mkdir", s.handleMkdir, authz.CapInstanceFilesWrite),
 		rt("POST /api/instances/{id}/files/rename", s.handleRenameFile, authz.CapInstanceFilesWrite),
 		rt("GET /api/instances/{id}/files/schematic", s.handleSchematic, authz.CapInstanceFilesRead),
+		// The file index, behind the same capability as listing: it answers
+		// "which paths exist", which is what a listing answers one directory
+		// at a time.
+		rt("GET /api/instances/{id}/files/find", s.handleFindFiles, authz.CapInstanceFilesRead),
+		rt("GET /api/instances/{id}/files/search", s.handleSearchFiles, authz.CapInstanceFilesRead),
+		rt("GET /api/instances/{id}/files/usage", s.handleFileUsage, authz.CapInstanceFilesRead),
 		// The same read for an instance that already exists, confined to its
 		// own directory: it reads a file there and echoes lines of it back.
 		rt("POST /api/instances/{id}/parse-script", s.handleParseInstanceScript,

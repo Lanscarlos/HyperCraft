@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/lanscarlos/hypercraft/internal/confighist"
@@ -402,4 +403,94 @@ func init() {
 	} {
 		_ = mime.AddExtensionType(ext, kind)
 	}
+}
+
+// The three routes the file index backs: 转到文件, the sidebar's search panel,
+// and the disk figure under it. All three go through browserFor, so a confined
+// role's ⌘P cannot turn up a path it may not open — see
+// TestFileRoutesUseTheConfinedBrowser.
+
+// findLimit caps what any of the index routes will return in one response.
+// Fifty is already more than the palette shows; the ceiling exists so a
+// hand-written query string cannot ask for the whole index.
+const (
+	findLimitDefault = 50
+	findLimitMax     = 200
+)
+
+// indexLimit reads the caller's limit, or the default.
+func indexLimit(r *http.Request) int {
+	raw := r.URL.Query().Get("limit")
+	if raw == "" {
+		return findLimitDefault
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return findLimitDefault
+	}
+	return min(n, findLimitMax)
+}
+
+// indexAll reads the "include the bulk directories" switch.
+func indexAll(r *http.Request) bool {
+	switch r.URL.Query().Get("all") {
+	case "1", "true", "yes":
+		return true
+	}
+	return false
+}
+
+func (s *Server) handleFindFiles(w http.ResponseWriter, r *http.Request) {
+	inst, ok := s.instanceFromPath(w, r)
+	if !ok {
+		return
+	}
+	hits, err := s.browserFor(r, inst).Find(r.URL.Query().Get("q"), indexLimit(r), indexAll(r))
+	if err != nil {
+		s.writeFileError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, hits)
+}
+
+func (s *Server) handleSearchFiles(w http.ResponseWriter, r *http.Request) {
+	inst, ok := s.instanceFromPath(w, r)
+	if !ok {
+		return
+	}
+	hits, err := s.browserFor(r, inst).Grep(r.URL.Query().Get("q"), indexLimit(r), indexAll(r))
+	if err != nil {
+		s.writeFileError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, hits)
+}
+
+type fileUsageResponse struct {
+	Bytes int64 `json:"bytes"`
+	Files int   `json:"files"`
+	Dirs  int   `json:"dirs"`
+	// DiskTotal is the filesystem the panel's data directory sits on, carried
+	// here so the sidebar can draw "24.6 / 80 GB" from one request. It is the
+	// same reading 主机 shows; asking a second endpoint for it would mean the
+	// two could disagree by a poll interval on the same screen.
+	DiskTotal uint64 `json:"diskTotal"`
+}
+
+func (s *Server) handleFileUsage(w http.ResponseWriter, r *http.Request) {
+	inst, ok := s.instanceFromPath(w, r)
+	if !ok {
+		return
+	}
+	usage, err := s.browserFor(r, inst).Usage()
+	if err != nil {
+		s.writeFileError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, fileUsageResponse{
+		Bytes:     usage.Bytes,
+		Files:     usage.Files,
+		Dirs:      usage.Dirs,
+		DiskTotal: s.metrics.Disk().Total,
+	})
 }
