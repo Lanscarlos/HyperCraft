@@ -12,7 +12,7 @@ import { ApiError, api, downloadURL, previewURL, uploadFiles } from '../api'
 import { ask } from '../confirm'
 import { formatBytes, formatDate, formatSince } from '../format'
 import { highlight, langOf } from '../highlight'
-import { toast } from '../toast'
+import { toast, toastError, toastWarn } from '../toast'
 import { useMediaQuery } from '../useMediaQuery'
 import type { FileEntry, FileListing, InstanceStatus } from '../types'
 import { Badge } from './Badge'
@@ -315,9 +315,8 @@ export function FileManager({
       try {
         const file = await api.readFile(instance.id, path)
         openEditor({ path, content: file.content, original: file.content }, pin)
-        setError(null)
       } catch (err) {
-        setError(err instanceof Error ? err.message : '打开文件失败')
+        toastError(err instanceof Error ? err.message : '打开文件失败')
       }
     },
     [instance.id, openEditor],
@@ -405,7 +404,6 @@ export function FileManager({
   const upload = async (files: File[]) => {
     if (files.length === 0) return
     setBusy(true)
-    setError(null)
     setProgress(0)
     try {
       try {
@@ -437,7 +435,7 @@ export function FileManager({
       toast(files.length === 1 ? `已上传 ${files[0].name}` : `已上传 ${files.length} 个文件`)
       await load(dir)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '上传失败')
+      toastError(err instanceof Error ? err.message : '上传失败')
     } finally {
       setBusy(false)
       setProgress(null)
@@ -446,13 +444,12 @@ export function FileManager({
 
   const guard = async (action: () => Promise<void>, done: string) => {
     setBusy(true)
-    setError(null)
     try {
       await action()
       toast(done)
       await load(dir)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '操作失败')
+      toastError(err instanceof Error ? err.message : '操作失败')
     } finally {
       setBusy(false)
     }
@@ -486,14 +483,13 @@ export function FileManager({
     if (!name) return
     const path = joinPath(dir, name)
     setBusy(true)
-    setError(null)
     try {
       await api.writeFile(instance.id, path, '')
       await load(dir)
       openEditor({ path, content: '', original: '' }, true)
       toast(`已创建 ${name}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建失败')
+      toastError(err instanceof Error ? err.message : '创建失败')
     } finally {
       setBusy(false)
     }
@@ -671,7 +667,6 @@ export function FileManager({
     if (!ok) return
 
     setBusy(true)
-    setError(null)
     const failed: string[] = []
     for (const entry of targets) {
       try {
@@ -681,7 +676,7 @@ export function FileManager({
       }
     }
     const done = targets.length - failed.length
-    if (failed.length > 0) setError(`${failed.length} 项删除失败：${failed.join('、')}`)
+    if (failed.length > 0) toastError(`${failed.length} 项删除失败：${failed.join('、')}`)
     if (done > 0) toast(`已删除 ${done} 项`)
     setBusy(false)
     await load(dir)
@@ -693,7 +688,7 @@ export function FileManager({
   const downloadMany = async (targets: FileEntry[]) => {
     const files = targets.filter((entry) => !entry.isDir)
     if (files.length === 0) {
-      setError('选中的都是文件夹，文件夹需要逐个进入下载。')
+      toastWarn('选中的都是文件夹，文件夹需要逐个进入下载。')
       return
     }
     for (const [index, entry] of files.entries()) {
@@ -726,13 +721,12 @@ export function FileManager({
   const saveEditor = async () => {
     if (!editor || editor.content === editor.original) return
     setBusy(true)
-    setError(null)
     try {
       await api.writeFile(instance.id, editor.path, editor.content)
       patchActive({ original: editor.content })
       toast(`已保存 ${baseName(editor.path)}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '保存失败')
+      toastError(err instanceof Error ? err.message : '保存失败')
     } finally {
       setBusy(false)
     }
@@ -1136,14 +1130,11 @@ export function FileManager({
             </div>
           )}
 
-          {error && (
-            <div className="alert alert--error">
-              {error}
-              <button className="link" onClick={() => setError(null)}>
-                知道了
-              </button>
-            </div>
-          )}
+          {/* Only 读取目录失败 reaches here now; everything an operator
+              *did* — an upload, a delete, a save — reports as a toast, which
+              is what those are. A load failure needs no acknowledgement: the
+              next successful listing clears it. */}
+          {error && <div className="alert alert--error">{error}</div>}
 
           <div className="table-scroll" data-pending={pending || undefined}>
             <table className="data-table data-table--files">

@@ -379,16 +379,11 @@ function UploadReport({
   onDismiss: () => void
 }) {
   const failed = results.filter((result) => result.error)
-  if (failed.length === 0) {
-    return (
-      <div className="alert alert--ok">
-        已入库 {results.length} 个建筑。
-        <button className="link" onClick={onDismiss}>
-          知道了
-        </button>
-      </div>
-    )
-  }
+  // Nothing to report when nothing went wrong: 已入库 N 个建筑 is said once, as
+  // a toast, by the upload itself. This block used to say it a second time and
+  // then sit there until dismissed — two copies of one sentence, one of which
+  // had to be clicked away.
+  if (failed.length === 0) return null
   return (
     <div className="alert alert--warn">
       <p>

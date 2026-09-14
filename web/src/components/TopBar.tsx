@@ -33,7 +33,7 @@ interface Props {
   /** A failed start or stop. Raised to App rather than shown here: the strip is
    *  32px tall and the message is a sentence, and it has to survive being read
    *  — see the note on the banner in App. */
-  onPowerError: (message: string | null) => void
+  onPowerError: (message: string) => void
   user: User
   /** True while the sidebar is a drawer rather than a rail beside the content. */
   compact: boolean
@@ -243,7 +243,7 @@ function InstanceStrip({
   instance: InstanceStatus
   metrics: InstanceMetrics | null
   onChanged: (instance: InstanceStatus) => void
-  onError: (message: string | null) => void
+  onError: (message: string) => void
 }) {
   const live = isLive(instance.state)
   const uptime = useUptime(instance.startedAt, live)
