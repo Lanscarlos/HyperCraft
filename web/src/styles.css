@@ -1136,6 +1136,77 @@ a:hover {
   min-height: 0;
 }
 
+/* ------------------------------------------------------------ status bar
+
+   26px, and it is a line of facts rather than a place to put controls: nothing
+   in here is clickable, so nothing in here needs a target height. It is the
+   only surface in the panel that is allowed to be empty and stay — see
+   components/StatusBar.tsx. */
+.statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: none;
+  height: 26px;
+  padding: 0 12px;
+  padding-right: max(12px, env(safe-area-inset-right));
+  background: var(--surface-1);
+  border-top: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.statusbar__half {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* The open directory's absolute path lives in the left half and it is the
+     one thing in the bar that can be longer than the window. */
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.statusbar__half--end {
+  flex: none;
+  justify-content: flex-end;
+}
+
+.statusbar__slot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Facts in the bar are separated by the same middot the editor's own status
+   line uses, and the separator belongs to the run rather than to each fact —
+   otherwise a half that is empty this page renders a lone dot. */
+.statusbar__fact + .statusbar__fact::before {
+  content: '·';
+  margin-right: 10px;
+  color: var(--border-strong);
+}
+
+.statusbar__fact {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Unsaved work is the one thing in here that is not merely a reading. */
+.statusbar__fact--warn {
+  color: var(--caution-ink);
+}
+
+@media (max-width: 768px) {
+  /* On a phone the version is the first thing to go: it is the least useful
+     fact in the bar and the only one nobody is ever mid-task about. */
+  .statusbar__version {
+    display: none;
+  }
+}
+
 /* The mark, in the same 48px slot on every page. It is the rail's own
    furniture rather than the panel scope's header, which is what it used to be:
    a column whose top block is a different thing depending on where you are is
@@ -1171,7 +1242,7 @@ a:hover {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--state-update, var(--accent));
+  background: var(--accent);
   box-shadow: 0 0 0 2px var(--surface-1);
 }
 

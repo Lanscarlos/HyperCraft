@@ -25,6 +25,7 @@ import { SchematicLibraryPage } from './components/SchematicLibraryPage'
 import { SchematicMarket } from './components/SchematicMarket'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
+import { StatusBar } from './components/StatusBar'
 import { CapabilityProvider } from './useCan'
 import { ToastStack } from './components/Toast'
 import { TopBar } from './components/TopBar'
@@ -814,6 +815,8 @@ export default function App() {
               )}
             </ErrorBoundary>
           </main>
+
+          <StatusBar version={user.version} />
         </div>
 
         {paletteOpen && (
