@@ -35,7 +35,6 @@ interface Props {
   onDeleted: () => void
   onOpenSection: (section: InstanceSection) => void
   /** A section can ask the shell to fold to the rail. 文件 does, in edit mode. */
-  onWorkspaceChange?: (full: boolean) => void
   /** Opens 插件市场 in the library, with this server as the compatibility
    *  reference. Downloading is panel-wide and happens there. */
   onOpenBrowse: () => void
@@ -74,7 +73,6 @@ export function InstanceView({
   onChanged,
   onDeleted,
   onOpenSection,
-  onWorkspaceChange,
   onOpenBrowse,
   onOpenLibraryList,
   onOpenCoreLibrary,
@@ -149,7 +147,6 @@ export function InstanceView({
           <FileManager
             instance={instance}
             active={section === 'files'}
-            onWorkspaceChange={onWorkspaceChange}
             jump={jump}
             onOpenHistory={(path) =>
               openSectionAt('config-history', () =>

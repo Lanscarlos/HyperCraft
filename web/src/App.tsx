@@ -234,15 +234,6 @@ export default function App() {
   const compact = useMediaQuery(DRAWER_QUERY)
   const [navOpen, setNavOpen] = useState(false)
   const [railed, setRailed] = useState(() => window.localStorage.getItem(RAIL_KEY) === 'rail')
-  // A section can ask the shell to get out of the way; the file pane's edit
-  // mode does. Kept separate from `railed` rather than written into it: the
-  // operator's own choice has to survive the mode, and leaving it untouched is
-  // what makes putting the sidebar back free.
-  const [workspace, setWorkspace] = useState(false)
-  // The keydown listener below is installed once, so it reads this through a
-  // ref rather than through a closure that would still say false forever.
-  const workspaceRef = useRef(workspace)
-  workspaceRef.current = workspace
   const sidebarRef = useRef<HTMLElement | null>(null)
   const navToggle = useRef<HTMLButtonElement | null>(null)
 
@@ -326,13 +317,6 @@ export default function App() {
     if (route.kind === 'instance') remember(route.id)
   }, [route, remember])
 
-  // The third way home. A section unmounted by a route change never gets to
-  // hand the shell back itself, and a sidebar stuck at 64px with no way to
-  // widen it is the worst outcome this feature can produce.
-  useEffect(() => {
-    if (route.kind !== 'instance') setWorkspace(false)
-  }, [route.kind])
-
   // 代理连线 stopped being a top-level page and became a section of both ends
   // of a link (see routes.ts). The path stays, because it is in bookmarks and
   // in the command palette, and lands on the end most links are about — the
@@ -367,9 +351,6 @@ export default function App() {
       // The console command line and the host terminal are both real text
       // inputs where '[' is a character, not a shortcut.
       if (typing) return
-      // Not the operator's to fold while a section is holding the rail:
-      // toggling a value nothing reads is a key that looks broken.
-      if (workspaceRef.current) return
       event.preventDefault()
       setRailed((value) => !value)
     }
@@ -549,7 +530,7 @@ export default function App() {
       <div
         className="app"
         data-nav={compact && navOpen ? 'open' : undefined}
-        data-rail={!compact && (railed || workspace) ? 'on' : undefined}
+        data-rail={!compact && railed ? 'on' : undefined}
       >
         {/* First thing in the tab order, visible only once it has focus: the
             sidebar is a dozen-odd stops on a keyboard, and the content is behind
@@ -562,7 +543,7 @@ export default function App() {
           route={route}
           scope={scope}
           compact={compact}
-          railed={!compact && (railed || workspace)}
+          railed={!compact && railed}
           onToggleRail={() => setRailed((on) => !on)}
           navigate={navigate}
           follow={follow}
@@ -780,7 +761,6 @@ export default function App() {
                       void refresh()
                     }}
                     onOpenSection={(section) => openInstance(route.id, section)}
-                    onWorkspaceChange={setWorkspace}
                     onOpenInstance={(id) => openInstance(id)}
                     onCreate={() => navigate({ kind: 'new-instance' })}
                     // Acquiring a plugin is a panel-wide act, so it happens in one
