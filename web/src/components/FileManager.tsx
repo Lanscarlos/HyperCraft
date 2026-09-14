@@ -12,10 +12,10 @@ import { extensionOf } from './FileIcon'
 import { FileBar } from './FileBar'
 import { FileEditor } from './FileEditor'
 import type { EditorPane, FileKind, OpenFile } from './FileEditor'
-import { FileList } from './FileList'
+import { DensitySwitch, FileList } from './FileList'
+import { FileNav } from './FileNav'
 import type { Density, SelectMode, Sort, SortKey } from './FileList'
 import { FileTree } from './FileTree'
-import { Glyph } from './Glyph'
 import type { MenuItem } from './Menu'
 import { Modal } from './Modal'
 import { Note } from './Note'
@@ -83,21 +83,20 @@ interface Conflict {
 /** Long enough for the browser to start one download before the next click. */
 const DOWNLOAD_GAP = 400
 
-/** How wide each rail may be dragged, and the floor under the editor. */
-const TREE_MIN = 180
-const TREE_MAX = 360
-const LIST_MIN = 220
+/** How wide the navigation column may be dragged, and the floor under the
+ *  editor. The tree and the listing share one column now, so there is one
+ *  width rather than two. */
+const NAV_MIN = 220
 /** 详情 carries two more columns, and 264px cannot hold them: the name track
  *  is what gives, and a file list without filenames is not a file list. This
- *  is the width four columns need before anything has to be truncated. */
-const LIST_DETAIL_MIN = 380
-const LIST_MAX = 560
+ *  is the width four columns need before anything has to be truncated, and it
+ *  is the column's default for that reason — 浏览 opens on 详情, and a default
+ *  that cannot draw its own default density is a default that jumps. */
+const NAV_DETAIL_MIN = 380
+const NAV_MAX = 560
 const EDITOR_MIN = 640
-/* The grid has no gap: each handle is its own 14px gutter track. See .fm. */
-const GAP = 0
+/* The grid has no gap: the handle is its own 14px gutter track. See .fm. */
 const GRIP = 14
-/** A folded rail: wide enough for the button that unfolds it, and nothing. */
-const RAIL = 36
 
 /**
  * Twelve is where a tab strip stops being a strip and becomes a list you
@@ -196,21 +195,20 @@ export function FileManager({
   // taking width off the editor.
   const tight = useMediaQuery('(max-width: 1280px)')
 
-  const widthKey = `hc.files.cols.${instance.id}`
-  const [cols, setCols] = useState(() => readPref(widthKey, { tree: 216, list: 264 }))
+  // The column's width, where its divider sits, and which of its two sections
+  // are open — one record because they are one control, and a new key rather
+  // than a migration of the old {tree,list} pair, which described a layout
+  // that no longer exists.
+  const navKey = `hc.files.nav.${instance.id}`
+  const [nav, setNav] = useState(() =>
+    readPref(navKey, { width: NAV_DETAIL_MIN, split: 0.55, tree: true, list: true }),
+  )
   useEffect(() => {
-    writePref(widthKey, cols)
-  }, [widthKey, cols])
+    writePref(navKey, nav)
+  }, [navKey, nav])
 
-  // null means "whatever the width calls for". Between 1024 and 1280 three
-  // columns fit but the third one is left with about 400px, which is not an
-  // editor — so the tree, which the breadcrumb can stand in for, goes to its
-  // rail until somebody asks for it back. Same shape as `density` below: the
-  // automatic answer is a default, not a rule that overrules a choice.
-  const [treeFold, setTreeFold] = useState<boolean | null>(null)
-  const [listFolded, setListFolded] = useState(false)
-  // Below the drawer width the listing is not a column at all; this is how it
-  // comes back over the editor for one pick.
+  // Below the drawer width the navigation is not a column at all; this is how
+  // it comes back over the editor for one pick.
   const [drawer, setDrawer] = useState(false)
 
   const densityKey = `hc.files.density.${instance.id}`
@@ -222,14 +220,13 @@ export function FileManager({
   // automatic default is a convenience; it does not get to overrule a choice
   // made on purpose.
   const density: Density = chosenDensity ?? (open || tight ? 'compact' : 'detail')
-  const treeFolded = treeFold ?? (tight && open)
-  // Derived rather than written back into `cols`: 详情 can be arrived at two
+  // Derived rather than written back into `nav`: 详情 can be arrived at two
   // ways — switching density with a file open, or opening a file while 详情 is
   // already the choice — and a stored width would have to be corrected on both
   // paths. The stored width is what the operator dragged; this is the floor
-  // the columns need, and the larger of the two wins.
-  const listFloor = density === 'detail' ? LIST_DETAIL_MIN : LIST_MIN
-  const listWidth = Math.max(cols.list, listFloor)
+  // the listing's columns need, and the larger of the two wins.
+  const navFloor = density === 'detail' ? NAV_DETAIL_MIN : NAV_MIN
+  const navWidth = Math.max(nav.width, navFloor)
 
   const load = useCallback(
     async (target: string) => {
@@ -992,23 +989,18 @@ export function FileManager({
    * the editor's own track would simply overflow the grid and push the pane
    * sideways instead of stopping the drag.
    */
-  const drag = (which: 'tree' | 'list') => (event: React.PointerEvent<HTMLDivElement>) => {
-    if (tight) return
+  const drag = (event: React.PointerEvent<HTMLDivElement>) => {
     const frame = grid.current
     if (!frame) return
     event.preventDefault()
     const startX = event.clientX
-    const from = cols[which]
+    const from = navWidth
     const room = frame.clientWidth
-    const floor = which === 'tree' ? TREE_MIN : listFloor
-    const roof = which === 'tree' ? TREE_MAX : LIST_MAX
 
     const move = (at: PointerEvent) => {
-      const other = which === 'tree' ? (open ? listWidth : 0) : cols.tree
-      const spent = other + (GRIP + GAP) * (open ? 2 : 1)
-      const ceiling = Math.max(floor, Math.min(roof, room - spent - (open ? EDITOR_MIN : 0)))
-      const next = Math.min(ceiling, Math.max(floor, from + (at.clientX - startX)))
-      setCols((current) => ({ ...current, [which]: next }))
+      const ceiling = Math.max(navFloor, Math.min(NAV_MAX, room - GRIP - EDITOR_MIN))
+      const next = Math.min(ceiling, Math.max(navFloor, from + (at.clientX - startX)))
+      setNav((current) => ({ ...current, width: next }))
     }
     const stop = () => {
       window.removeEventListener('pointermove', move)
@@ -1105,23 +1097,11 @@ export function FileManager({
 
   /* ------------------------------------------------------------ render */
 
+  // The two sections collapse from their own headers, so there is nothing here
+  // about folding them: a control that exists in two places is two places to
+  // learn it and one of them to keep in step.
   const more: MenuItem[] = [
-    ...(narrow && open
-      ? [{ label: '文件列表', onSelect: () => setDrawer(true) }]
-      : [
-          {
-            label: treeFolded ? '展开目录树' : '折叠目录树',
-            onSelect: () => setTreeFold(!treeFolded),
-          },
-        ]),
-    ...(open && !narrow
-      ? [
-          {
-            label: listFolded ? '展开文件列表' : '折叠文件列表',
-            onSelect: () => setListFolded(!listFolded),
-          },
-        ]
-      : []),
+    ...(narrow ? [{ label: '目录与文件', onSelect: () => setDrawer(true) }] : []),
     { label: '复制当前路径', onSelect: () => void navigator.clipboard?.writeText(dir || '/') },
     { label: '快捷键', onSelect: () => setKeys(true) },
   ]
@@ -1223,27 +1203,29 @@ export function FileManager({
     )
   }
 
-  // Below the drawer width there is room for one column, so the tree goes
-  // entirely — the breadcrumb walks the same tree and costs no width — and the
-  // listing is either that column or an overlay over the editor.
-  const treeShown = !narrow
-  const listShown = !narrow || !open || drawer
-  const template = [
-    ...(treeShown ? [treeFolded ? `${RAIL}px` : `${cols.tree}px`, `${GRIP}px`] : []),
-    ...(narrow
-      ? ['minmax(0, 1fr)']
-      : [
-          // Capped at a share of the pane as well as at its own floor: 详情's
-          // 380 must not be allowed to leave the editor with nothing at a
-          // window where 380 is most of the room.
-          listFolded && open
-            ? `${RAIL}px`
-            : open
-              ? `min(${listWidth}px, 46%)`
-              : 'minmax(0, 1fr)',
-          ...(open ? [`${GRIP}px`, 'minmax(0, 1fr)'] : []),
-        ]),
-  ].join(' ')
+  // Two tracks, always: the navigation column and the editor. With nothing
+  // open the editor shows its own empty state rather than the layout changing
+  // shape — 浏览 and 编辑 are the same arrangement, and the only thing that
+  // differs between them is whether there is a file in the right-hand half.
+  //
+  // Below the drawer width there is room for one, so the navigation column
+  // stops being a column and becomes something pulled over the editor. The
+  // breadcrumb still walks the same tree and costs no width.
+  const navShown = !narrow || drawer || !open
+  const template = narrow
+    ? 'minmax(0, 1fr)'
+    : // The column takes the width it was dragged to, but never more than the
+      // room left once the editor has its floor — a fixed 380 was giving the
+      // editor 546px at a 1200px window, which is narrower than the two
+      // columns it replaced ever left it. Expressed in CSS rather than
+      // measured here because the pane's width is the grid's own `100%` and
+      // reading it in JS would mean a resize observer to say the same thing.
+      //
+      // The inner floor is the density's, not the absolute minimum: choosing
+      // 详情 at a narrow window is choosing four columns over editor width,
+      // and this is where that choice is honoured.
+      `min(${navWidth}px, max(${navFloor}px, 100% - ${GRIP}px - ${EDITOR_MIN}px)) ` +
+      `${GRIP}px minmax(0, 1fr)`
 
   const stats = {
     count: entries.length,
@@ -1257,10 +1239,6 @@ export function FileManager({
       entries={rows}
       total={entries.length}
       density={density}
-      onDensity={(next) => {
-        setChosenDensity(next)
-        writePref(densityKey, next)
-      }}
       sort={sort}
       onSort={toggleSort}
       selected={selected}
@@ -1286,6 +1264,35 @@ export function FileManager({
       busy={busy}
       writable={listing.writable}
       bodyRef={listBody}
+    />
+  )
+
+  const navColumn = (
+    <FileNav
+      split={nav.split}
+      onSplit={(next) => setNav((current) => ({ ...current, split: next }))}
+      treeOpen={nav.tree}
+      listOpen={nav.list}
+      onToggleTree={() => setNav((current) => ({ ...current, tree: !current.tree }))}
+      onToggleList={() => setNav((current) => ({ ...current, list: !current.list }))}
+      tree={
+        <FileTree
+          instanceId={instance.id}
+          path={dir}
+          reloadKey={treeKey}
+          onOpen={(next) => void load(next)}
+        />
+      }
+      list={list}
+      listTools={
+        <DensitySwitch
+          density={density}
+          onDensity={(next) => {
+            setChosenDensity(next)
+            writePref(densityKey, next)
+          }}
+        />
+      }
     />
   )
 
@@ -1327,62 +1334,39 @@ export function FileManager({
         style={{ gridTemplateColumns: template }}
         data-narrow={narrow ? '' : undefined}
       >
-        {treeShown && (
-          <>
-            {treeFolded ? (
-              <Rail label="目录" onOpen={() => setTreeFold(false)} />
-            ) : (
-              <aside className="fm__tree">
-                <FileTree
-                  instanceId={instance.id}
-                  path={dir}
-                  reloadKey={treeKey}
-                  onOpen={(next) => void load(next)}
-                />
-              </aside>
-            )}
-            <div
-              className="fm__grip"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="调整目录树宽度"
-              data-off={tight || treeFolded || undefined}
-              onPointerDown={drag('tree')}
-            />
-          </>
-        )}
-
-        {listShown &&
-          (listFolded && open && !narrow ? (
-            <Rail label="文件" onOpen={() => setListFolded(false)} />
-          ) : narrow && open ? (
+        {navShown &&
+          (narrow ? (
             <div className="fm__drawer">
-              {list}
-              <button
-                type="button"
-                className="fm__drawer-close"
-                onClick={() => setDrawer(false)}
-                aria-label="收起文件列表"
-              >
-                ×
-              </button>
+              {navColumn}
+              {/* Only when there is something behind it. With nothing open the
+                  drawer is the page, and a close button that reveals an empty
+                  editor is a button that appears not to work. */}
+              {open && (
+                <button
+                  type="button"
+                  className="fm__drawer-close"
+                  onClick={() => setDrawer(false)}
+                  aria-label="收起目录与文件"
+                >
+                  ×
+                </button>
+              )}
             </div>
           ) : (
-            list
+            navColumn
           ))}
 
-        {open && !narrow && (
+        {!narrow && (
           <div
             className="fm__grip"
             role="separator"
             aria-orientation="vertical"
-            aria-label="调整文件列表宽度"
-            data-off={tight || listFolded || undefined}
-            onPointerDown={drag('list')}
+            aria-label="调整目录与文件列的宽度"
+            onPointerDown={drag}
           />
         )}
 
-        {open && (
+        {(!narrow || (!drawer && open)) && (
           <FileEditor
             findTick={findTick}
             instanceId={instance.id}
@@ -1437,16 +1421,6 @@ export function FileManager({
 }
 
 /* ------------------------------------------------------------- pieces */
-
-/** A folded rail: the name of what is behind it, and the way back. */
-function Rail({ label, onOpen }: { label: string; onOpen: () => void }) {
-  return (
-    <button type="button" className="fm__rail" onClick={onOpen} title={`展开${label}`}>
-      <Glyph name="chevron" className="fm__rail-mark" />
-      <span className="fm__rail-text">{label}</span>
-    </button>
-  )
-}
 
 function NameDialog({
   request,

@@ -45,7 +45,6 @@ export interface FileListProps {
    *  the filter is hiding. */
   total: number
   density: Density
-  onDensity: (next: Density) => void
   sort: Sort
   onSort: (key: SortKey) => void
   /** Ticked rows — what the bulk bar acts on. A plain click is not in here:
@@ -85,13 +84,41 @@ export interface FileListProps {
 /** What a directory rule refuses, on the control rather than as a banner. */
 const NOT_YOURS = '这一项不在你的角色允许的范围内'
 
+/** The 紧凑 / 详情 switch, drawn by whatever owns the listing's head. It is not
+ *  inside FileList because stacked the listing has no head of its own — the
+ *  navigation column's 文件 bar is its head. */
+export function DensitySwitch({
+  density,
+  onDensity,
+}: {
+  density: Density
+  onDensity: (next: Density) => void
+}) {
+  return (
+    <div className="segmented segmented--inline" role="group" aria-label="列表密度">
+      {(['compact', 'detail'] as const).map((value) => (
+        <button
+          key={value}
+          type="button"
+          className={`segmented__option${
+            density === value ? ' segmented__option--active' : ''
+          }`}
+          aria-pressed={density === value}
+          onClick={() => onDensity(value)}
+        >
+          {value === 'compact' ? '紧凑' : '详情'}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function FileList({
   instanceId,
   dir,
   entries,
   total,
   density,
-  onDensity,
   sort,
   onSort,
   selected,
@@ -191,7 +218,7 @@ export function FileList({
           or what is about to happen to the things ticked in it. They never
           coexist — a bulk bar stacked under a title is a second row of
           furniture above a list that has just lost half its height. */}
-      {picked.length > 0 ? (
+      {picked.length > 0 && (
         <div className="flist__bulk">
           <span className="flist__bulk-count">
             已选 {picked.length} 项 · {formatBytes(pickedBytes)}
@@ -213,32 +240,6 @@ export function FileList({
           <button type="button" className="link flist__bulk-clear" onClick={onClearSelection}>
             取消选择
           </button>
-        </div>
-      ) : (
-        <div className="flist__head">
-          <span className="flist__where">当前目录</span>
-          <div className="segmented segmented--inline" role="group" aria-label="列表密度">
-            <button
-              type="button"
-              className={`segmented__option${
-                density === 'compact' ? ' segmented__option--active' : ''
-              }`}
-              aria-pressed={density === 'compact'}
-              onClick={() => onDensity('compact')}
-            >
-              紧凑
-            </button>
-            <button
-              type="button"
-              className={`segmented__option${
-                density === 'detail' ? ' segmented__option--active' : ''
-              }`}
-              aria-pressed={density === 'detail'}
-              onClick={() => onDensity('detail')}
-            >
-              详情
-            </button>
-          </div>
         </div>
       )}
 
