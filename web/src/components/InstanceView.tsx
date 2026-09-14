@@ -16,6 +16,7 @@ import { LaunchSettings } from './LaunchSettings'
 import { NetworkPage } from './NetworkPage'
 import { ResourcePanel } from './ResourcePanel'
 import { ServerConfigPage } from './ServerConfigPage'
+import { StartupSettings } from './StartupSettings'
 import { VelocityConfig } from './VelocityConfig'
 
 interface Props {
@@ -224,6 +225,11 @@ export function InstanceView({
               )
             }
           />
+        </Pane>
+      )}
+      {visited.has('startup') && (
+        <Pane id="startup" active={section === 'startup'} leaving={leaving === 'startup'} scroll>
+          <StartupSettings instance={instance} />
         </Pane>
       )}
       {visited.has('settings') && (

@@ -15,6 +15,7 @@ export type IconName =
   | 'cores'
   | 'plugins'
   | 'terminal'
+  | 'bolt'
   | 'settings'
   | 'menu'
   | 'collapse'
@@ -103,6 +104,10 @@ const PATHS: Record<IconName, ReactElement> = {
       <path d="m7.5 10 2.5 2.5-2.5 2.5M13 15h3.5" />
     </>
   ),
+  // A bolt for 启动方式, next to the sliders for 实例设置: the pair sit
+  // together in the sidebar and the only thing distinguishing them at a
+  // glance is the glyph, so they must not both be abstract shapes.
+  bolt: <polygon points="13.5 2.5 4.5 13.5 11 13.5 10.5 21.5 19.5 10.5 13 10.5" />,
   // Sliders rather than a gear: the page behind it is four switches.
   settings: (
     <>

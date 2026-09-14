@@ -462,6 +462,7 @@ const INSTANCE_ICONS: Record<string, IconName> = {
   network: 'network',
   properties: 'properties',
   'config-history': 'history',
+  startup: 'bolt',
   settings: 'settings',
 }
 
