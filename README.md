@@ -76,8 +76,8 @@
 
 ```bash
 sudo mkdir -p /opt/hypercraft && cd /opt/hypercraft
-sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v0.4.0/hypercraft-0.4.0-linux-amd64.tar.gz
-sudo tar -xzf hypercraft-0.4.0-linux-amd64.tar.gz --strip-components=1
+sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v0.5.0/hypercraft-0.5.0-linux-amd64.tar.gz
+sudo tar -xzf hypercraft-0.5.0-linux-amd64.tar.gz --strip-components=1
 sudo cp hypercraft.service /etc/systemd/system/ && sudo systemctl enable --now hypercraft
 sudo journalctl -u hypercraft -f     # 首次启动的随机管理员密码打印在这里，只显示一次
 ```
