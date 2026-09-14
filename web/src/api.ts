@@ -33,7 +33,10 @@ import type {
   JavaInstallJob,
   JavaRuntime,
   InstanceInput,
+  FileHit,
   FileListing,
+  FileSearchHit,
+  FileUsage,
   InstanceMetrics,
   InstancePlugin,
   InstancePluginList,
@@ -735,6 +738,24 @@ export const api = {
       'GET',
       `/api/instances/${id}/files/schematic?path=${encodeURIComponent(filePath)}`,
     ),
+
+  /** Fuzzy path search over one instance, matched on the server: an instance
+   *  can hold tens of thousands of paths and the palette shows fifty. `all`
+   *  reaches into world regions, libraries and the other machine-generated
+   *  bulk the index skips by default. */
+  findFiles: (id: string, q: string, opts: { limit?: number; all?: boolean } = {}) =>
+    request<FileHit[]>(
+      'GET',
+      `/api/instances/${id}/files/find?q=${encodeURIComponent(q)}` +
+        `&limit=${opts.limit ?? 50}${opts.all ? '&all=1' : ''}`,
+    ),
+  searchFiles: (id: string, q: string, opts: { limit?: number; all?: boolean } = {}) =>
+    request<FileSearchHit[]>(
+      'GET',
+      `/api/instances/${id}/files/search?q=${encodeURIComponent(q)}` +
+        `&limit=${opts.limit ?? 40}${opts.all ? '&all=1' : ''}`,
+    ),
+  fileUsage: (id: string) => request<FileUsage>('GET', `/api/instances/${id}/files/usage`),
 
   // 建筑库. Panel-wide, like the plugin library: a build is held once and
   // copied into whichever server wants it.

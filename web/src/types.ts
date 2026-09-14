@@ -2416,6 +2416,49 @@ export const UPDATE_MIRRORS: { label: string; value: string; note: string }[] = 
 
 // ----------------------------------------------------------------- files
 
+/**
+ * One path the file index matched, from `⌘P`.
+ *
+ * `match` is the set of offsets *in `path`* the server's matcher used, and it
+ * is carried rather than recomputed here: two matchers drift, and the first
+ * symptom is a highlight that disagrees with the ranking beside it.
+ */
+export interface FileHit {
+  path: string
+  name: string
+  isDir: boolean
+  size: number
+  modified: string
+  score: number
+  match: number[]
+}
+
+/** One line of a file the content search matched. */
+export interface FileSearchLine {
+  n: number
+  text: string
+  /** Where the needle starts in `text`, which is a window around the hit
+   *  rather than the whole line — see window() in internal/serverfiles. */
+  col: number
+  len: number
+}
+
+/** One file the sidebar's search panel matched. `lines` is empty when only the
+ *  file's name matched, which is still a hit. */
+export interface FileSearchHit {
+  path: string
+  name: string
+  lines: FileSearchLine[]
+}
+
+/** What one instance weighs, and what the disk under it holds. */
+export interface FileUsage {
+  bytes: number
+  files: number
+  dirs: number
+  diskTotal: number
+}
+
 export interface FileEntry {
   name: string
   path: string
