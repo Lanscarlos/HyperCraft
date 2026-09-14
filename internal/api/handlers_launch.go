@@ -3,11 +3,14 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/lanscarlos/hypercraft/internal/instance"
+	"github.com/lanscarlos/hypercraft/internal/mcprops"
 	"github.com/lanscarlos/hypercraft/internal/plugin"
 	"github.com/lanscarlos/hypercraft/internal/serverfiles"
 )
@@ -172,6 +175,158 @@ func (s *Server) handleLaunchPreview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// aikarStyle reports whether these flags are the preset that needs a fixed
+// heap. G1NewSizePercent is the tell: it is in Aikar's set and in nothing a
+// person types by hand.
+func aikarStyle(args []string) bool {
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-XX:G1NewSizePercent") {
+			return true
+		}
+	}
+	return false
+}
+
+// heapIssues reports on -Xms against -Xmx, but only where the flags in use
+// actually care. Plenty of servers run a small Xms on purpose.
+//
+// This used to be a warning banner living inside the JVM arguments card. As a
+// banner it was there whether or not it applied to you; as a check it appears
+// only when it bites, and it can carry the button that fixes it.
+func heapIssues(cfg instance.Config) []launchIssue {
+	if !aikarStyle(cfg.JVMArgs) || cfg.MaxMemoryMB <= 0 {
+		return nil
+	}
+	if cfg.MinMemoryMB == cfg.MaxMemoryMB {
+		return []launchIssue{{
+			Level:   launchLevelOK,
+			Code:    "heap-mismatch",
+			Message: fmt.Sprintf("最小和最大内存都是 %d MB，符合这套参数的前提。", cfg.MaxMemoryMB),
+		}}
+	}
+	return []launchIssue{{
+		Level: launchLevelWarn,
+		Code:  "heap-mismatch",
+		Message: fmt.Sprintf(
+			"这套参数的前提是最小和最大内存一样大，现在是 %d / %d MB。堆区大小固定能避免运行中扩容造成的停顿。",
+			cfg.MinMemoryMB, cfg.MaxMemoryMB),
+		Fix: &launchFix{
+			Label: fmt.Sprintf("把 Xms 改成 %d", cfg.MaxMemoryMB),
+			Patch: map[string]any{"minMemoryMB": cfg.MaxMemoryMB},
+		},
+	}}
+}
+
+// jarCountIssue is the sentence that used to sit under the jar dropdown. It is
+// a check and not a hint: "目录下找到 1 个 jar" is how the reader confirms the
+// panel is looking in the directory they think it is.
+func (s *Server) jarCountIssue(cfg instance.Config) []launchIssue {
+	if cfg.Directory == "" {
+		return nil
+	}
+	entries, err := unconfinedBrowser(cfg.Directory).List("")
+	if err != nil {
+		// The directory not being there yet is already reported by
+		// missingFileIssues; saying it twice helps nobody.
+		return nil
+	}
+	count := 0
+	for _, entry := range entries {
+		if !entry.IsDir && strings.HasSuffix(strings.ToLower(entry.Name), ".jar") {
+			count++
+		}
+	}
+	if count == 0 {
+		return []launchIssue{{
+			Level:   launchLevelWarn,
+			Code:    "jar-count",
+			Message: "实例目录下没有 jar 文件。从核心库装一个，或者自己传一个进去。",
+		}}
+	}
+	return []launchIssue{{
+		Level:   launchLevelOK,
+		Code:    "jar-count",
+		Message: fmt.Sprintf("实例目录下找到 %d 个 jar 文件。", count),
+	}}
+}
+
+// serverPort is what this server's own server.properties says it listens on.
+//
+// Empty means "not a fact yet": a server that has never run has no
+// server.properties, and vanilla's 25565 is a default rather than a decision.
+// Guessing it would flag every pair of fresh instances against each other.
+func serverPort(cfg instance.Config) string {
+	if cfg.Directory == "" {
+		return ""
+	}
+	// Stat first: mcprops.Load answers a missing file with an empty one and no
+	// error, which would turn "never run" into vanilla's default below and
+	// flag every pair of fresh instances against each other.
+	path := filepath.Join(cfg.Directory, "server.properties")
+	if _, err := os.Stat(path); err != nil {
+		return ""
+	}
+	file, err := mcprops.Load(path)
+	if err != nil {
+		return ""
+	}
+	value, ok := file.Get("server-port")
+	if !ok {
+		// The file exists and does not say, which is vanilla's default.
+		return "25565"
+	}
+	return strings.TrimSpace(value)
+}
+
+// portIssue cross-checks this server's port against every other one's.
+//
+// Read-only on purpose: the port is edited in 服务器配置 and this page gets no
+// field for it. Two servers on one port is a boot failure whose log message
+// does not mention the other server, so it is worth saying here even though
+// the fix is somewhere else.
+//
+// Proxies sit this out: their bind address is in velocity.toml, a different
+// file with a different shape, and a check that silently only half-works is
+// worse than one that is not offered.
+func (s *Server) portIssue(self *instance.Instance, cfg instance.Config) []launchIssue {
+	if cfg.IsProxy() {
+		return nil
+	}
+	port := serverPort(cfg)
+	if port == "" {
+		return nil
+	}
+	// allInstances rather than visibleInstances, for the reason scope.go gives
+	// for exactly this case: a port already taken is taken whoever took it,
+	// and hiding a clash with a server the reader cannot see would just let
+	// them break it. Naming it is the accepted cost.
+	clashes := make([]string, 0)
+	for _, other := range s.allInstances() {
+		if other.ID() == self.ID() {
+			continue
+		}
+		otherCfg := other.Config()
+		if otherCfg.IsProxy() {
+			continue
+		}
+		if serverPort(otherCfg) == port {
+			clashes = append(clashes, otherCfg.Name)
+		}
+	}
+	if len(clashes) > 0 {
+		return []launchIssue{{
+			Level:   launchLevelWarn,
+			Code:    "port-conflict",
+			Message: "端口 " + port + " 和这些实例撞了：" + strings.Join(clashes, "、") + "。在「服务器配置」里改端口。",
+		}}
+	}
+	return []launchIssue{{
+		Level:   launchLevelOK,
+		Code:    "port-conflict",
+		Message: "端口 " + port + " 没有和别的实例撞。",
+	}}
+}
+
 func launchMode(cfg instance.Config) string {
 	if len(cfg.ArgFiles) > 0 {
 		return "argfile"
@@ -192,6 +347,9 @@ func (s *Server) checkJarLaunch(inst *instance.Instance, cfg instance.Config) []
 	default:
 		issues = append(issues, missingFileIssues(cfg, "jar-missing", jar)...)
 	}
+	issues = append(issues, s.jarCountIssue(cfg)...)
+	issues = append(issues, heapIssues(cfg)...)
+	issues = append(issues, s.portIssue(inst, cfg)...)
 	return append(issues, s.checkLoaderKnown(inst, cfg)...)
 }
 
@@ -204,6 +362,10 @@ func (s *Server) checkArgFileLaunch(inst *instance.Instance, cfg instance.Config
 	for _, file := range cfg.ArgFiles {
 		issues = append(issues, missingFileIssues(cfg, "argfile-missing", file)...)
 	}
+	// No heap check here: in argfile mode the panel does not put -Xms/-Xmx on
+	// the command line at all, so there is no mismatch of its making to
+	// report. See Config.commandSegments.
+	issues = append(issues, s.portIssue(inst, cfg)...)
 	return append(issues, s.checkLoaderKnown(inst, cfg)...)
 }
 

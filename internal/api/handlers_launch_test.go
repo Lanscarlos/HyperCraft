@@ -289,3 +289,108 @@ func TestLaunchPreviewOmitsTheHeapInArgFileMode(t *testing.T) {
 		t.Errorf("argfile missing: %q", instance.FlattenSegments(out.Segments))
 	}
 }
+
+// Aikar's flags size the heap up front; a server that starts at 1 GB and grows
+// to 2.5 pauses doing it, which is the exact thing those flags were picked to
+// avoid. So the check knows how to propose the fix, not just name the problem.
+func TestHeapMismatchProposesRaisingXms(t *testing.T) {
+	cfg := instance.Config{
+		MinMemoryMB: 1024,
+		MaxMemoryMB: 2560,
+		JVMArgs:     []string{"-XX:+UseG1GC", "-XX:G1NewSizePercent=30"},
+	}
+	issues := heapIssues(cfg)
+	if len(issues) != 1 {
+		t.Fatalf("issues = %+v, want one", issues)
+	}
+	if issues[0].Code != "heap-mismatch" || issues[0].Level != launchLevelWarn {
+		t.Errorf("issue = %+v", issues[0])
+	}
+	if issues[0].Fix == nil || issues[0].Fix.Patch["minMemoryMB"] != 2560 {
+		t.Errorf("fix = %+v, want a patch raising Xms to 2560", issues[0].Fix)
+	}
+}
+
+func TestHeapMatchReportsOK(t *testing.T) {
+	cfg := instance.Config{
+		MinMemoryMB: 2560,
+		MaxMemoryMB: 2560,
+		JVMArgs:     []string{"-XX:G1NewSizePercent=30"},
+	}
+	issues := heapIssues(cfg)
+	if len(issues) != 1 || issues[0].Level != launchLevelOK {
+		t.Fatalf("issues = %+v, want one ok", issues)
+	}
+	if issues[0].Fix != nil {
+		t.Error("nothing to fix, so no button")
+	}
+}
+
+func TestHeapIsSilentWithoutAikarStyleFlags(t *testing.T) {
+	// Plenty of servers run Xms below Xmx on purpose. Only the preset that
+	// requires them equal gets to complain.
+	cfg := instance.Config{MinMemoryMB: 1024, MaxMemoryMB: 4096}
+	if issues := heapIssues(cfg); len(issues) != 0 {
+		t.Errorf("issues = %+v, want none", issues)
+	}
+}
+
+// The sentence that used to sit under the jar dropdown, now a check: "找到 1 个
+// jar" is the reader confirming the panel is looking where they think it is.
+func TestJarCountIsReportedAsACheck(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	inst := env.newTestInstance("jarcount")
+
+	if got := issueByCode(env.launchCheck(inst.ID).Issues, "jar-count"); got == nil || got.Level != launchLevelWarn {
+		t.Errorf("an empty directory should warn, got %+v", got)
+	}
+
+	env.writeScript(inst, "paper.jar", "not really a jar", 0o644)
+	got := issueByCode(env.launchCheck(inst.ID).Issues, "jar-count")
+	if got == nil || got.Level != launchLevelOK {
+		t.Fatalf("a directory with a jar should pass, got %+v", got)
+	}
+	if !strings.Contains(got.Message, "1 个") {
+		t.Errorf("message = %q, want the count in it", got.Message)
+	}
+}
+
+// Two servers on one port is a boot failure with a misleading message, so the
+// panel says it first — even though the port itself is edited on another page.
+func TestPortConflictIsReportedAcrossInstances(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	one := env.newTestInstance("port-one")
+	two := env.newTestInstance("port-two")
+
+	env.writeScript(one, "server.properties", "server-port=25565\n", 0o644)
+	env.writeScript(two, "server.properties", "server-port=25566\n", 0o644)
+
+	if got := issueByCode(env.launchCheck(one.ID).Issues, "port-conflict"); got == nil || got.Level != launchLevelOK {
+		t.Errorf("distinct ports should pass, got %+v", got)
+	}
+
+	// Move the second one onto the first's port.
+	env.writeScript(two, "server.properties", "server-port=25565\n", 0o644)
+	got := issueByCode(env.launchCheck(one.ID).Issues, "port-conflict")
+	if got == nil || got.Level != launchLevelWarn {
+		t.Fatalf("a shared port should warn, got %+v", got)
+	}
+	if !strings.Contains(got.Message, "port-two") {
+		t.Errorf("message = %q, want the other instance named — the reader has to know which one", got.Message)
+	}
+}
+
+// An instance that has never run has no server.properties, so its port is not
+// a fact yet. Guessing 25565 and flagging every pair of fresh instances would
+// be noise dressed as a check.
+func TestPortIsNotGuessedBeforeTheServerHasEverRun(t *testing.T) {
+	env := newTestEnv(t)
+	env.login()
+	inst := env.newTestInstance("never-run")
+
+	if got := issueByCode(env.launchCheck(inst.ID).Issues, "port-conflict"); got != nil {
+		t.Errorf("reported a port nobody has set: %+v", got)
+	}
+}
