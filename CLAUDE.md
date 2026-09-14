@@ -45,7 +45,7 @@ CI（`.github/workflows/ci.yml`）跑的是 `make lint` → `make test` → `mak
 | `frontend-design` | 面板界面的布局、栅格、间距、响应式、主题令牌、动效 |
 | `brainstorming` | 要做新功能／改行为，需求和设计还没定死 |
 | `writing-plans` | 需求清楚了，多步骤改动，写代码之前先出方案 |
-| `subagent-driven-development` / `executing-plans` | 按方案逐条实现（前者用子 agent，后者单线程） |
+| `executing-plans` / `subagent-driven-development` | 按方案逐条实现（默认用前者，见下） |
 | `test-driven-development` | 实现功能或修 bug，写实现代码之前 |
 | `systematic-debugging` | 遇到 bug、测试挂了、行为不符合预期 |
 | `verification-before-completion` | 要说「做完了／修好了／过了」之前，先跑命令拿证据 |
@@ -57,6 +57,17 @@ CI（`.github/workflows/ci.yml`）跑的是 `make lint` → `make test` → `mak
 | `using-superpowers` | 上面这套规矩的总纲 |
 
 除 `frontend-design` 外都来自 [obra/superpowers](https://github.com/obra/superpowers)（MIT）。来源、引入版本和同步方法见 `.claude/skills/README.md`。
+
+### 执行实施计划：默认 Inline Execution
+
+`writing-plans` 收尾时会让人在「Subagent-Driven」和「Inline Execution」两种执行方式之间二选一。**本仓库不要问这一句**：方案写完直接宣告「用 executing-plans skill 执行这份方案」，在当前会话里逐条实现（即 Inline Execution），中间不停下来等人选。
+
+只有这两种情况才改用 `subagent-driven-development`：
+
+- 用户明确要求用子 agent 执行；
+- 方案里有两件以上互不依赖、能真正并行的大块（这种情况按 `dispatching-parallel-agents` 判断）。
+
+换用子 agent 时说明一句理由，别默默换。
 
 ## 前端界面布局优化
 
