@@ -10172,24 +10172,12 @@ input.input-slim:disabled {
   gap: 8px;
 }
 
-.alerts .alert {
+.alerts .note {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
   margin: 0;
-}
-
-.alert__body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.alert__body span {
-  font-size: 12px;
-  opacity: 0.9;
 }
 
 /* 概览's pending-alert count, in the worst level it contains — the same three

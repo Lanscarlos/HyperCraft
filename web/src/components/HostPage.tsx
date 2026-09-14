@@ -471,8 +471,8 @@ function HostDisk({
       lead="磁盘写满会让世界保存失败，正在写入的区块可能直接损坏 —— 这是本面板能遇到的破坏性最大的故障，所以它按告警级别处理，而不只是一根进度条。"
     >
       {level !== 'ok' && (
-        <div className={`alert alert--${level}`}>
-          <div className="alert__body">
+        <Note tone={level}>
+          <div className="note__body">
             <strong>
               {level === 'error' ? '立刻清理' : '该清理了'}：{system.disk.path} 只剩{' '}
               {formatBytes(system.disk.free)}（{formatPercent(free * 100)}）
@@ -481,7 +481,7 @@ function HostDisk({
               先看旧的世界备份和实例目录里的日志 —— 十有八九是它们。清完再回来刷新。
             </span>
           </div>
-        </div>
+        </Note>
       )}
 
       {/* Headless on purpose: the meter's label is the path, and a title over
