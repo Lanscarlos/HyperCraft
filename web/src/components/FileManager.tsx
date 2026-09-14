@@ -148,6 +148,27 @@ const GRIP = 14
  */
 const ROOMY = '(min-width: 1860px)'
 const SNUG = '(max-width: 1360px)'
+
+/**
+ * Below this a side-by-side split is not offered at all.
+ *
+ * The design note asks for two things that cannot both hold here, and this is
+ * the record of which one won. It puts the cut-off at 1280px, and it also sets
+ * a 620px floor under one group's visible code "at any breakpoint". Measured,
+ * with the sidebar folded to its strip, a group gets 566px at a 1400 viewport,
+ * 586 at 1440, 616 at 1500 and 626 at 1520 — so the floor is not reachable
+ * until about 1508, and between 1280 and 1508 the two rules contradict.
+ *
+ * 1280 wins, because the alternative is taking side-by-side comparison away
+ * from every 1366 and 1440 laptop to buy at most 54px — four characters — and
+ * because the floor degrades gracefully: the editor does not wrap, it scrolls,
+ * so what is lost is the tail of the longest comment line in Paper's defaults
+ * rather than anything structural. The gap is real and is written down here so
+ * the next person does not have to re-measure it.
+ *
+ * 上下分屏 is unaffected either way: it takes height, not width, and is offered
+ * at every width down to the drawer breakpoint.
+ */
 const NO_COL_SPLIT = '(max-width: 1280px)'
 /** Kept in step with App.tsx's DRAWER_QUERY and the media query in
  *  styles.css. All three move together. */
@@ -827,7 +848,11 @@ export function FileManager({
    * argument is over: the next split starts from the automatic behaviour
    * again, rather than from a decision made about a different screen.
    */
+  const groupsWere = useRef(panes.length)
   useEffect(() => {
+    const was = groupsWere.current
+    groupsWere.current = panes.length
+
     if (panes.length > 1) {
       // Only a side-by-side split takes width from the sidebar. Stacked groups
       // take height, which the sidebar was not using.
@@ -835,6 +860,11 @@ export function FileManager({
       if (!pinned && wantsWidth && !roomy) setSide((current) => ({ ...current, collapsed: true }))
       return
     }
+
+    // Only when a split has just closed. Without this guard the effect runs on
+    // every change to `pinned` — which ⌘B sets — and puts the sidebar straight
+    // back: the fold and the restore took turns and the shortcut did nothing.
+    if (was <= 1) return
     setPinned(false)
     // Only the fold this effect made is undone. Below 1360 the column is an
     // overlay and folded is its resting state, so putting it back there would
@@ -2021,16 +2051,25 @@ function ConflictDialog({
 }
 
 function KeysDialog({ onClose }: { onClose: () => void }) {
+  // In the order the design note lists them, which is roughly the order
+  // somebody learns them in: get somewhere, change what is on screen, then
+  // edit. Every shortcut the pane binds is here — a list that is missing one
+  // is worse than no list, because it is the list people check.
   const rows: Array<[string, string]> = [
-    ['⌘/Ctrl + F', '焦点在列表时聚焦搜索框；在编辑器里则打开查找替换'],
+    ['⌘/Ctrl + P', '转到文件：对这个实例的全部路径做模糊匹配'],
+    ['⌘/Ctrl + B', '折叠 / 展开侧边栏'],
     ['⌘/Ctrl + S', '保存当前标签'],
     ['⌘/Ctrl + W', '关闭当前标签'],
+    ['⌘/Ctrl + \\', '把当前文件左右分屏'],
+    ['⌘/Ctrl + F', '焦点在编辑器里是组内查找替换；否则聚焦目录筛选框'],
+    ['⌘/Ctrl + Shift + F', '打开侧边栏的「搜索」面板'],
+    ['⌘/Ctrl + 1 / 2', '聚焦第 1 / 2 个编辑器组'],
     ['⌘/Ctrl + Z / ⇧Z', '编辑器撤销 / 重做'],
-    ['↑ / ↓', '在文件列表里上下移动选择'],
+    ['↑ / ↓', '在文件列表里上下移动'],
     ['Enter', '打开选中项'],
     ['Backspace', '返回上一级目录'],
     ['Shift / ⌘Ctrl + 点击', '区间选 / 加选'],
-    ['Esc', '退出路径编辑、关闭查找框、取消多选'],
+    ['Esc', '关闭浮层、退出路径编辑、关闭查找框、取消多选'],
   ]
 
   return (

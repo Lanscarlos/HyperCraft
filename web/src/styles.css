@@ -7725,26 +7725,6 @@ small.field__bad {
   white-space: nowrap;
 }
 
-/* A label, not a filter — hence not .chip, which is a control. */
-.fbar__stats {
-  flex: none;
-  padding: 3px 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  color: var(--text-dim);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.fbar__tools {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-}
-
 .fbar__search {
   width: 200px;
 }
@@ -7770,9 +7750,6 @@ small.field__bad {
     display: none;
   }
 
-  .fbar__stats {
-    display: none;
-  }
 }
 
 /* On a phone the buttons and the directory's name cannot share a line. The
@@ -7829,83 +7806,23 @@ small.field__bad {
   box-shadow: var(--shadow-sm);
 }
 
-.flist__head,
-.flist__bulk {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  padding: 0 8px 0 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-/* 36px is the head's height, not its ceiling. In 状态 B this column is 264px
-   and the bulk bar is a count plus three buttons plus a way out, which does
-   not fit on one row at that width — and a bar that clips is a bar with a
-   delete button somewhere off the right edge. It wraps instead. */
-.flist__bulk {
-  flex-wrap: wrap;
-  row-gap: 4px;
-  padding-top: 4px;
-  padding-bottom: 4px;
-}
-
-.flist__head {
-  background: var(--surface-2);
-}
-
-.flist__where {
-  color: var(--text-faint);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-}
-
-.flist__head .segmented {
-  margin-left: auto;
-}
-
-/* Tinted rather than plain, so it reads as a mode the list is in and not as
-   another row of tools that is always there. */
-.flist__bulk {
-  background: var(--accent-soft);
-  border-bottom-color: var(--border-accent);
-  animation: rise var(--dur-3) var(--ease) both;
-}
-
-.flist__bulk .btn {
-  flex: none;
-}
-
-.flist__bulk-count {
-  font-size: 12.5px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.flist__bulk-clear {
-  margin-left: auto;
-}
-
-/* The same track list as .frow, per density. Two declarations that have to
-   agree; they are kept next to each other for that reason.
-
-   The name's floor is the load-bearing part. It was minmax(0, 1fr), and a
-   1fr track with a zero minimum does exactly what it is told when the fixed
-   tracks do not fit: it collapses. In 详情 at a 264px column that came to
-   nameWidth: 0 — a file list with no filenames in it, the column heads
-   stacked one character wide, and every name reachable only through its
-   tooltip. A floor means the row overflows instead, which is visible and
-   therefore fixable; the density-aware column width below is what keeps it
-   from having to. */
 /* One set of tracks, declared once and used by the head and by every row.
    A header whose columns are stated separately from its rows is a header that
    goes out of line the first time a filename is long.
 
    The `0` in `minmax(0, 1fr)` on the name track is not a typo and not
    defensive: without it a long filename sets the track's minimum and pushes
-   the other three off the end. This is the repo's most frequent layout bug. */
+   the other three off the end. This is the repo's most frequent layout bug.
+
+   It has the opposite failure too, and that one has happened here: a 1fr track
+   with a zero minimum collapses when the fixed tracks do not fit, and in the
+   264px rail this listing used to live in that came to a name column of zero —
+   a file list with no filenames, the column heads one character wide, every
+   name reachable only through its tooltip. The answer then was a floor under
+   the name; the answer now is the breakpoints further down, which drop a fixed
+   column instead. Shedding is what the rest of the panel does (see
+   .ptable__row), and it is the only one of the two that keeps the name
+   readable rather than merely present. */
 .flist__cols,
 .frow {
   display: grid;
@@ -8071,10 +7988,14 @@ small.field__bad {
   pointer-events: auto;
 }
 
+/* Faded *and* out of the way. The two share one grid cell, and an icon that is
+   only transparent still takes the click meant for the checkbox under it —
+   which lands on the row instead and opens the file. */
 .frow:hover .frow__mark .fileicon,
 .frow:focus-within .frow__mark .fileicon,
 .frow[data-ticked] .frow__mark .fileicon {
   opacity: 0;
+  pointer-events: none;
 }
 
 .frow__name {
