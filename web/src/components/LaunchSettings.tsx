@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { ask } from '../confirm'
 import { formatBytes } from '../format'
+import { toast } from '../toast'
 import type {
   InstanceInput,
   InstanceStatus,
@@ -348,11 +349,9 @@ export function LaunchSettings({
         argFiles,
       }
       onSaved(await api.updateInstance(instance.id, payload))
-      setStatus(
-        isLive(instance.state)
-          ? '已保存，将在下次启动时生效'
-          : '已保存',
-      )
+      toast(isLive(instance.state) ? '已保存，将在下次启动时生效' : '已保存', {
+        key: 'launch-settings.save',
+      })
       setCheckRev((rev) => rev + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')

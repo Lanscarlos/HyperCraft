@@ -59,7 +59,6 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
   const [secret, setSecret] = useState('')
   const [secretDirty, setSecretDirty] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [status, setStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const adopt = (loaded: VelocityResponse) => {
@@ -156,7 +155,6 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
     event.preventDefault()
     setBusy(true)
     setError(null)
-    setStatus(null)
     try {
       const saved = await api.saveVelocity(instance.id, {
         entries: Object.entries(values)
@@ -168,7 +166,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
         forwardingSecret: secretDirty ? secret.trim() : '',
       })
       adopt(saved)
-      setStatus('已保存，重启代理端后生效')
+      toast('已保存，重启代理端后生效', { key: 'velocity-config.save' })
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')
     } finally {
@@ -538,7 +536,6 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
       </Section>
 
       {error && <div className="alert alert--error">{error}</div>}
-      {status && <div className="alert alert--ok">{status}</div>}
 
       <div className="actions">
         <Button variant="primary" type="submit" disabled={busy}>

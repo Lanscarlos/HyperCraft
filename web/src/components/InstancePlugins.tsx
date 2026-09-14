@@ -4,6 +4,7 @@ import { api } from '../api'
 import { ask, askWithToggle } from '../confirm'
 import { formatBytes } from '../format'
 import type { InstanceSection } from '../routes'
+import { toast } from '../toast'
 import type {
   InstancePlugin,
   InstancePluginList,
@@ -98,7 +99,6 @@ export function InstancePlugins({
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [status, setStatus] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>('all')
   const [tab, setTab] = useState<Tab>('installed')
   // The library plugin being handed to this server, or null. Opened from the
@@ -135,7 +135,7 @@ export function InstancePlugins({
     try {
       const said = await action()
       await refresh()
-      if (typeof said === 'string') setStatus(said)
+      if (typeof said === 'string') toast(said, { key: 'instance-plugins.save' })
     } catch (err) {
       setError(err instanceof Error ? err.message : fallback)
     } finally {
@@ -256,7 +256,6 @@ export function InstancePlugins({
 
       {error && <div className="alert alert--error">{error}</div>}
       {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
-      {status && <div className="alert alert--ok">{status}</div>}
 
       <RestartBanner
         pending={pending}
@@ -573,7 +572,7 @@ export function InstancePlugins({
           onCancel={() => setInstalling(null)}
           onInstalled={(summary) => {
             setInstalling(null)
-            setStatus(summary)
+            toast(summary, { key: 'instance-plugins.save' })
             void refresh()
           }}
         />

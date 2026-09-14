@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api'
+import { toast } from '../toast'
 import type {
   EulaStatus,
   InstanceStatus,
@@ -30,7 +31,6 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
   const [present, setPresent] = useState<Set<string>>(new Set())
   const [eula, setEula] = useState<EulaStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [status, setStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // Hides every row that still reads the way it did on disk. Off by default:
   // the page is also how you find a setting you have never touched.
@@ -108,14 +108,13 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
     event.preventDefault()
     setBusy(true)
     setError(null)
-    setStatus(null)
     try {
       const entries = Object.entries(values)
         .filter(([key]) => dirty.has(key) || present.has(key))
         .map(([key, value]) => ({ key, value }))
 
       if (entries.length === 0) {
-        setStatus('没有修改')
+        toast('没有修改', { key: 'properties-editor.save' })
         return
       }
 
@@ -124,7 +123,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
       setValues(Object.fromEntries(saved.entries.map((e) => [e.key, e.value])))
       setPresent(new Set(saved.entries.map((e) => e.key)))
       setDirty(new Set())
-      setStatus('已保存，重启服务器后生效')
+      toast('已保存，重启服务器后生效', { key: 'properties-editor.save' })
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')
     } finally {
@@ -137,7 +136,6 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
     if (!data) return
     setValues(Object.fromEntries(data.entries.map((e) => [e.key, e.value])))
     setDirty(new Set())
-    setStatus(null)
     setError(null)
   }
 
@@ -263,7 +261,6 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
         )}
 
         {error && <div className="alert alert--error">{error}</div>}
-        {status && <div className="alert alert--ok">{status}</div>}
 
         <div className="actions">
           <Button type="button" onClick={() => void load()}>
