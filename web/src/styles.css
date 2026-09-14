@@ -6239,7 +6239,13 @@ details[open]::details-content {
   padding: 20px;
   background: var(--scrim);
   backdrop-filter: blur(6px);
-  z-index: 50;
+  /* Between the drawer (60) and the popovers (70), and both bounds are load-
+     bearing. Under 1024px the sidebar leaves the grid and becomes a fixed
+     column at 60, so at 50 every dialog in the panel was painted with its left
+     edge under the rail — 「添加核心」 arrived on a phone reading 「加核心」.
+     And it has to stay under 70, because a Menu or a Select opened *inside* a
+     dialog portals to the body at that height. */
+  z-index: 65;
   animation: fade var(--dur-3) var(--ease) both;
 }
 
@@ -16705,11 +16711,41 @@ select.input-slim option {
   }
 }
 
+/* A phone. 110px of version beside 72px of size leaves the name about eighty
+   pixels, which is not a name — and the version is already the second half of
+   the file name printed under it. So the name takes everything that is left,
+   and what a row says is: which jar, how big, and the menu. */
+@media (max-width: 620px) {
+  .reslist__head > :nth-child(2),
+  .reslist__row > :nth-child(2) {
+    display: none;
+  }
+
+  .reslist__head,
+  .reslist__row {
+    gap: 8px;
+    padding: 0 10px;
+    grid-template-columns: minmax(0, 1fr) 72px 34px;
+  }
+
+  /* The letter tile goes on a phone. It is a decoration that reads the first
+     character of a name, and at this width it was costing that name a third of
+     its remaining space — 「Paper 1.21.11」 truncated to 「Paper 1....」 while a
+     P in a box sat beside it saying the same letter. The size column stays:
+     unlike the version, it is not printed anywhere else on the row. */
+  .reslist__tile {
+    display: none;
+  }
+}
+
 /* The two cards under a shelf: what could be cleaned up, and the one standing
    sentence that used to be a paragraph at the top of the page. */
 .rescards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  /* auto-fit rather than auto-fill: there are exactly two of these and they
+     should share the width, not sit in the first two of however many 320px
+     tracks a 1440px page happens to fit. */
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 12px;
 }
 

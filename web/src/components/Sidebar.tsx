@@ -851,7 +851,12 @@ function LibraryScope(props: Props) {
  * it is for is the comparison between the four, which is the part that is
  * actually actionable.
  */
-function LibraryFootprint({ java, cores, plugins, schematics }: Props) {
+function LibraryFootprint({ expanded, java, cores, plugins, schematics }: Props) {
+  // Nothing in here survives a 56px rail: it is four labels and four byte
+  // counts, and the rail's job is to be one column of icons. The whole card is
+  // a detail you go looking for, not one you navigate by.
+  if (!expanded) return null
+
   const parts = [
     { key: 'cores', label: '核心', bytes: cores.cores.reduce((sum, core) => sum + core.size, 0) },
     {

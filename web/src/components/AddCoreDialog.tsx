@@ -348,8 +348,10 @@ export function AddCoreDialog({
               {shortfall !== null && (
                 <Note tone="warn" className="addcore__warn">
                   <span>
-                    这个核心需要 Java {shortfall.needs} 或更高，本机目前最高是{' '}
-                    {shortfall.have === 0 ? '什么都没装' : `Java ${shortfall.have}`}
+                    这个核心需要 Java {shortfall.needs} 或更高，
+                    {shortfall.have === 0
+                      ? '本机一个 Java 都还没装'
+                      : `本机目前最高是 Java ${shortfall.have}`}
                     —— 直接启动会报错退出。
                   </span>
                   <Button type="button" onClick={() => onOpenJava(shortfall.needs)}>

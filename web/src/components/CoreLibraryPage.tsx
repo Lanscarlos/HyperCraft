@@ -150,12 +150,13 @@ export function CoreLibraryPage({
       // lie. An instance launches its own copy, so what is actually lost is
       // the ability to stamp out another server exactly like it — which is
       // the whole reason the library exists, and reason enough to refuse.
-      usedByNote: (names) => (
-        <>
-          实例「{names.join('、')}」正在用这个 jar 启动。它们各自有一份副本，所以删掉库里的这一份
-          不会让它们停机 —— 但也就没法再复制出一台一模一样的服了。要删的话，先把这些实例换到别的核心上。
-        </>
-      ),
+      // A plain string rather than a fragment: a JSX line break between two
+      // Chinese characters renders as a space, and this sentence is long
+      // enough to need three of them.
+      usedByNote: (names) =>
+        `实例「${names.join('、')}」正在用这个 jar 启动。它们各自有一份副本，` +
+        '所以删掉库里的这一份不会让它们停机 —— 但也就没法再复制出一台一模一样的服了。' +
+        '要删的话，先把这些实例换到别的核心上。',
       onInspect: (names) => onOpenInstances(names.length === 1 ? names[0] : ''),
     })
     if (!ok) return
@@ -180,7 +181,6 @@ export function CoreLibraryPage({
     <Page
       wide
       title="服务端核心"
-      count={stored.length > 0 ? stored.length : undefined}
       facts={
         <>
           <span>{stored.length > 0 ? `${stored.length} 个 · ${formatBytes(total)}` : '还是空的'}</span>
@@ -224,8 +224,8 @@ export function CoreLibraryPage({
             </>
           }
         >
-          下载一个 Paper 或 Velocity，或者把自己的 jar（Forge、Fabric、整合包自带的服务端）
-          上传进来。核心下好之后，新建实例时选它就行。
+          下载一个 Paper 或 Velocity，或者把自己的 jar（Forge、Fabric、整合包自带的服务端）上传进来。
+          核心下好之后，新建实例时选它就行。
         </EmptyState>
       ) : (
         <>
@@ -315,10 +315,12 @@ export function CoreLibraryPage({
   )
 }
 
-/** An imported jar has no project and no version, so its file name is the only
- *  name it has. */
+/** An imported jar has no project, so its file name is the only name it has —
+ *  which is also why it is the one row that does not repeat the file name
+ *  underneath. Its version, where somebody filled one in, is in the version
+ *  column like everyone else's. */
 function nameOf(core: ServerCore): string {
-  if (core.imported) return core.version ? `${core.fileName} ${core.version}` : core.fileName
+  if (core.imported) return core.fileName
   return `${core.projectName} ${core.version}`
 }
 
@@ -332,7 +334,7 @@ function entryOf(core: ServerCore, onRemove: () => void): ResourceEntry {
     id: core.id,
     tile: core.projectName || core.fileName,
     name: nameOf(core),
-    fileName: core.fileName,
+    fileName: core.imported ? undefined : core.fileName,
     chips: (
       <>
         {core.kind === 'proxy' && <Badge>代理端</Badge>}
