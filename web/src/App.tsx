@@ -759,6 +759,7 @@ export default function App() {
                     instance={selected}
                     metrics={metrics}
                     instances={instances}
+                    hostMemoryTotal={system.info?.host.memoryTotal ?? 0}
                     section={route.section}
                     cores={cores}
                     plugins={plugins}

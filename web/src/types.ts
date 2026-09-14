@@ -108,11 +108,50 @@ export const LOADER_OPTIONS: { value: string; label: string; note?: string }[] =
   { value: 'waterfall', label: 'Waterfall', note: '代理端' },
 ]
 
-/** One thing the panel found wrong with how this instance would start. */
+/** One thing the panel found wrong with how this instance would start — or one
+ *  it looked at and found in order. */
 export interface LaunchIssue {
-  level: 'fatal' | 'warn' | 'info'
+  level: 'fatal' | 'warn' | 'info' | 'ok'
   code: string
   message: string
+  /** A change the form can apply on the reader's behalf. `patch` is merged
+   *  into the draft as it arrives: the page deliberately knows nothing about
+   *  which code proposed what, so a new check needs no frontend change. */
+  fix?: { label: string; patch: Partial<StartupDraft> }
+}
+
+/** The fields the 启动方式 page owns, as the preview endpoint wants them.
+ *
+ *  Not `LaunchDraft` — that name is taken by the result of reading somebody's
+ *  start script, which is a different thing entirely. */
+export interface StartupDraft {
+  java: string
+  jar: string
+  argFiles: string[]
+  minMemoryMB: number
+  maxMemoryMB: number
+  jvmArgs: string[]
+  serverArgs: string[]
+  loader: string
+}
+
+/** A stretch of the command line, tagged with where it came from. `panel` is
+ *  the one nobody typed — the console flags the daemon adds — which is exactly
+ *  why it is shown rather than hidden. */
+export interface LaunchSegment {
+  origin: 'panel' | 'memory' | 'jvm' | 'jar' | 'server'
+  args: string[]
+}
+
+/** What the daemon would run for a draft, and what it already knows is wrong
+ *  with it. One response because they are one answer: a command built from the
+ *  draft beside problems found in the stored config would disagree with itself
+ *  on screen. */
+export interface LaunchPreview {
+  mode: 'jar' | 'argfile'
+  program: string
+  segments: LaunchSegment[]
+  issues: LaunchIssue[]
 }
 
 export interface LaunchCheck {
