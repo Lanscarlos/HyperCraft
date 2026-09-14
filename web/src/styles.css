@@ -14275,6 +14275,27 @@ select.input-slim option {
   min-width: 0;
 }
 
+/* The one thing to do about what just landed. A link rather than a button
+   face: the toast is already an interruption, and a filled control in the
+   corner would be a second first-thing-to-press competing with the page. */
+.toast__action {
+  flex: none;
+  padding: 2px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background var(--dur-1) var(--ease);
+}
+
+.toast__action:hover {
+  background: var(--accent-soft);
+}
+
 .toast__close {
   flex: none;
   width: 22px;

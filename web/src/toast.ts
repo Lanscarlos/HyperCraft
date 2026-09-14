@@ -22,6 +22,16 @@ import { useSyncExternalStore } from 'react'
 export interface ToastItem {
   id: number
   message: string
+  /** One thing to do about what just happened — 重启 after saving a config a
+   *  running server has already read. Optional because nearly nothing needs
+   *  it: an outcome that always wants a follow-up is a state, and a state
+   *  belongs in the page rather than in a corner that expires. */
+  action?: ToastAction
+}
+
+export interface ToastAction {
+  label: string
+  onSelect: () => void
 }
 
 /** Past this the corner is a log rather than a report, and the oldest of them
@@ -39,9 +49,9 @@ function publish(next: ToastItem[]): void {
 
 /** Says that something finished. Errors do not come through here — something
  *  that failed has to stay on screen until it is read. */
-export function toast(message: string): void {
+export function toast(message: string, action?: ToastAction): void {
   seq += 1
-  const next = [...items, { id: seq, message }]
+  const next = [...items, { id: seq, message, action }]
   publish(next.length > MAX_STACKED ? next.slice(next.length - MAX_STACKED) : next)
 }
 

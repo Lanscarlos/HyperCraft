@@ -76,6 +76,17 @@ function Toast({ item }: { item: ToastItem }) {
     <div className="toast" data-state={leaving && !reducedMotion() ? 'out' : 'in'} role="status">
       <span className="toast__mark" aria-hidden="true" />
       <span className="toast__body">{item.message}</span>
+      {item.action && (
+        <button
+          className="toast__action"
+          onClick={() => {
+            item.action?.onSelect()
+            close()
+          }}
+        >
+          {item.action.label}
+        </button>
+      )}
       <button className="toast__close" onClick={close} aria-label="关闭">
         ×
       </button>
