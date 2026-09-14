@@ -50,7 +50,7 @@ export function PluginSourceSettings({ plugins }: { plugins: PluginController })
         />
       )}
 
-      {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
+      {plugins.error && <div className="alert">{plugins.error}</div>}
     </Page>
   )
 }

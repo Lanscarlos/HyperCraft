@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api } from '../api'
+import { toast } from '../toast'
 import { ask } from '../confirm'
 import { changedKeys, toInput } from '../instanceForm'
 import type { InstanceSection } from '../routes'
@@ -8,6 +9,7 @@ import type { InstanceInput, InstanceStatus, LaunchIssue } from '../types'
 import { ENCODING_OPTIONS, isLive, LOADER_OPTIONS } from '../types'
 import { Button } from './Button'
 import { FieldHelp } from './FieldHelp'
+import { Note } from './Note'
 import { useHostJars } from '../useHostJars'
 import { PageHead } from './Page'
 import { DirectoryField } from './PathPicker'
@@ -123,7 +125,9 @@ export function InstanceSettings({ instance, onSaved, onDeleted, onOpenSection }
       // zero value to the daemon, so sending only these four sections would
       // blank the jar, the heap and every JVM argument. See instanceForm.
       onSaved(await api.updateInstance(instance.id, form))
-      setStatus(isLive(instance.state) ? '已保存，将在下次启动时生效' : '已保存')
+      toast(isLive(instance.state) ? '已保存，将在下次启动时生效' : '已保存', {
+        key: 'instance-settings.save',
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')
     } finally {
@@ -178,13 +182,16 @@ export function InstanceSettings({ instance, onSaved, onDeleted, onOpenSection }
         lead="名称、目录、控制台编码，以及面板什么时候替你开关机。怎么启动在「启动方式」那页。"
       />
 
+      {/* A Note and not an .alert: this page loaded fine. What is wrong is the
+          instance, which is a condition that is true right now — the test the
+          design system gives is whether it renders from an `if`. */}
       {fatal && (
-        <div className="alert alert--error">
+        <Note tone="error">
           <span>{fatal.message}</span>
           <Button size="row" type="button" onClick={() => onOpenSection('startup')}>
             去启动方式
           </Button>
-        </div>
+        </Note>
       )}
 
       <Section form title="基本信息" note="这台服务器叫什么、是什么服务端、文件放在哪。">
@@ -360,8 +367,8 @@ export function InstanceSettings({ instance, onSaved, onDeleted, onOpenSection }
       </div>
       </Section>
 
-      {error && <div className="alert alert--error">{error}</div>}
-      {status && <div className="alert alert--ok">{status}</div>}
+      {error && <div className="alert">{error}</div>}
+      {status && <Note tone="ok">{status}</Note>}
 
       {dirty && (
         <div className="formbar">

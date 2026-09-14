@@ -72,7 +72,7 @@ export function AccountDialog({ account, roles, instances, onCancel, onSaved }: 
       <form className="modal__card modal__card--wide" onSubmit={submit}>
         <h2 className="modal__title">{account ? `编辑「${account.username}」` : '新建账号'}</h2>
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
 
         <label className="field">
           <span>用户名</span>

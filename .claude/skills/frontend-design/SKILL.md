@@ -22,7 +22,7 @@ description: HyperCraft 面板（web/）的界面布局与视觉改动指南。�
 ```
 Page(wide?)                     ← 面板级页面；实例 section 用 div.stack + <PageHead>
   PageHead  title [count] / lead / facts / actions
-  .alert--error?                ← 错误永远紧贴页头，上面不放别的
+  .alert?                       ← 这一页没能加载；紧贴页头，上面不放别的，且没有修饰符
   .tabs?                        ← 一页最多一条切换
   Toolbar?                      ← 一个列表最多一条，就贴在它上面
   Section*                      ← 每一个有标题的内容块
@@ -32,6 +32,11 @@ Page(wide?)                     ← 面板级页面；实例 section 用 div.sta
 `Section` / `Toolbar` / `EmptyState` / `.rowlist > .row` 的用法、各自替掉了哪几套旧写法、
 以及守卫卡哪些类名，写在 `docs/design-system.md` 第 3 节。**不要再造第二种段头、第二条
 工具行、第七种空状态** —— 这份代码库刚从那个状态里爬出来。
+
+**`.alert` 只装页面级加载失败。** 条件说明（跟着表单实时变的校验、「这个文件还不存在」
+这类）用 `<Note tone>`；一次性的操作结果用 `toast()`，失败用 `toastError()`（常驻，
+要点「知道了」）。判据：**能用 `if (条件)` 渲染的不是消息。** 三者的分工写在
+`docs/design-system.md` 第 3 节，`ruleMessageSurfaces` 卡着不许混。
 
 ### 页面骨架
 

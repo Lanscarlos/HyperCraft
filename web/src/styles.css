@@ -2917,7 +2917,48 @@ a:hover {
   pointer-events: none;
 }
 
+/* The one slot under a page head where that page's own failure goes.
+   Everything that used to share this class is a Note now (a condition) or a
+   toast (an outcome), so it has exactly one meaning and therefore no
+   modifiers: red, because the only thing it is ever allowed to say is that
+   this page could not load what it came for.
+
+   It needs no way to be dismissed for the same reason — the next successful
+   load clears it, and a failure the reader clicked away is a page left
+   silently empty. */
 .alert {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 13px;
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, transparent);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--danger-ink);
+  font-size: 13px;
+  animation: rise 200ms var(--ease) both;
+}
+
+.alert .link {
+  color: inherit;
+  font-size: 13px;
+}
+
+/* =================================================================== note
+
+   A condition, as opposed to an outcome.
+
+   It is the old .alert minus the one job that class keeps: 「这超过了本机内存
+   的八成」 moves with the memory slider, 「EULA 还没同意」 is true until
+   somebody ticks it, 「终端已开启」 is true for as long as it is. None of them
+   is news, and none of them can be said in the corner and taken away — a toast
+   that reappeared every time a slider moved would be unusable.
+
+   Identical to .alert on purpose: the split is about what a name lets the
+   guard tell apart, not about how these look. */
+.note {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
@@ -2931,61 +2972,44 @@ a:hover {
   animation: rise 200ms var(--ease) both;
 }
 
-/* An alert the reader has to clear, for a report that arrives from the shell
-   rather than from the page under it: nothing about navigating away means the
-   failed start has been read, so it does not go on its own. */
-.alert--dismiss {
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: nowrap;
-  gap: 12px;
-}
-
-.alert__close {
-  flex: none;
-  padding: 0 4px;
-  background: none;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: inherit;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 16px;
-  line-height: 1;
-  opacity: 0.7;
-  transition: opacity var(--dur) var(--ease);
-}
-
-.alert__close:hover {
-  opacity: 1;
-}
-
-.alert--error {
+.note--error {
   background: var(--danger-soft);
   border-color: color-mix(in srgb, var(--danger) 34%, transparent);
   border-left-color: var(--danger);
   color: var(--danger-ink);
 }
 
-.alert--ok {
+.note--ok {
   background: var(--ok-soft);
   border-color: color-mix(in srgb, var(--ok) 34%, transparent);
   border-left-color: var(--ok);
   color: var(--ok-ink);
 }
 
-/* Used for the warnings on the terminal settings page, where the point is
-   "read this before you click", not "something went wrong". */
-.alert--warn {
+.note--warn {
   background: var(--caution-soft);
   border-color: color-mix(in srgb, var(--caution) 36%, transparent);
   border-left-color: var(--caution);
   color: var(--caution-ink);
 }
 
-.alert .link {
+.note .link {
   color: inherit;
   font-size: 13px;
+}
+
+/* The stacked body a note grows when it carries a heading and its explanation:
+   .note is a wrapping flex row, so without this the two sit side by side. */
+.note__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.note__body span {
+  font-size: 12px;
+  opacity: 0.9;
 }
 
 /* The launch check's findings.
@@ -10406,7 +10430,7 @@ input.input-slim:disabled {
   gap: 8px;
 }
 
-.alerts .alert {
+.alerts .note {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -10414,20 +10438,8 @@ input.input-slim:disabled {
   margin: 0;
 }
 
-.alert__body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.alert__body span {
-  font-size: 12px;
-  opacity: 0.9;
-}
-
 /* 概览's pending-alert count, in the worst level it contains — the same three
-   answers .alert--* gives the rows themselves, because the badge is a summary
+   answers .note--* gives the rows themselves, because the badge is a summary
    of exactly those rows. Info gets no modifier at all: it is a count of things
    worth knowing, and the plain badge is what the panel already uses for one.
 
@@ -14534,6 +14546,40 @@ select.input-slim option {
 
 .toast__mark::before {
   content: '✓';
+}
+
+/* Which of the three kinds of news this is, before the sentence is read. Both
+   hues already exist in light and dark; nothing new is minted here. */
+.toast[data-tone='warn'] {
+  border-left-color: var(--caution);
+}
+
+.toast[data-tone='warn'] .toast__mark {
+  background: var(--caution-soft);
+  color: var(--caution-ink);
+}
+
+.toast[data-tone='warn'] .toast__mark::before {
+  content: '!';
+}
+
+.toast[data-tone='error'] {
+  border-left-color: var(--danger);
+}
+
+.toast[data-tone='error'] .toast__mark {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+
+.toast[data-tone='error'] .toast__mark::before {
+  content: '×';
+}
+
+/* Sits in the sentence rather than beside it: the acknowledgement is the last
+   word of the message, not a control bolted to the card. */
+.toast__ack {
+  margin-left: 8px;
 }
 
 .toast[data-state='out'] {

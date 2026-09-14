@@ -53,7 +53,7 @@ export function Login({ onSignedIn }: { onSignedIn: (user: User) => void }) {
           />
         </label>
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
 
         <Button variant="primary" type="submit" disabled={busy}>
           {busy ? '登录中…' : '登录'}

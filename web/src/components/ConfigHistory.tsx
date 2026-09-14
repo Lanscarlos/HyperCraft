@@ -18,6 +18,7 @@ import { Button } from './Button'
 import { EmptyState } from './EmptyState'
 import { Menu } from './Menu'
 import { Modal } from './Modal'
+import { Note } from './Note'
 import { PageHead } from './Page'
 import { Section } from './Section'
 import { Toolbar } from './Toolbar'
@@ -323,7 +324,7 @@ export function ConfigHistory({
       <div className="stack">
         <PageHead title="配置历史" lead={lead} />
         {error ? (
-          <div className="alert alert--error">{error}</div>
+          <div className="alert">{error}</div>
         ) : (
           <SkeletonScreen inPage label="正在读取配置历史…">
             <SkeletonPanel>
@@ -420,7 +421,7 @@ export function ConfigHistory({
       }
       />
 
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
 
       {oversized.length > 0 && (
         <Section
@@ -450,7 +451,7 @@ export function ConfigHistory({
       )}
 
       {pending.length > 0 && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           有 {pending.length} 个文件的改动还没有记录。下次启服前会自动打一次快照，
           也可以现在就 <button className="link" onClick={() => setSnapshotting(true)}>打快照</button>
           {timeline.length > 0 && (
@@ -462,7 +463,7 @@ export function ConfigHistory({
             </>
           )}
           。
-        </div>
+        </Note>
       )}
 
       {timeline.length === 0 ? (
@@ -918,10 +919,10 @@ function SnapshotDialog({
         </label>
 
         {running && (
-          <div className="alert alert--warn">
+          <Note tone="warn">
             服务器正在运行，插件可能正在写自己的配置文件，这个快照可能记到半写状态。
             这条会在时间线上标注出来。
-          </div>
+          </Note>
         )}
 
         <div className="modal__actions">
@@ -972,11 +973,11 @@ function RestoreDialog({
           历史只会往前增加 —— 还原之后发现更糟，还能再还原回来。
         </p>
 
-        {plan.blockedBy && <div className="alert alert--error">{plan.blockedBy}</div>}
-        {plan.warning && <div className="alert alert--warn">{plan.warning}</div>}
+        {plan.blockedBy && <Note tone="error">{plan.blockedBy}</Note>}
+        {plan.warning && <Note tone="warn">{plan.warning}</Note>}
 
         {plan.mismatch && (
-          <div className="alert alert--warn">
+          <Note tone="warn">
             <strong>插件 / 核心版本和当时不一致。</strong>
             {plan.mismatch.coreThen && (
               <div>
@@ -994,7 +995,7 @@ function RestoreDialog({
               />
               <span>我知道旧配置配新版本可能起不来</span>
             </label>
-          </div>
+          </Note>
         )}
 
         <div className="chist__plan">

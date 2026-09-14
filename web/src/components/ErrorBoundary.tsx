@@ -56,7 +56,7 @@ export class ErrorBoundary extends Component<Props, State> {
         <p className="muted">
           面板的其他部分还能用，从左侧换一个页面就行。如果这一页一直打不开，刷新页面后再试一次。
         </p>
-        <div className="alert alert--error">{error.message || String(error)}</div>
+        <div className="alert">{error.message || String(error)}</div>
         <div className="actions">
           <Button onClick={() => window.location.reload()}>
             刷新页面

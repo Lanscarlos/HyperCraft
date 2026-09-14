@@ -6,6 +6,7 @@ import { toast } from '../toast'
 import type { Capability, CapabilityInfo, Role } from '../types'
 import { Button } from './Button'
 import { Modal } from './Modal'
+import { Note } from './Note'
 
 interface Props {
   /** null when creating; a built-in role is shown read-only. */
@@ -110,7 +111,7 @@ export function RoleDialog({ role, capabilities, onCancel, onSaved }: Props) {
           </p>
         )}
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
 
         <label className="field">
           <span>角色名</span>
@@ -181,10 +182,10 @@ export function RoleDialog({ role, capabilities, onCancel, onSaved }: Props) {
             rule is worth nothing next to a capability that runs code. Said
             where the rule is typed, naming the capabilities that defeat it. */}
         {!readOnly && defeating.length > 0 && paths.trim() !== '' && (
-          <div className="alert alert--warn">
+          <Note tone="warn">
             目录限制对这个角色没有实际意义：它同时持有 <strong>{defeating.join('、')}</strong> ——
             能决定服务端跑什么代码，就能绕开任何目录规则。要让限制真正生效，先取消这些能力。
-          </div>
+          </Note>
         )}
 
         <div className="modal__actions">

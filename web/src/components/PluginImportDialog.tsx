@@ -157,7 +157,7 @@ export function PluginImportDialog({
               </div>
             )}
 
-            {error && <div className="alert alert--error">{error}</div>}
+            {error && <div className="alert">{error}</div>}
 
             <div className="modal__actions">
               <Button disabled={busy} onClick={onCancel}>

@@ -140,7 +140,7 @@ export function UsersPage({ instances, me }: Props) {
       title="账号与角色"
       lead="一个账号持有一个角色，角色是一组能力的集合；实例授权是另一个维度，说的是这个账号能碰哪几个服。两样都满足才放行。"
     >
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
 
       <Section
         title="账号"

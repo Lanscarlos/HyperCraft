@@ -18,7 +18,10 @@ interface Props {
    *  behind the ⋯. `compact` is an overview card, where there is room for one
    *  primary action and a menu. */
   variant?: 'full' | 'compact'
-  onError?: (message: string | null) => void
+  /** Reports a failed 开机/关机/重启. The panel raises it as a toast that
+   *  stays until acknowledged, because this is the one action whose next
+   *  step is usually to leave this page and go and look at why. */
+  onError?: (message: string) => void
 }
 
 /**
@@ -44,7 +47,6 @@ export function PowerControls({ instance, onChanged, variant = 'full', onError }
     if (!(await confirmPower(action, instance, uptime))) return
     setBusy(true)
     setPending(action)
-    onError?.(null)
     try {
       onChanged(await api.power(instance.id, action))
     } catch (err) {

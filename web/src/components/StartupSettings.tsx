@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api } from '../api'
+import { toast } from '../toast'
 import { ask } from '../confirm'
 import { changedKeys, fromLines, toInput, toLines } from '../instanceForm'
 import { JVM_PRESETS } from '../jvmPresets'
@@ -20,6 +21,7 @@ import { Button } from './Button'
 import { JavaCoreCard } from './JavaCoreCard'
 import { JvmArgsCard } from './JvmArgsCard'
 import { LaunchConsole } from './LaunchConsole'
+import { Note } from './Note'
 import { MemoryCard } from './MemoryCard'
 import { ServerArgsCard } from './ServerArgsCard'
 import { InstanceCorePicker } from './InstanceCorePicker'
@@ -325,7 +327,11 @@ export function StartupSettings({
         argFiles,
       }
       onSaved(await api.updateInstance(instance.id, payload))
-      setStatus(isLive(instance.state) ? '已保存，将在下次启动时生效' : '已保存')
+      // A toast, not a note: saving is something that happened, and the page
+      // it happened on is still the thing worth looking at.
+      toast(isLive(instance.state) ? '已保存，将在下次启动时生效' : '已保存', {
+        key: 'startup-settings.save',
+      })
       setArgFileRev((rev) => rev + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')
@@ -350,9 +356,9 @@ export function StartupSettings({
       setJvm(saved)
       setJvmMin(saved.minMemoryMB)
       setJvmMax(saved.maxMemoryMB)
-      setJvmStatus(
-        isLive(instance.state) ? '已写入，下次启动生效' : '已写入 ' + saved.fileName,
-      )
+      toast(isLive(instance.state) ? '已写入，下次启动生效' : '已写入 ' + saved.fileName, {
+        key: 'startup-settings.jvmargs',
+      })
       // The instance's reported heap ceiling comes from this file.
       onSaved(await api.getInstance(instance.id))
     } catch (err) {
@@ -420,7 +426,7 @@ export function StartupSettings({
         lead="用哪个 Java、跑哪个 jar、给多少内存，以及面板据此拼出的那条命令。"
       />
 
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
 
       <div className="startup">
         <div className="startup__form">
@@ -529,7 +535,7 @@ export function StartupSettings({
         </aside>
       </div>
 
-      {status && <div className="alert alert--ok">{status}</div>}
+      {status && <Note tone="ok">{status}</Note>}
 
       {dirty && (
         <div className="formbar">

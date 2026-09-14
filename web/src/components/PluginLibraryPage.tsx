@@ -25,6 +25,7 @@ import { DataTable, DataTableHead, DataTableRow } from './DataTable'
 import { EmptyState } from './EmptyState'
 import { Menu } from './Menu'
 import { Modal } from './Modal'
+import { Note } from './Note'
 import { Page } from './Page'
 import { PluginBrowse, sourceLabel } from './PluginBrowse'
 import { PluginIcon } from './PluginIcon'
@@ -241,8 +242,8 @@ export function PluginLibraryPage({
         </>
       }
     >
-      {error && <div className="alert alert--error">{error}</div>}
-      {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
+      {error && <div className="alert">{error}</div>}
+      {plugins.error && <div className="alert">{plugins.error}</div>}
       {plugins.active > 0 && (
         <QueueStrip
           jobs={plugins.jobs}
@@ -1399,14 +1400,14 @@ function BulkInstallDialog({
         </div>
 
         {live.length > 0 && (
-          <div className="alert alert--warn">
+          <Note tone="warn">
             选中的 {live.length} 台正在运行，
             <strong>装完必须重启才会生效</strong> —— 重启期间在线玩家会被断开。
             面板不会自动重启，装完之后请自己挑时间。
-          </div>
+          </Note>
         )}
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
 
         <div className="modal__actions">
           <Button disabled={busy} onClick={onCancel}>
@@ -1474,11 +1475,11 @@ function BulkConfirm({
         </p>
 
         {impact.restarts > 0 ? (
-          <div className="alert alert--warn">
+          <Note tone="warn">
             其中 {impact.restarts} 台正在运行，
             <strong>升级后必须重启才会生效</strong> —— 重启期间在线玩家会被断开。
             面板不会自动重启，升完之后请自己挑时间。
-          </div>
+          </Note>
         ) : (
           <p className="muted">这些实例都没在运行，下次启动时自然生效，不需要额外操作。</p>
         )}

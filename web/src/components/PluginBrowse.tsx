@@ -13,6 +13,7 @@ import { Badge } from './Badge'
 import { Button } from './Button'
 import { Card } from './Card'
 import { EmptyState } from './EmptyState'
+import { Note } from './Note'
 import { CompatBadge } from './PluginCompat'
 import { PluginDrawer } from './PluginDrawer'
 import { PluginIcon } from './PluginIcon'
@@ -319,13 +320,13 @@ export function PluginBrowse({
             <p className="browse__pending">筛选条件改了，点「搜索」才会生效。</p>
           )}
 
-          {error && <div className="alert alert--error">{error}</div>}
+          {error && <div className="alert">{error}</div>}
 
           {result?.notes &&
             Object.entries(result.notes).map(([source, note]) => (
-              <div className="alert alert--warn" key={source}>
+              <Note tone="warn" key={source}>
                 {note}
-              </div>
+              </Note>
             ))}
 
           {picks.length > 0 ? (

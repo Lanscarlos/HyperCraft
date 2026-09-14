@@ -4,6 +4,7 @@ import { api } from '../api'
 import { ask, askWithToggle } from '../confirm'
 import { formatBytes } from '../format'
 import type { InstanceSection } from '../routes'
+import { toast } from '../toast'
 import type {
   InstancePlugin,
   InstancePluginList,
@@ -20,6 +21,7 @@ import { InstancePluginDrawer } from './InstancePluginDrawer'
 import { Menu } from './Menu'
 import type { MenuItem } from './Menu'
 import { Modal } from './Modal'
+import { Note } from './Note'
 import { PageHead } from './Page'
 import { PluginBrowse, loaderLabel } from './PluginBrowse'
 import { CompatBadge } from './PluginCompat'
@@ -98,7 +100,6 @@ export function InstancePlugins({
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [status, setStatus] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>('all')
   const [tab, setTab] = useState<Tab>('installed')
   // The library plugin being handed to this server, or null. Opened from the
@@ -135,7 +136,7 @@ export function InstancePlugins({
     try {
       const said = await action()
       await refresh()
-      if (typeof said === 'string') setStatus(said)
+      if (typeof said === 'string') toast(said, { key: 'instance-plugins.save' })
     } catch (err) {
       setError(err instanceof Error ? err.message : fallback)
     } finally {
@@ -254,9 +255,8 @@ export function InstancePlugins({
     <div className="stack">
       {head}
 
-      {error && <div className="alert alert--error">{error}</div>}
-      {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
-      {status && <div className="alert alert--ok">{status}</div>}
+      {error && <div className="alert">{error}</div>}
+      {plugins.error && <div className="alert">{plugins.error}</div>}
 
       <RestartBanner
         pending={pending}
@@ -273,7 +273,7 @@ export function InstancePlugins({
           two rows are fighting over one name and the server has already picked
           a winner without telling anybody which. */}
       {duplicate > 0 && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           {/* Boxed, because .alert is a wrapping flex row and the heading would
               otherwise sit beside its own explanation. */}
           <div>
@@ -283,14 +283,14 @@ export function InstancePlugins({
               剩下的会被拒绝 —— 下面标黄的行就是，点开看具体撞的是哪个文件。
             </p>
           </div>
-        </div>
+        </Note>
       )}
 
       {/* Above the tabs, not inside 已安装. A plugin that did not load is the
           one thing on this page that is wrong right now, and switching to
           市场 must not be a way to stop seeing it. */}
       {broken > 0 && (
-        <div className="alert alert--error">
+        <Note tone="error">
           <div>
             <strong>有 {broken} 个插件没能加载</strong>
             <p className="restart-banner__list">
@@ -307,7 +307,7 @@ export function InstancePlugins({
           >
             去看
           </Button>
-        </div>
+        </Note>
       )}
 
       <div className="tabs" role="tablist" aria-label="插件">
@@ -324,7 +324,7 @@ export function InstancePlugins({
 
       {tab === 'market' ? (
         <>
-          <div className="alert">
+          <Note>
             <div>
               <strong>这里下载的插件进的是面板的插件库，不是这台服务器</strong>
               <p className="restart-banner__list">
@@ -332,7 +332,7 @@ export function InstancePlugins({
                 「已安装」用「从插件库安装」挑一个版本。下面的兼容性徽章按 {instance.name} 算。
               </p>
             </div>
-          </div>
+          </Note>
           <PluginBrowse
             against={[instance.id]}
             recents={[instance.id]}
@@ -573,7 +573,7 @@ export function InstancePlugins({
           onCancel={() => setInstalling(null)}
           onInstalled={(summary) => {
             setInstalling(null)
-            setStatus(summary)
+            toast(summary, { key: 'instance-plugins.save' })
             void refresh()
           }}
         />
@@ -677,7 +677,7 @@ function RestartBanner({
   if (pending.length === 0 || !live) return null
 
   return (
-    <div className="alert alert--warn restart-banner">
+    <Note tone="warn" className="restart-banner">
       <div>
         <strong>{pending.length} 项变更待重启生效</strong>
         <p className="restart-banner__list">
@@ -692,7 +692,7 @@ function RestartBanner({
       <Button disabled={busy} onClick={onRestart}>
         立即重启
       </Button>
-    </div>
+    </Note>
   )
 }
 
