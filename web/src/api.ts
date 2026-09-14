@@ -41,6 +41,7 @@ import type {
   InstallResult,
   JVMArgs,
   LaunchCheck,
+  LaunchPreview,
   LibraryPlugin,
   PluginBrowseDetail,
   ImportedPlugin,
@@ -48,6 +49,7 @@ import type {
   NetworkResponse,
   PluginBrowseResult,
   PluginInstallTargets,
+  StartupDraft,
   PluginDownloadJob,
   PluginLibrary,
   PluginOverview,
@@ -119,6 +121,9 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
+  // Only the launch preview passes one: it refires on every keystroke and an
+  // answer to a draft two edits ago is worse than none.
+  signal?: AbortSignal,
 ): Promise<T> {
   const headers: Record<string, string> = { [CSRF_HEADER]: '1' }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
@@ -128,6 +133,7 @@ async function request<T>(
     headers,
     credentials: 'same-origin',
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
   })
 
   if (response.status === 204) return undefined as T
@@ -201,6 +207,12 @@ export const api = {
    *  can tell what kind of server it is. See internal/api/handlers_launch.go. */
   launchCheck: (id: string) =>
     request<LaunchCheck>('GET', `/api/instances/${id}/launch-check`),
+
+  /** The argv this draft would produce, plus what the panel already knows is
+   *  wrong with it. POST because it carries a draft, not because it writes:
+   *  nothing on the server changes. */
+  launchPreview: (id: string, draft: StartupDraft, signal?: AbortSignal) =>
+    request<LaunchPreview>('POST', `/api/instances/${id}/launch/preview`, draft, signal),
 
   /** Reads a start script for the launch settings written inside it. The panel
    *  never runs these scripts — this is how their arguments reach the form

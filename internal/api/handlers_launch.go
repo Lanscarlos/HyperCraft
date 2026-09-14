@@ -237,11 +237,10 @@ func (s *Server) jarCountIssue(cfg instance.Config) []launchIssue {
 		}
 	}
 	if count == 0 {
-		return []launchIssue{{
-			Level:   launchLevelWarn,
-			Code:    "jar-count",
-			Message: "实例目录下没有 jar 文件。从核心库装一个，或者自己传一个进去。",
-		}}
+		// Silent rather than a warning of its own: jar-unset or jar-missing is
+		// already saying this, in more useful words, and two rows for one
+		// problem is how a check panel becomes something people skim past.
+		return nil
 	}
 	return []launchIssue{{
 		Level:   launchLevelOK,

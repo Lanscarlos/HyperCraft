@@ -16,7 +16,9 @@ import type {
 import { isLive } from '../types'
 import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
+import { useLaunchPreview } from '../useLaunchPreview'
 import { Button } from './Button'
+import { LaunchConsole } from './LaunchConsole'
 import { InstanceCorePicker } from './InstanceCorePicker'
 import { JVMArgsEditor } from './JVMArgsEditor'
 import { FieldHelp } from './FieldHelp'
@@ -118,6 +120,20 @@ export function StartupSettings({
   }
   const changed = changedKeys(stored, pending)
   const dirty = changed.length > 0
+
+  // The command and the checks, for the draft as it stands rather than for
+  // what is saved. Both come off one endpoint: built separately they would
+  // disagree on screen, one describing the form and the other the disk.
+  const { preview, stale, failed } = useLaunchPreview(instance.id, {
+    java: pending.java,
+    jar: pending.jar,
+    argFiles: pending.argFiles,
+    minMemoryMB: pending.minMemoryMB,
+    maxMemoryMB: pending.maxMemoryMB,
+    jvmArgs: pending.jvmArgs,
+    serverArgs: pending.serverArgs,
+    loader: pending.loader,
+  })
 
   const reseed = useCallback((from: InstanceStatus) => {
     setForm(toInput(from))
@@ -397,6 +413,8 @@ export function StartupSettings({
 
       {error && <div className="alert alert--error">{error}</div>}
 
+      <div className="startup">
+        <div className="startup__form">
       <Section form title="启动方式" note="面板拼出来的那条命令行：用哪个 Java、跑哪个 jar、给多少内存。">
         <div className="segmented" role="group" aria-label="启动方式">
           {[
@@ -589,6 +607,26 @@ export function StartupSettings({
           />
         )}
       </Section>
+        </div>
+
+        <aside className="startup__rail">
+          <LaunchConsole
+            preview={preview}
+            stale={stale}
+            failed={failed}
+            onApplyFix={(patch) => {
+              // Merged as it arrives. No branch on the issue code lives here —
+              // that is what lets the backend add a check without a frontend
+              // change. Only the two array fields have to be routed, because
+              // this form edits them as text.
+              const { jvmArgs, serverArgs, ...rest } = patch
+              setForm((prev) => ({ ...prev, ...rest }))
+              if (jvmArgs) setJvmText(toLines(jvmArgs))
+              if (serverArgs) setServerText(toLines(serverArgs))
+            }}
+          />
+        </aside>
+      </div>
 
       {status && <div className="alert alert--ok">{status}</div>}
 

@@ -342,8 +342,13 @@ func TestJarCountIsReportedAsACheck(t *testing.T) {
 	env.login()
 	inst := env.newTestInstance("jarcount")
 
-	if got := issueByCode(env.launchCheck(inst.ID).Issues, "jar-count"); got == nil || got.Level != launchLevelWarn {
-		t.Errorf("an empty directory should warn, got %+v", got)
+	// Nothing to confirm, and jar-unset is already saying the useful half —
+	// two rows for one problem is how a check panel stops being read.
+	if got := issueByCode(env.launchCheck(inst.ID).Issues, "jar-count"); got != nil {
+		t.Errorf("an empty directory should stay quiet here, got %+v", got)
+	}
+	if issueByCode(env.launchCheck(inst.ID).Issues, "jar-unset") == nil {
+		t.Error("…but only because jar-unset covers it, and it did not fire")
 	}
 
 	env.writeScript(inst, "paper.jar", "not really a jar", 0o644)
