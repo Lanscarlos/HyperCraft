@@ -5813,6 +5813,17 @@ details[open]::details-content {
   white-space: nowrap;
 }
 
+/* A path or a flag inside a fact chip. The chip is already the box; the
+   global <code> box drawn inside it gave the head a pill with a second,
+   squarer pill sitting in it — two borders and two fills to say one thing.
+   The mono face is what marks it as a literal, and that is enough. */
+.meta-chips code {
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 0.92em;
+}
+
 .page__lead {
   color: var(--text-dim);
   max-width: 660px;
@@ -16498,15 +16509,22 @@ select.input-slim option {
    about them, so the columns live here rather than five times over in five
    page blocks. See components/ResourceList.tsx for what fills them.
 
-   The widths are fixed past the first column on purpose: a shelf is read down
-   a column (which of these is big, which is old, which is unused), and
-   fractional columns put those answers at a different x on every page. */
+   A shelf is read down a column (which of these is big, which is old, which
+   is unused), so the answers have to land at the same x on every one of the
+   five. That is what declaring the tracks once, here, buys — it does not
+   require them to be fixed, and fixing them cost more than it was worth: the
+   name was the only flexible column, so on a 1440px page it swallowed every
+   pixel the other seven did not ask for. Three hundred of blank between a
+   jar's name and its version, and the seven answers crowded into the last
+   third of the row. The ratios below hand that slack to the columns that hold
+   the answers. Fixed widths survive only where the content cannot grow: a
+   right-aligned number, a relative date, the menu button. */
 
 .reslist__head,
 .reslist__row {
   grid-template-columns:
-    minmax(0, 1fr) 148px 128px 84px 78px
-    176px 76px 34px;
+    minmax(240px, 2.4fr) minmax(140px, 1fr) minmax(104px, 0.78fr)
+    minmax(88px, 0.62fr) 78px minmax(150px, 1.1fr) 76px 34px;
 }
 
 /* Two lines of text per row — the name and the file under it — which is what
@@ -16565,8 +16583,15 @@ select.input-slim option {
   white-space: nowrap;
 }
 
+/* The jar this row actually is, under the name it goes by. The global <code>
+   box has to come off: boxed, it reads as a second chip stacked under the
+   first, and every row in the list became two stacked rectangles. Mono stays —
+   it is a file name, and that is what tells it apart from the name above it. */
 .reslist__file {
+  padding: 0;
   overflow: hidden;
+  background: none;
+  border: none;
   color: var(--text-faint);
   font-size: 11px;
   text-overflow: ellipsis;
@@ -16676,7 +16701,9 @@ select.input-slim option {
 
   .reslist__head,
   .reslist__row {
-    grid-template-columns: minmax(0, 1fr) 148px 128px 84px 78px 176px 34px;
+    grid-template-columns:
+      minmax(220px, 2.4fr) minmax(132px, 1fr) minmax(100px, 0.78fr)
+      minmax(84px, 0.62fr) 78px minmax(140px, 1.1fr) 34px;
   }
 }
 
@@ -16688,7 +16715,9 @@ select.input-slim option {
 
   .reslist__head,
   .reslist__row {
-    grid-template-columns: minmax(0, 1fr) 130px 84px 78px 160px 34px;
+    grid-template-columns:
+      minmax(200px, 2.4fr) minmax(124px, 1fr) minmax(80px, 0.62fr) 78px
+      minmax(132px, 1.1fr) 34px;
   }
 }
 
@@ -16736,6 +16765,20 @@ select.input-slim option {
   .reslist__tile {
     display: none;
   }
+
+  /* And the chips come off the name's line for the same reason. Two of them —
+     代理端 and 信息不全 — are 180px that do not shrink, which left 「Velocity
+     4.1.0-SNAPSHOT」 rendering as 「Vel…」: three characters of the one thing
+     on the row that says which jar this is. The chips keep their place in the
+     reading order, one line down, where they cost height instead of the
+     name. */
+  .reslist__title {
+    flex-wrap: wrap;
+  }
+
+  .reslist__title strong {
+    flex: 1 1 100%;
+  }
 }
 
 /* The two cards under a shelf: what could be cleaned up, and the one standing
@@ -16747,6 +16790,14 @@ select.input-slim option {
      tracks a 1440px page happens to fit. */
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 12px;
+}
+
+/* With nothing to clean up there is only the standing sentence left, and
+   auto-fit hands a single child the whole 1440. A sentence set across 1440px
+   is not a line anybody reads, so on its own it falls back to prose width —
+   the same cap the rest of the panel's prose gets. */
+.rescards:has(> :only-child) {
+  grid-template-columns: minmax(0, var(--content-max));
 }
 
 .reshint {

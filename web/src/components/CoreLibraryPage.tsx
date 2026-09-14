@@ -252,6 +252,14 @@ export function CoreLibraryPage({
                 </button>
               ))}
             </div>
+            {/* The count, then the sort beside it: a Select alone at the end
+                of a wide toolbar is a control floating in a corner, seven
+                hundred pixels from the chips it belongs with and lined up
+                against nothing. `.toolbar__count + .toolbar__tools` drops the
+                auto margin so the two read as one cluster. */}
+            <span className="toolbar__count">
+              {shown.length} / {stored.length}
+            </span>
             <div className="toolbar__tools">
               <Select
                 value={sort}
@@ -281,14 +289,21 @@ export function CoreLibraryPage({
             )}
           </ResourceTable>
 
+          {/* The hygiene card only when there is something to clean. It used
+              to stand there reading 「0 个核心没有被任何实例使用，合计 0 B」
+              beside a disabled button — half a row spent telling the operator
+              that the thing they did not ask about has not happened. A clean
+              shelf says nothing. */}
           <div className="rescards">
-            <StorageHygiene
-              idle={idle.length}
-              bytes={idle.reduce((sum, core) => sum + core.size, 0)}
-              unit="个核心"
-              onClean={() => void clean()}
-              busy={busy}
-            />
+            {idle.length > 0 && (
+              <StorageHygiene
+                idle={idle.length}
+                bytes={idle.reduce((sum, core) => sum + core.size, 0)}
+                unit="个核心"
+                onClean={() => void clean()}
+                busy={busy}
+              />
+            )}
             <ResourceHint>
               手动丢进核心库目录的 jar 也会出现在这里，但它的版本和 Java 要求需要你补一下 ——
               从「添加核心 → 上传自定义 jar」传进来的会带上这些信息。
