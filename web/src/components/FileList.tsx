@@ -14,17 +14,19 @@ import { Note } from './Note'
 import type { MenuItem } from './Menu'
 
 /**
- * What is in the directory the tree is standing in.
+ * What is in the directory you are standing in — the main area's other form.
  *
- * Two densities rather than a table that quietly loses columns. The listing
- * used to drop 修改时间 the moment a file was opened beside it, which reads as
- * a rendering bug from the one seat that matters — somebody looking for the
- * file the server touched last, in a column that was there a second ago. A
- * column appears and disappears because a person asked it to, and the thing
- * they ask with is the 紧凑 / 详情 control in this panel's own head.
+ * It had two densities, 紧凑 and 详情, and the reason was that it lived in a
+ * 264-380px rail where four columns did not fit. The choice was really "which
+ * columns do I give up", and it had to be made by hand because the pane could
+ * not know. In the main area there is room for all four at every width worth
+ * having, so there is one form and 修改时间 is simply there — which is what
+ * somebody looking for the file the server touched last was after.
+ *
+ * Narrow windows still shed a column, but as a breakpoint rather than a
+ * switch, and they shed the one whose answer is also in the row's tooltip.
  */
 
-export type Density = 'compact' | 'detail'
 export type SortKey = 'name' | 'size' | 'modified'
 
 export interface Sort {
@@ -44,7 +46,6 @@ export interface FileListProps {
   /** How many the directory holds before filtering, so the foot can say what
    *  the filter is hiding. */
   total: number
-  density: Density
   sort: Sort
   onSort: (key: SortKey) => void
   /** Ticked rows — what the bulk bar acts on. A plain click is not in here:
@@ -56,19 +57,17 @@ export interface FileListProps {
    *  bar nobody asked for standing where the density switch was. */
   cursor: string | null
   onSelect: (path: string, mode: SelectMode) => void
-  onClearSelection: () => void
   /** The file in front of the editor, so its row is marked. */
   activePath: string | null
   /** Open files with unsaved edits: the row carries the same dot the tab does,
    *  because a tab scrolled out of the strip is one you can walk away from. */
   dirtyPaths: Set<string>
   onOpen: (entry: FileEntry) => void
-  onOpenBackground: (entry: FileEntry) => void
-  onRename: (entry: FileEntry) => void
-  onDelete: (entry: FileEntry) => void
-  onMove: (entries: FileEntry[]) => void
-  onDownload: (entries: FileEntry[]) => void
-  onBulkDelete: (entries: FileEntry[]) => void
+  /** The row's ⋯ menu, built by the pane. It is the pane's rather than this
+   *  component's because the tree's right-click menu has to be the same items
+   *  in the same order, and the only way to be sure of that is for there to be
+   *  one list. */
+  menuFor: (entry: FileEntry) => MenuItem[]
   onUpload: () => void
   onDropFiles: (files: File[]) => void
   onRetry: () => void
@@ -84,56 +83,20 @@ export interface FileListProps {
 /** What a directory rule refuses, on the control rather than as a banner. */
 const NOT_YOURS = '这一项不在你的角色允许的范围内'
 
-/** The 紧凑 / 详情 switch, drawn by whatever owns the listing's head. It is not
- *  inside FileList because stacked the listing has no head of its own — the
- *  navigation column's 文件 bar is its head. */
-export function DensitySwitch({
-  density,
-  onDensity,
-}: {
-  density: Density
-  onDensity: (next: Density) => void
-}) {
-  return (
-    <div className="segmented segmented--inline" role="group" aria-label="列表密度">
-      {(['compact', 'detail'] as const).map((value) => (
-        <button
-          key={value}
-          type="button"
-          className={`segmented__option${
-            density === value ? ' segmented__option--active' : ''
-          }`}
-          aria-pressed={density === value}
-          onClick={() => onDensity(value)}
-        >
-          {value === 'compact' ? '紧凑' : '详情'}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 export function FileList({
   instanceId,
   dir,
   entries,
   total,
-  density,
   sort,
   onSort,
   selected,
   cursor,
   onSelect,
-  onClearSelection,
   activePath,
   dirtyPaths,
   onOpen,
-  onOpenBackground,
-  onRename,
-  onDelete,
-  onMove,
-  onDownload,
-  onBulkDelete,
+  menuFor,
   onUpload,
   onDropFiles,
   onRetry,
@@ -150,44 +113,6 @@ export function FileList({
   // the panel is a stream of enter/leave pairs. Counting them is what keeps
   // the drop hint from flickering all the way down the list.
   const depth = useRef(0)
-
-  const picked = entries.filter((entry) => selected.has(entry.path))
-  const pickedBytes = picked.reduce((sum, entry) => sum + (entry.isDir ? 0 : entry.size), 0)
-
-  const rowMenu = (entry: FileEntry): MenuItem[] => [
-    {
-      label: '重命名',
-      disabled: busy || !entry.writable,
-      onSelect: () => onRename(entry),
-    },
-    {
-      label: '复制路径',
-      onSelect: () => {
-        void navigator.clipboard?.writeText(entry.path)
-      },
-    },
-    {
-      label: '移动到…',
-      disabled: busy || !entry.writable,
-      onSelect: () => onMove([entry]),
-    },
-    // Only for something the editor can actually hold. A jar opened "in a new
-    // tab" would be a tab showing a download card nobody asked for.
-    ...(entry.isDir || !entry.editable
-      ? []
-      : [
-          {
-            label: '在新标签打开',
-            onSelect: () => onOpenBackground(entry),
-          },
-        ]),
-    {
-      label: '删除',
-      danger: true,
-      disabled: busy || !entry.writable,
-      onSelect: () => onDelete(entry),
-    },
-  ]
 
   return (
     <section
@@ -214,48 +139,17 @@ export function FileList({
         onDropFiles(Array.from(event.dataTransfer.files))
       }}
     >
-      {/* The head is one row that says one of two things: what this panel is,
-          or what is about to happen to the things ticked in it. They never
-          coexist — a bulk bar stacked under a title is a second row of
-          furniture above a list that has just lost half its height. */}
-      {picked.length > 0 && (
-        <div className="flist__bulk">
-          <span className="flist__bulk-count">
-            已选 {picked.length} 项 · {formatBytes(pickedBytes)}
-          </span>
-          <Button size="small" disabled={busy} onClick={() => onDownload(picked)}>
-            下载
-          </Button>
-          <Button size="small" disabled={busy || !writable} onClick={() => onMove(picked)}>
-            移动到…
-          </Button>
-          <Button
-            size="small"
-            variant="danger"
-            disabled={busy || !writable}
-            onClick={() => onBulkDelete(picked)}
-          >
-            删除
-          </Button>
-          <button type="button" className="link flist__bulk-clear" onClick={onClearSelection}>
-            取消选择
-          </button>
-        </div>
-      )}
-
-      {/* The column heads stay in both densities, and they are the only way to
-          change the ordering. Hiding them in 紧凑 would put the sort behind a
-          density switch, which is the shape this rewrite is removing. */}
-      <div className="flist__cols" data-density={density}>
+      {/* The column heads are the only way to change the ordering, so they are
+          always here. They share one grid with the rows below rather than
+          declaring their own tracks: a header whose columns are stated
+          separately from its rows is a header that goes out of line the first
+          time a filename is long. */}
+      <div className="flist__cols">
         <span className="flist__col flist__col--mark" aria-hidden="true" />
         <SortHead label="名称" column="name" sort={sort} onSort={onSort} />
         <SortHead label="大小" column="size" sort={sort} onSort={onSort} end />
-        {density === 'detail' && (
-          <>
-            <SortHead label="修改时间" column="modified" sort={sort} onSort={onSort} />
-            <span className="flist__col flist__col--ops" aria-hidden="true" />
-          </>
-        )}
+        <SortHead label="修改时间" column="modified" sort={sort} onSort={onSort} />
+        <span className="flist__col flist__col--ops" aria-hidden="true" />
       </div>
 
       <div
@@ -306,7 +200,6 @@ export function FileList({
               key={entry.path}
               entry={entry}
               instanceId={instanceId}
-              density={density}
               ticked={selected.has(entry.path)}
               current={entry.path === activePath}
               cursored={entry.path === cursor}
@@ -314,7 +207,7 @@ export function FileList({
               busy={busy}
               onSelect={onSelect}
               onOpen={onOpen}
-              menu={rowMenu(entry)}
+              menu={menuFor(entry)}
             />
           ))
         )}
@@ -340,7 +233,6 @@ export function FileList({
 function Row({
   entry,
   instanceId,
-  density,
   ticked,
   current,
   cursored,
@@ -352,7 +244,6 @@ function Row({
 }: {
   entry: FileEntry
   instanceId: string
-  density: Density
   ticked: boolean
   current: boolean
   cursored: boolean
@@ -365,7 +256,6 @@ function Row({
   return (
     <div
       className="frow"
-      data-density={density}
       data-ticked={ticked || undefined}
       data-on={current || undefined}
       data-cursor={cursored || undefined}
@@ -418,11 +308,9 @@ function Row({
 
       <span className="frow__size num">{entry.isDir ? '—' : formatBytes(entry.size)}</span>
 
-      {density === 'detail' && (
-        <time className="frow__time" dateTime={entry.modified} title={stamp(entry.modified)}>
-          {formatSince(entry.modified)}
-        </time>
-      )}
+      <time className="frow__time" dateTime={entry.modified} title={stamp(entry.modified)}>
+        {formatSince(entry.modified)}
+      </time>
 
       {/* Off until the pointer or the keyboard is on this row. Twenty rows of
           three standing icons is sixty icons competing with the filenames, and
@@ -475,6 +363,11 @@ function SortHead({
   return (
     <span
       className={`flist__col${end ? ' flist__col--end' : ''}`}
+      // Which column this is, so the narrow-screen rules can shed it by name
+      // rather than by counting children — the tracks and the heads are one
+      // grid, and a :nth-child that drifts out of step with them is a header
+      // sitting over the wrong column.
+      data-col={column}
       aria-sort={active ? (sort.asc ? 'ascending' : 'descending') : 'none'}
     >
       <button type="button" className="flist__sort" onClick={() => onSort(column)}>

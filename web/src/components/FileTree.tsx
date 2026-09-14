@@ -1,25 +1,30 @@
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { api } from '../api'
 import { readPref, writePref } from '../localPrefs'
+import type { FileEntry } from '../types'
 import { FileIcon } from './FileIcon'
 import { Icon } from './Icon'
+import type { MenuItem } from './Menu'
 
 /**
- * The directory tree beside the listing.
+ * The tree in the sidebar: folders and the files inside them.
  *
- * Folders, and only ever folders. The listing in the middle answers "what is
- * in here"; this answers "where is here". They used to trade jobs — the tree
- * grew files whenever the listing stepped aside — and that cost twice: the
- * same control meant two different things depending on a mode, and at this
- * rail's width the filenames it gained arrived pre-truncated
- * (`banned-players...`, `version_histor...`), which is a worse listing than
- * the one it was standing in for.
+ * It held folders only for a long time, and the reason was width. At 216px the
+ * filenames it gained arrived pre-truncated — `banned-players...`,
+ * `version_histor...` — which is a worse listing than the one it was standing
+ * in for. The sidebar is 300px now and the listing has moved into the main
+ * area, so both halves of that trade have changed: the truncation is mostly
+ * gone, and the tree is no longer standing in for anything. What it gained
+ * instead is the question the listing can no longer answer from over there —
+ * which files do I have open, and where are they — so open files are marked
+ * here and the current one is marked differently again.
  *
  * Children are fetched when a node is first opened and then kept: walking back
  * up and down a tree is the single most common thing anyone does on this page,
  * and re-reading plugins/ every time it is expanded makes the tree feel slower
- * than the ".." it replaced. 刷新 on the bar drops the cache.
+ * than the ".." it replaced. 刷新 on the toolbar drops the cache.
  *
  * Which folders are open is remembered per instance. A tree that is collapsed
  * every time you come back is a tree you re-walk every time you come back.
@@ -33,8 +38,20 @@ interface Props {
   /** Bumped by 刷新, to drop what was cached. */
   reloadKey?: number
   /** Picking a folder here is the whole point of the 移动到… dialog, which
-   *  borrows this component rather than growing a second tree. */
+   *  borrows this component rather than growing a second tree. Folders only in
+   *  that form: a dialog asking "into which folder" must not offer a file. */
   compact?: boolean
+  /** Opening a file, as opposed to walking into a folder. Absent in the
+   *  picker, which is also what turns the files off. */
+  onOpenFile?: (entry: FileEntry) => void
+  /** Every path with a tab open, and the one in front of them. */
+  openPaths?: Set<string>
+  activePath?: string | null
+  /** The right-click menu for a row. The same function builds the ⋯ menu in the
+   *  main listing, which is what keeps the two identical — the design note
+   *  asks for the same items in the same order, and the only way to be sure of
+   *  that is for there to be one list. */
+  menuFor?: (entry: FileEntry) => MenuItem[]
 }
 
 /** One row of the tree. Exported because the file pane builds nodes of its own
@@ -43,9 +60,25 @@ export interface TreeNode {
   name: string
   path: string
   isDir: boolean
+  /** The listing row this came from, for the menu and for opening. Absent on
+   *  the synthetic root. */
+  entry?: FileEntry
 }
 
-export function FileTree({ instanceId, path, onOpen, reloadKey, compact }: Props) {
+export function FileTree({
+  instanceId,
+  path,
+  onOpen,
+  reloadKey,
+  compact,
+  onOpenFile,
+  openPaths,
+  activePath,
+  menuFor,
+}: Props) {
+  // Folders only in the picker. Elsewhere the files are the point.
+  const files = onOpenFile !== undefined
+  const [context, setContext] = useState<{ x: number; y: number; entry: FileEntry } | null>(null)
   const [children, setChildren] = useState<Record<string, TreeNode[]>>({})
   const [loading, setLoading] = useState<Set<string>>(new Set())
 
@@ -66,13 +99,24 @@ export function FileTree({ instanceId, path, onOpen, reloadKey, compact }: Props
         const listing = await api.listFiles(instanceId, dir)
         setChildren((current) => ({
           ...current,
-          // Folders only, filtered here rather than at render: nothing in this
-          // component has a use for the files, and carrying them would be
-          // carrying a whole second listing per directory to throw away.
           [dir]: listing.entries
-            .filter((entry) => entry.isDir)
-            .map((entry) => ({ name: entry.name, path: entry.path, isDir: true }))
-            .sort((a, b) => a.name.localeCompare(b.name, 'zh')),
+            .filter((entry) => files || entry.isDir)
+            .map((entry) => ({
+              name: entry.name,
+              path: entry.path,
+              isDir: entry.isDir,
+              entry,
+            }))
+            // Folders first, each group by name. The same order the listing
+            // uses, because a reader moving between the two should not have to
+            // re-learn where things are.
+            .sort((a, b) =>
+              a.isDir === b.isDir
+                ? a.name.localeCompare(b.name, 'zh-CN')
+                : a.isDir
+                  ? -1
+                  : 1,
+            ),
         }))
       } catch {
         // A directory that cannot be read collapses to a leaf rather than an
@@ -87,7 +131,7 @@ export function FileTree({ instanceId, path, onOpen, reloadKey, compact }: Props
         })
       }
     },
-    [instanceId],
+    [instanceId, files],
   )
 
   // A new instance, or 刷新: drop the cache and read the root plus whatever is
@@ -143,14 +187,29 @@ export function FileTree({ instanceId, path, onOpen, reloadKey, compact }: Props
    *  children": one is a fact about the disk, the other about this cache. */
   const loaded = useCallback((dir: string) => dir in children, [children])
 
+  const openRow = (node: TreeNode) => {
+    if (node.isDir || node.entry === undefined || onOpenFile === undefined) onOpen(node.path)
+    else onOpenFile(node.entry)
+  }
+
   const rowProps = {
     path,
     open,
     loading,
     visible,
     loaded,
+    openPaths,
+    activePath,
     onToggle: toggle,
-    onOpen,
+    onOpenNode: openRow,
+    onContext:
+      menuFor === undefined
+        ? undefined
+        : (event: React.MouseEvent, node: TreeNode) => {
+            if (node.entry === undefined) return
+            event.preventDefault()
+            setContext({ x: event.clientX, y: event.clientY, entry: node.entry })
+          },
   }
 
   return (
@@ -161,11 +220,45 @@ export function FileTree({ instanceId, path, onOpen, reloadKey, compact }: Props
         open={open.has('')}
         loading={loading.has('')}
         current={path === ''}
+        held={false}
         hasChildren={!loaded('') || visible('').length > 0}
         onToggle={() => toggle('')}
         onOpen={() => onOpen('')}
       />
       {open.has('') && <Branch dirs={visible('')} depth={1} {...rowProps} />}
+
+      {/* A context menu has to open where the pointer is, which is the one
+          thing Menu cannot do — it anchors to its own trigger. The sheet's
+          classes are shared with it so the two look like one thing. Same
+          arrangement as the editor's tab strip. */}
+      {context !== null &&
+        menuFor !== undefined &&
+        createPortal(
+          <div
+            className="menu__sheet"
+            role="menu"
+            data-state="in"
+            data-dir="down"
+            style={{ left: context.x, top: context.y }}
+          >
+            {menuFor(context.entry).map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                className={item.danger ? 'menu__item menu__item--danger' : 'menu__item'}
+                disabled={item.disabled}
+                onClick={() => {
+                  setContext(null)
+                  item.onSelect()
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </nav>
   )
 }
@@ -178,12 +271,16 @@ interface BranchProps {
   loading: Set<string>
   visible: (dir: string) => TreeNode[]
   loaded: (dir: string) => boolean
+  openPaths?: Set<string>
+  activePath?: string | null
   onToggle: (dir: string) => void
-  onOpen: (dir: string) => void
+  onOpenNode: (node: TreeNode) => void
+  onContext?: (event: React.MouseEvent, node: TreeNode) => void
 }
 
 function Branch({ dirs, depth, ...rest }: BranchProps) {
-  const { path, open, loading, visible, loaded, onToggle, onOpen } = rest
+  const { path, open, loading, visible, loaded, openPaths, activePath, onToggle, onOpenNode } =
+    rest
 
   return (
     <>
@@ -194,15 +291,20 @@ function Branch({ dirs, depth, ...rest }: BranchProps) {
             depth={depth}
             open={open.has(node.path)}
             loading={loading.has(node.path)}
-            current={path === node.path}
+            current={node.isDir ? path === node.path : activePath === node.path}
+            // Open in some tab, but not the one being read. It is a third
+            // state and it needs to be: without it the tree can say where you
+            // are and what you are reading, but not what else you have going.
+            held={!node.isDir && openPaths?.has(node.path) === true}
             // Unknown until it has been read once, and an arrow that appears
             // after the fact is better than one that never does: a directory
-            // nobody has opened yet is drawn as openable.
-            hasChildren={!loaded(node.path) || visible(node.path).length > 0}
+            // nobody has opened yet is drawn as openable. A file never has one.
+            hasChildren={node.isDir && (!loaded(node.path) || visible(node.path).length > 0)}
             onToggle={() => onToggle(node.path)}
-            onOpen={() => onOpen(node.path)}
+            onOpen={() => onOpenNode(node)}
+            onContext={rest.onContext && ((event) => rest.onContext?.(event, node))}
           />
-          {open.has(node.path) && (
+          {node.isDir && open.has(node.path) && (
             <Branch dirs={visible(node.path)} depth={depth + 1} {...rest} />
           )}
         </div>
@@ -217,25 +319,30 @@ function Row({
   open,
   loading,
   current,
+  held,
   hasChildren,
   onToggle,
   onOpen,
+  onContext,
 }: {
   node: TreeNode
   depth: number
   open: boolean
   loading: boolean
   current: boolean
+  held: boolean
   hasChildren: boolean
   onToggle: () => void
   onOpen: () => void
+  onContext?: (event: React.MouseEvent) => void
 }) {
   return (
     <div
-      className={`ftree__row${current ? ' ftree__row--on' : ''}`}
+      className={`ftree__row${current ? ' ftree__row--on' : ''}${held ? ' ftree__row--held' : ''}`}
       // Indent as padding on the row rather than a margin, so the hover and
-      // the current-row tint still run the full width of the rail.
-      style={{ paddingLeft: `${6 + depth * 12}px` }}
+      // the current-row tint still run the full width of the column.
+      style={{ paddingLeft: `${6 + depth * 14}px` }}
+      onContextMenu={onContext}
     >
       {/* One icon, turned. `expand` is the right-pointing chevron the sidebar
           uses; a tree twist pointing down is the same mark rotated, and adding
@@ -253,7 +360,7 @@ function Row({
         {hasChildren && <Icon name="expand" />}
       </button>
       <button type="button" className="ftree__name" onClick={onOpen} title={node.path || '/'}>
-        <FileIcon name={node.name} dir />
+        <FileIcon name={node.name} dir={node.isDir} />
         <span className="ftree__label">{node.name}</span>
       </button>
       {loading && <span className="ftree__wait" aria-hidden="true" />}

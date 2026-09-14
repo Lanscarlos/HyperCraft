@@ -6756,7 +6756,8 @@ details[open]::details-content {
    layer costs more than the repaint the clip below already keeps small. */
 .editor__gutter {
   flex: 0 0 auto;
-  width: 52px;
+  /* Set by the group, which knows whether the screen is split. */
+  width: var(--gutter-w, 52px);
   padding-right: 10px;
   padding-left: 8px;
   background: var(--surface-2);
@@ -7518,20 +7519,68 @@ small.field__bad {
 
    The editor takes the largest share because it holds content; the two rails
    beside it are navigation. */
-/* ---- the bar across the top ------------------------------------------
+/* ---- the two bars over the main area ---------------------------------
 
-   One row, 56px, and the same row in every state of the pane. What it
-   replaced was two toolbars — one per mode — with different button counts, a
-   different order and a different amount of text on each, which is the
-   reliable way to break the muscle memory a tool somebody opens daily runs
-   on. */
+   The trail, 36px, describing what is in the main area rather than where the
+   page is — which is why it lives here now and not across the top of the page.
+   Under it the toolbar, 46px, which is rendered in *both* of the main area's
+   forms: the same buttons, in the same order, in the same shape, whatever else
+   is on screen. Two toolbars with different button counts per mode is the
+   reliable way to break the muscle memory a daily tool runs on, and this pane
+   has been there. */
 .fbar {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 12px;
-  height: 56px;
+  gap: 8px;
+  height: 36px;
   min-width: 0;
+}
+
+.ftools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 46px;
+  min-width: 0;
+}
+
+/* The bulk bar is the same row, not a second one stacked on it: a list that
+   drops 46px the moment a checkbox is ticked is a list whose rows move out
+   from under the pointer that ticked it. */
+.ftools--bulk {
+  justify-content: space-between;
+  background: var(--accent-soft);
+  border-radius: var(--radius);
+  padding: 0 12px;
+}
+
+.ftools__where {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.ftools__where b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ftools__stats {
+  flex: none;
+}
+
+.ftools__acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
 }
 
 .fbar__up {
@@ -7726,24 +7775,36 @@ small.field__bad {
   }
 }
 
-/* On a phone the four buttons and the path cannot share a line — the path
-   loses, and a file manager whose path is two characters wide is a file
-   manager that cannot say where it is. So the bar becomes two rows, with the
-   trail on the second one at full width. The buttons stay in the same group,
-   the same order and the same shape; only where the row breaks changes. */
+/* On a phone the buttons and the directory's name cannot share a line. The
+   toolbar becomes two rows with the name on the first one; the buttons stay in
+   the same group, the same order and the same shape, and only where the row
+   breaks changes. The trail above it is already one row of its own. */
 @media (max-width: 700px) {
-  .fbar {
+  .ftools {
     flex-wrap: wrap;
     height: auto;
-    min-height: 56px;
+    min-height: 46px;
     row-gap: 6px;
-    padding-bottom: 6px;
   }
 
-  .fbar__crumbs,
-  .fbar__path {
-    order: 3;
+  .ftools__where {
     flex-basis: 100%;
+  }
+
+  /* `flex: none` is right on a wide screen — the buttons must not be squeezed
+     to make room for a long directory name — and wrong here, where there is no
+     room to be had and the alternative is the last button hanging off the
+     right edge of the page. */
+  .ftools__acts {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  /* The main area's gutter is the sidebar's; on a phone the sidebar is a strip
+     and the gutter is width the listing needs more. */
+  .fm__main {
+    padding-left: 6px;
   }
 }
 
@@ -7838,14 +7899,25 @@ small.field__bad {
    tooltip. A floor means the row overflows instead, which is visible and
    therefore fixable; the density-aware column width below is what keeps it
    from having to. */
-.flist__cols {
+/* One set of tracks, declared once and used by the head and by every row.
+   A header whose columns are stated separately from its rows is a header that
+   goes out of line the first time a filename is long.
+
+   The `0` in `minmax(0, 1fr)` on the name track is not a typo and not
+   defensive: without it a long filename sets the track's minimum and pushes
+   the other three off the end. This is the repo's most frequent layout bug. */
+.flist__cols,
+.frow {
   display: grid;
-  grid-template-columns: 20px minmax(88px, 1fr) auto;
-  flex: none;
+  grid-template-columns: 22px minmax(0, 1fr) 110px 190px 76px;
   align-items: center;
-  gap: 9px;
-  height: 26px;
+  gap: 10px;
   padding: 0 10px 0 12px;
+}
+
+.flist__cols {
+  flex: none;
+  height: 32px;
   border-bottom: 1px solid var(--border);
   color: var(--text-faint);
   font-size: 10.5px;
@@ -7853,20 +7925,16 @@ small.field__bad {
   letter-spacing: 0.07em;
 }
 
-.flist__cols[data-density='detail'] {
-  grid-template-columns: 20px minmax(88px, 1fr) auto minmax(0, 110px) 60px;
-}
-
 .flist__col {
   min-width: 0;
 }
 
 .flist__col--mark {
-  width: 20px;
+  width: 22px;
 }
 
 .flist__col--ops {
-  width: 60px;
+  width: 76px;
 }
 
 .flist__col--end {
@@ -7933,20 +8001,9 @@ small.field__bad {
 
 .frow {
   position: relative;
-  display: grid;
-  align-items: center;
-  gap: 9px;
-  padding: 0 10px 0 12px;
   cursor: pointer;
-  /* The two densities, and the whole of the difference between them. */
-  grid-template-columns: 20px minmax(88px, 1fr) auto;
-  height: 34px;
-  font-size: 12.5px;
-}
-
-.frow[data-density='detail'] {
-  grid-template-columns: 20px minmax(88px, 1fr) auto minmax(0, 110px) 60px;
   height: 40px;
+  font-size: 12.5px;
 }
 
 .frow:hover {
@@ -7980,11 +8037,11 @@ small.field__bad {
   position: relative;
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
 }
 
-/* The shared mark is sized for a 40px table row; these rows are 34. */
+/* The shared mark is sized for a 40px table row, which is what these are. */
 .frow__mark .fileicon {
   width: 20px;
   height: 20px;
@@ -8076,26 +8133,39 @@ small.field__bad {
   transition: opacity var(--dur-1) var(--ease);
 }
 
-/* 紧凑 has no column for these, so they float over the right end of the row
-   and fade the name out from under themselves. The size is what they cover,
-   and it is the number you are least likely to be reading at the moment your
-   hand is already on the row. */
-.frow[data-density='compact'] .frow__ops {
-  position: absolute;
-  right: 10px;
-  padding-left: 16px;
-  background: linear-gradient(90deg, transparent, var(--surface-2) 12px);
-}
-
-.frow[data-density='compact'][data-ticked] .frow__ops,
-.frow[data-density='compact'][data-on] .frow__ops {
-  background: linear-gradient(90deg, transparent, var(--surface-3) 12px);
-}
-
 .frow:hover .frow__ops,
 .frow:focus-within .frow__ops {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* Narrow windows shed a column at a time rather than scrolling sideways, and
+   what goes is chosen by what is still readable elsewhere. 修改时间 first: it is
+   also in the row's own tooltip, and the name is what the list is for. 大小
+   second, and only on a phone, where four tracks leave the name track at zero
+   — a file list without filenames is not a file list. */
+@media (max-width: 1100px) {
+  .flist__cols,
+  .frow {
+    grid-template-columns: 22px minmax(0, 1fr) 110px 76px;
+  }
+
+  .frow__time,
+  .flist__col[data-col='modified'] {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .flist__cols,
+  .frow {
+    grid-template-columns: 22px minmax(0, 1fr) 76px;
+  }
+
+  .frow__size,
+  .flist__col[data-col='size'] {
+    display: none;
+  }
 }
 
 /* ---- dropping files on it --------------------------------------------- */
@@ -8126,20 +8196,29 @@ small.field__bad {
   color: var(--accent);
 }
 
-/* ---- the editor half --------------------------------------------------
+/* ---- the editor form --------------------------------------------------
 
-   Panes hold paths, not copies, so a file open in both halves of a split is
-   one buffer. What the two halves each own is which tab is in front. */
+   Groups hold paths, not copies, so a file open in both halves of a split is
+   one buffer. What the two halves each own is which tab is in front.
+
+   A grid rather than a flex row, because the split has two directions now and
+   the ratio between the groups is a stored number: one `grid-template-*`
+   swaps the axis and carries the number at the same time. 12px between them,
+   as a gap rather than a border — the two are peers, and a line between them
+   would read as one containing the other. */
 .fedit {
-  display: flex;
-  gap: 14px;
+  display: grid;
+  gap: 0;
+  /* The main area is a flex column and this is its body: without the grow it
+     sizes to the text in it, which is a nine-line config floating in a page of
+     empty surface. */
+  flex: 1;
   min-width: 0;
   min-height: 0;
 }
 
 .fedit__pane {
   display: flex;
-  flex: 1;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
@@ -8148,6 +8227,111 @@ small.field__bad {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
+  /* The line-number gutter, wide enough for five digits with room. Split, there
+     is no room to spare and four digits is what a 4000-line paper-global.yml
+     needs. A variable rather than two rules because the gutter, the change
+     marks and the highlighted mirror all have to agree on it. */
+  --gutter-w: 52px;
+}
+
+.fedit[data-panes='2'] .fedit__pane {
+  --gutter-w: 46px;
+}
+
+/* Dropping a tab in from the other group. */
+.fedit__pane[data-dropping] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* The handle between two groups: its own 12px track, with the line drawn down
+   the middle of it, so the grabbable area is the whole gutter while what you
+   see is 2px. A 2px hit target is a handle nobody catches. */
+.fedit__grip {
+  position: relative;
+  touch-action: none;
+}
+
+.fedit[data-dir='col'] .fedit__grip {
+  cursor: col-resize;
+}
+
+.fedit[data-dir='row'] .fedit__grip {
+  cursor: row-resize;
+}
+
+.fedit__grip::after {
+  content: '';
+  position: absolute;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  transition: background var(--dur) var(--ease);
+}
+
+.fedit[data-dir='col'] .fedit__grip::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+}
+
+.fedit[data-dir='row'] .fedit__grip::after {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+}
+
+.fedit__grip:hover::after {
+  background: var(--border-accent);
+}
+
+/* The group's own trail: which file is in front of *this* group, which is a
+   different question from where the sidebar is standing. Monospace and quiet,
+   because it is a label on the text below rather than a place to click first. */
+.fedit__crumbs {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 1px;
+  height: 28px;
+  padding: 0 10px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.fedit__crumb {
+  padding: 2px 4px;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  cursor: pointer;
+  font: inherit;
+  /* The trail cannot wrap — the group is four fixed rows and a body — so a
+     deep path loses its middle to the ellipsis on the row instead. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fedit__crumb:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.fedit__crumb--here {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.fedit__crumb-sep {
+  color: var(--border-strong);
 }
 
 /* Which half the keyboard is in. Only drawn when there are two — a ring
@@ -8161,7 +8345,7 @@ small.field__bad {
   flex: none;
   align-items: center;
   gap: 6px;
-  height: 40px;
+  height: 38px;
   padding: 0 8px;
   border-bottom: 1px solid var(--border);
 }
@@ -8393,7 +8577,7 @@ small.field__bad {
   gap: 10px;
   flex-wrap: wrap;
   row-gap: 4px;
-  min-height: 38px;
+  min-height: 30px;
   padding: 4px 10px;
   background: var(--surface-2);
   border-top: 1px solid var(--border);
@@ -8466,6 +8650,8 @@ small.field__bad {
    The widths come from JS rather than from a rule, because they are draggable
    and stored per instance. Everything else about the grid is here. */
 .fm {
+  /* The containing block for a floating sidebar. */
+  position: relative;
   /* No gap. The handles *are* the gutters — a 14px track each, with the line
      drawn down the middle — rather than 6px handles sitting inside 14px gaps.
      Two gutters instead of four plus two handles is 40 pixels, and at a 1600px
@@ -8518,212 +8704,36 @@ small.field__bad {
   background: var(--border-accent);
 }
 
-/* Below 1280 the three columns fit but have nothing spare between them, so
-   the handles stop offering width that is not there to take. */
-.fm__grip[data-off] {
-  cursor: default;
-  pointer-events: none;
+/* The main area: the toolbar, and under it whichever form the area is in.
+   Column direction, and both of its children have to give up their content
+   height or the editor sizes to its text and pushes a second scrollbar onto
+   the page. */
+.fm__main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding-left: 12px;
 }
 
-/* The same handle, turned. It divides the two sections of the navigation
-   column rather than two columns, so it is a row of the flex column and its
-   line runs across instead of down. */
-.fm__grip--row {
-  flex: none;
-  height: var(--fm-grip, 14px);
-  align-self: auto;
-  cursor: row-resize;
+/* A floating sidebar is out of flow, so without this the main area slides into
+   the 40px track the strip would have occupied and the editor is 28px wide.
+   Stated as a column rather than by making the sidebar a flow item, because
+   the whole point of floating it is that it takes no width. */
+.fm[data-overlay] .fm__main {
+  grid-column: 2;
 }
 
-.fm__grip--row::after {
-  top: 50%;
-  bottom: auto;
-  left: 0;
-  width: auto;
-  right: 0;
-  height: 2px;
-  margin-top: -1px;
-  margin-left: 0;
-}
-
-@media (max-width: 1024px) {
-  .fm {
-    gap: 10px;
-  }
-}
-
-/* ---- the navigation column --------------------------------------------
-
-   Tree above, listing below, one column. They were two, and in a deep plugin
-   path that spent 264px on a listing holding a single file while the tree
-   beside it wanted 780px of height and had 740. The two are anti-correlated —
-   the deeper the tree, the fewer files at the leaf — so stacked they share one
-   column and the editor keeps the width the second one was costing it.
-
-   The price is height, and the heads are the answer to it: a section collapses
-   to its own 28px bar and hands its whole share to the other. */
-.fm__nav {
+/* The browse form: the trail, then the listing. The toolbar is not in here —
+   it is in both forms, so it belongs to the main area rather than to one of
+   them. */
+.fbrowse {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-}
-
-.fm__sec {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  /* Collapsed is its head and nothing else. The flex-grow of an open one is
-     set inline, because it is the divider's ratio and only JS knows it. */
-  flex: 0 0 auto;
-}
-
-.fm__sec[data-open] {
-  flex-basis: 0;
-  flex-shrink: 1;
-}
-
-.fm__sec-head {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 6px;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
-}
-
-/* The twisty and the label. Only this part toggles — the controls beside it
-   belong to what is in the section, not to whether it is open. */
-.fm__sec-toggle {
-  display: flex;
   flex: 1;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  height: 100%;
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--text-faint);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-align: left;
-}
-
-.fm__sec-toggle:hover {
-  color: var(--text-dim);
-}
-
-.fm__sec-tools {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-}
-
-/* The second section's head is also a boundary between two scrollers, so it
-   carries the line above it as well as the one below. */
-.fm__sec + .fm__sec .fm__sec-head {
-  border-top: 1px solid var(--border);
-}
-
-/* The same chevron the tree's own twists use, turned the same way: pointing
-   down means open, right means closed. One mark, one meaning, two controls. */
-.fm__sec-twist {
-  width: 13px;
-  height: 13px;
-  flex: none;
-  transition: transform var(--dur) var(--ease);
-}
-
-.fm__sec[data-open] .fm__sec-twist {
-  transform: rotate(90deg);
-}
-
-/* The switch sits in a 28px bar rather than a 36px one, so it loses the pad
-   the card head gave it. */
-.fm__sec-tools .segmented {
-  padding: 2px;
-}
-
-.fm__sec-tools .segmented__option {
-  padding: 2px 8px;
-  font-size: 11px;
-}
-
-.fm__sec-body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 6px 6px 8px;
-}
-
-/* The listing brings its own frame, which would be a second card inside this
-   one. Here it is a section body like the tree's. */
-.fm__sec-body > .flist {
-  height: 100%;
-  background: none;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.fm__sec-body:has(> .flist) {
-  padding: 0;
-}
-
-/* Below the drawer width the navigation is not a column, it is something you
-   pull over the editor for one pick. Same reasoning as the navigation drawer
-   in App: at this width a second permanent column is two slivers instead of
-   one usable pane. 1024 is App.tsx's DRAWER_QUERY. */
-.fm__drawer {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  box-shadow: var(--shadow-lg);
-}
-
-/* The drawer is a box the column has to fill. Without this the column takes
-   its content height, which for two sections whose flex-basis is 0 is zero —
-   a drawer with two heads in it and nothing under them. */
-.fm__drawer > .fm__nav {
-  flex: 1;
-  min-height: 0;
-}
-
-.fm__drawer-close {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-dim);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 16px;
-  line-height: 1;
-}
-
-.fm[data-narrow] {
-  position: relative;
 }
 
 /* The page frame. Both states are one screen doing one job — a file manager
@@ -8735,6 +8745,469 @@ small.field__bad {
 
 .fmpage__progress {
   flex: none;
+}
+
+/* ---- the sidebar ------------------------------------------------------
+
+   300px by default, dragged between 240 and 480, and folded to a 40px strip.
+   It answers one question — where am I — in three ways, and switching between
+   them changes nothing outside this column. */
+.fside {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* Floating over the main area instead of standing beside it, which is what
+   happens under 1360px: there is not enough width for a 300px column and an
+   editor group at its 620px floor, so the column covers the main area for as
+   long as it takes to pick something. */
+.fside[data-overlay] {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(86vw, 320px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Folded: 40px with one button in it. Vertical text does not fit at this
+   width and a label nobody can read is worse than none, so the button is all
+   there is — and folding something away with no visible way back is the one
+   shape this pane has been through before and is not going through again. */
+.fside--shut {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 8px;
+  border-right: 1px solid var(--border);
+}
+
+.fside__open {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--text-faint);
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.fside__open:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.fside__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 38px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.fside__title {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.fside__acts {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.fside__tabs {
+  flex: none;
+  margin: 8px 8px 6px;
+  padding: 2px;
+  /* The shared .segmented is built for the settings forms, where an option is
+     a label over a sentence of explanation and `flex: 1 1 150px` is what wraps
+     them into a column. Three one-word tabs in a 300px sidebar are a single
+     row, so the basis is taken back and the option is a plain centred row. */
+  flex-wrap: nowrap;
+}
+
+.fside__tabs .segmented__option {
+  flex: 1 1 0;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.fside__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* All three panels stay mounted so each keeps its own scroll position and,
+   for the search panel, what was typed into it. `[hidden]` is display:none by
+   default, but this rule sets `display`, so it has to be said again here or
+   the flex value wins and all three show at once. */
+.fside__panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.fside__panel[hidden] {
+  display: none;
+}
+
+/* Not a quota: the panel has no per-instance limit to enforce, and inventing
+   one in a status line would be inventing a feature. It is the two numbers an
+   operator acts on — this server's share, and the room left to grow into. */
+.fside__quota {
+  flex: none;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.fside__quota-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.fside__quota-line b {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.fside__quota-bar {
+  margin-top: 5px;
+  height: 4px;
+}
+
+/* ---- the search panel -------------------------------------------------- */
+
+.fsearch {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.fsearch__box {
+  flex: none;
+  margin: 8px;
+}
+
+.fsearch__out {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+
+.fsearch__file + .fsearch__file {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.fsearch__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 4px;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.fsearch__head:hover {
+  background: var(--surface-2);
+}
+
+.fsearch__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fsearch__count {
+  flex: none;
+  margin-left: auto;
+  padding: 0 6px;
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fsearch__dir {
+  display: block;
+  padding: 0 4px 2px 26px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* One matching line. It never wraps: forty of these wrapped is a wall of text
+   rather than a list, and the daemon has already trimmed each one to a window
+   around the hit. */
+.fsearch__line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 1px 4px 1px 22px;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-align: left;
+}
+
+.fsearch__line:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.fsearch__no {
+  flex: none;
+  min-width: 28px;
+  color: var(--text-faint);
+  text-align: right;
+}
+
+.fsearch__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+/* The browser's own <mark> is a flat yellow that belongs to no palette in this
+   panel and fails its own contrast check in dark mode. The match is said with
+   the accent and a tint of it instead — the same pair every other "this is the
+   bit you asked about" in here uses. */
+.fsearch__text mark {
+  background: var(--accent-soft);
+  border-radius: 2px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- the recent panel -------------------------------------------------- */
+
+.frecent {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+}
+
+.frecent__row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.frecent__row:hover {
+  background: var(--surface-2);
+}
+
+.frecent__row--on {
+  background: var(--accent-soft);
+}
+
+.frecent__pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 5px 6px;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.frecent__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.frecent__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
+.frecent__dir {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+/* Off until the pointer is on the row, the same way the listing's row actions
+   are: twenty standing ⋯ down a narrow column compete with the filenames. */
+.frecent__more {
+  opacity: 0;
+  flex: none;
+  margin-right: 4px;
+  transition: opacity var(--dur-1) var(--ease);
+}
+
+.frecent__row:hover .frecent__more,
+.frecent__row:focus-within .frecent__more {
+  opacity: 1;
+}
+
+/* ---- 转到文件 ---------------------------------------------------------- */
+
+.gotofile {
+  display: flex;
+  flex-direction: column;
+  width: min(92vw, 620px);
+  max-height: min(70vh, 520px);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.gotofile__box {
+  flex: none;
+  padding: 14px 16px;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.gotofile__box:focus {
+  outline: none;
+}
+
+.gotofile__out {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.gotofile__empty {
+  margin: 0;
+  padding: 18px 10px;
+  color: var(--text-faint);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+.gotofile__row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 8px;
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+/* Highlighted by the arrow keys as well as by the pointer, so it is a class
+   rather than :hover — the keyboard is the way this palette is meant to be
+   driven and it has to look driven. */
+.gotofile__row--on {
+  background: var(--accent-soft);
+}
+
+.gotofile__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.gotofile__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.gotofile__name mark {
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.gotofile__dir {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.gotofile__hint {
+  flex: none;
+  margin: 0;
+  padding: 7px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 11px;
 }
 
 /* ---- the tree ---------------------------------------------------------- */
@@ -8750,7 +9223,10 @@ small.field__bad {
   align-items: center;
   gap: 2px;
   min-width: 0;
-  height: 30px;
+  /* 26px, so a plugins/ folder with twenty files in it is a list rather than a
+     scroll. The indent is on the row as padding (see FileTree) so the hover
+     tint still runs the column's full width. */
+  height: 26px;
   padding-right: 6px;
   border-radius: var(--radius-sm);
   color: var(--text-dim);
@@ -8766,18 +9242,18 @@ small.field__bad {
   white-space: nowrap;
 }
 
-/* The tree's icons sit in a 30px row rather than a table cell, so they must
+/* The tree's icons sit in a 26px row rather than a table cell, so they must
    not take the listing's own sizing with them. */
 .ftree .fileicon {
   flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
 }
 
 .ftree .fileicon svg {
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
 }
 
 .ftree__row:hover {
@@ -8789,6 +9265,14 @@ small.field__bad {
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: 600;
+}
+
+/* Open in some tab, but not the one being read. Full text colour against the
+   dimmed colour of everything merely listed — a third state, and it needs to
+   be one: without it the tree can say where you are and what you are reading
+   but not what else you have going, which is the question it grew files for. */
+.ftree__row--held {
+  color: var(--text);
 }
 
 .ftree__twist {
@@ -12044,6 +12528,14 @@ button.rows__name:hover strong {
     display: none;
   }
 
+  /* The page has to be told which track it is in. The rail leaves the flow
+     just below, and the scrim and the skip link are out of flow too, so
+     without this the page is the grid's only in-flow child, lands in the
+     rail's 56px column, and every screen under 1024px is 56 pixels wide. */
+  .shell {
+    grid-column: 2;
+  }
+
   /* The rail leaves the grid but not the screen: it is pinned at 56px and the
      56px track it vacated is what keeps the page beside it. The wide form is
      then the same element getting wider rather than a second one sliding in
@@ -12078,8 +12570,31 @@ button.rows__name:hover strong {
     pointer-events: auto;
   }
 
+  /* The rail now stands to the left of this strip at every width, so the strip
+     has 56px less than it used to and the eight pixels of side padding are
+     eight the controls need more. Without this the theme switch hangs five
+     pixels off the right edge at 390px. */
   .topbar {
     padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+    gap: 8px;
+  }
+
+  /* The strip is still the last thing that gives — see the note on the rule
+     above — but it is no longer forbidden to give at all. With the rail taking
+     56px at every width, four controls are sharing 334px on a phone and the
+     one that used to be pushed off the right edge was the theme switch. Losing
+     a pixel off 已停止 is a smaller loss than a control hanging off the page,
+     and it is self-limiting: the pill truncates only by as much as it must. */
+  .topbar__instance {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .topbar__state {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .main {

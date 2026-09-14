@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -60,18 +61,48 @@ export interface EditorPane {
   active: string | null
 }
 
+/**
+ * How the groups are arranged, and how the room is divided between them.
+ *
+ * 'col' is two columns side by side, 'row' is one above the other. Both are
+ * first-class: comparing two YAMLs stacked lets their line numbers and their
+ * indentation line up, which reads better than side by side and costs no
+ * width — so 上下 is not the narrow-screen fallback, it is the other choice.
+ */
+export interface Layout {
+  dir: 'col' | 'row'
+  /** The first group's share, 0..1. */
+  ratio: number
+}
+
 export interface FileEditorProps {
   instanceId: string
+  /** The first step of a group's breadcrumb: the server the file is in. */
+  instanceName: string
   files: Map<string, OpenFile>
   panes: EditorPane[]
   focusedPane: number
+  layout: Layout
+  /** Whether a second group fits at all, and whether it fits side by side.
+   *  Below 1280px two columns cannot both hold their 620px floor, so 左右 is
+   *  refused there while 上下 stays — it takes height, not width. */
+  canSplit: boolean
+  canSplitColumns: boolean
   maxEditableBytes: number
   onFocusPane: (index: number) => void
+  /** Where the caret is in the focused group, for the shell's status bar. Null
+   *  when this group is not the focused one, or has no text in front. */
+  onCaret: (at: { line: number; column: number } | null) => void
   onSelectTab: (pane: number, path: string) => void
   onCloseTab: (pane: number, path: string) => void
   onCloseOthers: (pane: number, path: string) => void
   onCloseRight: (pane: number, path: string) => void
-  onSplit: () => void
+  onSplit: (dir: 'col' | 'row') => void
+  onRatio: (next: number) => void
+  /** Dragging a tab from one group into the other. */
+  onMoveTab: (from: number, to: number, path: string) => void
+  /** A step of the group's breadcrumb: walk the sidebar to that directory. */
+  onWalk: (dir: string) => void
   onChange: (path: string, content: string) => void
   onSave: (path: string) => void
   onRevert: (path: string) => void
@@ -86,7 +117,26 @@ export interface FileEditorProps {
    *  the request is "open the box now", and pressing the shortcut again while
    *  it is already open should still put the caret back in it. */
   findTick: number
+  /** A line to put the caret on, from the sidebar's search panel. Carries a
+   *  token for the same reason findTick is a counter: clicking the same hit
+   *  twice has to work. */
+  reveal: { path: string; line: number; token: number } | null
   busy: boolean
+}
+
+/** How a dragged tab is carried between groups. A custom type rather than
+ *  text/plain so a path dragged out of some other application cannot look like
+ *  one of ours. */
+const TAB_MIME = 'application/x-hypercraft-tab'
+
+/** Every directory on the way to a file, for the group's breadcrumb. */
+function crumbsOf(path: string): { name: string; path: string; last: boolean }[] {
+  const parts = path.split('/').filter(Boolean)
+  return parts.map((name, index) => ({
+    name,
+    path: parts.slice(0, index + 1).join('/'),
+    last: index === parts.length - 1,
+  }))
 }
 
 /**
@@ -99,18 +149,64 @@ export interface FileEditorProps {
 const spots = new Map<string, { caret: number; top: number; left: number }>()
 
 export function FileEditor(props: FileEditorProps) {
-  const { panes, onFocusPane } = props
+  const { panes, layout, onFocusPane, onRatio } = props
+  const frame = useRef<HTMLElement | null>(null)
+
+  const split = panes.length > 1
+  // The ratio is a grid template rather than two widths, so dragging moves one
+  // number and the browser does the arithmetic. Inline because it is a value
+  // only JS knows; everything else about the arrangement is in styles.css.
+  const style = !split
+    ? undefined
+    : layout.dir === 'col'
+      ? { gridTemplateColumns: `${layout.ratio}fr 12px ${1 - layout.ratio}fr` }
+      : { gridTemplateRows: `${layout.ratio}fr 12px ${1 - layout.ratio}fr` }
+
+  /**
+   * Drags the boundary between the two groups.
+   *
+   * The ratio is what is stored rather than a pixel size: the pane's size
+   * changes with the window, and a stored 640px is a different split on every
+   * screen. The clamp keeps both groups above a fifth of the room, which is
+   * where a group stops being one.
+   */
+  const drag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const box = frame.current
+    if (!box) return
+    event.preventDefault()
+
+    const move = (at: PointerEvent) => {
+      const rect = box.getBoundingClientRect()
+      const along =
+        layout.dir === 'col'
+          ? (at.clientX - rect.left) / rect.width
+          : (at.clientY - rect.top) / rect.height
+      onRatio(Math.min(0.8, Math.max(0.2, along)))
+    }
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+  }
 
   return (
-    <section className="fedit" data-panes={panes.length}>
+    <section className="fedit" data-panes={panes.length} data-dir={layout.dir} style={style} ref={frame}>
       {panes.map((pane, index) => (
-        <Pane
-          key={index}
-          index={index}
-          pane={pane}
-          {...props}
-          onFocus={() => onFocusPane(index)}
-        />
+        <Fragment key={index}>
+          {index > 0 && (
+            <div
+              className="fedit__grip"
+              role="separator"
+              aria-orientation={layout.dir === 'col' ? 'vertical' : 'horizontal'}
+              aria-label="调整两组编辑器的比例"
+              onPointerDown={drag}
+              onDoubleClick={() => onRatio(0.5)}
+            />
+          )}
+          <Pane index={index} pane={pane} {...props} onFocus={() => onFocusPane(index)} />
+        </Fragment>
       ))}
     </section>
   )
@@ -126,15 +222,21 @@ function Pane({
   index,
   pane,
   instanceId,
+  instanceName,
   files,
   panes,
   focusedPane,
+  canSplit,
+  canSplitColumns,
   maxEditableBytes,
   onSelectTab,
   onCloseTab,
   onCloseOthers,
   onCloseRight,
   onSplit,
+  onMoveTab,
+  onWalk,
+  onCaret,
   onChange,
   onSave,
   onRevert,
@@ -146,11 +248,13 @@ function Pane({
   onShowKeys,
   onFocus,
   findTick,
+  reveal,
   busy,
 }: PaneProps) {
   const file = pane.active === null ? null : (files.get(pane.active) ?? null)
   const [context, setContext] = useState<{ x: number; y: number; path: string } | null>(null)
   const [finding, setFinding] = useState(false)
+  const [dropping, setDropping] = useState(false)
 
   // ⌘F, from the pane-level handler. Only the half the keyboard is in answers
   // it — opening both boxes at once would leave two carets and one keyboard.
@@ -227,8 +331,31 @@ function Pane({
     <div
       className="fedit__pane"
       data-focused={panes.length > 1 && index === focusedPane ? '' : undefined}
+      data-dropping={dropping || undefined}
       onFocusCapture={onFocus}
       onPointerDownCapture={onFocus}
+      // Dropping a tab here moves the file into this group. The payload is the
+      // group it came from and the path, as JSON: dataTransfer carries strings
+      // and nothing else, and a bare path would leave the other group unable
+      // to say which one is giving the tab up.
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes(TAB_MIME)) return
+        event.preventDefault()
+        setDropping(true)
+      }}
+      onDragLeave={() => setDropping(false)}
+      onDrop={(event) => {
+        setDropping(false)
+        const raw = event.dataTransfer.getData(TAB_MIME)
+        if (raw === '') return
+        event.preventDefault()
+        try {
+          const moved = JSON.parse(raw) as { pane: number; path: string }
+          onMoveTab(moved.pane, index, moved.path)
+        } catch {
+          // A payload this component did not write. Nothing to move.
+        }
+      }}
     >
       <div className="fedit__bar">
         <div className="fedit__tabs" ref={strip} role="tablist" aria-label="打开的文件">
@@ -239,6 +366,11 @@ function Pane({
               <div
                 key={path}
                 className={`etab${path === pane.active ? ' etab--on' : ''}`}
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.setData(TAB_MIME, JSON.stringify({ pane: index, path }))
+                  event.dataTransfer.effectAllowed = 'move'
+                }}
                 onContextMenu={(event) => {
                   event.preventDefault()
                   setContext({ x: event.clientX, y: event.clientY, path })
@@ -294,16 +426,30 @@ function Pane({
             </button>
           )}
           <span className="fedit__sep" aria-hidden="true" />
-          <Button
-            icon
-            size="small"
-            aria-label="分屏对照"
-            title={panes.length >= 2 ? '已经是两栏了' : '分屏对照'}
-            disabled={panes.length >= 2}
-            onClick={onSplit}
+          {/* Two items rather than one switch. 上下 is not the narrow-screen
+              fallback: stacked, two YAMLs line their indentation and their line
+              numbers up, which is easier to read than side by side and costs no
+              width. 左右 is the one that has a floor to meet, so it is the one
+              that goes away below 1280px. */}
+          <Menu
+            className="btn btn--icon btn--small"
+            title={panes.length >= 2 ? '已经是两组了' : '分屏对照'}
+            ariaLabel="分屏对照"
+            items={[
+              {
+                label: '左右分屏',
+                disabled: panes.length >= 2 || file === null || !canSplitColumns,
+                onSelect: () => onSplit('col'),
+              },
+              {
+                label: '上下分屏',
+                disabled: panes.length >= 2 || file === null || !canSplit,
+                onSelect: () => onSplit('row'),
+              },
+            ]}
           >
             <Glyph name="split" />
-          </Button>
+          </Menu>
           <Button
             icon
             size="small"
@@ -376,10 +522,38 @@ function Pane({
       {file === null ? (
         <div className="fedit__blank">
           <Glyph name="doc" />
-          <p>从中间的列表里点一个文件，会在这里打开。</p>
+          <p>把一个标签拖到这里，或者关掉这一组。</p>
         </div>
       ) : (
         <>
+          {/* Where this tab's file is, which is a different question from where
+              the sidebar is standing: switching directories in the tree must
+              not rewrite the trail above the file you are editing. */}
+          <nav className="fedit__crumbs" aria-label="当前文件的位置">
+            <button type="button" className="fedit__crumb" onClick={() => onWalk('')}>
+              {instanceName}
+            </button>
+            {crumbsOf(file.path).map((step) => (
+              <Fragment key={step.path}>
+                <span className="fedit__crumb-sep" aria-hidden="true">
+                  /
+                </span>
+                {step.last ? (
+                  <span className="fedit__crumb fedit__crumb--here" aria-current="page">
+                    {step.name}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="fedit__crumb"
+                    onClick={() => onWalk(step.path)}
+                  >
+                    {step.name}
+                  </button>
+                )}
+              </Fragment>
+            ))}
+          </nav>
           {file.stale && (
             <Note tone="warn" className="fedit__stale">
               <span>磁盘上的这个文件已经变了，而你这里还有没保存的改动。</span>
@@ -397,6 +571,9 @@ function Pane({
               instanceId={instanceId}
               file={file}
               finding={finding}
+              focused={index === focusedPane}
+              reveal={reveal !== null && reveal.path === file.path ? reveal : null}
+              onCaret={onCaret}
               onCloseFind={() => setFinding(false)}
               onChange={onChange}
               onSave={onSave}
@@ -440,6 +617,9 @@ function Body({
   instanceId,
   file,
   finding,
+  focused,
+  reveal,
+  onCaret,
   onCloseFind,
   onChange,
   onSave,
@@ -449,6 +629,11 @@ function Body({
   instanceId: string
   file: OpenFile
   finding: boolean
+  /** Whether this group has the keyboard. Only the focused one reports its
+   *  caret upward; two groups reporting would fight over one status line. */
+  focused: boolean
+  reveal: { line: number; token: number } | null
+  onCaret: (at: { line: number; column: number } | null) => void
   onCloseFind: () => void
   onChange: (path: string, content: string) => void
   onSave: (path: string) => void
@@ -560,6 +745,43 @@ function Body({
 
   const at = position(file.content, caret)
 
+  // Reported upward rather than printed here; see the note on the status row
+  // below. Cleared on the way out so the bar does not keep showing a position
+  // in a file that has been closed.
+  useEffect(() => {
+    if (!focused) return
+    onCaret(at)
+    return () => onCaret(null)
+  }, [focused, at.line, at.column, onCaret])
+
+  /**
+   * Puts the caret on a line somebody clicked in the search panel.
+   *
+   * Keyed on the token, not the line: clicking the same hit twice has to work,
+   * and a line number that has not changed would not re-trigger anything. The
+   * offset is computed from the buffer rather than stored with the hit, because
+   * the buffer is what the textarea indexes into and it may have been edited
+   * since the search ran.
+   */
+  useEffect(() => {
+    if (reveal === null) return
+    const text = box.current
+    if (!text) return
+    const rows = file.content.split('\n')
+    const line = Math.min(rows.length, Math.max(1, reveal.line))
+    let start = 0
+    for (let i = 0; i < line - 1; i++) start += rows[i].length + 1
+    text.focus()
+    text.setSelectionRange(start, start + rows[line - 1].length)
+    setCaret(start)
+    // Roughly a third of the way down rather than at the very top: a line at
+    // the top edge has no context above it, which is most of what somebody
+    // following a search hit is about to read.
+    text.scrollTop = Math.max(0, (line - 1) * lineHeight(text) - text.clientHeight / 3)
+    mirror()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal?.token])
+
   return (
     <>
       {finding && (
@@ -662,11 +884,15 @@ function Body({
       {/* What an editor's foot is for: the facts you check before saving, and
           the two buttons that are actually edits. 关闭 used to be a third one —
           the × on the tab is already the way out, and two of them is two
-          places to learn. */}
+          places to learn.
+
+          Where the caret is used to be here too. It went to the shell's status
+          bar when splitting arrived: two groups each printing a caret position
+          means a reader has to work out which of the two is theirs before
+          reading either, and there is only ever one caret. */}
       <div className="editor__status">
         <span className="editor__facts">
-          {lang.label} · UTF-8 · {file.content.includes('\r\n') ? 'CRLF' : 'LF'} · 行 {at.line}，列{' '}
-          {at.column}
+          {lang.label} · UTF-8 · {file.content.includes('\r\n') ? 'CRLF' : 'LF'}
         </span>
         {changes.size > 0 && <Badge tone="warn">{changes.size} 行已改</Badge>}
         {file.readOnly && <Badge>只读</Badge>}

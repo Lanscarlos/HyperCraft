@@ -6,37 +6,51 @@ import { sideBySide } from '../filediff'
 import { readPref, writePref } from '../localPrefs'
 import { toast, toastError, toastWarn } from '../toast'
 import { useMediaQuery } from '../useMediaQuery'
-import type { FileEntry, FileListing, InstanceStatus } from '../types'
+import { formatBytes } from '../format'
+import type { FileEntry, FileListing, FileUsage, InstanceStatus } from '../types'
 import { Button } from './Button'
 import { extensionOf } from './FileIcon'
-import { FileBar } from './FileBar'
+import { FileCrumbs, FileTools } from './FileBar'
 import { FileEditor } from './FileEditor'
-import type { EditorPane, FileKind, OpenFile } from './FileEditor'
-import { DensitySwitch, FileList } from './FileList'
-import { FileNav } from './FileNav'
-import type { Density, SelectMode, Sort, SortKey } from './FileList'
+import type { EditorPane, FileKind, Layout, OpenFile } from './FileEditor'
+import { FileList } from './FileList'
+import type { SelectMode, Sort, SortKey } from './FileList'
+import { FileRecentPanel } from './FileRecentPanel'
+import { FileSearchPanel } from './FileSearchPanel'
+import { FileSidebar } from './FileSidebar'
+import type { SidePanel } from './FileSidebar'
 import { FileTree } from './FileTree'
+import { GoToFile } from './GoToFile'
 import type { MenuItem } from './Menu'
 import { Modal } from './Modal'
 import { Note } from './Note'
 import { SchematicPreview } from './SchematicPreview'
 import { Skeleton, SkeletonPanel, SkeletonRows, SkeletonScreen } from './Skeleton'
+import { StatusSlot } from './StatusBar'
 
 /**
- * The file pane: a tree, a listing and an editor, and no mode switch.
+ * The file pane: a sidebar that says where you are, and a main area that shows
+ * what you are looking at. No mode switch.
  *
  * There used to be one, called 编辑模式, and it did three unrelated things at
  * once — folded the shell to its rail, swapped the tree from folders to
  * folders-and-files, and gave the editor the listing's width. Reading code
  * therefore began by pressing a button named after a state rather than after a
  * job. What that button was really being asked for is here instead, as a fact
- * rather than a setting: with nothing open the pane is a tree and a listing;
- * open a file and the editor takes the room, because that is what the screen
- * is now for.
+ * rather than a setting: with nothing open the main area is the directory, and
+ * opening a file makes it the editor, because that is what the screen is now
+ * for. Closing the last tab puts the directory back.
  *
- * The rails are draggable and remembered per instance. The editor's floor is
- * not a round number: Paper's own bukkit.yml opens with an 85-character
- * comment, and at the editor's 12.5px monospace anything under about 780px
+ * The arrangement before this one had the tree and the listing stacked in one
+ * rail. They were fighting over its height — the deeper the tree the less room
+ * the listing had, at exactly the point the listing was longest — and the rail
+ * was too narrow for the listing's four columns either way, which is where the
+ * 紧凑 / 详情 switch came from. Moving the listing into the main area settles
+ * all three: the sidebar is only ever about location, the listing has room for
+ * its columns, and there is no density to choose.
+ *
+ * The editor's floor is not a round number. Paper's own bukkit.yml opens with
+ * an 85-character comment, and at 12.5px monospace anything under about 620px
  * starts that file on a horizontal scrollbar.
  */
 
@@ -80,23 +94,67 @@ interface Conflict {
   theirs: string
 }
 
+/**
+ * Drops any group that has run out of tabs.
+ *
+ * The first one stays whatever happens — it is the one the empty state belongs
+ * to, and with nothing open at all the main area is the directory listing
+ * rather than an editor. Shared by closing a tab and by dragging one into the
+ * other group, because two code paths that each decide what an empty group
+ * means will eventually decide differently.
+ */
+function prunePanes(panes: EditorPane[]): EditorPane[] {
+  return panes.filter((pane, index) => index === 0 || pane.tabs.length > 0)
+}
+
 /** Long enough for the browser to start one download before the next click. */
 const DOWNLOAD_GAP = 400
 
-/** How wide the navigation column may be dragged, and the floor under the
- *  editor. The tree and the listing share one column now, so there is one
- *  width rather than two. */
-const NAV_MIN = 220
-/** 详情 carries two more columns, and 264px cannot hold them: the name track
- *  is what gives, and a file list without filenames is not a file list. This
- *  is the width four columns need before anything has to be truncated, and it
- *  is the column's default for that reason — 浏览 opens on 详情, and a default
- *  that cannot draw its own default density is a default that jumps. */
-const NAV_DETAIL_MIN = 380
-const NAV_MAX = 560
-const EDITOR_MIN = 640
+/** How wide the sidebar may be dragged, and where it starts. */
+const SIDE_MIN = 240
+const SIDE_DEFAULT = 300
+const SIDE_MAX = 480
+
+/**
+ * The floor under one editor group: 82 monospace columns, which is the longest
+ * comment line in Paper's and Spigot's own default configs. It is enforced
+ * while dragging rather than in CSS, because CSS cannot say "take it out of
+ * whichever rail is being dragged" — a minmax floor on the editor's own track
+ * overflows the grid and pushes the pane sideways instead of stopping the drag.
+ */
+const GROUP_MIN = 620
+
 /* The grid has no gap: the handle is its own 14px gutter track. See .fm. */
 const GRIP = 14
+
+/**
+ * The four widths the pane changes shape at, from the design note.
+ *
+ * Viewport widths rather than column widths, and deliberately: what matters is
+ * how much room there is in total. A column somebody has dragged narrow is a
+ * choice, and a layout that reacted to it would be arguing with them.
+ */
+/**
+ * Where two side-by-side groups can both clear their 620px floor *and* leave
+ * the sidebar standing.
+ *
+ * Derived rather than picked: 2×620 of code, two 46px gutters, the 12px
+ * between the groups, the 300px sidebar with its 14px handle, the main area's
+ * own padding, and the shell's 56px rail. The design note's table says the
+ * sidebar survives a split from 1600px up, and its hard floor says a group is
+ * never under 620px — at 1600 those two cannot both be true, and the floor is
+ * the one written down twice. So the fold happens by room rather than by the
+ * round number.
+ */
+const ROOMY = '(min-width: 1860px)'
+const SNUG = '(max-width: 1360px)'
+const NO_COL_SPLIT = '(max-width: 1280px)'
+/** Kept in step with App.tsx's DRAWER_QUERY and the media query in
+ *  styles.css. All three move together. */
+const DRAWER = '(max-width: 1024px)'
+
+/** How many files the 最近 panel and the empty ⌘P palette remember. */
+const MAX_RECENT = 20
 
 /**
  * Twelve is where a tab strip stops being a strip and becomes a list you
@@ -186,47 +244,102 @@ export function FileManager({
   // preference, nothing to remember: the layout is a fact about the work.
   const open = panes.some((pane) => pane.tabs.length > 0)
 
-  // 1024 is App.tsx's DRAWER_QUERY and the sheet's own step; all three move
-  // together. Below it there is room for one column, so the listing stops
-  // being one and becomes something you pull open.
-  const narrow = useMediaQuery('(max-width: 1024px)')
-  // Between the two there is room for three columns but not for three
-  // comfortable ones, so the listing is pinned compact and the grips stop
-  // taking width off the editor.
-  const tight = useMediaQuery('(max-width: 1280px)')
+  const roomy = useMediaQuery(ROOMY)
+  const snug = useMediaQuery(SNUG)
+  const noColumnSplit = useMediaQuery(NO_COL_SPLIT)
+  const narrow = useMediaQuery(DRAWER)
 
-  // The column's width, where its divider sits, and which of its two sections
-  // are open — one record because they are one control, and a new key rather
-  // than a migration of the old {tree,list} pair, which described a layout
-  // that no longer exists.
-  const navKey = `hc.files.nav.${instance.id}`
-  const [nav, setNav] = useState(() =>
-    readPref(navKey, { width: NAV_DETAIL_MIN, split: 0.55, tree: true, list: true }),
+  // How wide the sidebar is, whether it is folded, and which of its three
+  // panels is showing — one record because they are one control. A new key
+  // rather than a migration of the old {width,split,tree,list} pair, which
+  // described a layout that no longer exists.
+  const sideKey = `hc.files.side.${instance.id}`
+  const [side, setSide] = useState(() =>
+    readPref<{ width: number; collapsed: boolean; panel: SidePanel }>(sideKey, {
+      width: SIDE_DEFAULT,
+      collapsed: false,
+      panel: 'tree',
+    }),
   )
   useEffect(() => {
-    writePref(navKey, nav)
-  }, [navKey, nav])
+    writePref(sideKey, side)
+  }, [sideKey, side])
 
-  // Below the drawer width the navigation is not a column at all; this is how
-  // it comes back over the editor for one pick.
-  const [drawer, setDrawer] = useState(false)
+  /**
+   * Whether the reader has had an opinion about the sidebar this session.
+   *
+   * The layout folds the sidebar when a split needs the room and puts it back
+   * afterwards, which is right until somebody disagrees — and then it has to
+   * stop, or every ⌘B is undone by the next thing that happens. Deliberately
+   * not persisted: it is an answer to "not now", not a setting. Cleared when
+   * the split closes, which is when the argument is over.
+   */
+  const [pinned, setPinned] = useState(false)
 
-  const densityKey = `hc.files.density.${instance.id}`
-  const [chosenDensity, setChosenDensity] = useState<Density | null>(() =>
-    readPref<Density | null>(densityKey, null),
+  // How the editor groups are arranged, and how the room is divided between
+  // them. Persisted with the sidebar because they are one answer to "how is
+  // this instance's file page laid out".
+  const layoutKey = `hc.files.layout.${instance.id}`
+  const [layout, setLayout] = useState<Layout>(() =>
+    readPref<Layout>(layoutKey, { dir: 'col', ratio: 0.5 }),
   )
-  // 详情 while the listing has the width, 紧凑 once the editor wants it — until
-  // somebody says otherwise, and then that is what it is in both. The
-  // automatic default is a convenience; it does not get to overrule a choice
-  // made on purpose.
-  const density: Density = chosenDensity ?? (open || tight ? 'compact' : 'detail')
-  // Derived rather than written back into `nav`: 详情 can be arrived at two
-  // ways — switching density with a file open, or opening a file while 详情 is
-  // already the choice — and a stored width would have to be corrected on both
-  // paths. The stored width is what the operator dragged; this is the floor
-  // the listing's columns need, and the larger of the two wins.
-  const navFloor = density === 'detail' ? NAV_DETAIL_MIN : NAV_MIN
-  const navWidth = Math.max(nav.width, navFloor)
+  useEffect(() => {
+    writePref(layoutKey, layout)
+  }, [layoutKey, layout])
+
+  // Which files this browser was last in, newest first. Per instance and per
+  // browser: which files *you* were in is not a fact about the server.
+  const recentKey = `hc.files.recent.${instance.id}`
+  const [recent, setRecent] = useState<string[]>(() => readPref<string[]>(recentKey, []))
+  useEffect(() => {
+    writePref(recentKey, recent)
+  }, [recentKey, recent])
+
+  const [usage, setUsage] = useState<FileUsage | null>(null)
+  const [goto, setGoto] = useState(false)
+  /** A line the editor should put the caret on once the file is in front. A
+   *  token rather than a bare number: clicking the same search hit twice has
+   *  to work, and a line that has not changed would not re-trigger anything. */
+  const [reveal, setReveal] = useState<{ path: string; line: number; token: number } | null>(null)
+  /** Where the caret is in the focused group, for the shell's status bar. The
+   *  groups report it upward rather than printing it: with two of them on
+   *  screen there are two status lines and one caret. */
+  const [caret, setCaret] = useState<{ line: number; column: number } | null>(null)
+  const searchPanel = useRef<HTMLInputElement | null>(null)
+
+  const sideWidth = Math.max(SIDE_MIN, Math.min(SIDE_MAX, side.width))
+
+  /**
+   * Whether the sidebar is floating over the main area rather than beside it.
+   *
+   * One rule: an open sidebar floats whenever the main area cannot spare its
+   * width. That is the case below 1360px, where a 300px column and one editor
+   * group at its 620px floor do not both fit, and it is also the case during a
+   * side-by-side split under 1860px, where two groups need everything there is.
+   *
+   * Stated this way rather than as two separate behaviours because the second
+   * one is what the floor is for: the sidebar can always be opened — by ⌘B, by
+   * ⌘⇧F reaching for the search panel — and opening it must never be what
+   * pushes a group under 620px. Picking something is what puts it away again;
+   * see dismiss.
+   */
+  const overlay =
+    !side.collapsed &&
+    (snug || narrow || (panes.length > 1 && layout.dir === 'col' && !roomy))
+  const overlayNow = useRef(overlay)
+  overlayNow.current = overlay
+
+  /** Puts a floating sidebar away. A no-op when it is a real column, which is
+   *  what stops a click in the tree from folding the sidebar on a wide
+   *  screen. */
+  const dismiss = useCallback(() => {
+    if (overlayNow.current) setSide((current) => ({ ...current, collapsed: true }))
+  }, [])
+
+  /** Remembers a file as recently opened. Newest first, deduplicated, capped. */
+  const remember = useCallback((path: string) => {
+    setRecent((current) => [path, ...current.filter((one) => one !== path)].slice(0, MAX_RECENT))
+  }, [])
 
   const load = useCallback(
     async (target: string) => {
@@ -298,6 +411,9 @@ export function FileManager({
   }, [files])
 
   const activePath = panes[focusedPane]?.active ?? null
+
+  /** Every path with a tab open anywhere, so the tree can mark them. */
+  const openPaths = useMemo(() => new Set(panes.flatMap((pane) => pane.tabs)), [panes])
 
   // Read inside the callbacks rather than depended on: rebuilding them on
   // every keystroke would re-run the effects that are keyed to them.
@@ -381,11 +497,16 @@ export function FileManager({
   )
 
   const openPath = useCallback(
-    async (path: string, opts: { background?: boolean; hint?: FileEntry } = {}) => {
+    async (path: string, opts: { background?: boolean; hint?: FileEntry; line?: number } = {}) => {
       const background = opts.background === true
+      remember(path)
+      if (opts.line !== undefined) {
+        const line = opts.line
+        setReveal((current) => ({ path, line, token: (current?.token ?? 0) + 1 }))
+      }
       if (filesNow.current.has(path)) {
         showTab(path, background)
-        setDrawer(false)
+        dismiss()
         return
       }
 
@@ -410,9 +531,9 @@ export function FileManager({
         return next
       })
       showTab(path, background)
-      setDrawer(false)
+      dismiss()
     },
-    [instance.id, kindOf, mtimeOf, showTab],
+    [instance.id, kindOf, mtimeOf, showTab, remember, dismiss],
   )
 
   const openEntry = useCallback(
@@ -548,9 +669,7 @@ export function FileManager({
       // were reading should leave you next to where you were, not nowhere.
       return { tabs, active: tabs[Math.max(0, Math.min(was - 1, tabs.length - 1))] ?? null }
     })
-    // A second pane that has run out of tabs is not a pane any more. The first
-    // one stays whatever happens — it is the one the empty state belongs to.
-    const kept = next.filter((one, index) => index === 0 || one.tabs.length > 0)
+    const kept = prunePanes(next)
     const live = new Set(kept.flatMap((one) => one.tabs))
 
     setPanes(kept)
@@ -561,6 +680,54 @@ export function FileManager({
       for (const [path, file] of held) if (live.has(path)) out.set(path, file)
       return out
     })
+  }, [])
+
+  /**
+   * Opens a second group, in the direction asked for.
+   *
+   * Two groups is the ceiling the UI offers; the shape is a list so that
+   * raising it later is a number rather than a rewrite. Splitting an empty
+   * group would produce two empty states side by side, so it needs a file.
+   */
+  const splitInto = useCallback((dir: 'col' | 'row') => {
+    setLayout((current) => ({ ...current, dir }))
+    setPanes((current) => {
+      const front = current[0]?.active ?? null
+      if (current.length >= 2 || front === null) return current
+      return [...current, { tabs: [front], active: front }]
+    })
+    setFocusedPane(1)
+  }, [])
+  const splitNow = useRef(splitInto)
+  splitNow.current = splitInto
+
+  /**
+   * Moves a tab from one group to another.
+   *
+   * It ends by running the same tidy-up dropTabs does — a group that has run
+   * out of tabs stops being a group — through prunePanes, because two code
+   * paths that each decide what an empty group means will eventually decide
+   * differently.
+   */
+  const moveTab = useCallback((from: number, to: number, path: string) => {
+    if (from === to) return
+    const next = panesNow.current.map((pane, index) => {
+      if (index === from) {
+        const tabs = pane.tabs.filter((one) => one !== path)
+        return {
+          tabs,
+          active: pane.active === path ? (tabs[0] ?? null) : pane.active,
+        }
+      }
+      if (index === to) {
+        const tabs = pane.tabs.includes(path) ? pane.tabs : [...pane.tabs, path]
+        return { tabs, active: path }
+      }
+      return pane
+    })
+    const kept = prunePanes(next)
+    setPanes(kept)
+    setFocusedPane(Math.min(kept.length - 1, kept.findIndex((pane) => pane.tabs.includes(path))))
   }, [])
 
   const closeTab = useCallback(
@@ -625,6 +792,61 @@ export function FileManager({
     closeAll()
     void load('')
   }, [instance.id, load, closeAll])
+
+  /**
+   * What the instance weighs, for the foot of the sidebar.
+   *
+   * Read once when the page opens and again after anything that writes,
+   * because it is a full directory walk on the daemon's side — cached there
+   * for half a minute, so the refreshes below mostly cost a map lookup. Not
+   * polled: a size that is thirty seconds old is a size.
+   */
+  useEffect(() => {
+    if (!active) return
+    let alive = true
+    api
+      .fileUsage(instance.id)
+      .then((next) => {
+        if (alive) setUsage(next)
+      })
+      .catch(() => {
+        // A figure the panel could not read is a figure it does not draw. The
+        // page has nothing else riding on it.
+      })
+    return () => {
+      alive = false
+    }
+  }, [active, instance.id, treeKey])
+
+  /**
+   * The sidebar gets out of the way when a split needs the room, and comes
+   * back when the split closes — unless the reader has had an opinion this
+   * session, in which case the layout stops having one.
+   *
+   * `pinned` is cleared when the split closes because that is when the
+   * argument is over: the next split starts from the automatic behaviour
+   * again, rather than from a decision made about a different screen.
+   */
+  useEffect(() => {
+    if (panes.length > 1) {
+      // Only a side-by-side split takes width from the sidebar. Stacked groups
+      // take height, which the sidebar was not using.
+      const wantsWidth = layout.dir === 'col'
+      if (!pinned && wantsWidth && !roomy) setSide((current) => ({ ...current, collapsed: true }))
+      return
+    }
+    setPinned(false)
+    // Only the fold this effect made is undone. Below 1360 the column is an
+    // overlay and folded is its resting state, so putting it back there would
+    // be covering the file somebody just opened.
+    if (!pinned && !snug) setSide((current) => ({ ...current, collapsed: false }))
+  }, [panes.length, layout.dir, roomy, snug, pinned])
+
+  /** Below the drawer width the sidebar starts folded: 300px out of 390 is not
+   *  a column beside the main area, it is the main area. */
+  useEffect(() => {
+    if (narrow) setSide((current) => ({ ...current, collapsed: true }))
+  }, [narrow])
 
   // Keyed on the token alone: the path is read when it fires, and adding it to
   // the dependencies would re-navigate on an unrelated render that happened to
@@ -994,13 +1216,13 @@ export function FileManager({
     if (!frame) return
     event.preventDefault()
     const startX = event.clientX
-    const from = navWidth
+    const from = sideWidth
     const room = frame.clientWidth
 
     const move = (at: PointerEvent) => {
-      const ceiling = Math.max(navFloor, Math.min(NAV_MAX, room - GRIP - EDITOR_MIN))
-      const next = Math.min(ceiling, Math.max(navFloor, from + (at.clientX - startX)))
-      setNav((current) => ({ ...current, width: next }))
+      const ceiling = Math.max(SIDE_MIN, Math.min(SIDE_MAX, room - GRIP - GROUP_MIN))
+      const next = Math.min(ceiling, Math.max(SIDE_MIN, from + (at.clientX - startX)))
+      setSide((current) => ({ ...current, width: next }))
     }
     const stop = () => {
       window.removeEventListener('pointermove', move)
@@ -1022,6 +1244,8 @@ export function FileManager({
   cursorNow.current = cursor
   const rowsNow = useRef(rows)
   rowsNow.current = rows
+  const noColumnSplitNow = useRef(noColumnSplit)
+  noColumnSplitNow.current = noColumnSplit
 
   /** Moves the cursor one row, and scrolls it back into view. Deliberately not
    *  a selection: walking a directory with the arrow keys is reading it, and
@@ -1053,6 +1277,15 @@ export function FileManager({
         void closeTab(focusedPaneNow.current, activePathNow.current)
         return
       }
+      // Before the plain ⌘F below, or the shifted one is eaten by it.
+      if (mod && event.shiftKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        setSide((current) => ({ ...current, collapsed: false, panel: 'search' }))
+        // Next tick: the panel is being un-hidden by the state change above,
+        // and a hidden input takes no caret.
+        window.setTimeout(() => searchPanel.current?.focus(), 0)
+        return
+      }
       if (mod && event.key.toLowerCase() === 'f') {
         // Inside the editor the browser's own find is the wrong instrument: it
         // searches the rendered mirror rather than the buffer, and it cannot
@@ -1060,6 +1293,32 @@ export function FileManager({
         event.preventDefault()
         if (isInEditor(event.target)) setFindTick((n) => n + 1)
         else searchBox.current?.focus()
+        return
+      }
+      if (mod && event.key.toLowerCase() === 'b') {
+        event.preventDefault()
+        setPinned(true)
+        setSide((current) => ({ ...current, collapsed: !current.collapsed }))
+        return
+      }
+      if (mod && event.key.toLowerCase() === 'p') {
+        // preventDefault, or this is the browser's print dialog. Works while
+        // typing for the same reason ⌘K does: you press it from wherever you
+        // are when you realise you want a different file.
+        event.preventDefault()
+        setGoto((on) => !on)
+        return
+      }
+      if (mod && event.key === '\\') {
+        event.preventDefault()
+        if (!noColumnSplitNow.current) splitNow.current('col')
+        return
+      }
+      if (mod && (event.key === '1' || event.key === '2')) {
+        const want = Number(event.key) - 1
+        if (want >= panesNow.current.length) return
+        event.preventDefault()
+        setFocusedPane(want)
         return
       }
       if (event.key === 'Escape') {
@@ -1101,9 +1360,34 @@ export function FileManager({
   // about folding them: a control that exists in two places is two places to
   // learn it and one of them to keep in step.
   const more: MenuItem[] = [
-    ...(narrow ? [{ label: '目录与文件', onSelect: () => setDrawer(true) }] : []),
     { label: '复制当前路径', onSelect: () => void navigator.clipboard?.writeText(dir || '/') },
+    { label: '转到文件（⌘/Ctrl + P）', onSelect: () => setGoto(true) },
     { label: '快捷键', onSelect: () => setKeys(true) },
+  ]
+
+  /**
+   * A row's actions, built once and used twice: by the listing's ⋯ and by the
+   * tree's right-click. The design note asks for the same items in the same
+   * order in both places, and one list is the only way to be sure of it.
+   */
+  const entryMenu = (entry: FileEntry): MenuItem[] => [
+    { label: '重命名', disabled: busy || !entry.writable, onSelect: () => void rename(entry) },
+    {
+      label: '复制路径',
+      onSelect: () => void navigator.clipboard?.writeText(entry.path),
+    },
+    { label: '移动到…', disabled: busy || !entry.writable, onSelect: () => setMoving([entry]) },
+    // Only for something the editor can actually hold. A jar opened "in a new
+    // tab" would be a tab showing a download card nobody asked for.
+    ...(entry.isDir || !entry.editable
+      ? []
+      : [{ label: '在新标签打开', onSelect: () => openEntry(entry, true) }]),
+    {
+      label: '删除',
+      danger: true,
+      disabled: busy || !entry.writable,
+      onSelect: () => void remove(entry),
+    },
   ]
 
   const dialogs = (
@@ -1203,124 +1487,105 @@ export function FileManager({
     )
   }
 
-  // Two tracks, always: the navigation column and the editor. With nothing
-  // open the editor shows its own empty state rather than the layout changing
-  // shape — 浏览 and 编辑 are the same arrangement, and the only thing that
-  // differs between them is whether there is a file in the right-hand half.
-  //
-  // Below the drawer width there is room for one, so the navigation column
-  // stops being a column and becomes something pulled over the editor. The
-  // breadcrumb still walks the same tree and costs no width.
-  const navShown = !narrow || drawer || !open
-  const template = narrow
-    ? 'minmax(0, 1fr)'
-    : // The column takes the width it was dragged to, but never more than the
-      // room left once the editor has its floor — a fixed 380 was giving the
-      // editor 546px at a 1200px window, which is narrower than the two
-      // columns it replaced ever left it. Expressed in CSS rather than
-      // measured here because the pane's width is the grid's own `100%` and
-      // reading it in JS would mean a resize observer to say the same thing.
-      //
-      // The inner floor is the density's, not the absolute minimum: choosing
-      // 详情 at a narrow window is choosing four columns over editor width,
-      // and this is where that choice is honoured.
-      `min(${navWidth}px, max(${navFloor}px, 100% - ${GRIP}px - ${EDITOR_MIN}px)) ` +
-      `${GRIP}px minmax(0, 1fr)`
+  /**
+   * The two tracks: the sidebar and the main area.
+   *
+   * The sidebar takes the width it was dragged to, but never more than the
+   * room left once one editor group has its floor. Expressed in CSS rather
+   * than measured here because the pane's width is the grid's own `100%`, and
+   * reading it in JS would mean a resize observer to say the same thing.
+   *
+   * Folded it is a 40px strip; floating it leaves the grid entirely and the
+   * strip's width is what the main area starts after, so the two cases share
+   * one template.
+   */
+  const template =
+    side.collapsed || overlay
+      ? `40px minmax(0, 1fr)`
+      : `min(${sideWidth}px, max(${SIDE_MIN}px, 100% - ${GRIP}px - ${GROUP_MIN}px)) ` +
+        `${GRIP}px minmax(0, 1fr)`
 
   const stats = {
     count: entries.length,
     bytes: entries.reduce((sum, entry) => sum + (entry.isDir ? 0 : entry.size), 0),
   }
 
-  const list = (
-    <FileList
-      instanceId={instance.id}
-      dir={dir}
-      entries={rows}
-      total={entries.length}
-      density={density}
-      sort={sort}
-      onSort={toggleSort}
-      selected={selected}
-      cursor={cursor}
-      onSelect={pick}
-      onClearSelection={() => setSelected(new Set())}
-      activePath={activePath}
-      dirtyPaths={dirtyPaths}
-      onOpen={(entry) => openEntry(entry)}
-      onOpenBackground={(entry) => openEntry(entry, true)}
-      onRename={(entry) => void rename(entry)}
-      onDelete={(entry) => void remove(entry)}
-      onMove={(targets) => setMoving(targets)}
-      onDownload={(targets) => void downloadMany(targets)}
-      onBulkDelete={(targets) => void removeMany(targets)}
-      onUpload={() => fileInput.current?.click()}
-      onDropFiles={(picked) => void upload(picked)}
-      onRetry={() => void load(dir)}
-      onClearQuery={() => setQuery('')}
-      query={query}
-      error={error}
-      pending={pending}
-      busy={busy}
-      writable={listing.writable}
-      bodyRef={listBody}
-    />
-  )
+  const picked = rows.filter((entry) => selected.has(entry.path))
+  const pickedBytes = picked.reduce((sum, entry) => sum + (entry.isDir ? 0 : entry.size), 0)
 
-  const navColumn = (
-    <FileNav
-      split={nav.split}
-      onSplit={(next) => setNav((current) => ({ ...current, split: next }))}
-      treeOpen={nav.tree}
-      listOpen={nav.list}
-      onToggleTree={() => setNav((current) => ({ ...current, tree: !current.tree }))}
-      onToggleList={() => setNav((current) => ({ ...current, list: !current.list }))}
-      tree={
-        <FileTree
-          instanceId={instance.id}
-          path={dir}
-          reloadKey={treeKey}
-          onOpen={(next) => void load(next)}
-        />
-      }
-      list={list}
-      listTools={
-        <DensitySwitch
-          density={density}
-          onDensity={(next) => {
-            setChosenDensity(next)
-            writePref(densityKey, next)
-          }}
-        />
+  const newItems: MenuItem[] = [
+    { label: '新建文件', disabled: busy || !listing.writable, onSelect: () => void createFile() },
+    { label: '新建文件夹', disabled: busy || !listing.writable, onSelect: () => void createFolder() },
+  ]
+
+  const refresh = () => {
+    // 刷新 means "read the disk again", and a tree still showing a folder
+    // deleted somewhere else is exactly what the button gets pressed about.
+    setTreeKey((key) => key + 1)
+    void load(dir)
+  }
+
+  /* The toolbar is in both of the main area's forms and is the same component
+     in both: the design note asks for 上传 / 新建 / 刷新 in the same group, the
+     same order and the same shape whatever else is on screen. While rows are
+     ticked it becomes the bulk bar, at the same height, so the list under it
+     does not jump when a selection starts. */
+  const tools = (
+    <FileTools
+      dir={dir}
+      stats={stats}
+      query={query}
+      onQuery={setQuery}
+      searchRef={searchBox}
+      onUpload={() => fileInput.current?.click()}
+      onNewFile={() => void createFile()}
+      onNewFolder={() => void createFolder()}
+      onRefresh={refresh}
+      more={more}
+      busy={busy}
+      pending={pending}
+      writable={listing.writable}
+      bulk={
+        picked.length === 0 ? undefined : (
+          <>
+            <span className="ftools__where">
+              已选 {picked.length} 项 · {formatBytes(pickedBytes)}
+            </span>
+            <div className="ftools__acts">
+              <Button size="small" disabled={busy} onClick={() => void downloadMany(picked)}>
+                下载
+              </Button>
+              <Button
+                size="small"
+                disabled={busy || !listing.writable}
+                onClick={() => setMoving(picked)}
+              >
+                移动到…
+              </Button>
+              <Button
+                size="small"
+                variant="danger"
+                disabled={busy || !listing.writable}
+                onClick={() => void removeMany(picked)}
+              >
+                删除
+              </Button>
+              <button
+                type="button"
+                className="link"
+                onClick={() => setSelected(new Set())}
+              >
+                取消选择
+              </button>
+            </div>
+          </>
+        )
       }
     />
   )
 
   return (
     <div className="stack stack--full fmpage">
-      <FileBar
-        dir={dir}
-        stats={stats}
-        query={query}
-        onQuery={setQuery}
-        searchRef={searchBox}
-        onNavigate={navigate}
-        onUpload={() => fileInput.current?.click()}
-        onNewFile={() => void createFile()}
-        onNewFolder={() => void createFolder()}
-        onRefresh={() => {
-          // 刷新 means "read the disk again", and a tree still showing a folder
-          // deleted somewhere else is exactly what the button gets pressed
-          // about.
-          setTreeKey((key) => key + 1)
-          void load(dir)
-        }}
-        more={more}
-        busy={busy}
-        pending={pending}
-        writable={listing.writable}
-      />
-
       {progress != null && (
         <div className="progress fmpage__progress">
           <div className="progress__bar" style={{ width: `${Math.round(progress * 100)}%` }} />
@@ -1332,88 +1597,195 @@ export function FileManager({
         className="fm"
         ref={grid}
         style={{ gridTemplateColumns: template }}
-        data-narrow={narrow ? '' : undefined}
+        data-overlay={overlay || undefined}
       >
-        {navShown &&
-          (narrow ? (
-            <div className="fm__drawer">
-              {navColumn}
-              {/* Only when there is something behind it. With nothing open the
-                  drawer is the page, and a close button that reveals an empty
-                  editor is a button that appears not to work. */}
-              {open && (
-                <button
-                  type="button"
-                  className="fm__drawer-close"
-                  onClick={() => setDrawer(false)}
-                  aria-label="收起目录与文件"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ) : (
-            navColumn
-          ))}
+        <FileSidebar
+          collapsed={side.collapsed}
+          overlay={overlay}
+          onToggle={() => {
+            setPinned(true)
+            setSide((current) => ({ ...current, collapsed: !current.collapsed }))
+          }}
+          panel={side.panel}
+          onPanel={(panel) => setSide((current) => ({ ...current, panel }))}
+          newItems={newItems}
+          onRefresh={refresh}
+          more={more}
+          pending={pending}
+          usage={usage}
+          tree={
+            <FileTree
+              instanceId={instance.id}
+              path={dir}
+              reloadKey={treeKey}
+              onOpen={(next) => {
+                void load(next)
+              }}
+              onOpenFile={(entry) => openEntry(entry)}
+              openPaths={openPaths}
+              activePath={activePath}
+              menuFor={entryMenu}
+            />
+          }
+          search={
+            <FileSearchPanel
+              instanceId={instance.id}
+              boxRef={searchPanel}
+              onOpen={(path, line) => void openPath(path, { line })}
+            />
+          }
+          recent={
+            <FileRecentPanel
+              paths={recent}
+              activePath={activePath}
+              onOpen={(path) => void openPath(path)}
+              onForget={(path) => setRecent((current) => current.filter((one) => one !== path))}
+              onClear={() => setRecent([])}
+            />
+          }
+        />
 
-        {!narrow && (
+        {/* Only between two real columns. A handle beside a folded strip, or
+            beside a sidebar that is floating over what it would resize, moves
+            a boundary that is not there. */}
+        {!side.collapsed && !overlay && (
           <div
             className="fm__grip"
             role="separator"
             aria-orientation="vertical"
-            aria-label="调整目录与文件列的宽度"
+            aria-label="调整侧边栏宽度"
             onPointerDown={drag}
+            onDoubleClick={() => setSide((current) => ({ ...current, width: SIDE_DEFAULT }))}
           />
         )}
 
-        {(!narrow || (!drawer && open)) && (
-          <FileEditor
-            findTick={findTick}
-            instanceId={instance.id}
-            files={files}
-            panes={panes}
-            focusedPane={focusedPane}
-            maxEditableBytes={listing.maxEditableBytes}
-            onFocusPane={setFocusedPane}
-            onSelectTab={(pane, path) =>
-              setPanes((current) =>
-                current.map((one, index) => (index === pane ? { ...one, active: path } : one)),
-              )
-            }
-            onCloseTab={(pane, path) => void closeTab(pane, path)}
-            onCloseOthers={(pane, path) => dropTabs(pane, () => [path])}
-            onCloseRight={(pane, path) =>
-              dropTabs(pane, (tabs) => tabs.slice(0, tabs.indexOf(path) + 1))
-            }
-            onSplit={() =>
-              setPanes((current) =>
-                current.length >= 2 || current[0].active === null
-                  ? current
-                  : [...current, { tabs: [current[0].active], active: current[0].active }],
-              )
-            }
-            onChange={(path, content) => patchFile(path, { content })}
-            onSave={(path) => void save(path)}
-            onRevert={(path) => void revert(path)}
-            onReload={(path) => void reload(path)}
-            onKeepMine={(path) => patchFile(path, { stale: false })}
-            onPatch={patchFile}
-            onOpenHistory={onOpenHistory}
-            onLocate={(path) => {
-              // After the walk, not before it: load clears the selection when
-              // it lands, so ticking the row first is ticking it for as long
-              // as the request takes.
-              void (async () => {
-                await load(parentOf(path))
-                setCursor(path)
-              })()
-              if (narrow) setDrawer(true)
-            }}
-            onShowKeys={() => setKeys(true)}
-            busy={busy}
-          />
-        )}
+        <div className="fm__main">
+          {/* The trail describes what is in the main area, so it is only here
+              in the form that has a directory in it. In the editor form each
+              group carries a trail of its own, for the file it is showing. */}
+          {!open && <FileCrumbs dir={dir} onNavigate={navigate} pending={pending} />}
+          {tools}
+          {open ? (
+            <FileEditor
+              findTick={findTick}
+              reveal={reveal}
+              instanceId={instance.id}
+              instanceName={instance.name}
+              files={files}
+              panes={panes}
+              focusedPane={focusedPane}
+              layout={layout}
+              canSplitColumns={!noColumnSplit && !narrow}
+              canSplit={!narrow}
+              maxEditableBytes={listing.maxEditableBytes}
+              onFocusPane={setFocusedPane}
+              onCaret={setCaret}
+              onSelectTab={(pane, path) =>
+                setPanes((current) =>
+                  current.map((one, index) => (index === pane ? { ...one, active: path } : one)),
+                )
+              }
+              onCloseTab={(pane, path) => void closeTab(pane, path)}
+              onCloseOthers={(pane, path) => dropTabs(pane, () => [path])}
+              onCloseRight={(pane, path) =>
+                dropTabs(pane, (tabs) => tabs.slice(0, tabs.indexOf(path) + 1))
+              }
+              onSplit={splitInto}
+              onRatio={(ratio) => setLayout((current) => ({ ...current, ratio }))}
+              onMoveTab={moveTab}
+              onWalk={(next) => void load(next)}
+              onChange={(path, content) => patchFile(path, { content })}
+              onSave={(path) => void save(path)}
+              onRevert={(path) => void revert(path)}
+              onReload={(path) => void reload(path)}
+              onKeepMine={(path) => patchFile(path, { stale: false })}
+              onPatch={patchFile}
+              onOpenHistory={onOpenHistory}
+              onLocate={(path) => {
+                // After the walk, not before it: load clears the selection
+                // when it lands, so ticking the row first is ticking it for as
+                // long as the request takes.
+                void (async () => {
+                  await load(parentOf(path))
+                  setCursor(path)
+                })()
+                setSide((current) => ({ ...current, collapsed: false, panel: 'tree' }))
+              }}
+              onShowKeys={() => setKeys(true)}
+              busy={busy}
+            />
+          ) : (
+            <div className="fbrowse">
+              <FileList
+                instanceId={instance.id}
+                dir={dir}
+                entries={rows}
+                total={entries.length}
+                sort={sort}
+                onSort={toggleSort}
+                selected={selected}
+                cursor={cursor}
+                onSelect={pick}
+                activePath={activePath}
+                dirtyPaths={dirtyPaths}
+                onOpen={(entry) => openEntry(entry)}
+                menuFor={entryMenu}
+                onUpload={() => fileInput.current?.click()}
+                onDropFiles={(files) => void upload(files)}
+                onRetry={() => void load(dir)}
+                onClearQuery={() => setQuery('')}
+                query={query}
+                error={error}
+                pending={pending}
+                busy={busy}
+                writable={listing.writable}
+                bodyRef={listBody}
+              />
+            </div>
+          )}
+        </div>
       </div>
+
+      {goto && (
+        <GoToFile
+          instanceId={instance.id}
+          recent={recent}
+          onClose={() => setGoto(false)}
+          onOpen={(path, split) => {
+            setGoto(false)
+            void (async () => {
+              await openPath(path)
+              if (split && panesNow.current.length < 2) splitInto(noColumnSplit ? 'row' : 'col')
+            })()
+          }}
+        />
+      )}
+
+      {/* What the shell's status bar says while this page is the one on
+          screen. It is the caret's position and nothing else that could not be
+          read off the page itself — see components/StatusBar. */}
+      {active && (
+        <StatusSlot>
+          {caret !== null && (
+            <span className="statusbar__fact">
+              行 {caret.line}，列 {caret.column}
+            </span>
+          )}
+          {panes.length > 1 && (
+            <span className="statusbar__fact">
+              {layout.dir === 'col' ? '左右分屏' : '上下分屏'} · {panes.length} 组
+            </span>
+          )}
+          <span className="statusbar__fact">{dir === '' ? '/' : `/${dir}`}</span>
+        </StatusSlot>
+      )}
+      {active && dirtyPaths.size > 0 && (
+        <StatusSlot side="right">
+          <span className="statusbar__fact statusbar__fact--warn">
+            {dirtyPaths.size} 个文件未保存
+          </span>
+        </StatusSlot>
+      )}
 
       {dialogs}
     </div>

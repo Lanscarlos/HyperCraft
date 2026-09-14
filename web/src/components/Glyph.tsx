@@ -18,6 +18,8 @@ export type GlyphName =
   | 'left'
   | 'clock'
   | 'split'
+  | 'split-row'
+  | 'sidebar'
   | 'ellipsis'
   | 'chevron'
   | 'home'
@@ -168,6 +170,24 @@ const GLYPHS: Record<GlyphName, ReactElement> = {
     <>
       <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
       <path d="M12 4.5v15" />
+    </>
+  ),
+  // The same frame divided the other way. Two glyphs rather than one rotated,
+  // because the menu shows them side by side and a reader picking between
+  // 左右 and 上下 is picking by the picture.
+  'split-row': (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <path d="M3.5 12h17" />
+    </>
+  ),
+  // The sidebar's own fold, and the rail it folds to. The filled bar is which
+  // part stays: at 16px an outline-only version of this reads as a table.
+  sidebar: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <path d="M9 4.5v15" />
+      <path d="M3.5 6.5a2 2 0 0 1 2-2H9v15H5.5a2 2 0 0 1-2-2z" fill="currentColor" stroke="none" />
     </>
   ),
   // The one glyph in the set that is filled rather than stroked: three dots

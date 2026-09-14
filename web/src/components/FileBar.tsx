@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { RefObject } from 'react'
+import type { ReactNode, RefObject } from 'react'
 
 import { formatBytes } from '../format'
 import { Button } from './Button'
@@ -9,27 +9,35 @@ import type { MenuItem } from './Menu'
 import { ToolbarSearch } from './Toolbar'
 
 /**
- * The one bar across the top of the file pane.
+ * The two bars across the top of the main area: where you are, and what you can
+ * do here.
  *
- * It replaces a page title and a sentence of prose ("服务器目录里的东西：jar、
- * 存档、配置和日志…"), which is a hundred pixels of vertical room spent saying
- * something true exactly once. The path is what a file manager's head is for.
+ * They were one bar, across the whole page, back when the main area was the
+ * editor and the listing lived in a rail beside it. The listing has moved into
+ * the main area, so the trail moved with it — it describes what is in the main
+ * area, not where the page is — and the buttons became a row of their own under
+ * it, at the listing's own width.
  *
- * The same buttons, in the same order, in the same shape, whatever else is on
- * screen. The two toolbars this replaces had different counts, different
- * orders and different amounts of text depending on a mode, which is the
- * reliable way to break the muscle memory a daily tool runs on.
+ * What did not change is the rule the single bar existed for: the same buttons,
+ * in the same order, in the same shape, whatever else is on screen. FileTools
+ * is therefore rendered in both of the main area's forms — over the listing and
+ * over the editor — rather than being part of the listing.
  */
-export interface FileBarProps {
+export interface FileCrumbsProps {
+  dir: string
+  /** Walks to a directory, answering whether it was there. False leaves the
+   *  bar in its editing state with the message beside what was typed. */
+  onNavigate: (next: string) => Promise<boolean>
+  pending: boolean
+}
+
+export interface FileToolsProps {
   dir: string
   /** What is in the directory, for the chip. Null while it is being read. */
   stats: { count: number; bytes: number } | null
   query: string
   onQuery: (next: string) => void
   searchRef: RefObject<HTMLInputElement>
-  /** Walks to a directory, answering whether it was there. False leaves the
-   *  bar in its editing state with the message beside what was typed. */
-  onNavigate: (next: string) => Promise<boolean>
   onUpload: () => void
   onNewFile: () => void
   onNewFolder: () => void
@@ -43,6 +51,9 @@ export interface FileBarProps {
    *  buttons stay put and say why rather than disappearing — a toolbar that
    *  changes shape per directory is the thing this bar exists to stop. */
   writable: boolean
+  /** Replaces the whole row while rows are ticked. Same height, so the list
+   *  below does not jump when a selection starts. */
+  bulk?: ReactNode
 }
 
 /** What a directory rule refuses, said on the button rather than as a banner:
@@ -50,22 +61,7 @@ export interface FileBarProps {
  *  already on it. */
 const READ_ONLY_HERE = '这个目录不在你的角色允许的范围内'
 
-export function FileBar({
-  dir,
-  stats,
-  query,
-  onQuery,
-  searchRef,
-  onNavigate,
-  onUpload,
-  onNewFile,
-  onNewFolder,
-  onRefresh,
-  more,
-  busy,
-  pending,
-  writable,
-}: FileBarProps) {
+export function FileCrumbs({ dir, onNavigate, pending }: FileCrumbsProps) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(dir)
   const [bad, setBad] = useState<string | null>(null)
@@ -166,13 +162,40 @@ export function FileBar({
         </nav>
       )}
 
-      {stats && (
-        <span className="fbar__stats">
-          {stats.count} 项 · {formatBytes(stats.bytes)}
-        </span>
-      )}
+    </header>
+  )
+}
 
-      <div className="fbar__tools">
+export function FileTools({
+  dir,
+  stats,
+  query,
+  onQuery,
+  searchRef,
+  onUpload,
+  onNewFile,
+  onNewFolder,
+  onRefresh,
+  more,
+  busy,
+  pending,
+  writable,
+  bulk,
+}: FileToolsProps) {
+  if (bulk !== undefined) return <div className="ftools ftools--bulk">{bulk}</div>
+
+  return (
+    <div className="ftools">
+      <span className="ftools__where">
+        <b>{dir === '' ? '实例根目录' : baseName(dir)}</b>
+        {stats && (
+          <span className="chip ftools__stats">
+            {stats.count} 项 · {formatBytes(stats.bytes)}
+          </span>
+        )}
+      </span>
+
+      <div className="ftools__acts">
         <ToolbarSearch
           ref={searchRef}
           className="fbar__search"
@@ -218,8 +241,13 @@ export function FileBar({
           <Glyph name="ellipsis" />
         </Menu>
       </div>
-    </header>
+    </div>
   )
+}
+
+function baseName(dir: string): string {
+  const index = dir.lastIndexOf('/')
+  return index < 0 ? dir : dir.slice(index + 1)
 }
 
 /**
