@@ -826,7 +826,7 @@ export function FileManager({
   )
 
   if (!listing) {
-    if (error) return <div className="alert alert--error">{error}</div>
+    if (error) return <div className="alert">{error}</div>
     return (
       <SkeletonScreen label="正在读取目录…">
         <SkeletonPanel title={false}>
@@ -1134,7 +1134,7 @@ export function FileManager({
               *did* — an upload, a delete, a save — reports as a toast, which
               is what those are. A load failure needs no acknowledgement: the
               next successful listing clears it. */}
-          {error && <div className="alert alert--error">{error}</div>}
+          {error && <div className="alert">{error}</div>}
 
           <div className="table-scroll" data-pending={pending || undefined}>
             <table className="data-table data-table--files">
@@ -1718,7 +1718,7 @@ function FileEditor({
           </span>
         </div>
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
 
         <div className="actions">
           <Button variant="primary" onClick={onSave} disabled={busy || !dirty}>

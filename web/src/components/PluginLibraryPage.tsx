@@ -242,8 +242,8 @@ export function PluginLibraryPage({
         </>
       }
     >
-      {error && <div className="alert alert--error">{error}</div>}
-      {plugins.error && <div className="alert alert--error">{plugins.error}</div>}
+      {error && <div className="alert">{error}</div>}
+      {plugins.error && <div className="alert">{plugins.error}</div>}
       {plugins.active > 0 && (
         <QueueStrip
           jobs={plugins.jobs}
@@ -1407,7 +1407,7 @@ function BulkInstallDialog({
           </Note>
         )}
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
 
         <div className="modal__actions">
           <Button disabled={busy} onClick={onCancel}>

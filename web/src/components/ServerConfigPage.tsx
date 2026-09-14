@@ -107,7 +107,7 @@ export function ServerConfigPage({ instance }: { instance: InstanceStatus }) {
       </div>
       {currentTab && <p className="muted">{currentTab.blurb}</p>}
 
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
 
       {open === PROPERTIES ? (
         <PropertiesEditor instance={instance} />
@@ -288,7 +288,7 @@ function ServerConfigForm({
           )
         })}
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
 
         <div className="actions">
           <Button type="button" onClick={() => void reload()}>

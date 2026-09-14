@@ -75,7 +75,7 @@ export function UpdatePanel({ update, runningNames }: Props) {
         </div>
       </dl>
 
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
       {status.checkError && !error && (
         <Note tone="error">检查更新失败：{status.checkError}</Note>
       )}
@@ -428,7 +428,7 @@ function VersionList({
 
       <div className="update__versions-body">
         {loading && <p className="update__note">正在从 GitHub 取版本列表…</p>}
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
         {versions?.length === 0 && <p className="update__note">这个更新通道里没有可装的版本。</p>}
 
         {versions?.map((entry) => (

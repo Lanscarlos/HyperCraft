@@ -132,7 +132,7 @@ export function SchematicLibraryPage({
         </>
       }
     >
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
 
       <Section title="建筑列表" note="把 .schem 丢进建筑库目录，扫描一下也会出现在这里">
         <Toolbar>
@@ -612,7 +612,7 @@ function InstallDialog({
               <span>覆盖同名文件</span>
             </label>
 
-            {error && <div className="alert alert--error">{error}</div>}
+            {error && <div className="alert">{error}</div>}
             {done && (
               <Note tone="ok">
                 装好了。进服打 <code>{done}</code> 就能贴出来。

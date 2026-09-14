@@ -219,7 +219,7 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
       {overview.platform.warning && (
         <Note tone="warn">{overview.platform.warning}</Note>
       )}
-      {java.error && <div className="alert alert--error">{java.error}</div>}
+      {java.error && <div className="alert">{java.error}</div>}
 
       {/* An install keeps running after you navigate away, so it is reported
           at the top of the page rather than inside the card that started it. */}
@@ -666,28 +666,28 @@ function InstallStatus({
 
   if (job.state === 'extracting') {
     return (
-      <div className="alert alert--ok">
+      <Note tone="ok">
         正在解压 {job.title}…
-      </div>
+      </Note>
     )
   }
 
   if (job.state === 'done') {
     return (
-      <div className="alert alert--ok">
+      <Note tone="ok">
         {job.title} 已安装，去实例的「启动设置」里选它。
-      </div>
+      </Note>
     )
   }
 
   if (job.state === 'cancelled') {
-    return <div className="alert alert--ok">已取消安装 Java {Number(jobMeta(job, 'major'))}，没有留下任何文件。</div>
+    return <Note tone="ok">已取消安装 Java {Number(jobMeta(job, 'major'))}，没有留下任何文件。</Note>
   }
 
   return (
-    <div className="alert alert--error">
+    <Note tone="error">
       安装失败：{job.error ?? '未知错误'}
       {from && <> —— 可以换个下载源再试一次（这次用的是{from}）。</>}
-    </div>
+    </Note>
   )
 }

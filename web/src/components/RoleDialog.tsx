@@ -111,7 +111,7 @@ export function RoleDialog({ role, capabilities, onCancel, onSaved }: Props) {
           </p>
         )}
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
 
         <label className="field">
           <span>角色名</span>

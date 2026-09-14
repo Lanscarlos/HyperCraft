@@ -84,7 +84,7 @@ export function SchematicDialog({
         <h2 className="modal__title">{title}</h2>
         {lead !== undefined && <p className="modal__lead">{lead}</p>}
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
         {!error && !data && <SchematicSkeleton />}
         {data && <SchematicBody data={data} />}
 

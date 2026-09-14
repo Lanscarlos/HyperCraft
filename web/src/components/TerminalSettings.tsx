@@ -57,7 +57,7 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
 
   return (
     <Section title={title} note={lead}>
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
 
       {!status.supported ? (
         <Note>{status.reason}</Note>

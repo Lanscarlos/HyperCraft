@@ -54,7 +54,7 @@ export function SecurityPage() {
       title="登录记录"
       lead="面板收到的地址，以及最近发生过的登录、配对和限流。这份列表只存在内存里，面板一重启（包括自动更新）就清空 —— 需要长期留存的记录在系统日志里，用 journalctl -u hypercraft 看。"
     >
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
 
       <Section title="当前连接">
         {me === null ? (

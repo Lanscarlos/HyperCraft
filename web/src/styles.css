@@ -2917,41 +2917,28 @@ a:hover {
   pointer-events: none;
 }
 
+/* The one slot under a page head where that page's own failure goes.
+   Everything that used to share this class is a Note now (a condition) or a
+   toast (an outcome), so it has exactly one meaning and therefore no
+   modifiers: red, because the only thing it is ever allowed to say is that
+   this page could not load what it came for.
+
+   It needs no way to be dismissed for the same reason — the next successful
+   load clears it, and a failure the reader clicked away is a page left
+   silently empty. */
 .alert {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
   gap: 6px;
   padding: 10px 13px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-left: 3px solid var(--border-strong);
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, transparent);
+  border-left: 3px solid var(--danger);
   border-radius: var(--radius-sm);
+  color: var(--danger-ink);
   font-size: 13px;
   animation: rise 200ms var(--ease) both;
-}
-
-.alert--error {
-  background: var(--danger-soft);
-  border-color: color-mix(in srgb, var(--danger) 34%, transparent);
-  border-left-color: var(--danger);
-  color: var(--danger-ink);
-}
-
-.alert--ok {
-  background: var(--ok-soft);
-  border-color: color-mix(in srgb, var(--ok) 34%, transparent);
-  border-left-color: var(--ok);
-  color: var(--ok-ink);
-}
-
-/* Used for the warnings on the terminal settings page, where the point is
-   "read this before you click", not "something went wrong". */
-.alert--warn {
-  background: var(--caution-soft);
-  border-color: color-mix(in srgb, var(--caution) 36%, transparent);
-  border-left-color: var(--caution);
-  color: var(--caution-ink);
 }
 
 .alert .link {
@@ -10181,7 +10168,7 @@ input.input-slim:disabled {
 }
 
 /* 概览's pending-alert count, in the worst level it contains — the same three
-   answers .alert--* gives the rows themselves, because the badge is a summary
+   answers .note--* gives the rows themselves, because the badge is a summary
    of exactly those rows. Info gets no modifier at all: it is a count of things
    worth knowing, and the plain badge is what the panel already uses for one.
 

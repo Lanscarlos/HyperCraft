@@ -86,7 +86,7 @@ export function CoreLibraryPage({
           the top of the page rather than inside the card that started it —
           coming back to the shelf from another section has to show it too. */}
       {job && <JobStatus job={job} />}
-      {cores.error && <div className="alert alert--error">{cores.error}</div>}
+      {cores.error && <div className="alert">{cores.error}</div>}
 
       <Section title="核心库" note="把自己的 jar 丢进核心库目录，也会出现在这里">
         {stored.length === 0 ? (
@@ -128,7 +128,7 @@ export function CoreLibraryPage({
           note="走服务器自己的网络，不经过你的浏览器，关掉网页也会继续。下载完成后，新建实例时选它，或在实例的「实例设置 → 从核心库安装」里装上。"
         >
 
-          {catalogue.error && <div className="alert alert--error">{catalogue.error}</div>}
+          {catalogue.error && <div className="alert">{catalogue.error}</div>}
 
           <CoreCatalogue catalogue={catalogue} disabled={downloading} onOpenJava={onOpenJava} />
 
@@ -255,17 +255,17 @@ function JobStatus({ job }: { job: DownloadJob }) {
   }
 
   if (job.state === 'done') {
-    return <div className="alert alert--ok">已下载 {job.fileName}，现在可以复制到任意实例。</div>
+    return <Note tone="ok">已下载 {job.fileName}，现在可以复制到任意实例。</Note>
   }
 
   if (job.state === 'cancelled') {
-    return <div className="alert alert--ok">已取消下载 {job.fileName}，未写入任何文件。</div>
+    return <Note tone="ok">已取消下载 {job.fileName}，未写入任何文件。</Note>
   }
 
   return (
-    <div className="alert alert--error">
+    <Note tone="error">
       下载失败：{job.error ?? '未知错误'}
       {job.fileName && `（${job.fileName}）`}
-    </div>
+    </Note>
   )
 }

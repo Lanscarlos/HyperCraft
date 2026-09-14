@@ -888,7 +888,7 @@ function CoreStep({
                 disabled={downloading}
                 javaNote={(major) => `该版本至少需要 Java ${major}，下一步就装它。`}
               />
-              {cores.error && <div className="alert alert--error">{cores.error}</div>}
+              {cores.error && <div className="alert">{cores.error}</div>}
               {awaiting && job && <DownloadStatus job={job} />}
               <div className="actions">
                 {downloading ? (
@@ -953,10 +953,10 @@ function DownloadStatus({ job }: { job: NonNullable<CoreController['job']> }) {
     )
   }
   if (job.state === 'failed') {
-    return <div className="alert alert--error">下载失败：{job.error ?? '未知错误'}</div>
+    return <Note tone="error">下载失败：{job.error ?? '未知错误'}</Note>
   }
   if (job.state === 'cancelled') {
-    return <div className="alert">已取消下载，没有写入任何文件。</div>
+    return <Note>已取消下载，没有写入任何文件。</Note>
   }
   return null
 }
@@ -1138,7 +1138,7 @@ function JavaStep({
               ))}
             </div>
 
-            {java.error && <div className="alert alert--error">{java.error}</div>}
+            {java.error && <div className="alert">{java.error}</div>}
             {awaiting && job && <InstallStatus job={job} />}
 
             <div className="actions">
@@ -1195,13 +1195,13 @@ function InstallStatus({ job }: { job: NonNullable<JavaController['job']> }) {
     )
   }
   if (job.state === 'extracting') {
-    return <div className="alert alert--ok">正在解压 {job.title}…</div>
+    return <Note tone="ok">正在解压 {job.title}…</Note>
   }
   if (job.state === 'failed') {
-    return <div className="alert alert--error">安装失败：{job.error ?? '未知错误'}</div>
+    return <Note tone="error">安装失败：{job.error ?? '未知错误'}</Note>
   }
   if (job.state === 'cancelled') {
-    return <div className="alert">已取消安装，没有留下任何文件。</div>
+    return <Note>已取消安装，没有留下任何文件。</Note>
   }
   return null
 }
@@ -1729,7 +1729,7 @@ function ConfirmStep({
         </ul>
       )}
 
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
     </Section>
   )
 }

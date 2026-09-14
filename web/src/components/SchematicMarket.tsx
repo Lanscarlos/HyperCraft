@@ -138,7 +138,7 @@ export function SchematicMarket({
         </>
       }
     >
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
 
       <section className="panel">
         <Toolbar>
@@ -403,7 +403,7 @@ function SourcesPage({
           </label>
         </div>
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
 
         <div className="actions">
           <Button variant="primary" onClick={() => void add()} disabled={busy}>

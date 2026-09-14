@@ -320,7 +320,7 @@ export function PluginBrowse({
             <p className="browse__pending">筛选条件改了，点「搜索」才会生效。</p>
           )}
 
-          {error && <div className="alert alert--error">{error}</div>}
+          {error && <div className="alert">{error}</div>}
 
           {result?.notes &&
             Object.entries(result.notes).map(([source, note]) => (

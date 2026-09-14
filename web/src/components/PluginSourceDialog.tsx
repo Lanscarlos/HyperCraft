@@ -140,7 +140,7 @@ export function PluginSourceDialog({
           </label>
         )}
 
-        {lookError && <div className="alert alert--error">{lookError}</div>}
+        {lookError && <div className="alert">{lookError}</div>}
         {preview && <Preview preview={preview} onUsePattern={setAssetPattern} />}
 
         {/* The rest of the form only matters once there is something to add,

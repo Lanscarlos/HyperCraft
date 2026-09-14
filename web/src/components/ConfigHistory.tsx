@@ -324,7 +324,7 @@ export function ConfigHistory({
       <div className="stack">
         <PageHead title="配置历史" lead={lead} />
         {error ? (
-          <div className="alert alert--error">{error}</div>
+          <div className="alert">{error}</div>
         ) : (
           <SkeletonScreen inPage label="正在读取配置历史…">
             <SkeletonPanel>
@@ -421,7 +421,7 @@ export function ConfigHistory({
       }
       />
 
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
 
       {oversized.length > 0 && (
         <Section

@@ -193,7 +193,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
       <div className="stack">
         {head}
         {error ? (
-          <div className="alert alert--error">{error}</div>
+          <div className="alert">{error}</div>
         ) : (
           <SkeletonScreen inPage label="正在读取 velocity.toml…">
             <SkeletonPanel title={false}>
@@ -536,7 +536,7 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
         ))}
       </Section>
 
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
 
       <div className="actions">
         <Button variant="primary" type="submit" disabled={busy}>

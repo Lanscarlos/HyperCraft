@@ -175,7 +175,7 @@ export function PluginInstallDialog({
       <div className="modal__card">
         <h2 className="modal__title">把 {item.name} 装到实例</h2>
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
 
         {item.versions.length === 0 ? (
           <Note tone="warn">

@@ -140,7 +140,7 @@ export function NetworkPage({ instances, onOpenInstance, onCreate, focus, embed 
     return (
       <Frame embed={embed} title={headingOf()} lead={leadOf(side, canvas)} actions={reload}>
         {error ? (
-          <div className="alert alert--error">{error}</div>
+          <div className="alert">{error}</div>
         ) : (
           <SkeletonScreen inPage label="正在读取网络拓扑…">
             <SkeletonPanel title={false}>
@@ -162,7 +162,7 @@ export function NetworkPage({ instances, onOpenInstance, onCreate, focus, embed 
 
   return (
     <Frame embed={embed} title={headingOf()} lead={leadOf(side, canvas)} actions={reload}>
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
 
       {notes.length > 0 && (
         <Note tone="ok">

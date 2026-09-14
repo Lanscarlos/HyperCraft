@@ -223,7 +223,7 @@ export function PluginDrawer({
         </header>
 
         <div className="drawer__body">
-          {error && <div className="alert alert--error">{error}</div>}
+          {error && <div className="alert">{error}</div>}
           {done && (
             <Note tone="ok">
               {done}

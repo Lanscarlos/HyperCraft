@@ -870,7 +870,7 @@ export function LaunchSettings({
       </div>
       </Section>
 
-      {error && <div className="alert alert--error">{error}</div>}
+      {error && <div className="alert">{error}</div>}
       {status && <Note tone="ok">{status}</Note>}
 
       {dirty && (

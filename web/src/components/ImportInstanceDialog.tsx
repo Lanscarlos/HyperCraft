@@ -270,7 +270,7 @@ export function ImportInstanceDialog({ onImported, onCancel }: Props) {
           </>
         )}
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
 
         <div className="modal__actions">
           <Button type="button" onClick={onCancel} disabled={busy}>

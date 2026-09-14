@@ -100,7 +100,7 @@ export function PathPicker({ initialPath, onPick, onCancel }: Props) {
           </Toolbar>
         )}
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
         {listing && !listing.exists && (
           <Note tone="ok">
             这个目录还不存在，选它会在创建实例时一并建好。

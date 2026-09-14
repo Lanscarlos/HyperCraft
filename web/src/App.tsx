@@ -612,7 +612,7 @@ export default function App() {
           />
 
           <main className="main" id="main" tabIndex={-1}>
-            {loadError && <div className="alert alert--error">{loadError}</div>}
+            {loadError && <div className="alert">{loadError}</div>}
             {/* The shell survives a crashed page, and navigating away is what
                 recovers from one — hence the route as the reset key. */}
             <ErrorBoundary resetKey={pathOf(route)}>

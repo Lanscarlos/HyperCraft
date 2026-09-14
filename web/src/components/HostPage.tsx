@@ -93,7 +93,7 @@ function HostMetrics({
     return (
       <Page wide title="监控" lead={system.error ?? '正在读取本机状态…'}>
         {system.error ? (
-          <div className="alert alert--error">{system.error}</div>
+          <div className="alert">{system.error}</div>
         ) : (
           <SkeletonScreen inPage>
             <SkeletonPanel />

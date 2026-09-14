@@ -149,7 +149,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
   }
 
   if (!data) {
-    if (error) return <div className="alert alert--error">{error}</div>
+    if (error) return <div className="alert">{error}</div>
     return (
       <SkeletonScreen label="正在读取 server.properties…">
         <SkeletonPanel title={false}>
@@ -261,7 +261,7 @@ export function PropertiesEditor({ instance }: { instance: InstanceStatus }) {
           </Section>
         )}
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <div className="alert">{error}</div>}
 
         <div className="actions">
           <Button type="button" onClick={() => void load()}>
