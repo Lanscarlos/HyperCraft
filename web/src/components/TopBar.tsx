@@ -1,13 +1,12 @@
 import type { MouseEventHandler, RefObject } from 'react'
 
 import { formatBytes, formatPercent } from '../format'
-import type { InstanceMetrics, InstanceState, InstanceStatus, User } from '../types'
+import type { InstanceMetrics, InstanceState, InstanceStatus } from '../types'
 import { STATE_LABELS, isLive } from '../types'
 import type { DownloadController } from '../useDownloads'
 import { useUptime } from '../useUptime'
 import { DownloadTray } from './DownloadTray'
 import { Icon } from './Icon'
-import { Menu } from './Menu'
 import { PowerControls } from './PowerControls'
 import { StatusDot } from './StatusDot'
 import { ThemeToggle } from './ThemeToggle'
@@ -34,7 +33,6 @@ interface Props {
    *  32px tall and the message is a sentence, and it has to survive being read
    *  — see the note on the banner in App. */
   onPowerError: (message: string) => void
-  user: User
   /** True while the sidebar is a drawer rather than a rail beside the content. */
   compact: boolean
   navOpen: boolean
@@ -53,8 +51,6 @@ interface Props {
   downloads: DownloadController
   /** Where 查看全部 in the tray leads. */
   onOpenDownloads: () => void
-  onChangePassword: () => void
-  onSignOut: () => void
 }
 
 /**
@@ -72,7 +68,6 @@ export function TopBar({
   metrics,
   onInstanceChanged,
   onPowerError,
-  user,
   compact,
   navOpen,
   onToggleNav,
@@ -83,8 +78,6 @@ export function TopBar({
   onOpenPalette,
   downloads,
   onOpenDownloads,
-  onChangePassword,
-  onSignOut,
 }: Props) {
   // The corner every browser, every phone and every file manager puts 返回 in.
   // It used to hold the sidebar's fold — a chevron pointing left, which is the
@@ -186,36 +179,8 @@ export function TopBar({
           <Icon name="search" />
         </button>
         <ThemeToggle />
-        <UserMenu user={user} onChangePassword={onChangePassword} onSignOut={onSignOut} />
       </div>
     </header>
-  )
-}
-
-/** The account button and the two things you can do to an account. */
-function UserMenu({
-  user,
-  onChangePassword,
-  onSignOut,
-}: {
-  user: User
-  onChangePassword: () => void
-  onSignOut: () => void
-}) {
-  return (
-    <Menu
-      className="usermenu__button"
-      title={user.username}
-      items={[
-        { label: '修改密码', onSelect: onChangePassword },
-        { label: '退出登录', onSelect: onSignOut },
-      ]}
-    >
-      <span className="usermenu__avatar" aria-hidden="true">
-        {user.username.slice(0, 1).toUpperCase()}
-      </span>
-      <span className="usermenu__name">{user.username}</span>
-    </Menu>
   )
 }
 

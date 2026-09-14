@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { MouseEvent, ReactNode, Ref } from 'react'
 
 import type { AlertLevel } from '../alerts'
@@ -33,14 +34,19 @@ import { Icon } from './Icon'
 import type { IconName } from './Icon'
 import { Logo } from './Logo'
 import { StatusDot } from './StatusDot'
+import { UserChip } from './UserChip'
 
 interface Props {
   route: Route
   scope: Scope
-  /** True while the sidebar is a drawer; the fold is a desktop-only idea. */
+  /** True while the wide form is an overlay rather than a column. The rail
+   *  itself is on screen at every width — it is the only navigation a phone
+   *  has now — so this changes what the fold button does, not whether it is
+   *  there. */
   compact: boolean
-  railed: boolean
-  onToggleRail: () => void
+  /** Whether the rail is showing its labels. */
+  expanded: boolean
+  onToggleNav: () => void
   navigate: (route: Route) => void
   /** A plain left click on a sidebar link; every other click stays the
    *  browser's, because these are real hrefs. */
@@ -64,6 +70,8 @@ interface Props {
   terminal: TerminalController
   onCreate: () => void
   onOpenPalette: () => void
+  onChangePassword: () => void
+  onSignOut: () => void
   sidebarRef: Ref<HTMLElement>
 }
 
@@ -87,7 +95,7 @@ interface Props {
  * sidebar to understand. See scopeMorph.ts.
  */
 export function Sidebar(props: Props) {
-  const { route, scope, sidebarRef, compact, railed, onToggleRail } = props
+  const { route, scope, sidebarRef, expanded, onToggleNav, user } = props
   const self = useRef<HTMLElement | null>(null)
 
   /**
@@ -128,10 +136,16 @@ export function Sidebar(props: Props) {
     return () => window.clearTimeout(timer)
   }, [identity])
 
+  const tip = useRailTip(!expanded)
+
   return (
     <aside
       className="sidebar"
       id="sidebar"
+      onPointerOver={tip.over}
+      onPointerOut={tip.out}
+      onFocusCapture={tip.over}
+      onBlurCapture={tip.out}
       ref={(node) => {
         self.current = node
         if (typeof sidebarRef === 'function') sidebarRef(node)
@@ -139,7 +153,35 @@ export function Sidebar(props: Props) {
       }}
       tabIndex={-1}
       data-scope={scope}
+      // The rail's two forms. On the element rather than on .app because the
+      // fold is written against these class names and the wide form is not
+      // always a grid track: below the drawer width it is an overlay, and a
+      // selector rooted at the grid could not tell the two apart.
+      data-form={expanded ? 'wide' : 'rail'}
     >
+      {/* The mark, in the same 48px slot on every page. The rail's own
+          furniture — this and the pair at the foot — does not change with the
+          scope: they are how you recognise the column as the column, and a
+          header that is a different thing on every page is a header that has
+          to be re-read on every page. */}
+      <a
+        className="sidebar__mark"
+        href={pathOf({ kind: 'overview' })}
+        onClick={props.follow(() => props.navigate({ kind: 'overview' }))}
+        title="HyperCraft"
+        aria-label="HyperCraft 概览"
+      >
+        <span className="sidebar__logo">
+          <Logo className="brand-mark" />
+        </span>
+        {/* A dot rather than the text: the rail has no room for 有新版本, and
+            the same fact reads as well as a mark on the logo. The words are in
+            面板设置 · 更新, which is where the button to do anything about it
+            is. */}
+        {props.updateNotice && <span className="sidebar__mark-dot" aria-hidden="true" />}
+        <span className="sidebar__mark-name">HyperCraft</span>
+      </a>
+
       {/* The way out, above the header of the scope it leaves: the top-left
           corner of a navigation column is where a reader looks for 返回, the
           same reflex every browser and every phone trains, and it costs the
@@ -162,30 +204,109 @@ export function Sidebar(props: Props) {
         <GlobalScope {...props} />
       )}
 
-      {/* The fold, at the foot of the column it folds — in every scope, not
-          only the panel's own: how wide the navigation should be is a decision
-          about this column, and a control that acts on the whole column belongs
-          at its quiet end rather than in the corner the way out now holds. It
-          used to be the leftmost button in the top bar, where every browser and
-          every phone puts 返回, so the control that narrows the navigation was
-          sitting exactly where a reader expects the control that leaves the
-          page. */}
-      {!compact && (
+      {/* The fold and the account, at the quiet end of the column. The fold is
+          here in every scope, not only the panel's own: how wide the navigation
+          should be is a decision about this column, and a control that acts on
+          the whole column belongs at its foot rather than in the corner the way
+          out now holds. It used to be the leftmost button in the top bar, where
+          every browser and every phone puts 返回, so the control that narrows
+          the navigation was sitting exactly where a reader expects the control
+          that leaves the page.
+
+          On a drawer layout the same button closes the overlay, because there
+          the wide form *is* the drawer — one control, one meaning, whichever
+          width it is pressed at. */}
+      <div className="sidebar__foot">
         <button
           className="sidebar__fold"
-          onClick={onToggleRail}
-          title={railed ? '展开侧边栏（[）' : '收起侧边栏（[）'}
-          aria-label={railed ? '展开侧边栏' : '收起侧边栏'}
-          aria-expanded={!railed}
+          onClick={onToggleNav}
+          title={expanded ? '收起导航（[）' : '展开导航（[）'}
+          aria-label={expanded ? '收起导航' : '展开导航'}
+          aria-expanded={expanded}
           aria-controls="sidebar"
         >
-          <Icon name={railed ? 'expand' : 'collapse'} />
-          <span className="sidebar__name">收起侧边栏</span>
+          <Icon name={expanded ? 'collapse' : 'expand'} />
+          <span className="sidebar__name">收起导航</span>
           <kbd className="sidebar__kbd">[</kbd>
         </button>
-      )}
+        <UserChip
+          user={user}
+          onChangePassword={props.onChangePassword}
+          onSignOut={props.onSignOut}
+        />
+      </div>
+      {tip.node}
     </aside>
   )
+}
+
+/** How long the pointer has to stay on a folded row before it is told what the
+ *  row is. A rail of a dozen icons is a column the pointer crosses on the way
+ *  somewhere else; without the wait, one crossing fires a dozen labels. */
+const TIP_DELAY = 400
+
+/**
+ * The label a folded row shows on hover.
+ *
+ * One handler on the column rather than one per row: the rows are written in
+ * five scope components and a sixth would forget. The text comes out of the
+ * row's own `.sidebar__name`, which is the same string a screen reader reads —
+ * a second copy in a `title` or a `data-` attribute would be a second thing to
+ * keep in step, and the one that drifts is always the one nobody can see.
+ *
+ * Portalled and positioned against the viewport rather than drawn inside the
+ * row, because the list scrolls: `overflow-y: auto` computes `overflow-x` to
+ * `auto` too, so anything placed past the column's right edge is clipped at it.
+ */
+function useRailTip(folded: boolean) {
+  const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null)
+  const timer = useRef(0)
+
+  const clear = useCallback(() => {
+    window.clearTimeout(timer.current)
+    setTip(null)
+  }, [])
+
+  useEffect(() => {
+    // Unfolding while a label is up would leave it beside a row that is now
+    // showing the same words.
+    if (!folded) clear()
+  }, [folded, clear])
+
+  useEffect(() => clear, [clear])
+
+  const over = useCallback(
+    (event: { target: EventTarget | null }) => {
+      if (!folded) return
+      const el = (event.target as HTMLElement | null)?.closest<HTMLElement>(
+        '.sidebar__link, .sidebar__fold, .sidebar__search-btn, .sidebar__exit',
+      )
+      const text = el?.querySelector('.sidebar__name')?.textContent?.trim()
+      window.clearTimeout(timer.current)
+      if (!el || !text) {
+        setTip(null)
+        return
+      }
+      timer.current = window.setTimeout(() => {
+        const box = el.getBoundingClientRect()
+        setTip({ text, x: box.right + 6, y: box.top + box.height / 2 })
+      }, TIP_DELAY)
+    },
+    [folded],
+  )
+
+  return {
+    over,
+    out: clear,
+    node:
+      tip &&
+      createPortal(
+        <div className="railtip" role="presentation" style={{ left: tip.x, top: tip.y }}>
+          {tip.text}
+        </div>,
+        document.body,
+      ),
+  }
 }
 
 /** What 概览's count is painted as, by the worst level in it. Info is neutral
@@ -206,7 +327,6 @@ function GlobalScope(props: Props) {
     navigate,
     instances,
     recents,
-    user,
     updateNotice,
     alertCount,
     alertLevel,
@@ -228,23 +348,6 @@ function GlobalScope(props: Props) {
 
   return (
     <>
-      <a
-        className="sidebar__brand"
-        href={pathOf({ kind: 'overview' })}
-        onClick={follow(() => navigate({ kind: 'overview' }))}
-      >
-        <span className="sidebar__logo">
-          <Logo className="brand-mark" />
-        </span>
-        <div className="sidebar__title">
-          <strong>HyperCraft</strong>
-          <small>
-            {user.version}
-            {updateNotice && <Badge tone="update">{updateNotice}</Badge>}
-          </small>
-        </div>
-      </a>
-
       <SearchButton onOpen={props.onOpenPalette} />
 
       <div className="sidebar__scroll">
@@ -1058,7 +1161,6 @@ function NavLink({
         if (navKey) captureScope(navKey)
         navigate(target)
       })}
-      title={label}
       aria-current={current ? 'page' : undefined}
     >
       <Icon name={icon} />

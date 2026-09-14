@@ -1083,27 +1083,34 @@ a:hover {
 }
 
 .app {
-  --sidebar-w: 240px;
+  /* The rail is permanent furniture: 56px of it is on screen at every width,
+     and the preference below only decides whether it carries its labels.
+     Nothing auto-folds it — on a phone it is the one thing that keeps 控制台 a
+     tap away rather than a drawer and a tap. */
+  --sidebar-w: 56px;
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
   height: 100%;
-  /* Folding to the rail moves exactly one number, and animating that number is
-     the whole difference between a jump cut and the column sliding shut under
-     the pointer that asked for it. The content beside it reflows along the
-     way, which is the point: it is one movement, not a resize followed by a
-     repaint of everything to its right. */
-  transition: grid-template-columns var(--dur-4) var(--ease);
+  /* Widening the rail moves exactly one number, and animating that number is
+     the whole difference between a jump cut and the column opening under the
+     pointer that asked for it. The content beside it reflows along the way,
+     which is the point: it is one movement, not a resize followed by a repaint
+     of everything to its right. */
+  transition: grid-template-columns var(--dur-3) var(--ease);
 }
 
-.app[data-rail='on'] {
-  --sidebar-w: 64px;
+.app[data-nav='wide'] {
+  --sidebar-w: 220px;
 }
 
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px 12px;
+  gap: 10px;
+  /* No side padding: the active-row marker is flush against the column's edge
+     and the rows pad themselves. The mark and the foot rule to the full width
+     for the same reason. */
+  padding: 0 0 8px;
   /* One step off the page rather than a colour of its own: the rail reads as
      a container, and the main pane keeps the lighter surface. */
   background: var(--surface-1);
@@ -1129,15 +1136,117 @@ a:hover {
   min-height: 0;
 }
 
-.sidebar__brand {
+/* The mark, in the same 48px slot on every page. It is the rail's own
+   furniture rather than the panel scope's header, which is what it used to be:
+   a column whose top block is a different thing depending on where you are is
+   a column you re-read on every navigation. */
+.sidebar__mark {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 6px 6px 12px;
+  gap: 10px;
+  flex: none;
+  height: 48px;
+  padding: 0 14px;
   cursor: pointer;
   border-bottom: 1px solid var(--border);
   color: inherit;
   text-decoration: none;
+}
+
+.sidebar__mark-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* 有新版本, as a mark on the logo. The rail has no room for the words and the
+   place to do anything about it is 面板设置 · 更新, which the row below already
+   badges. */
+.sidebar__mark-dot {
+  position: absolute;
+  top: 9px;
+  left: 32px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--state-update, var(--accent));
+  box-shadow: 0 0 0 2px var(--surface-1);
+}
+
+.sidebar[data-form='rail'] .sidebar__mark {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebar[data-form='rail'] .sidebar__mark-name {
+  display: none;
+}
+
+/* The two controls that belong to the column rather than to a page: how wide
+   it is, and who is signed in. Ruled off from the list above them for the same
+   reason the mark is ruled off from below. */
+.sidebar__foot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+  padding: 6px 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.userchip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 40px;
+  padding: 4px 8px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.userchip:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.userchip__avatar {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.userchip__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sidebar[data-form='rail'] .userchip {
+  justify-content: center;
+  padding: 4px 0;
+}
+
+.sidebar[data-form='rail'] .userchip__name {
+  display: none;
 }
 
 /* The cube in components/Logo.tsx, shared by the sidebar tile and the login
@@ -1167,23 +1276,8 @@ a:hover {
   transition: transform var(--dur) var(--ease);
 }
 
-.sidebar__brand:hover .sidebar__logo {
-  transform: translateY(-1px) rotate(-6deg);
-}
 
-.sidebar__brand strong {
-  font-size: 15px;
-  letter-spacing: -0.01em;
-}
 
-.sidebar__brand small {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-dim);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
 
 .sidebar__new {
   width: 100%;
@@ -1270,11 +1364,15 @@ a:hover {
 .sidebar__link::before {
   content: '';
   position: absolute;
-  left: -12px;
+  /* Hard against the column's edge, which is what the row's own left padding
+     is measured back from. The column has no side padding of its own any more,
+     so this is a plain offset rather than a number that has to be kept in step
+     with one. */
+  left: -8px;
   top: 50%;
-  width: 3px;
+  width: 2px;
   height: 0;
-  border-radius: 0 3px 3px 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   background: var(--accent);
   transform: translateY(-50%);
   /* Sprung, and it is the one marker in the panel that is: this bar is how you
@@ -1284,15 +1382,25 @@ a:hover {
 }
 
 .sidebar__link--active::before {
-  height: 18px;
+  height: 22px;
 }
 
+/* 44px folded, 36px with a label. The height is doing different work in the two
+   forms: an icon on its own has to be a target a thumb can find, and a row with
+   a word in it is findable by the word. */
 .sidebar__link {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 9px 10px;
+  gap: 9px;
+  min-height: 36px;
+  padding: 6px 10px;
 }
+
+.sidebar[data-form='rail'] .sidebar__link {
+  min-height: 44px;
+}
+
+
 
 .sidebar__link:hover {
   background: var(--surface-2);
@@ -1376,7 +1484,7 @@ a:hover {
 /* Folded, both are rows that have to stay findable with their labels gone —
    the fold is the only way back out of the fold, the exit the only way back out
    of the scope — so both centre like every other folded row. */
-.app[data-rail='on'] :is(.sidebar__fold, .sidebar__exit) {
+.sidebar[data-form='rail'] :is(.sidebar__fold, .sidebar__exit) {
   display: grid;
   place-items: center;
   gap: 0;
@@ -1592,6 +1700,8 @@ a:hover {
 }
 
 .sidebar__link .icon {
+  width: 19px;
+  height: 19px;
   flex: none;
   color: var(--text-faint);
 }
@@ -1624,7 +1734,7 @@ a:hover {
    thing in the sidebar that must not be hidden, because it is the one the eye
    is following. Animating the leaves leaves the flier free. */
 .sidebar[data-entering]
-  :is(.sidebar__exit, .sidebar__entity, .sidebar__brand, .sidebar__search-btn, .sidebar__new),
+  :is(.sidebar__exit, .sidebar__entity, .sidebar__search-btn, .sidebar__new),
 .sidebar[data-entering] .sidebar__scroll :is(.sidebar__link, .sidebar__group, .sidebar__empty) {
   animation: rise var(--dur-3) var(--ease) backwards;
   animation-delay: 90ms;
@@ -1667,7 +1777,7 @@ a:hover {
    is switched off in one place rather than each row being rebuilt, so a row
    added later folds correctly without knowing this section exists. */
 
-.app[data-rail='on'] .sidebar {
+.sidebar[data-form='rail'] {
   padding: 14px 8px;
   align-items: stretch;
 }
@@ -1684,7 +1794,6 @@ a:hover {
    other side of the screen and left a list of anonymous folder icons. Scoped, a
    name borrowed elsewhere is only borrowed styling. */
 .sidebar :is(
-  .sidebar__title,
   .sidebar__state,
   .sidebar__empty,
   .sidebar__kbd,
@@ -1697,8 +1806,7 @@ a:hover {
     display var(--dur-1) allow-discrete;
 }
 
-.app[data-rail='on'] .sidebar :is(
-  .sidebar__title,
+.sidebar[data-form='rail'] :is(
   .sidebar__state,
   .sidebar__empty,
   .sidebar__kbd,
@@ -1708,6 +1816,33 @@ a:hover {
 ) {
   opacity: 0;
   display: none;
+}
+
+/* The tooltip a folded row gets instead of its label.
+   
+   Portalled to <body> rather than drawn inside the row, and that is not a
+   preference: the rail's list scrolls, `overflow-y: auto` computes `overflow-x`
+   to `auto` as well, and a label positioned past the column's right edge is
+   therefore clipped at it. Everything a popover has to get right about
+   positioning is already in useAnchor; see the tip handler in Sidebar.tsx.
+
+   The 400ms delay is the whole of the design: a rail of a dozen icons is a
+   column the pointer crosses on the way somewhere else, and a tooltip that
+   fires on contact fires a dozen times per crossing. */
+.railtip {
+  position: fixed;
+  z-index: 90;
+  padding: 5px 9px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 12.5px;
+  white-space: nowrap;
+  pointer-events: none;
+  translate: 0 -50%;
+  animation: fade var(--dur-1) var(--ease);
 }
 
 /* A group heading folds to the rule that was under it, so the categories are
@@ -1726,7 +1861,7 @@ a:hover {
    the heading showing through a box that claimed to be zero high — three rows of
    half-cut characters down the folded rail. With the padding moved outside,
    height:0 really is zero and all that is left is the line. */
-.app[data-rail='on'] .sidebar__group {
+.sidebar[data-form='rail'] .sidebar__group {
   display: block;
   height: 0;
   margin: 6px 0;
@@ -1734,24 +1869,19 @@ a:hover {
   border-top: 1px solid var(--border);
 }
 
-.app[data-rail='on'] .sidebar__brand,
-.app[data-rail='on'] .sidebar__entity {
+.sidebar[data-form='rail'] .sidebar__entity {
   justify-content: center;
   padding-left: 0;
   padding-right: 0;
 }
 
-.app[data-rail='on'] .sidebar__brand {
-  padding: 6px 0 12px;
-}
-
-.app[data-rail='on'] .sidebar__search-btn {
+.sidebar[data-form='rail'] .sidebar__search-btn {
   justify-content: center;
   padding: 8px 0;
 }
 
-.app[data-rail='on'] .sidebar__link,
-.app[data-rail='on'] .sidebar__new {
+.sidebar[data-form='rail'] .sidebar__link,
+.sidebar[data-form='rail'] .sidebar__new {
   display: grid;
   place-items: center;
   gap: 0;
@@ -1760,16 +1890,16 @@ a:hover {
 
 /* The dot rides the corner of the initial instead of sitting in a column of
    its own, so state survives the fold. */
-.app[data-rail='on'] .sidebar__link--instance {
+.sidebar[data-form='rail'] .sidebar__link--instance {
   position: relative;
   grid-template-columns: none;
 }
 
-.app[data-rail='on'] .sidebar__initial {
+.sidebar[data-form='rail'] .sidebar__initial {
   display: grid;
 }
 
-.app[data-rail='on'] .sidebar__link--instance .status__dot {
+.sidebar[data-form='rail'] .sidebar__link--instance .status__dot {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -1780,7 +1910,7 @@ a:hover {
 
 /* A count or a "下载中" has no room, but the fact that *something* is waiting
    still has to survive; the badge keeps its colour and loses its text. */
-.app[data-rail='on'] .sidebar__link .badge {
+.sidebar[data-form='rail'] .sidebar__link .badge {
   position: absolute;
   top: 5px;
   right: 8px;
@@ -2131,56 +2261,6 @@ a:hover {
 
 .menu__item--danger:hover:not(:disabled) {
   background: var(--danger-soft);
-}
-
-/* --------------------------------------------------------- account menu */
-
-.usermenu__button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 180px;
-  padding: 4px 8px 4px 4px;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-  color: var(--text-dim);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 13px;
-  transition:
-    background var(--dur) var(--ease),
-    border-color var(--dur) var(--ease),
-    transform var(--dur-1) var(--ease);
-}
-
-.usermenu__button:active {
-  transform: scale(var(--press));
-}
-
-.usermenu__button:hover {
-  background: var(--surface-2);
-  border-color: var(--border);
-  color: var(--text);
-}
-
-.usermenu__avatar {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.usermenu__name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ------------------------------------------------------------------ scrim
@@ -11813,9 +11893,10 @@ button.rows__name:hover strong {
 /* ------------------------------------------------------------- responsive */
 
 @media (max-width: 1240px) {
-  .app {
-    --sidebar-w: 224px;
-  }
+  /* The sidebar used to be narrowed to 224px here, back when it was 240px of
+     labels by default. The rail is 56px and its wide form is 220px, and both
+     of those already fit at this width — a third number would only be a third
+     thing to keep in step. */
 
   /* The strip starts shedding facts here rather than wrapping: the trail beside
      it grows with the path, and a top bar that grows to two rows moves every
@@ -11873,9 +11954,6 @@ button.rows__name:hover strong {
    person who owns the server gets the alert while they are out, and what they
    need on that screen is status, power, console and nothing else. */
 @media (max-width: 1024px) {
-  .app {
-    grid-template-columns: 1fr;
-  }
 
   /* A phone keeps the state and the power buttons and nothing else. This is
      the screen someone reads an alert on while away from a desk: whether the
@@ -11895,51 +11973,42 @@ button.rows__name:hover strong {
     display: none;
   }
 
+  /* The rail leaves the grid but not the screen: it is pinned at 56px and the
+     56px track it vacated is what keeps the page beside it. The wide form is
+     then the same element getting wider rather than a second one sliding in
+     from off-canvas, which is why nothing here has to be hidden from the
+     keyboard — every row in the column is reachable at both widths, and at the
+     narrow one it is reachable as an icon.
+
+     Widening rather than sliding is also what makes the drawer animate at all
+     now: a position swap has no frames to interpolate. */
   .sidebar {
     position: fixed;
     z-index: 60;
     top: 0;
     bottom: 0;
     left: 0;
-    width: min(84vw, 300px);
-    padding-left: max(12px, env(safe-area-inset-left));
-    padding-bottom: max(14px, env(safe-area-inset-bottom));
-    box-shadow: var(--shadow-lg);
-    transform: translateX(-101%);
-    /* Off-canvas is not "somewhere further left": nothing in it is reachable
-       by tab until it is open. Visibility flips only once the slide is over,
-       so closing still animates. */
-    visibility: hidden;
-    transition:
-      transform var(--dur-4) var(--ease),
-      visibility 0s linear var(--dur-4);
+    width: var(--sidebar-w);
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    transition: width var(--dur-4) var(--ease);
   }
 
-  .app[data-nav='open'] .sidebar {
-    transform: none;
-    visibility: visible;
-    transition:
-      transform var(--dur-4) var(--ease),
-      visibility 0s;
+  .app[data-drawer='open'] .sidebar {
+    width: min(84vw, 260px);
+    box-shadow: var(--shadow-lg);
   }
 
   .scrim {
     display: block;
   }
 
-  .app[data-nav='open'] .scrim {
+  .app[data-drawer='open'] .scrim {
     opacity: 1;
     pointer-events: auto;
   }
 
   .topbar {
     padding-left: max(8px, env(safe-area-inset-left));
-  }
-
-  /* On a phone the username is the least useful thing on the strip; the
-     avatar still opens the same menu. */
-  .usermenu__name {
-    display: none;
   }
 
   .main {
@@ -14321,7 +14390,7 @@ button.rows__name:hover strong {
 }
 
 /* The sidebar folds to icons; a meter with two numbers in it does not fold. */
-.app[data-rail='on'] .apibudget {
+.sidebar[data-form='rail'] .apibudget {
   display: none;
 }
 

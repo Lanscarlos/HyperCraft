@@ -65,16 +65,21 @@ import { updateLabel, useUpdate } from './useUpdate'
  *  this is only to keep the sidebar honest for servers you are not watching. */
 const POLL_INTERVAL_MS = 5000
 
-/** Below this the sidebar cannot sit beside the content without taking a third
- *  of it, so it becomes a drawer. A phone matters more here than in most back
- *  offices — the person who owns the server reads the alert away from a desk —
- *  so the breakpoint is generous. Kept in step with styles.css: CSS decides how
- *  it looks, this decides what the button does. */
+/** Below this the navigation's wide form cannot sit beside the content without
+ *  taking a third of it, so it becomes an overlay. A phone matters more here
+ *  than in most back offices — the person who owns the server reads the alert
+ *  away from a desk — so the breakpoint is generous. Kept in step with
+ *  styles.css: CSS decides how it looks, this decides what the button does.
+ *
+ *  What does *not* change at this width is the rail itself. It is 56px at every
+ *  size, because the version that folded away entirely made changing section on
+ *  a phone cost a drawer and a tap, on the screen where the fewest taps are
+ *  available. */
 const DRAWER_QUERY = '(max-width: 1024px)'
 
-/** Whether the desktop sidebar is folded to icons. A per-device preference,
- *  like the theme, so it lives next to it in localStorage. */
-const RAIL_KEY = 'hypercraft.sidebar'
+/** Whether the rail is showing its labels. A per-device preference, like the
+ *  theme, so it lives next to it in localStorage. Named by the design note. */
+const NAV_KEY = 'nav.expanded'
 
 /**
  * Click handling for a link that navigates inside the panel.
@@ -235,9 +240,13 @@ export default function App() {
 
   const compact = useMediaQuery(DRAWER_QUERY)
   const [navOpen, setNavOpen] = useState(false)
-  const [railed, setRailed] = useState(() => window.localStorage.getItem(RAIL_KEY) === 'rail')
+  const [navExpanded, setNavExpanded] = useState(
+    () => window.localStorage.getItem(NAV_KEY) === 'true',
+  )
   const sidebarRef = useRef<HTMLElement | null>(null)
   const navToggle = useRef<HTMLButtonElement | null>(null)
+  const compactNow = useRef(compact)
+  compactNow.current = compact
 
   const signedIn = Boolean(user)
   // Polled at the app level rather than inside the pages that show them: all
@@ -306,8 +315,8 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    window.localStorage.setItem(RAIL_KEY, railed ? 'rail' : 'full')
-  }, [railed])
+    window.localStorage.setItem(NAV_KEY, String(navExpanded))
+  }, [navExpanded])
 
   // Widening the window puts the sidebar back on screen for good; a drawer left
   // "open" in that state would only mean a stray scrim.
@@ -354,7 +363,11 @@ export default function App() {
       // inputs where '[' is a character, not a shortcut.
       if (typing) return
       event.preventDefault()
-      setRailed((value) => !value)
+      // Read through the ref, not the closure: this listener is bound once and
+      // `compact` changes with the window, so the captured copy would still be
+      // answering for whatever width the page was first opened at.
+      if (compactNow.current) setNavOpen((open) => !open)
+      else setNavExpanded((value) => !value)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -530,8 +543,13 @@ export default function App() {
     <CapabilityProvider user={user}>
       <div
         className="app"
-        data-nav={compact && navOpen ? 'open' : undefined}
-        data-rail={!compact && railed ? 'on' : undefined}
+        // Two different questions, and they used to share one attribute name.
+        // `data-nav` is how wide the rail's track is; `data-drawer` is whether
+        // the overlay form is up. Below the drawer width the first is always
+        // 'rail' — the wide form leaves the grid rather than widening it — so
+        // one attribute could not have carried both.
+        data-nav={!compact && navExpanded ? 'wide' : 'rail'}
+        data-drawer={compact && navOpen ? 'open' : undefined}
       >
         {/* First thing in the tab order, visible only once it has focus: the
             sidebar is a dozen-odd stops on a keyboard, and the content is behind
@@ -544,8 +562,12 @@ export default function App() {
           route={route}
           scope={scope}
           compact={compact}
-          railed={!compact && railed}
-          onToggleRail={() => setRailed((on) => !on)}
+          // On a drawer layout the overlay *is* the wide form, so which state
+          // the rail draws itself in depends on which of the two is in play.
+          expanded={compact ? navOpen : navExpanded}
+          onToggleNav={() =>
+            compact ? setNavOpen((open) => !open) : setNavExpanded((on) => !on)
+          }
           navigate={navigate}
           follow={follow}
           instances={instances}
@@ -563,6 +585,8 @@ export default function App() {
           terminal={terminal}
           onCreate={() => navigate({ kind: 'new-instance' })}
           onOpenPalette={() => setPaletteOpen(true)}
+          onChangePassword={() => setShowPassword(true)}
+          onSignOut={() => void signOut()}
           sidebarRef={sidebarRef}
         />
 
@@ -577,7 +601,6 @@ export default function App() {
             metrics={metrics}
             onInstanceChanged={applyInstance}
             onPowerError={toastError}
-            user={user}
             compact={compact}
             navOpen={navOpen}
             onToggleNav={() => setNavOpen((open) => !open)}
@@ -588,8 +611,6 @@ export default function App() {
             onOpenPalette={() => setPaletteOpen(true)}
             downloads={downloads}
             onOpenDownloads={() => navigate({ kind: 'downloads' })}
-            onChangePassword={() => setShowPassword(true)}
-            onSignOut={() => void signOut()}
           />
 
           <main className="main" id="main" tabIndex={-1}>
