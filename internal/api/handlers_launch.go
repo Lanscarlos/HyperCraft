@@ -31,12 +31,29 @@ import (
 const (
 	launchLevelFatal = "fatal"
 	launchLevelWarn  = "warn"
+	// What the panel checked and found in order. Shown rather than dropped:
+	// a check panel that lists only problems is indistinguishable from one
+	// that never ran, and "端口没被占用" is exactly the reassurance somebody
+	// opens this page for.
+	launchLevelOK = "ok"
 )
 
+// launchFix is a change the form can apply on the reader's behalf.
+//
+// Patch is a loose map so a new check can propose a new field without the
+// browser learning anything about it: the page merges whatever arrives into
+// its draft, which keeps every "and here is the button that fixes it" on this
+// side of the wire.
+type launchFix struct {
+	Label string         `json:"label"`
+	Patch map[string]any `json:"patch"`
+}
+
 type launchIssue struct {
-	Level   string `json:"level"`
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Level   string     `json:"level"`
+	Code    string     `json:"code"`
+	Message string     `json:"message"`
+	Fix     *launchFix `json:"fix,omitempty"`
 }
 
 type launchCheckResponse struct {

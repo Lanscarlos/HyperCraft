@@ -1,9 +1,11 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/lanscarlos/hypercraft/internal/instance"
@@ -123,5 +125,63 @@ func TestAnUnidentifiableServerIsCalledOutBecauseModsWouldGoToTheWrongPlace(t *t
 	}
 	if issueByCode(env.launchCheck(inst.ID).Issues, "unknown-loader") != nil {
 		t.Errorf("still unidentifiable after being told what it is")
+	}
+}
+
+func TestLaunchIssueOmitsFixWhenThereIsNothingToApply(t *testing.T) {
+	// Most issues are "go and look at your disk" — they have no patch, and a
+	// null fix key in every one of them would be noise on the wire.
+	raw, err := json.Marshal(launchIssue{
+		Level:   launchLevelFatal,
+		Code:    "jar-missing",
+		Message: "目录里没有 paper.jar。",
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(raw), "fix") {
+		t.Errorf("issue without a fix serialised it anyway: %s", raw)
+	}
+}
+
+func TestLaunchIssueCarriesAFixTheFormCanApplyBlindly(t *testing.T) {
+	raw, err := json.Marshal(launchIssue{
+		Level:   launchLevelWarn,
+		Code:    "heap-mismatch",
+		Message: "这套参数的前提是最小内存和最大内存一样大。",
+		Fix: &launchFix{
+			Label: "把 Xms 改成 2560",
+			Patch: map[string]any{"minMemoryMB": 2560},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var back struct {
+		Level string `json:"level"`
+		Fix   *struct {
+			Label string         `json:"label"`
+			Patch map[string]any `json:"patch"`
+		} `json:"fix"`
+	}
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Fix == nil {
+		t.Fatalf("fix did not survive the round trip: %s", raw)
+	}
+	if back.Fix.Label != "把 Xms 改成 2560" {
+		t.Errorf("label = %q", back.Fix.Label)
+	}
+	if got := back.Fix.Patch["minMemoryMB"]; got != float64(2560) {
+		t.Errorf("patch minMemoryMB = %v (%T)", got, got)
+	}
+}
+
+func TestLaunchLevelOKExists(t *testing.T) {
+	// The check panel shows what passed as well as what failed: an empty panel
+	// cannot say "I looked".
+	if launchLevelOK != "ok" {
+		t.Errorf("launchLevelOK = %q", launchLevelOK)
 	}
 }
