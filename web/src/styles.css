@@ -7494,6 +7494,214 @@ small.field__bad {
 
    The editor takes the largest share because it holds content; the two rails
    beside it are navigation. */
+/* ---- the bar across the top ------------------------------------------
+
+   One row, 56px, and the same row in every state of the pane. What it
+   replaced was two toolbars — one per mode — with different button counts, a
+   different order and a different amount of text on each, which is the
+   reliable way to break the muscle memory a tool somebody opens daily runs
+   on. */
+.fbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  min-width: 0;
+}
+
+.fbar__up {
+  flex: none;
+}
+
+/* The trail never wraps. The bar is one row tall by design, and a trail that
+   wraps takes the toolbar down with it — which is why the middle of a deep
+   path is dropped (see Crumbs) rather than folded onto a second line. */
+.fbar__crumbs,
+.fbar__path {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+  flex-wrap: nowrap;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.fbar__path {
+  position: relative;
+  gap: 0;
+}
+
+.fbar__step {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fbar__crumb {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 3px 6px;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: var(--accent-hover);
+  cursor: pointer;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    background var(--dur) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.fbar__crumb:hover {
+  background: var(--accent-soft);
+}
+
+.fbar__crumb:active {
+  transform: scale(0.94);
+}
+
+/* Where you already are: still clickable, because pressing it is how you get
+   back from a filtered view, but it stops advertising itself as somewhere to
+   go. */
+.fbar__crumb--here {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.fbar__sep,
+.fbar__fold {
+  flex: none;
+  color: var(--text-faint);
+  padding: 0 1px;
+}
+
+/* The click target that turns the trail into a box. It takes the rest of the
+   row so the target is the whole empty stretch after the path rather than a
+   button somebody has to aim at. */
+.fbar__blank {
+  flex: 1 1 auto;
+  min-width: 24px;
+  align-self: stretch;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: text;
+  font: inherit;
+  text-align: left;
+  padding: 0 8px;
+}
+
+.fbar__blank:hover {
+  background: var(--surface-2);
+}
+
+.fbar__hint {
+  color: var(--text-faint);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.fbar__blank:hover .fbar__hint,
+.fbar__blank:focus-visible .fbar__hint {
+  opacity: 1;
+}
+
+.fbar__input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-family: var(--font-mono);
+}
+
+.fbar__input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+/* Under the box rather than beside it: beside it, the message and the path
+   share a width neither of them has. */
+.fbar__bad {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 3;
+  padding: 3px 8px;
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-edge);
+  border-radius: var(--radius-sm);
+  color: var(--danger-ink);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* A label, not a filter — hence not .chip, which is a control. */
+.fbar__stats {
+  flex: none;
+  padding: 3px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.fbar__tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.fbar__search {
+  width: 200px;
+}
+
+/* The one button in the row that opens a sheet instead of doing something.
+   It keeps the button face rather than becoming a Select: the two items behind
+   it are actions, and a Select would be claiming they are a value. */
+.fbar__new {
+  gap: 4px;
+}
+
+.fbar__caret {
+  width: 14px;
+  height: 14px;
+  color: var(--text-faint);
+}
+
+@media (max-width: 1024px) {
+  /* The search box is the first thing to go: the bar has four controls that
+     do something and one that narrows what is already on screen, and on a
+     phone the four win. It comes back through ⋯. */
+  .fbar__search {
+    display: none;
+  }
+
+  .fbar__stats {
+    display: none;
+  }
+}
+
 .fm {
   display: grid;
   /* Three tracks always, so the third can be animated open instead of appearing
