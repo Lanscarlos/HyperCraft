@@ -6,6 +6,7 @@ import type { UpdateController } from '../useUpdate'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Modal } from './Modal'
+import { Note } from './Note'
 
 interface Props {
   update: UpdateController
@@ -76,14 +77,14 @@ export function UpdatePanel({ update, runningNames }: Props) {
 
       {error && <div className="alert alert--error">{error}</div>}
       {status.checkError && !error && (
-        <div className="alert alert--error">检查更新失败：{status.checkError}</div>
+        <Note tone="error">检查更新失败：{status.checkError}</Note>
       )}
 
       {!status.eligible ? (
         <p className="update__note">{status.ineligibleWhy}</p>
       ) : status.updateAvailable ? (
         <>
-          <div className={status.downgrade ? 'alert' : 'alert alert--ok'}>
+          <Note tone={status.downgrade ? 'neutral' : 'ok'}>
             {status.downgrade ? (
               <>
                 可以回到正式版 <strong>{status.latestVersion}</strong>
@@ -96,7 +97,7 @@ export function UpdatePanel({ update, runningNames }: Props) {
                   `（发布于 ${new Date(status.publishedAt).toLocaleDateString()}）`}
               </>
             )}
-          </div>
+          </Note>
           {status.latestIsPrerelease && (
             <p className="update__note">
               这是 main 分支的自动构建，通过了 CI 但没有经过发布前的验证。

@@ -9,6 +9,7 @@ import type { JavaController } from '../useJava'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { EmptyState } from './EmptyState'
+import { Note } from './Note'
 import { Page } from './Page'
 import { Section } from './Section'
 import { Select } from './Select'
@@ -216,7 +217,7 @@ export function JavaPage({ java, onOpenCores }: { java: JavaController; onOpenCo
       }
     >
       {overview.platform.warning && (
-        <div className="alert alert--error">{overview.platform.warning}</div>
+        <Note tone="warn">{overview.platform.warning}</Note>
       )}
       {java.error && <div className="alert alert--error">{java.error}</div>}
 

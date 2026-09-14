@@ -973,7 +973,7 @@ function RestoreDialog({
           历史只会往前增加 —— 还原之后发现更糟，还能再还原回来。
         </p>
 
-        {plan.blockedBy && <div className="alert alert--error">{plan.blockedBy}</div>}
+        {plan.blockedBy && <Note tone="error">{plan.blockedBy}</Note>}
         {plan.warning && <Note tone="warn">{plan.warning}</Note>}
 
         {plan.mismatch && (

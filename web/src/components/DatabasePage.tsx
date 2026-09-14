@@ -15,6 +15,7 @@ import { Badge } from './Badge'
 import { Button } from './Button'
 import { EmptyState } from './EmptyState'
 import { FieldHelp } from './FieldHelp'
+import { Note } from './Note'
 import { Page } from './Page'
 import { Section } from './Section'
 import { Select } from './Select'
@@ -104,7 +105,7 @@ export function DatabasePage({ databases }: { databases: DatabaseController }) {
         </>
       }
     >
-      {platform.warning && <div className="alert alert--error">{platform.warning}</div>}
+      {platform.warning && <Note tone="warn">{platform.warning}</Note>}
       {databases.error && <div className="alert alert--error">{databases.error}</div>}
 
       {/* An install keeps running after you navigate away, so it is reported at
@@ -756,7 +757,7 @@ function EngineList({
                 check exists: these tarballs link against system libraries they
                 do not ship, and a missing one only shows up at exec time. */}
             {install.problem && (
-              <div className="alert alert--error">
+              <Note tone="error">
                 {install.problem}
                 {install.hint && (
                   <>
@@ -764,7 +765,7 @@ function EngineList({
                     {install.hint}
                   </>
                 )}
-              </div>
+              </Note>
             )}
 
             {/* The hole goes first, not last. An engine row has two facts for

@@ -877,10 +877,10 @@ function CoreStep({
           {catalogue.loading ? (
             <p className="muted">正在读取可下载的核心…</p>
           ) : catalogue.projects.length === 0 ? (
-            <div className="alert alert--error">
+            <Note tone="error">
               没能取到可下载的核心列表 —— 通常是这台机器连不上外网。可以切到「核心库」用已经下好的，
               或者「先不放核心」，自己把 jar 传进目录。
-            </div>
+            </Note>
           ) : (
             <>
               <CoreCatalogue
@@ -1779,10 +1779,10 @@ function Finished({
       </ul>
 
       {failed.length > 0 && (
-        <div className="alert alert--error">
+        <Note tone="error">
           实例本身建好了，但有 {failed.length} 步没做成。进去之后在「实例设置」和「服务器配置」里
           可以把它们补上。
-        </div>
+        </Note>
       )}
 
       {!hasCore && (

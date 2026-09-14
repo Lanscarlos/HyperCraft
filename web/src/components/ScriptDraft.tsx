@@ -1,4 +1,5 @@
 import type { ParsedScript } from '../types'
+import { Note } from './Note'
 
 /**
  * Where the draft is being read, which decides what of it is news.
@@ -29,7 +30,7 @@ export function ScriptDraft({
 
   if (!parsed.ok) {
     return (
-      <div className="alert alert--error">
+      <Note tone="error">
         {parsed.script} 拆不出启动参数，面板不猜——
         {mode === 'import'
           ? '下面填一下核心和内存就能导入，脚本留着不动。'
@@ -47,7 +48,7 @@ export function ScriptDraft({
             </li>
           ))}
         </ul>
-      </div>
+      </Note>
     )
   }
 
@@ -92,7 +93,7 @@ export function ScriptDraft({
   ].filter(Boolean)
 
   return (
-    <div className="alert alert--ok">
+    <Note tone="ok">
       从 {parsed.script} 里读到了这些
       {settings ? '，填进表单后还能再改，保存之前不会生效。' : '，导入后在「实例设置 → 启动设置」里都能改。'}
       <p className="meta-chips">
@@ -128,6 +129,6 @@ export function ScriptDraft({
           导入后在启动设置里选一个 Java。
         </small>
       )}
-    </div>
+    </Note>
   )
 }

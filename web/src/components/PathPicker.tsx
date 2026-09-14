@@ -4,6 +4,7 @@ import { api } from '../api'
 import type { HostListing } from '../types'
 import { Button } from './Button'
 import { Modal } from './Modal'
+import { Note } from './Note'
 import { Toolbar } from './Toolbar'
 
 interface Props {
@@ -101,12 +102,12 @@ export function PathPicker({ initialPath, onPick, onCancel }: Props) {
 
         {error && <div className="alert alert--error">{error}</div>}
         {listing && !listing.exists && (
-          <div className="alert alert--ok">
+          <Note tone="ok">
             这个目录还不存在，选它会在创建实例时一并建好。
-          </div>
+          </Note>
         )}
         {listing?.error && (
-          <div className="alert alert--error">读不了这个目录：{listing.error}</div>
+          <Note tone="error">读不了这个目录：{listing.error}</Note>
         )}
 
         <div className="picker__list">

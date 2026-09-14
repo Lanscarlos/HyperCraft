@@ -8,6 +8,7 @@ import { Badge } from './Badge'
 import { Button } from './Button'
 import { CoreCatalogue, isRecommended, useCoreCatalogue } from './CoreCatalogue'
 import { EmptyState } from './EmptyState'
+import { Note } from './Note'
 import { Page } from './Page'
 import { Section } from './Section'
 import { Shelf } from './Shelf'
@@ -115,10 +116,10 @@ export function CoreLibraryPage({
       )}
 
       {!loading && projects.length === 0 && (
-        <div className="alert alert--error">
+        <Note tone="error">
           没能取到可下载的核心列表 —— 通常是这台机器连不上外网。已经下载过的核心不受影响，
           在「核心库」里照常可用。
-        </div>
+        </Note>
       )}
 
       {!loading && projects.length > 0 && (

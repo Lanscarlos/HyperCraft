@@ -14,6 +14,7 @@ import { isLive } from '../types'
 import { useDismiss } from '../useDismiss'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { Note } from './Note'
 import { CompatBadge } from './PluginCompat'
 import { PluginIcon } from './PluginIcon'
 import { formatDownloads, loaderLabel, sourceLabel } from './PluginBrowse'
@@ -224,12 +225,12 @@ export function PluginDrawer({
         <div className="drawer__body">
           {error && <div className="alert alert--error">{error}</div>}
           {done && (
-            <div className="alert alert--ok">
+            <Note tone="ok">
               {done}
               <button className="link" onClick={onOpenLibrary}>
                 去插件列表装到实例
               </button>
-            </div>
+            </Note>
           )}
           {loading && <p className="muted">正在读取…</p>}
 

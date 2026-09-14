@@ -105,7 +105,7 @@ export function InstancePluginDrawer({
               their own the heading and its explanation lay out side by side
               and break wherever the width happens to run out. */}
           {entry.failure && (
-            <div className="alert alert--error">
+            <Note tone="error">
               <div>
                 <strong>加载失败</strong>
                 <p className="jar-facts__note">{entry.failure.reason}</p>
@@ -113,7 +113,7 @@ export function InstancePluginDrawer({
                   去控制台看这一段日志
                 </button>
               </div>
-            </div>
+            </Note>
           )}
 
           {/* Above the descriptor, because a name clash makes every fact below

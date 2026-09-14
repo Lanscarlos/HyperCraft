@@ -290,7 +290,7 @@ export function InstancePlugins({
           one thing on this page that is wrong right now, and switching to
           市场 must not be a way to stop seeing it. */}
       {broken > 0 && (
-        <div className="alert alert--error">
+        <Note tone="error">
           <div>
             <strong>有 {broken} 个插件没能加载</strong>
             <p className="restart-banner__list">
@@ -307,7 +307,7 @@ export function InstancePlugins({
           >
             去看
           </Button>
-        </div>
+        </Note>
       )}
 
       <div className="tabs" role="tablist" aria-label="插件">

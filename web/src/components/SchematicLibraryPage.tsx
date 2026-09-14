@@ -614,9 +614,9 @@ function InstallDialog({
 
             {error && <div className="alert alert--error">{error}</div>}
             {done && (
-              <div className="alert alert--ok">
+              <Note tone="ok">
                 装好了。进服打 <code>{done}</code> 就能贴出来。
-              </div>
+              </Note>
             )}
           </>
         )}

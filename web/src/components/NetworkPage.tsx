@@ -15,6 +15,7 @@ import { useMediaQuery } from '../useMediaQuery'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { EmptyState } from './EmptyState'
+import { Note } from './Note'
 import { Page, PageHead } from './Page'
 import { Section } from './Section'
 import { Select } from './Select'
@@ -164,14 +165,14 @@ export function NetworkPage({ instances, onOpenInstance, onCreate, focus, embed 
       {error && <div className="alert alert--error">{error}</div>}
 
       {notes.length > 0 && (
-        <div className="alert alert--ok">
+        <Note tone="ok">
           <strong>改了这些：</strong>
           <ul className="netnotes">
             {notes.map((note) => (
               <li key={note}>{note}</li>
             ))}
           </ul>
-        </div>
+        </Note>
       )}
 
       {empty ? (

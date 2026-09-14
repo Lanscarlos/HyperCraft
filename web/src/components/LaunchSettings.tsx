@@ -871,7 +871,7 @@ export function LaunchSettings({
       </Section>
 
       {error && <div className="alert alert--error">{error}</div>}
-      {status && <div className="alert alert--ok">{status}</div>}
+      {status && <Note tone="ok">{status}</Note>}
 
       {dirty && (
         <div className="formbar">
