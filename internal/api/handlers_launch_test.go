@@ -399,3 +399,108 @@ func TestPortIsNotGuessedBeforeTheServerHasEverRun(t *testing.T) {
 		t.Errorf("reported a port nobody has set: %+v", got)
 	}
 }
+
+// The table covers released versions, whose Java requirement is a historical
+// fact that cannot change. Everything past its ceiling gets silence.
+func TestJavaFloorKnowsTheReleasedVersions(t *testing.T) {
+	for _, c := range []struct {
+		version string
+		want    int
+	}{
+		{"1.8.8", 8},
+		{"1.16.5", 8},
+		{"1.17", 16},
+		{"1.17.1", 16},
+		{"1.18", 17},
+		{"1.20.4", 17},
+		{"1.20.5", 21},
+		{"1.21.4", 21},
+	} {
+		if got, ok := javaFloorFor(c.version); !ok || got != c.want {
+			t.Errorf("javaFloorFor(%q) = %d, %v; want %d, true", c.version, got, ok, c.want)
+		}
+	}
+}
+
+func TestJavaFloorStaysQuietAboveTheTable(t *testing.T) {
+	// A version the table has never heard of. Answering would mean inventing a
+	// requirement, and a wrong "your Java is too old" is worse than no line at
+	// all — the whole reason this check took a table and not a guess.
+	for _, version := range []string{"1.99", "2.0", "26.1.2"} {
+		if got, ok := javaFloorFor(version); ok {
+			t.Errorf("javaFloorFor(%q) answered %d for a version past the table", version, got)
+		}
+	}
+}
+
+func TestJavaFloorStaysQuietOnNonsense(t *testing.T) {
+	for _, version := range []string{"", "  ", "snapshot", "24w14a"} {
+		if _, ok := javaFloorFor(version); ok {
+			t.Errorf("javaFloorFor(%q) claimed to know", version)
+		}
+	}
+}
+
+func TestJavaTooOldIsFatalAndOffersARegisteredReplacement(t *testing.T) {
+	// 1.20.5 needs 21; the instance is on 17. There is a 21 in the registry,
+	// so the fix is one the form can actually apply.
+	issues := javaVersionIssues("1.20.5", 17, []javaChoice{
+		{path: "/jvm/17/bin/java", major: 17},
+		{path: "/jvm/21/bin/java", major: 21},
+	})
+	if len(issues) != 1 {
+		t.Fatalf("issues = %+v, want one", issues)
+	}
+	if issues[0].Level != launchLevelFatal || issues[0].Code != "java-version" {
+		t.Errorf("issue = %+v", issues[0])
+	}
+	if issues[0].Fix == nil || issues[0].Fix.Patch["java"] != "/jvm/21/bin/java" {
+		t.Errorf("fix = %+v, want a switch to the registered 21", issues[0].Fix)
+	}
+}
+
+func TestJavaTooOldWithoutAReplacementJustSaysSo(t *testing.T) {
+	issues := javaVersionIssues("1.20.5", 17, []javaChoice{{path: "/jvm/17/bin/java", major: 17}})
+	if len(issues) != 1 || issues[0].Level != launchLevelFatal {
+		t.Fatalf("issues = %+v", issues)
+	}
+	if issues[0].Fix != nil {
+		t.Error("offered to switch to a Java that is not registered — installing one is not a patch")
+	}
+}
+
+func TestJavaTooNewForAnOldServerWarns(t *testing.T) {
+	// 1.12.2 on Java 21: it starts far enough to look fine and then dies in
+	// reflection, which is the failure this line exists to get ahead of.
+	issues := javaVersionIssues("1.12.2", 21, []javaChoice{
+		{path: "/jvm/8/bin/java", major: 8},
+		{path: "/jvm/21/bin/java", major: 21},
+	})
+	if len(issues) != 1 || issues[0].Level != launchLevelWarn {
+		t.Fatalf("issues = %+v, want one warn", issues)
+	}
+	if issues[0].Fix == nil || issues[0].Fix.Patch["java"] != "/jvm/8/bin/java" {
+		t.Errorf("fix = %+v, want the registered 8 offered", issues[0].Fix)
+	}
+}
+
+func TestJavaVersionReportsOKWhenItFits(t *testing.T) {
+	issues := javaVersionIssues("1.21.4", 21, []javaChoice{{path: "/jvm/21/bin/java", major: 21}})
+	if len(issues) != 1 || issues[0].Level != launchLevelOK {
+		t.Fatalf("issues = %+v, want one ok", issues)
+	}
+	if issues[0].Fix != nil {
+		t.Error("nothing to fix, so no button")
+	}
+}
+
+func TestJavaVersionStaysQuietWithoutBothHalves(t *testing.T) {
+	// No declared game version, and no readable major, are each on their own
+	// enough to disqualify the check. Blank is "nobody said", not "none".
+	if issues := javaVersionIssues("", 21, nil); len(issues) != 0 {
+		t.Errorf("answered without a game version: %+v", issues)
+	}
+	if issues := javaVersionIssues("1.21.4", 0, nil); len(issues) != 0 {
+		t.Errorf("answered without knowing the Java major: %+v", issues)
+	}
+}

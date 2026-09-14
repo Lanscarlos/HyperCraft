@@ -347,6 +347,7 @@ func (s *Server) checkJarLaunch(inst *instance.Instance, cfg instance.Config) []
 		issues = append(issues, missingFileIssues(cfg, "jar-missing", jar)...)
 	}
 	issues = append(issues, s.jarCountIssue(cfg)...)
+	issues = append(issues, s.javaVersionIssue(cfg)...)
 	issues = append(issues, heapIssues(cfg)...)
 	issues = append(issues, s.portIssue(inst, cfg)...)
 	return append(issues, s.checkLoaderKnown(inst, cfg)...)
@@ -364,6 +365,10 @@ func (s *Server) checkArgFileLaunch(inst *instance.Instance, cfg instance.Config
 	// No heap check here: in argfile mode the panel does not put -Xms/-Xmx on
 	// the command line at all, so there is no mismatch of its making to
 	// report. See Config.commandSegments.
+	//
+	// The Java check does apply: Forge is as bound by the class-file version
+	// as anything else.
+	issues = append(issues, s.javaVersionIssue(cfg)...)
 	issues = append(issues, s.portIssue(inst, cfg)...)
 	return append(issues, s.checkLoaderKnown(inst, cfg)...)
 }

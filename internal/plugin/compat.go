@@ -659,3 +659,17 @@ func TargetDirFor(loader string) string {
 		return DefaultTargetDir
 	}
 }
+
+// CompareGameVersions orders two Minecraft versions, for callers outside this
+// package that need the same reading of one — the launch check's Java floor,
+// which has to know whether 1.20.5 is at or above 1.20.5.
+//
+// Exported rather than reimplemented: a second parser is a second opinion on
+// what "1.20" means, and the two would disagree the first time somebody wrote
+// "MC 1.20.4" or "1.20-1.20.4". Returns 0 for anything it cannot read, so a
+// caller must check readability itself when that matters.
+func CompareGameVersions(a, b string) int { return compareVersions(a, b) }
+
+// GameVersionReadable reports whether a string contains a version this package
+// can compare at all. Snapshots ("24w14a") and pre-releases do not.
+func GameVersionReadable(raw string) bool { return parseVersion(raw) != nil }
