@@ -12,7 +12,7 @@ import type { FileJump } from './FileManager'
 import { FileManager } from './FileManager'
 import { InstanceCockpit } from './InstanceCockpit'
 import { InstancePlugins } from './InstancePlugins'
-import { LaunchSettings } from './LaunchSettings'
+import { InstanceSettings } from './InstanceSettings'
 import { NetworkPage } from './NetworkPage'
 import { ResourcePanel } from './ResourcePanel'
 import { ServerConfigPage } from './ServerConfigPage'
@@ -229,17 +229,21 @@ export function InstanceView({
       )}
       {visited.has('startup') && (
         <Pane id="startup" active={section === 'startup'} leaving={leaving === 'startup'} scroll>
-          <StartupSettings instance={instance} />
+          <StartupSettings
+            instance={instance}
+            cores={cores}
+            onSaved={onChanged}
+            onOpenLibrary={onOpenCoreLibrary}
+            onOpenSection={onOpenSection}
+          />
         </Pane>
       )}
       {visited.has('settings') && (
         <Pane id="settings" active={section === 'settings'} leaving={leaving === 'settings'} scroll>
-          <LaunchSettings
+          <InstanceSettings
             instance={instance}
-            cores={cores}
             onSaved={onChanged}
             onDeleted={onDeleted}
-            onOpenLibrary={onOpenCoreLibrary}
           />
         </Pane>
       )}
