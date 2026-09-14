@@ -405,8 +405,12 @@ function Row({
         />
       </span>
 
+      {/* The name is in a child of its own, not a bare text node in the flex
+          row: a flex container cannot truncate what it does not directly hold,
+          so the ellipsis has to live with the text. Same trap .ftree__label
+          is written the way it is to avoid. */}
       <span className="frow__name" title={entry.name}>
-        {entry.name}
+        <span className="frow__text">{entry.name}</span>
         {dirty && <span className="frow__dot" aria-label="有未保存的修改" />}
         {entry.symlink && <Badge>符号链接</Badge>}
       </span>

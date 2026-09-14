@@ -158,6 +158,21 @@ function Pane({
     if (findTick > 0 && index === focusedPane) setFinding(true)
   }, [findTick, index, focusedPane])
 
+  // The strip scrolls, so the tab in front can be somewhere off the end of it
+  // — which is what splitting five tabs into a 172px strip does, and it looks
+  // exactly like the wrong file being open.
+  //
+  // `panes.length` is in here and it is not decoration: splitting changes
+  // neither the front tab nor the tab count of the pane that was already
+  // there, it only makes its strip less than a third as wide, and the scroll
+  // offset it was left at then points past the end.
+  const strip = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    strip.current
+      ?.querySelector('.etab--on')
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [pane.active, pane.tabs.length, panes.length])
+
   useEffect(() => {
     if (context === null) return
     const dismiss = () => setContext(null)
@@ -216,7 +231,7 @@ function Pane({
       onPointerDownCapture={onFocus}
     >
       <div className="fedit__bar">
-        <div className="fedit__tabs" role="tablist" aria-label="打开的文件">
+        <div className="fedit__tabs" ref={strip} role="tablist" aria-label="打开的文件">
           {pane.tabs.map((path) => {
             const tab = files.get(path)
             const dirty = tab !== undefined && tab.content !== tab.original
@@ -275,7 +290,7 @@ function Pane({
               title="在配置历史里比较这个文件"
             >
               <Glyph name="clock" />
-              配置历史
+              <span className="fedit__history-text">配置历史</span>
             </button>
           )}
           <span className="fedit__sep" aria-hidden="true" />

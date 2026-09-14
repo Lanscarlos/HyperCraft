@@ -7677,10 +7677,19 @@ small.field__bad {
 }
 
 /* The same track list as .frow, per density. Two declarations that have to
-   agree; they are kept next to each other for that reason. */
+   agree; they are kept next to each other for that reason.
+
+   The name's floor is the load-bearing part. It was minmax(0, 1fr), and a
+   1fr track with a zero minimum does exactly what it is told when the fixed
+   tracks do not fit: it collapses. In 详情 at a 264px column that came to
+   nameWidth: 0 — a file list with no filenames in it, the column heads
+   stacked one character wide, and every name reachable only through its
+   tooltip. A floor means the row overflows instead, which is visible and
+   therefore fixable; the density-aware column width below is what keeps it
+   from having to. */
 .flist__cols {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
+  grid-template-columns: 20px minmax(88px, 1fr) auto;
   flex: none;
   align-items: center;
   gap: 9px;
@@ -7694,7 +7703,7 @@ small.field__bad {
 }
 
 .flist__cols[data-density='detail'] {
-  grid-template-columns: 20px minmax(0, 1fr) auto minmax(0, 130px) 60px;
+  grid-template-columns: 20px minmax(88px, 1fr) auto minmax(0, 110px) 60px;
 }
 
 .flist__col {
@@ -7728,6 +7737,10 @@ small.field__bad {
 
 .flist__sort:hover {
   color: var(--text-dim);
+}
+
+.flist__sort {
+  white-space: nowrap;
 }
 
 .flist__col--end .flist__sort {
@@ -7775,13 +7788,13 @@ small.field__bad {
   padding: 0 10px 0 12px;
   cursor: pointer;
   /* The two densities, and the whole of the difference between them. */
-  grid-template-columns: 20px minmax(0, 1fr) auto;
+  grid-template-columns: 20px minmax(88px, 1fr) auto;
   height: 34px;
   font-size: 12.5px;
 }
 
 .frow[data-density='detail'] {
-  grid-template-columns: 20px minmax(0, 1fr) auto minmax(0, 130px) 60px;
+  grid-template-columns: 20px minmax(88px, 1fr) auto minmax(0, 110px) 60px;
   height: 40px;
 }
 
@@ -7864,6 +7877,16 @@ small.field__bad {
   overflow: hidden;
   color: var(--text);
   font-family: var(--font-mono);
+}
+
+/* The truncation lives with the text rather than on the row: .frow__name is a
+   flex container — it also holds the unsaved dot and the symlink badge — and a
+   flex container cannot put an ellipsis on a bare text node. Without this,
+   paper-26.1.2-74.jar ran straight into its own file size with nothing to say
+   it had been cut. */
+.frow__text {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -8025,6 +8048,17 @@ small.field__bad {
   gap: 5px;
   font-size: 11.5px;
   white-space: nowrap;
+}
+
+/* Split in two and the tools were 195px of a 393px pane — half the pane, to
+   leave 174px for five tabs. The label goes first: the clock alone still says
+   what it is, and the tooltip says it in words. */
+.fedit[data-panes='2'] .fedit__history-text {
+  display: none;
+}
+
+.fedit[data-panes='2'] .fedit__sep {
+  display: none;
 }
 
 .fedit__history svg {

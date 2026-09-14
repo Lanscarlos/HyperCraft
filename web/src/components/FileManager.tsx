@@ -87,6 +87,10 @@ const DOWNLOAD_GAP = 400
 const TREE_MIN = 180
 const TREE_MAX = 360
 const LIST_MIN = 220
+/** 详情 carries two more columns, and 264px cannot hold them: the name track
+ *  is what gives, and a file list without filenames is not a file list. This
+ *  is the width four columns need before anything has to be truncated. */
+const LIST_DETAIL_MIN = 380
 const LIST_MAX = 560
 const EDITOR_MIN = 640
 /* The grid has no gap: each handle is its own 14px gutter track. See .fm. */
@@ -219,6 +223,13 @@ export function FileManager({
   // made on purpose.
   const density: Density = chosenDensity ?? (open || tight ? 'compact' : 'detail')
   const treeFolded = treeFold ?? (tight && open)
+  // Derived rather than written back into `cols`: 详情 can be arrived at two
+  // ways — switching density with a file open, or opening a file while 详情 is
+  // already the choice — and a stored width would have to be corrected on both
+  // paths. The stored width is what the operator dragged; this is the floor
+  // the columns need, and the larger of the two wins.
+  const listFloor = density === 'detail' ? LIST_DETAIL_MIN : LIST_MIN
+  const listWidth = Math.max(cols.list, listFloor)
 
   const load = useCallback(
     async (target: string) => {
@@ -989,11 +1000,11 @@ export function FileManager({
     const startX = event.clientX
     const from = cols[which]
     const room = frame.clientWidth
-    const floor = which === 'tree' ? TREE_MIN : LIST_MIN
+    const floor = which === 'tree' ? TREE_MIN : listFloor
     const roof = which === 'tree' ? TREE_MAX : LIST_MAX
 
     const move = (at: PointerEvent) => {
-      const other = which === 'tree' ? (open ? cols.list : 0) : cols.tree
+      const other = which === 'tree' ? (open ? listWidth : 0) : cols.tree
       const spent = other + (GRIP + GAP) * (open ? 2 : 1)
       const ceiling = Math.max(floor, Math.min(roof, room - spent - (open ? EDITOR_MIN : 0)))
       const next = Math.min(ceiling, Math.max(floor, from + (at.clientX - startX)))
@@ -1222,7 +1233,14 @@ export function FileManager({
     ...(narrow
       ? ['minmax(0, 1fr)']
       : [
-          listFolded && open ? `${RAIL}px` : open ? `${cols.list}px` : 'minmax(0, 1fr)',
+          // Capped at a share of the pane as well as at its own floor: 详情's
+          // 380 must not be allowed to leave the editor with nothing at a
+          // window where 380 is most of the room.
+          listFolded && open
+            ? `${RAIL}px`
+            : open
+              ? `min(${listWidth}px, 46%)`
+              : 'minmax(0, 1fr)',
           ...(open ? [`${GRIP}px`, 'minmax(0, 1fr)'] : []),
         ]),
   ].join(' ')
