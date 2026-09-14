@@ -21,6 +21,7 @@ import { JavaCoreCard } from './JavaCoreCard'
 import { JvmArgsCard } from './JvmArgsCard'
 import { LaunchConsole } from './LaunchConsole'
 import { MemoryCard } from './MemoryCard'
+import { ServerArgsCard } from './ServerArgsCard'
 import { InstanceCorePicker } from './InstanceCorePicker'
 import { PageHead } from './Page'
 import { ScriptImportDialog } from './ScriptImportDialog'
@@ -44,8 +45,11 @@ interface Props {
   onOpenSection: (section: InstanceSection) => void
 }
 
-/** Where the JVM 参数 view preference is kept. */
+/** Where the two argument editors' view preferences are kept. Separate keys
+ *  because the two lists are read for different reasons — twenty GC flags are
+ *  skimmed as text far more often than two server arguments are. */
 const JVM_VIEW_KEY = 'hc.jvmargs.view'
+const ARG_VIEW_KEY = 'hc.serverargs.view'
 
 /**
  * How this server is started: which Java, which jar, how much heap.
@@ -110,9 +114,18 @@ export function StartupSettings({
     () => instance.minMemoryMB > 0 && instance.minMemoryMB === instance.maxMemoryMB,
   )
 
+  const [argRows, setArgRows] = useState(
+    () => window.localStorage.getItem(ARG_VIEW_KEY) !== 'text',
+  )
+
   const setJvmView = (rows: boolean) => {
     setJvmRows(rows)
     window.localStorage.setItem(JVM_VIEW_KEY, rows ? 'rows' : 'text')
+  }
+
+  const setArgView = (rows: boolean) => {
+    setArgRows(rows)
+    window.localStorage.setItem(ARG_VIEW_KEY, rows ? 'rows' : 'text')
   }
 
   // A proxy launches differently enough to be worth saying so: it exits on the
@@ -277,17 +290,6 @@ export function StartupSettings({
   }
 
 
-  // The one server argument worth a shortcut. --forceUpgrade and --eraseCache
-  // are deliberately not offered: they are one-shot conversions, and a control
-  // that remembers one is a control that runs it again on every restart.
-  const hasNogui = fromLines(serverText).includes('--nogui')
-  const toggleNogui = () =>
-    setServerText((text) => {
-      const args = fromLines(text)
-      return toLines(
-        hasNogui ? args.filter((arg) => arg !== '--nogui') : [...args, '--nogui'],
-      )
-    })
 
 
   // Back to what is stored.
@@ -490,45 +492,14 @@ export function StartupSettings({
           onImport={() => setImporting(true)}
         />
 
-        <Section
-          form
-          title={
-            <>
-              <span className="originmark originmark--server" aria-hidden="true" />
-              服务端参数
-            </>
-          }
-          meta="跟在 jar 之后"
-          note="传给服务端自己的参数，不是给 JVM 的。"
-        >
-          {!proxy && (
-            <div className="presets">
-              <div className="presets__row">
-                <button
-                  className={`chip${hasNogui ? ' chip--on' : ''}`}
-                  type="button"
-                  aria-pressed={hasNogui}
-                  onClick={toggleNogui}
-                >
-                  --nogui
-                </button>
-              </div>
-            </div>
-          )}
-          <textarea
-            rows={2}
-            value={serverText}
-            onChange={(e) => setServerText(e.target.value)}
-            placeholder={proxy ? '' : '--nogui'}
-            aria-label="服务端参数"
-          />
-          <small>
-            一行一个参数，会放在 jar 之后。
-            {proxy
-              ? ' Velocity 遇到不认识的参数会直接退出，一般这里留空。'
-              : ' --nogui 关掉服务端自带的那个 Swing 窗口，无头机器上基本都要。'}
-          </small>
-        </Section>
+        <ServerArgsCard
+          text={serverText}
+          onText={setServerText}
+          count={pending.serverArgs.length}
+          rows={argRows}
+          onView={setArgView}
+          proxy={proxy}
+        />
 
         {importing && (
           <ScriptImportDialog
