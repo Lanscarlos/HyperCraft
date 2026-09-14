@@ -47,7 +47,14 @@ export interface FileListProps {
   onDensity: (next: Density) => void
   sort: Sort
   onSort: (key: SortKey) => void
+  /** Ticked rows — what the bulk bar acts on. A plain click is not in here:
+   *  see `cursor`. */
   selected: Set<string>
+  /** The row the keyboard is on, and the last one plainly clicked. Distinct
+   *  from `selected` because a click both picks a row and opens it, and
+   *  turning the head into a bulk bar every time somebody opens a file is a
+   *  bar nobody asked for standing where the density switch was. */
+  cursor: string | null
   onSelect: (path: string, mode: SelectMode) => void
   onClearSelection: () => void
   /** The file in front of the editor, so its row is marked. */
@@ -87,6 +94,7 @@ export function FileList({
   sort,
   onSort,
   selected,
+  cursor,
   onSelect,
   onClearSelection,
   activePath,
@@ -297,6 +305,7 @@ export function FileList({
               density={density}
               ticked={selected.has(entry.path)}
               current={entry.path === activePath}
+              cursored={entry.path === cursor}
               dirty={dirtyPaths.has(entry.path)}
               busy={busy}
               onSelect={onSelect}
@@ -330,6 +339,7 @@ function Row({
   density,
   ticked,
   current,
+  cursored,
   dirty,
   busy,
   onSelect,
@@ -341,6 +351,7 @@ function Row({
   density: Density
   ticked: boolean
   current: boolean
+  cursored: boolean
   dirty: boolean
   busy: boolean
   onSelect: (path: string, mode: SelectMode) => void
@@ -353,14 +364,17 @@ function Row({
       data-density={density}
       data-ticked={ticked || undefined}
       data-on={current || undefined}
+      data-cursor={cursored || undefined}
       role="option"
       aria-selected={ticked}
       tabIndex={-1}
       onClick={(event) => {
         // Shift is a range, ⌘/Ctrl adds one, and a plain click is "this one" —
         // which also opens it, because in a file manager picking a thing and
-        // opening it are the same gesture. Double click is deliberately not a
-        // second meaning: one click, one outcome.
+        // opening it are the same gesture. A plain click ticks nothing, which
+        // is what keeps the bulk bar out of the head of a list somebody is
+        // merely reading. Double click is deliberately not a second meaning:
+        // one click, one outcome.
         if (event.shiftKey) {
           onSelect(entry.path, 'range')
           return

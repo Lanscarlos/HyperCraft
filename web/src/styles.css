@@ -7280,6 +7280,27 @@ small.field__bad {
   }
 }
 
+/* On a phone the four buttons and the path cannot share a line — the path
+   loses, and a file manager whose path is two characters wide is a file
+   manager that cannot say where it is. So the bar becomes two rows, with the
+   trail on the second one at full width. The buttons stay in the same group,
+   the same order and the same shape; only where the row breaks changes. */
+@media (max-width: 700px) {
+  .fbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 56px;
+    row-gap: 6px;
+    padding-bottom: 6px;
+  }
+
+  .fbar__crumbs,
+  .fbar__path {
+    order: 3;
+    flex-basis: 100%;
+  }
+}
+
 /* ---- the listing ------------------------------------------------------
 
    A grid of rows rather than a <table>. The table bought column alignment and
@@ -7307,9 +7328,20 @@ small.field__bad {
   flex: none;
   align-items: center;
   gap: 8px;
-  height: 36px;
+  min-height: 36px;
   padding: 0 8px 0 12px;
   border-bottom: 1px solid var(--border);
+}
+
+/* 36px is the head's height, not its ceiling. In 状态 B this column is 264px
+   and the bulk bar is a count plus three buttons plus a way out, which does
+   not fit on one row at that width — and a bar that clips is a bar with a
+   delete button somewhere off the right edge. It wraps instead. */
+.flist__bulk {
+  flex-wrap: wrap;
+  row-gap: 4px;
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
 
 .flist__head {
@@ -7333,6 +7365,10 @@ small.field__bad {
   background: var(--accent-soft);
   border-bottom-color: var(--border-accent);
   animation: rise var(--dur-3) var(--ease) both;
+}
+
+.flist__bulk .btn {
+  flex: none;
 }
 
 .flist__bulk-count {
@@ -7472,6 +7508,13 @@ small.field__bad {
 .frow[data-on] .frow__name {
   color: var(--accent-hover);
   font-weight: 600;
+}
+
+/* Where the arrow keys are. Quieter than the open file's tint because it is a
+   position rather than a state — nothing has happened to this row yet. */
+.frow[data-cursor]:not([data-on]):not([data-ticked]) {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--border-strong);
 }
 
 .frow__mark {
@@ -7859,14 +7902,19 @@ small.field__bad {
 
 /* ---- the foot ---------------------------------------------------------- */
 
+/* 38px is its height on a desktop, not a ceiling. It wraps — a narrow pane
+   cannot hold the facts, the badges and two buttons on one line — and a fixed
+   height plus wrapping is a second row drawn underneath the bottom edge, with
+   保存 in it. */
 .editor__status {
   display: flex;
   flex: none;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  height: 38px;
-  padding: 0 10px;
+  row-gap: 4px;
+  min-height: 38px;
+  padding: 4px 10px;
   background: var(--surface-2);
   border-top: 1px solid var(--border);
 }
@@ -7938,8 +7986,14 @@ small.field__bad {
    The widths come from JS rather than from a rule, because they are draggable
    and stored per instance. Everything else about the grid is here. */
 .fm {
+  /* No gap. The handles *are* the gutters — a 14px track each, with the line
+     drawn down the middle — rather than 6px handles sitting inside 14px gaps.
+     Two gutters instead of four plus two handles is 40 pixels, and at a 1600px
+     viewport those 40 are the difference between an editor of 760 and one of
+     800: bukkit.yml opens with an 85-character comment, and 780 is where that
+     line stops needing a horizontal scrollbar. */
   display: grid;
-  gap: 14px;
+  gap: 0;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -7957,15 +8011,30 @@ small.field__bad {
 /* A track of its own rather than a border on a pane: a border cannot be
    grabbed, and a pane with a resize cursor over its own edge starts a drag
    when somebody meant to click the row underneath it. */
+/* The gutter and the handle in one. The line is a child pseudo-element rather
+   than the track's own background, so the grabbable area is the full 14px
+   while what you see is 2px — a 2px hit target is a handle nobody catches. */
 .fm__grip {
+  position: relative;
   align-self: stretch;
-  border-radius: var(--radius-pill);
   cursor: col-resize;
   touch-action: none;
+}
+
+.fm__grip::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: var(--radius-pill);
+  background: transparent;
   transition: background var(--dur) var(--ease);
 }
 
-.fm__grip:hover {
+.fm__grip:hover::after {
   background: var(--border-accent);
 }
 
@@ -7974,6 +8043,12 @@ small.field__bad {
 .fm__grip[data-off] {
   cursor: default;
   pointer-events: none;
+}
+
+@media (max-width: 1024px) {
+  .fm {
+    gap: 10px;
+  }
 }
 
 .fm__tree {
@@ -8291,10 +8366,6 @@ small.field__bad {
    the two halves stack — which is the one arrangement that keeps both
    readable rather than giving each of them half a phone. */
 @media (max-width: 1024px) {
-  .fm {
-    gap: 10px;
-  }
-
   .fedit {
     flex-direction: column;
   }

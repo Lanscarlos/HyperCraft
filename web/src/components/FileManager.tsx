@@ -88,8 +88,9 @@ const TREE_MAX = 360
 const LIST_MIN = 220
 const LIST_MAX = 560
 const EDITOR_MIN = 640
-const GAP = 14
-const GRIP = 6
+/* The grid has no gap: each handle is its own 14px gutter track. See .fm. */
+const GAP = 0
+const GRIP = 14
 /** A folded rail: wide enough for the button that unfolds it, and nothing. */
 const RAIL = 36
 
@@ -143,8 +144,13 @@ export function FileManager({
   // What the list is showing, as opposed to what the directory holds.
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<Sort>({ key: 'name', asc: true })
+  // Two different things, and keeping them apart is what stops the bulk bar
+  // from appearing every time somebody opens a file. `cursor` is where the
+  // keyboard is and what a plain click moved; `selected` is what has actually
+  // been ticked, and it is what 批量操作 acts on.
+  const [cursor, setCursor] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  // Where a Shift-click measures from: the last row picked without one.
+  // Where a Shift-click measures from: the last row the cursor landed on.
   const anchor = useRef<string | null>(null)
 
   // One buffer per path; the panes hold paths. The same file in both halves of
@@ -187,7 +193,12 @@ export function FileManager({
     writePref(widthKey, cols)
   }, [widthKey, cols])
 
-  const [treeFolded, setTreeFolded] = useState(false)
+  // null means "whatever the width calls for". Between 1024 and 1280 three
+  // columns fit but the third one is left with about 400px, which is not an
+  // editor — so the tree, which the breadcrumb can stand in for, goes to its
+  // rail until somebody asks for it back. Same shape as `density` below: the
+  // automatic answer is a default, not a rule that overrules a choice.
+  const [treeFold, setTreeFold] = useState<boolean | null>(null)
   const [listFolded, setListFolded] = useState(false)
   // Below the drawer width the listing is not a column at all; this is how it
   // comes back over the editor for one pick.
@@ -202,6 +213,7 @@ export function FileManager({
   // automatic default is a convenience; it does not get to overrule a choice
   // made on purpose.
   const density: Density = chosenDensity ?? (open || tight ? 'compact' : 'detail')
+  const treeFolded = treeFold ?? (tight && open)
 
   const load = useCallback(
     async (target: string) => {
@@ -213,6 +225,7 @@ export function FileManager({
         // A tick against a row that is no longer on screen is a delete waiting
         // to happen in a directory nobody is looking at.
         setSelected(new Set())
+        setCursor(null)
         anchor.current = null
         if (target !== dirRef.current) setQuery('')
         dirRef.current = target
@@ -237,6 +250,7 @@ export function FileManager({
         setDir(target)
         setError(null)
         setSelected(new Set())
+        setCursor(null)
         anchor.current = null
         if (target !== dirRef.current) setQuery('')
         dirRef.current = target
@@ -684,17 +698,25 @@ export function FileManager({
 
   const pick = useCallback(
     (path: string, mode: SelectMode) => {
-      setSelected((current) => {
-        if (mode === 'replace') {
-          anchor.current = path
-          return new Set([path])
-        }
-        if (mode === 'toggle') {
-          anchor.current = path
+      setCursor(path)
+      if (mode === 'replace') {
+        // A plain click moves the cursor and lets go of whatever was ticked.
+        // It does not tick this row: opening a file is not an instruction to
+        // delete it, and the head above the list should still be the head.
+        anchor.current = path
+        setSelected((current) => (current.size === 0 ? current : new Set()))
+        return
+      }
+      if (mode === 'toggle') {
+        anchor.current = path
+        setSelected((current) => {
           const next = new Set(current)
           if (!next.delete(path)) next.add(path)
           return next
-        }
+        })
+        return
+      }
+      setSelected((current) => {
         const from = rows.findIndex((entry) => entry.path === (anchor.current ?? path))
         const to = rows.findIndex((entry) => entry.path === path)
         if (from === -1 || to === -1) return new Set([path])
@@ -988,16 +1010,20 @@ export function FileManager({
   focusedPaneNow.current = focusedPane
   const selectedNow = useRef(selected)
   selectedNow.current = selected
+  const cursorNow = useRef(cursor)
+  cursorNow.current = cursor
   const rowsNow = useRef(rows)
   rowsNow.current = rows
 
-  /** Moves the selection one row, and scrolls it back into view. */
+  /** Moves the cursor one row, and scrolls it back into view. Deliberately not
+   *  a selection: walking a directory with the arrow keys is reading it, and
+   *  it should not end with twenty rows ticked. */
   const step = useCallback((by: number) => {
     const all = rowsNow.current
     if (all.length === 0) return
-    const at = all.findIndex((entry) => entry.path === [...selectedNow.current][0])
+    const at = all.findIndex((entry) => entry.path === cursorNow.current)
     const to = Math.max(0, Math.min(all.length - 1, at === -1 ? 0 : at + by))
-    setSelected(new Set([all[to].path]))
+    setCursor(all[to].path)
     anchor.current = all[to].path
     const row = listBody.current?.children[to] as HTMLElement | undefined
     row?.scrollIntoView({ block: 'nearest' })
@@ -1050,7 +1076,7 @@ export function FileManager({
         return
       }
       if (event.key === 'Enter') {
-        const entry = rowsNow.current.find((one) => one.path === [...selectedNow.current][0])
+        const entry = rowsNow.current.find((one) => one.path === cursorNow.current)
         if (entry) {
           event.preventDefault()
           openEntry(entry)
@@ -1069,7 +1095,7 @@ export function FileManager({
       : [
           {
             label: treeFolded ? '展开目录树' : '折叠目录树',
-            onSelect: () => setTreeFolded(!treeFolded),
+            onSelect: () => setTreeFold(!treeFolded),
           },
         ]),
     ...(open && !narrow
@@ -1215,6 +1241,7 @@ export function FileManager({
       sort={sort}
       onSort={toggleSort}
       selected={selected}
+      cursor={cursor}
       onSelect={pick}
       onClearSelection={() => setSelected(new Set())}
       activePath={activePath}
@@ -1280,7 +1307,7 @@ export function FileManager({
         {treeShown && (
           <>
             {treeFolded ? (
-              <Rail label="目录" onOpen={() => setTreeFolded(false)} />
+              <Rail label="目录" onOpen={() => setTreeFold(false)} />
             ) : (
               <aside className="fm__tree">
                 <FileTree
@@ -1371,7 +1398,7 @@ export function FileManager({
               // as the request takes.
               void (async () => {
                 await load(parentOf(path))
-                setSelected(new Set([path]))
+                setCursor(path)
               })()
               if (narrow) setDrawer(true)
             }}
