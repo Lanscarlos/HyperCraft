@@ -22,6 +22,7 @@ import { useDismiss } from '../useDismiss'
 import type { PluginController } from '../usePlugins'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { Note } from './Note'
 import { loaderLabel, sourceLabel } from './PluginBrowse'
 import { PluginIcon } from './PluginIcon'
 import { Select } from './Select'
@@ -205,7 +206,7 @@ export function PluginLibraryDrawer({
         <div className="drawer__body">
           {error && <div className="alert alert--error">{error}</div>}
           {item.checkError && (
-            <div className="alert alert--warn">检查更新失败：{item.checkError}</div>
+            <Note tone="warn">检查更新失败：{item.checkError}</Note>
           )}
 
           {tab === 'overview' && (

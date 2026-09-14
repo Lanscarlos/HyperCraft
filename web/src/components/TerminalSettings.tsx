@@ -87,11 +87,11 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
 
           {status.enabled ? (
             <>
-              <div className="alert alert--warn">
+              <Note tone="warn">
                 终端已开启。<strong>任何能登录这个面板的人</strong>
                 都可以在这台机器上以 {status.user || '面板用户'} 的身份执行任意命令 ——
                 所以面板密码要当成 SSH 密码来管，别把面板裸奔在公网上。
-              </div>
+              </Note>
               <div className="actions">
                 <Button variant="primary" onClick={onOpenTerminal}>
                   打开终端
@@ -110,14 +110,14 @@ export function TerminalSettings({ terminal, onOpenTerminal }: Props) {
             </>
           ) : confirming ? (
             <>
-              <div className="alert alert--warn">
+              <Note tone="warn">
                 开启前先确认一下：这等于把 {status.user || '面板用户'} 的 shell
                 交给了面板密码。建议先做到这两件事 ——
                 <br />
                 1. 面板密码足够强，且已经改过默认生成的那一个；
                 <br />
                 2. 面板没有直接暴露在公网，或者前面有 HTTPS 反代 + 访问控制。
-              </div>
+              </Note>
               <div className="actions">
                 <Button variant="primary" disabled={saving} onClick={() => void enable()}>
                   {saving ? '保存中…' : '我明白，开启终端'}

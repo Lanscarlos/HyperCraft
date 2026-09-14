@@ -386,7 +386,7 @@ function UploadReport({
   // had to be clicked away.
   if (failed.length === 0) return null
   return (
-    <div className="alert alert--warn">
+    <Note tone="warn">
       <p>
         {results.length - failed.length} 个入库，{failed.length} 个没成：
       </p>
@@ -400,7 +400,7 @@ function UploadReport({
       <button className="link" onClick={onDismiss}>
         知道了
       </button>
-    </div>
+    </Note>
   )
 }
 

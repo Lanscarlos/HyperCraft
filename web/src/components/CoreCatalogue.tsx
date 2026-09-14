@@ -4,6 +4,7 @@ import { api } from '../api'
 import { formatBytes, formatDate } from '../format'
 import type { CoreBuild, CoreProject, CoreVersion } from '../types'
 import { Badge } from './Badge'
+import { Note } from './Note'
 
 export const SUPPORT_LABELS: Record<string, string> = {
   SUPPORTED: '官方支持中',
@@ -324,9 +325,9 @@ export function CoreCatalogue({
         </p>
       )}
       {build && !isRecommended(build.channel) && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           这是 {build.channel} 频道的构建，PaperMC 不建议用在正式服上。
-        </div>
+        </Note>
       )}
     </>
   )

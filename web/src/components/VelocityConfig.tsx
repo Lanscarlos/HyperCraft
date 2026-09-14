@@ -505,10 +505,10 @@ export function VelocityConfig({ instance }: { instance: InstanceStatus }) {
         </div>
 
         {needsSecret && secret.trim() === '' && (
-          <div className="alert alert--warn">
+          <Note tone="warn">
             转发模式是 <code>{forwarding}</code>，但还没有密钥。
             密钥为空时 Velocity 会拒绝启动。
-          </div>
+          </Note>
         )}
       </Section>
 

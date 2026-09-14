@@ -13,6 +13,7 @@ import { artifactKey, isLive, pluginArtifacts } from '../types'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Modal } from './Modal'
+import { Note } from './Note'
 import { CompatBadge } from './PluginCompat'
 import { loaderLabel } from './PluginBrowse'
 import { Select } from './Select'
@@ -177,9 +178,9 @@ export function PluginInstallDialog({
         {error && <div className="alert alert--error">{error}</div>}
 
         {item.versions.length === 0 ? (
-          <div className="alert alert--warn">
+          <Note tone="warn">
             插件库里还没有这个插件的 jar —— 先去「插件市场」下载一个版本。
-          </div>
+          </Note>
         ) : (
           <label className="field">
             <span>版本</span>
@@ -252,7 +253,7 @@ export function PluginInstallDialog({
         </div>
 
         {clashes.length > 0 && (
-          <div className="alert alert--warn">
+          <Note tone="warn">
             {clashes.map((instance) => instance.name).join('、')} 跟这个版本里的 jar 都对不上（
             {/* Deduped: five servers failing for the same reason should say
                 the reason once. */}
@@ -267,14 +268,14 @@ export function PluginInstallDialog({
             {jars.length > 1
               ? '这次发布库里有几个平台的构建，但没有这几台服要的那个 —— 去插件详情的「版本」里把它下载到库。'
               : '这个插件如果分平台发版，去插件详情的「版本」里看看有没有对应平台的 jar 可以下载。'}
-          </div>
+          </Note>
         )}
 
         {live.length > 0 && (
-          <div className="alert alert--warn">
+          <Note tone="warn">
             {live.map((instance) => instance.name).join('、')} 正在运行 ——
             jar 会立刻写进去，但要重启才会加载。面板不会自动重启。
-          </div>
+          </Note>
         )}
 
         <div className="modal__actions">

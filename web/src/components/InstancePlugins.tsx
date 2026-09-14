@@ -273,7 +273,7 @@ export function InstancePlugins({
           two rows are fighting over one name and the server has already picked
           a winner without telling anybody which. */}
       {duplicate > 0 && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           {/* Boxed, because .alert is a wrapping flex row and the heading would
               otherwise sit beside its own explanation. */}
           <div>
@@ -283,7 +283,7 @@ export function InstancePlugins({
               剩下的会被拒绝 —— 下面标黄的行就是，点开看具体撞的是哪个文件。
             </p>
           </div>
-        </div>
+        </Note>
       )}
 
       {/* Above the tabs, not inside 已安装. A plugin that did not load is the
@@ -677,7 +677,7 @@ function RestartBanner({
   if (pending.length === 0 || !live) return null
 
   return (
-    <div className="alert alert--warn restart-banner">
+    <Note tone="warn" className="restart-banner">
       <div>
         <strong>{pending.length} 项变更待重启生效</strong>
         <p className="restart-banner__list">
@@ -692,7 +692,7 @@ function RestartBanner({
       <Button disabled={busy} onClick={onRestart}>
         立即重启
       </Button>
-    </div>
+    </Note>
   )
 }
 

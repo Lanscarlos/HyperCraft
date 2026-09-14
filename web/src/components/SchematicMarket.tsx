@@ -10,6 +10,7 @@ import { Badge } from './Badge'
 import { Button } from './Button'
 import { Card } from './Card'
 import { EmptyState } from './EmptyState'
+import { Note } from './Note'
 import { Page } from './Page'
 import { Section } from './Section'
 import { Select } from './Select'
@@ -170,9 +171,9 @@ export function SchematicMarket({
             and saying so under the results is the difference between "this
             index moved" and "建筑市场坏了". */}
         {notes.map(([id, note]) => (
-          <div className="alert alert--warn" key={id}>
+          <Note tone="warn" key={id}>
             {result?.sources.find((entry) => entry.id === id)?.name ?? id}：{note}
-          </div>
+          </Note>
         ))}
 
         {items.length === 0 ? (

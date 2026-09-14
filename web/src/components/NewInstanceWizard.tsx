@@ -1034,10 +1034,10 @@ function JavaStep({
       }
     >
       {required > 0 && !covered && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           机器上还没有能跑这个版本的 Java。下面装一个 Java {required}，几十秒的事，
           装的是面板自己的一份，不动系统环境。
-        </div>
+        </Note>
       )}
 
       <div className="field">
@@ -1095,17 +1095,17 @@ function JavaStep({
       </div>
 
       {tooOld && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           选中的这个 Java 比 {core ? coreLabel(core) : '这个核心'} 要求的低，
           服务端启动时会直接报 UnsupportedClassVersionError。可以继续，但建议先装一个新的。
-        </div>
+        </Note>
       )}
 
       {tooNew && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           {core ? coreLabel(core) : '1.16 及以下的服务端'} 是 Java 17 之前的东西，
           在新版 Java 上通常直接起不来。装一个 Java 8 给它，别的实例照样用新的。
-        </div>
+        </Note>
       )}
 
       <div className="panel__sub">
@@ -1337,10 +1337,10 @@ function BasicsStep({
       </div>
 
       {tooMuch && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           这超过了本机内存的八成。系统、面板和别的实例也要吃内存，给到这么高的话，
           真用满时会被系统直接杀掉进程。
-        </div>
+        </Note>
       )}
 
       <label className="checkbox checkbox--stacked">
@@ -1709,10 +1709,10 @@ function ConfirmStep({
       </dl>
 
       {!proxy && !eula && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           EULA 还没同意，这个服务端启动后会立刻退出。可以现在回上一步勾一下，
           也可以之后在「服务器配置」页里勾。
-        </div>
+        </Note>
       )}
 
       {tasks && (
@@ -1793,9 +1793,9 @@ function Finished({
       )}
 
       {!proxy && !eula && (
-        <div className="alert alert--warn">
+        <Note tone="warn">
           EULA 还没同意，现在启动的话服务端会立刻退出。去「服务器配置」页勾一下就行。
-        </div>
+        </Note>
       )}
 
       <div className="actions">

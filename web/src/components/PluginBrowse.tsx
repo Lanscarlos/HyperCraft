@@ -13,6 +13,7 @@ import { Badge } from './Badge'
 import { Button } from './Button'
 import { Card } from './Card'
 import { EmptyState } from './EmptyState'
+import { Note } from './Note'
 import { CompatBadge } from './PluginCompat'
 import { PluginDrawer } from './PluginDrawer'
 import { PluginIcon } from './PluginIcon'
@@ -323,9 +324,9 @@ export function PluginBrowse({
 
           {result?.notes &&
             Object.entries(result.notes).map(([source, note]) => (
-              <div className="alert alert--warn" key={source}>
+              <Note tone="warn" key={source}>
                 {note}
-              </div>
+              </Note>
             ))}
 
           {picks.length > 0 ? (

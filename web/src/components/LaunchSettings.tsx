@@ -18,6 +18,7 @@ import { JVM_PRESETS } from '../jvmPresets'
 import { Button } from './Button'
 import { JVMArgsEditor } from './JVMArgsEditor'
 import { FieldHelp } from './FieldHelp'
+import { Note } from './Note'
 import { ScriptImportDialog } from './ScriptImportDialog'
 import type { CoreController } from '../useCores'
 import { useHostJars } from '../useHostJars'
@@ -702,10 +703,10 @@ export function LaunchSettings({
               />
             )}
             {aikarNeedsEqualHeap && (
-              <div className="alert alert--warn">
+              <Note tone="warn">
                 这套参数的前提是最小内存和最大内存一样大，现在填的是 {form.minMemoryMB} /{' '}
                 {form.maxMemoryMB} MB。把上面的最小内存也改成 {form.maxMemoryMB} 再保存。
-              </div>
+              </Note>
             )}
             {!jvmRows && <small>一行一个参数，会放在 -jar 之前。</small>}
           </div>

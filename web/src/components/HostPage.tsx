@@ -10,6 +10,7 @@ import type { TerminalController } from '../useTerminal'
 import { DataTable, DataTableHead, DataTableRow } from './DataTable'
 import { EmptyState } from './EmptyState'
 import { Meter } from './Meter'
+import { Note } from './Note'
 import { Page } from './Page'
 import { Section } from './Section'
 import { SkeletonPanel, SkeletonScreen } from './Skeleton'
@@ -154,11 +155,11 @@ function HostMetrics({
         </dl>
 
         {memory.overcommitted ? (
-          <div className="alert alert--warn">
+          <Note tone="warn">
             运行中的实例被允许申请 {formatBytes(memory.committedLive)}，超过本机的{' '}
             {formatBytes(memory.total)}。真正用满时内核会挑一个进程杀掉，而它挑中的
             通常就是最大的那台服 —— 表现为服务器「无缘无故」消失。
-          </div>
+          </Note>
         ) : memory.committedAll > memory.total && memory.total > 0 ? (
           <p className="chart-note">
             现在没问题，但所有实例同时启动会需要 {formatBytes(memory.committedAll)}，

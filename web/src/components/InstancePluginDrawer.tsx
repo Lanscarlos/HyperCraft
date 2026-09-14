@@ -6,6 +6,7 @@ import type { InstancePlugin } from '../types'
 import { useDismiss } from '../useDismiss'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { Note } from './Note'
 import { loaderLabel } from './PluginBrowse'
 import { CompatBadge } from './PluginCompat'
 
@@ -119,7 +120,7 @@ export function InstancePluginDrawer({
               it ambiguous: two jars answer to this name and the server picked
               one of them without saying which. */}
           {entry.conflicts && entry.conflicts.length > 0 && (
-            <div className="alert alert--warn">
+            <Note tone="warn">
               <div>
                 <strong>和别的 jar 重名</strong>
                 <p className="jar-facts__note">
@@ -136,7 +137,7 @@ export function InstancePluginDrawer({
                   删掉或停用多余的那一个，页面上的版本号才对得上跑着的那份。
                 </p>
               </div>
-            </div>
+            </Note>
           )}
 
           <section className="drawer__section">
