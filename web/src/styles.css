@@ -17109,12 +17109,28 @@ select.input-slim option {
    they are one decision, and paging them hides the two you are comparing
    against. See components/AddCoreDialog.tsx. */
 
+/* 1040×760 is the design artboard, and it was being read as a ceiling on both
+   axes. It is a canvas: the frame the screen was drawn in, not the size the
+   thing has to be on a 1080 monitor. The width still stops well short of a
+   page — past about 1200 the changelog column turns into a line of text too
+   long to scan — but the height should take what the viewport offers, because
+   what it buys is rows of the list the dialog exists to show. */
 .modal__card--addcore {
   gap: 0;
-  width: min(1040px, 100%);
-  max-height: min(760px, 90vh);
+  width: min(1180px, calc(100vw - 48px));
+  height: min(900px, 88vh);
   padding: 0;
   overflow: hidden;
+}
+
+/* The upload pane is a drop zone and a short form — nothing in it grows, and
+   nothing in it scrolls. Height-hungry is the catalogue's trait, not the
+   dialog's, so on this tile the card goes back to being as tall as what it
+   holds. Without this the same 88vh leaves a third of the dialog as air under
+   a six-field form. */
+.modal__card--addcore-short {
+  height: auto;
+  max-height: 88vh;
 }
 
 .addcore__head {
@@ -17138,10 +17154,16 @@ select.input-slim option {
 }
 
 /* The scroll is here rather than on the card, so the head and the confirmation
-   bar stay put while the build list moves. */
+   bar stay put while the build list moves.
+
+   flex:1 is what makes the card use the height it is allowed. Without it the
+   body sizes to its content and the card stops short — measured at 731px
+   against a 972px allowance on a 1080 screen, with the build list showing 288
+   of its 3894 pixels. The dialog was never too small; it just never grew. */
 .addcore__body {
   display: flex;
   flex-direction: column;
+  flex: 1;
   gap: 14px;
   min-height: 0;
   padding: 14px 18px;
@@ -17164,9 +17186,14 @@ select.input-slim option {
   min-width: 0;
 }
 
+/* auto-fit, not auto-fill: the catalogue answers with however many projects it
+   has — three, most days — and auto-fill keeps the empty tracks, so the row
+   ended on a gap the width of a card that read as a tile that failed to load.
+   auto-fit collapses them and the cards take the row. The 320px ceiling is so
+   three of them do not stretch into billboards. */
 .addcore__kindgrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 320px));
   gap: 8px;
 }
 
@@ -17236,7 +17263,14 @@ select.input-slim option {
   display: grid;
   grid-template-columns: 236px minmax(0, 1fr);
   gap: 12px;
-  min-height: 260px;
+  /* Takes every pixel the body has left over — this row is the dialog, the
+     rest is a header and a receipt. The floor is for a short window: below it
+     the row stops shrinking and hands the overflow to the body's scrollbar,
+     rather than grinding two lists down to three rows each. 320 is what the
+     panes were pinned at before they could grow, so a 720p screen keeps what
+     it always had and everything taller gains. */
+  flex: 1;
+  min-height: 320px;
 }
 
 .addcore__versions,
@@ -17257,7 +17291,6 @@ select.input-slim option {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  max-height: 320px;
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -17336,10 +17369,19 @@ select.input-slim option {
   font-variant-numeric: tabular-nums;
 }
 
+/* Every row is its own grid container, so these tracks have to be fixed: an
+   auto or max-content track would size to that one row's content and the
+   columns would stop lining up down the table.
+
+   Which is why the first one is 132 and not 96. A build carries its number,
+   「最新」 when it is the newest, and its channel when the channel is not one
+   people should just take — and the day all three land on one row is the day
+   96px is about twenty short. With nothing holding the cell in, the channel
+   badge printed straight over the changelog beside it. */
 .addcore__bhead,
 .brow {
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr) 132px 72px;
+  grid-template-columns: 132px minmax(0, 1fr) 132px 72px;
   gap: 10px;
   align-items: center;
   min-width: 0;
@@ -17403,6 +17445,12 @@ select.input-slim option {
   display: flex;
   align-items: center;
   gap: 5px;
+  /* The track is wide enough for #1234 + 最新 + ALPHA, and this is for the day
+     upstream invents a longer channel name than that: clipped at the column
+     edge is recoverable, printed over the next column is not. A grid item
+     defaults to min-width:auto, which is why it bled rather than clipped. */
+  min-width: 0;
+  overflow: hidden;
   font-variant-numeric: tabular-nums;
 }
 
@@ -17569,7 +17617,9 @@ select.input-slim option {
 
   .addcore__bhead,
   .brow {
-    grid-template-columns: 84px minmax(0, 1fr) 72px;
+    /* Same three labels as the wide form, so the same floor applies — the
+       date column is what goes here, not the room the build number needs. */
+    grid-template-columns: 124px minmax(0, 1fr) 72px;
   }
 
   .addcore__bhead > :nth-child(3),

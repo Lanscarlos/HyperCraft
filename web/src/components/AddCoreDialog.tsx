@@ -172,7 +172,11 @@ export function AddCoreDialog({
   return (
     <Modal onClose={onClose} label="添加核心" busy={sending}>
       {(close) => (
-        <div className="modal__card modal__card--addcore">
+        <div
+          className={`modal__card modal__card--addcore${
+            picked === UPLOAD ? ' modal__card--addcore-short' : ''
+          }`}
+        >
           <header className="addcore__head">
             <div>
               <h2>添加核心</h2>
