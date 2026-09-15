@@ -453,6 +453,131 @@
        green that nothing else in the panel is. The other two schemes keep the
        slate, which is already nowhere near their surfaces. */
 
+/* 樱花 — seed #8F4C38.
+
+   The scheme the panel used to ship with. It lived in the two :root blocks
+   above until 苔石 took the default, and every value here is a verbatim copy
+   of what it had there — nothing was re-tuned on the way down. The mechanism
+   did not change either: "default" is still the absence of data-palette, it is
+   just a different scheme's turn to be it.
+
+   The --shell-* group is the one thing that is *added* rather than moved. It
+   used to be inherited from :root, and :root is 苔石 now, whose shell had to
+   leave the slate (see the note there). Spelling it out here keeps 樱花's host
+   shell exactly the colour it has always been. 松绿 and 杏黄 carry the same
+   group for the same reason. */
+[data-theme='light'][data-palette='sakura'] {
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%2353433f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+  --primary: #8f4c38;
+  --primary-container: #ffdbd1;
+  --on-primary-container: #723523;
+  --surface: #fff8f6;
+  --on-surface: #231917;
+  --on-surface-variant: #53433f;
+  --outline: #85736e;
+  --outline-variant: #d8c2bc;
+  --surface-lowest: #ffffff;
+  --surface-low: #fff1ed;
+  --surface-container: #fceae5;
+  --surface-high: #f7e4e0;
+  --surface-highest: #f1dfda;
+  --inverse-surface: #392e2b;
+  --inverse-on-surface: #ffede8;
+  --inverse-primary: #ffb5a0;
+
+  --wash-1: rgba(143, 76, 56, 0.05);
+  --wash-2: rgba(108, 93, 47, 0.045);
+
+  --border-strong: #c3aca6;
+  --border-accent: #dfaf9f;
+
+  --accent-soft: rgba(143, 76, 56, 0.1);
+  --accent-glow: rgba(143, 76, 56, 0.22);
+  --accent-face: linear-gradient(180deg, #9d5641, #8a4835);
+  --accent-face-hover: linear-gradient(180deg, #ac6149, #96513c);
+  --accent-face-off: #ead7d0;
+  --accent-ink-off: #ab948c;
+
+  --sunken: rgba(87, 60, 52, 0.035);
+  --inset: inset 0 1px 2px rgba(87, 60, 52, 0.09);
+  --scrim: rgba(43, 32, 29, 0.44);
+  --brand-face: linear-gradient(150deg, #a85c45, #7d402e);
+  --mark-1: #c97b62;
+  --mark-2: #7d402e;
+
+  --term-selection: #6b4c42;
+  --term-black: #8a7871;
+  --term-bright-black: #a89791;
+  --term-edge: #4a3c38;
+
+  --shell-bg: #101820;
+  --shell-fg: #cfd8e3;
+  --shell-cursor: #6fb3d2;
+  --shell-selection: #24455c;
+  --shell-edge: #2b3b4a;
+  --shell-accent: #6fb3d2;
+
+  --shadow-sm: 0 1px 2px rgba(87, 60, 52, 0.11);
+  --shadow: 0 1px 3px rgba(87, 60, 52, 0.1), 0 8px 22px -12px rgba(87, 60, 52, 0.3);
+  --shadow-lg: 0 4px 10px rgba(87, 60, 52, 0.12), 0 26px 52px -20px rgba(87, 60, 52, 0.36);
+
+  --ring: 0 0 0 3px rgba(143, 76, 56, 0.2);
+}
+
+[data-theme='dark'][data-palette='sakura'] {
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%23d8c2bc' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+  --primary: #ffb5a0;
+  --on-primary: #561f0f;
+  --primary-container: #723523;
+  --on-primary-container: #ffdbd1;
+  --surface: #1a1110;
+  --on-surface: #f1dfda;
+  --on-surface-variant: #d8c2bc;
+  --outline: #a08c87;
+  --outline-variant: #53433f;
+  --surface-lowest: #140c0b;
+  --surface-low: #231917;
+  --surface-container: #271d1b;
+  --surface-high: #322825;
+  --surface-highest: #3d3230;
+  --inverse-surface: #f1dfda;
+  --inverse-on-surface: #392e2b;
+  --inverse-primary: #8f4c38;
+
+  --wash-1: rgba(255, 181, 160, 0.07);
+  --wash-2: rgba(216, 197, 141, 0.05);
+
+  --border-strong: #62504b;
+  --border-accent: #7d5445;
+
+  --accent-soft: rgba(255, 181, 160, 0.12);
+  --accent-glow: rgba(255, 181, 160, 0.26);
+  --accent-face: linear-gradient(180deg, #ffb5a0, #eb9c86);
+  --accent-face-hover: linear-gradient(180deg, #ffc6b4, #f7a893);
+  --accent-face-off: #4a332c;
+  --accent-ink-off: #97817a;
+
+  --scrim: rgba(10, 6, 5, 0.7);
+  --brand-face: linear-gradient(150deg, #ffb5a0, #c97b62);
+  --mark-1: #c97b62;
+  --mark-2: #7d402e;
+  --selection: rgba(255, 181, 160, 0.28);
+  --on-selection: #ffede8;
+
+  --term-selection: #5d4037;
+  --term-black: #7c6a65;
+  --term-bright-black: #a08c87;
+
+  --shell-bg: #0b1219;
+  --shell-fg: #c3cedb;
+  --shell-cursor: #6fb3d2;
+  --shell-selection: #1d3a4e;
+  --shell-edge: #23313d;
+  --shell-accent: #7cc0de;
+
+  --ring: 0 0 0 3px rgba(255, 181, 160, 0.24);
+}
+
 /* 松绿 — seed #63A002 */
 [data-theme='light'][data-palette='green'] {
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%2344483d' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
@@ -503,6 +628,15 @@
   --shadow-lg: 0 4px 10px rgba(72, 87, 52, 0.12), 0 26px 52px -20px rgba(72, 87, 52, 0.36);
 
   --ring: 0 0 0 3px rgba(76, 102, 43, 0.2);
+
+  /* Inherited from :root until 苔石 took the default and moved the shell off
+     the slate. Verbatim the values 松绿 has always rendered. */
+  --shell-bg: #101820;
+  --shell-fg: #cfd8e3;
+  --shell-cursor: #6fb3d2;
+  --shell-selection: #24455c;
+  --shell-edge: #2b3b4a;
+  --shell-accent: #6fb3d2;
 }
 
 [data-theme='dark'][data-palette='green'] {
@@ -550,6 +684,14 @@
   --term-bright-black: #8f9285;
 
   --ring: 0 0 0 3px rgba(177, 209, 138, 0.24);
+
+  /* See the light block. */
+  --shell-bg: #0b1219;
+  --shell-fg: #c3cedb;
+  --shell-cursor: #6fb3d2;
+  --shell-selection: #1d3a4e;
+  --shell-edge: #23313d;
+  --shell-accent: #7cc0de;
 }
 
 /* 杏黄 — seed #FFDE3F */
@@ -602,6 +744,15 @@
   --shadow-lg: 0 4px 10px rgba(87, 81, 52, 0.12), 0 26px 52px -20px rgba(87, 81, 52, 0.36);
 
   --ring: 0 0 0 3px rgba(109, 94, 15, 0.2);
+
+  /* Inherited from :root until 苔石 took the default and moved the shell off
+     the slate. Verbatim the values 杏黄 has always rendered. */
+  --shell-bg: #101820;
+  --shell-fg: #cfd8e3;
+  --shell-cursor: #6fb3d2;
+  --shell-selection: #24455c;
+  --shell-edge: #2b3b4a;
+  --shell-accent: #6fb3d2;
 }
 
 [data-theme='dark'][data-palette='yellow'] {
@@ -649,6 +800,14 @@
   --term-bright-black: #969080;
 
   --ring: 0 0 0 3px rgba(219, 198, 110, 0.24);
+
+  /* See the light block. */
+  --shell-bg: #0b1219;
+  --shell-fg: #c3cedb;
+  --shell-cursor: #6fb3d2;
+  --shell-selection: #1d3a4e;
+  --shell-edge: #23313d;
+  --shell-accent: #7cc0de;
 }
 
 /* 碧蓝 — seed #769CDF */
