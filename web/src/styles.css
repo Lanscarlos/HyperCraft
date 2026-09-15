@@ -5901,6 +5901,15 @@ details[open]::details-content {
   flex-wrap: wrap;
 }
 
+/* A head whose title is drawn by the breadcrumb instead is one row: the page's
+   facts on the left, its actions on the right, centred against each other.
+   .page__heading's column gap and the head's top alignment are both there to
+   stack a title over a lead, and neither has anything to do when the title is
+   not painted. */
+.page__head--bare {
+  align-items: center;
+}
+
 /* The title column, and only it: the actions beside it are a row of their
    own (see .page__actions) and must not inherit the column direction or the
    280px floor, which is how two buttons once ended up stacked in a box a third

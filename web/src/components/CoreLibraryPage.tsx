@@ -180,6 +180,11 @@ export function CoreLibraryPage({
   return (
     <Page
       wide
+      // The top bar's trail already ends on 服务端核心 in bold. Saying it again
+      // at 23px directly underneath cost about ninety pixels of the first
+      // screen and two rows that neither of them filled. The h1 stays for the
+      // outline and the screen reader; it just is not painted twice.
+      titleHidden
       title="服务端核心"
       facts={
         <>

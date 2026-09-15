@@ -16,6 +16,16 @@ interface HeadProps {
   actions?: ReactNode
   /** Anything above the title. A back link, mostly. */
   above?: ReactNode
+  /**
+   * The title is already on screen — the top bar's breadcrumb ends on this
+   * page's name — so the heading is kept for the document outline and for a
+   * screen reader, and gives its row back to the page. What is left of the
+   * head is one line: the page's facts on the left, its actions on the right.
+   *
+   * Only for a page you reach through a breadcrumb that names it. Set it
+   * anywhere else and the page has no visible title at all.
+   */
+  titleHidden?: boolean
   /** @deprecated The old free-form right half. Every caller is moving to
    *  `facts` + `actions`; this slot goes away when the last one has. */
   aside?: ReactNode
@@ -51,13 +61,22 @@ interface Props extends HeadProps {
  * as they are, they looked like eight panels by eight authors. One head, in
  * the same place every other page in the panel keeps it, is the fix.
  */
-export function PageHead({ title, count, lead, facts, actions, above, aside }: HeadProps) {
+export function PageHead({
+  title,
+  count,
+  lead,
+  facts,
+  actions,
+  above,
+  aside,
+  titleHidden,
+}: HeadProps) {
   return (
-    <header className="page__head">
+    <header className={`page__head${titleHidden ? ' page__head--bare' : ''}`}>
       <div className="page__heading">
         {above}
         {title !== undefined && (
-          <h1>
+          <h1 className={titleHidden ? 'sr-only' : undefined}>
             {title}
             {count !== undefined && <span className="page__count">{count}</span>}
           </h1>
@@ -88,6 +107,7 @@ export function Page({
   actions,
   above,
   aside,
+  titleHidden,
   wide,
   full,
   children,
@@ -107,6 +127,7 @@ export function Page({
           actions={actions}
           above={above}
           aside={aside}
+          titleHidden={titleHidden}
         />
       )}
       {children}
