@@ -17322,11 +17322,38 @@ select.input-slim option {
   gap: 2px;
 }
 
+/* The version families — 26.1.x, 1.21.x. They are labels for the rows beneath
+   them, and they were one pixel of type size, one step of grey and 0.04em of
+   tracking away from being rows: same left edge, same weight, sitting in a
+   column of things that are all clickable. People clicked them.
+
+   Nothing here ever said "button" — the problem is that nothing said "not one"
+   either, and in a list of buttons that is the same thing. So it takes the
+   label treatment the rest of this dialog uses for 1 · 2 · 3 (smaller, bolder,
+   tracked out) and a rule running to the end of the row, which is a thing no
+   version ever has. */
 .addcore__grouphead {
-  padding: 6px 8px 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px 5px;
   color: var(--text-faint);
-  font-size: 11px;
-  letter-spacing: 0.04em;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.addcore__grouphead::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Air between families, none above the first — that one opens the list and has
+   the filter box above it already. Adds to the list's own 2px. */
+.addcore__group + .addcore__group {
+  margin-top: 10px;
 }
 
 .vrow {
