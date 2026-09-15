@@ -83,10 +83,14 @@ export function CoreLibraryPage({
   /** 所有实例, narrowed to one name when there is exactly one to look at. */
   onOpenInstances: (query: string) => void
 }) {
-  // Which tile the dialog opens on. 上传 jar is the same dialog arriving one
-  // card to the right, rather than a second dialog with its own copy of the
-  // metadata form.
-  const [adding, setAdding] = useState<'catalogue' | 'upload' | null>(null)
+  // Open, or not. There used to be a second value for "open on the upload
+  // tile", behind a 上传 jar button that stood in the page head and again in
+  // the empty state — three doors into one room, counting the tile itself,
+  // for a page whose own footnote tells you the way in is
+  // 「添加核心 → 上传自定义 jar」. The dialog's tile row is where a core comes
+  // from; that is the one place, and 插件列表 settled the same argument the
+  // same way (see the Menu in PluginLibraryPage).
+  const [adding, setAdding] = useState(false)
   const [query, setQuery] = useState('')
   const [segment, setSegment] = useState<Segment>('all')
   const [sort, setSort] = useState<Sort>('recent')
@@ -94,6 +98,11 @@ export function CoreLibraryPage({
   const { job, downloading, busy } = cores
   const stored = cores.cores
   const total = stored.reduce((sum, core) => sum + core.size, 0)
+  /** The empty state is on screen, so it owns the way in and the head lets go
+   *  of it. Two 添加核心 a hand apart, both opening the same dialog, is the
+   *  same duplication the 上传 jar pair was — one entrance means one, not one
+   *  per region that could plausibly hold it. */
+  const bare = stored.length === 0 && !downloading
   const idle = stored.filter((core) => core.usedBy.length === 0)
 
   const counts = useMemo(
@@ -198,23 +207,24 @@ export function CoreLibraryPage({
       }
       actions={
         <>
-          {downloading ? (
+          {/* 取消下载 is the only other thing this head ever offers, and it is
+              genuinely a different action rather than a second way in. */}
+          {downloading && (
             <Button variant="danger" type="button" onClick={() => void cores.cancel()} disabled={busy}>
               取消下载
             </Button>
-          ) : (
-            <Button type="button" onClick={() => setAdding('upload')}>
-              上传 jar
-            </Button>
           )}
-          {/* Not the filled one. check-ui's rulePrimaryButtons says the screen's
+          {/* Never filled. check-ui's rulePrimaryButtons says the screen's
               single filled button is "what the screen is asking for right
               now" — an empty state's call to action, not the standing entrance
               in a page head. On a shelf with cores on it nothing is being
-              asked, so nothing here is filled. */}
-          <Button type="button" onClick={() => setAdding('catalogue')}>
-            添加核心
-          </Button>
+              asked, so nothing here is filled; on an empty one the entrance
+              is not here at all. */}
+          {!bare && (
+            <Button type="button" onClick={() => setAdding(true)}>
+              添加核心
+            </Button>
+          )}
         </>
       }
     >
@@ -282,23 +292,18 @@ export function CoreLibraryPage({
             total={job.total}
           />
         )}
-        {stored.length === 0 && !downloading ? (
+        {bare ? (
           <EmptyState
             inline
             title="还没有任何核心"
             action={
-              <>
-                <Button variant="primary" type="button" onClick={() => setAdding('catalogue')}>
-                  添加核心
-                </Button>
-                <Button type="button" onClick={() => setAdding('upload')}>
-                  上传 jar
-                </Button>
-              </>
+              <Button variant="primary" type="button" onClick={() => setAdding(true)}>
+                添加核心
+              </Button>
             }
           >
-            下载一个 Paper 或 Velocity，或者把自己的 jar（Forge、Fabric、整合包自带的服务端）上传进来。
-            核心下好之后，新建实例时选它就行。
+            下载一个 Paper 或 Velocity，或者把自己的 jar（Forge、Fabric、整合包自带的服务端）上传进来 ——
+            两条路都在「添加核心」里。核心下好之后，新建实例时选它就行。
           </EmptyState>
         ) : shown.length === 0 ? (
           <DataTableEmpty>没有符合条件的核心。</DataTableEmpty>
@@ -330,16 +335,15 @@ export function CoreLibraryPage({
         </ResourceHint>
       </div>
 
-      {adding !== null && (
+      {adding && (
         <AddCoreDialog
           java={java}
           busy={busy}
-          upload={adding === 'upload'}
-          onClose={() => setAdding(null)}
+          onClose={() => setAdding(false)}
           onDownload={(project, version, build) => cores.download(project, version, build)}
           onUploaded={() => void cores.refresh()}
           onOpenJava={(major) => {
-            setAdding(null)
+            setAdding(false)
             onOpenJava(major)
           }}
         />

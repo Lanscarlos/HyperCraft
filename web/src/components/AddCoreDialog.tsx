@@ -47,7 +47,6 @@ const BUILD_ROWS = 3
 export function AddCoreDialog({
   java,
   busy,
-  upload,
   onClose,
   onDownload,
   onUploaded,
@@ -56,10 +55,6 @@ export function AddCoreDialog({
   java: JavaController
   /** True while the shelf has a request of its own in flight. */
   busy: boolean
-  /** Opens straight on the upload tile, for the 上传 jar button in the page
-   *  head. It is the same dialog either way — a second one would be a second
-   *  place for the metadata form to drift. */
-  upload?: boolean
   onClose: () => void
   onDownload: (project: string, version: string, build: number) => Promise<void>
   onUploaded: () => void
@@ -67,7 +62,7 @@ export function AddCoreDialog({
   onOpenJava: (major: number) => void
 }) {
   const [projects, setProjects] = useState<CoreProject[]>([])
-  const [picked, setPicked] = useState(upload ? UPLOAD : '')
+  const [picked, setPicked] = useState('')
   const [versions, setVersions] = useState<CoreVersion[]>([])
   const [versionId, setVersionId] = useState('')
   const [builds, setBuilds] = useState<CoreBuild[] | null>(null)
@@ -84,11 +79,15 @@ export function AddCoreDialog({
       .then((list) => {
         if (!live) return
         setProjects(list)
-        // Only when nothing is picked yet: arriving on the upload tile is a
-        // choice the caller made, and the catalogue landing a moment later
-        // must not take it back.
+        // Only when nothing is picked yet. Nothing can pre-pick a tile any
+        // more, but a hand is faster than a slow catalogue: click 上传自定义
+        // jar while this is still in flight and the list must not land on top
+        // of that choice.
         setPicked((current) => current || list[0]?.id || UPLOAD)
       })
+      // No catalogue, no tiles — but the jar on the operator's disk is still
+      // a way in, so the dialog falls back to the one pane that needs no
+      // upstream at all.
       .catch(() => live && setPicked(UPLOAD))
     return () => {
       live = false
