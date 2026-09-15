@@ -11,9 +11,21 @@
 // positive.
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const SRC = new URL('../src/', import.meta.url).pathname
+// fileURLToPath, not .pathname: on Windows the latter yields `/E:/...`, and the
+// leading slash turns every join below into a path relative to the drive root.
+const SRC = fileURLToPath(new URL('../src/', import.meta.url))
 const CSS = path.join(SRC, 'styles.css')
+
+/**
+ * A source path relative to SRC, always with `/` separators. The exemption
+ * lists below are keyed that way, and on Windows path.relative hands back
+ * backslashes — which match none of them, so every owner file gets reported.
+ */
+function relPath(file) {
+  return path.relative(SRC, file).split(path.sep).join('/')
+}
 
 /** Every class name that appears anywhere in a selector. */
 function definedClasses() {
@@ -42,7 +54,7 @@ function usedClasses() {
         if (!/^[a-z][\w-]*$/.test(token)) continue
         if (!token.includes('__') && !token.includes('--')) continue
         if (!out.has(token)) out.set(token, new Set())
-        out.get(token).add(path.relative(SRC, file))
+        out.get(token).add(relPath(file))
       }
     }
   }
@@ -125,7 +137,7 @@ function ruleIconButtonsAreLabelled() {
       const tag = src.slice(at, end + 1)
       if (!/(^|\s)icon(\s|=|\/|>)/.test(tag)) continue
       if (tag.includes('aria-label')) continue
-      problems.push(`图标按钮缺 aria-label  ←  ${path.relative(SRC, file)}`)
+      problems.push(`图标按钮缺 aria-label  ←  ${relPath(file)}`)
     }
   }
 }
@@ -199,7 +211,7 @@ const SECTION_ONLY = ['panel--form', 'panel__head', 'panel__heading', 'panel__bo
 
 function ruleSectionsAreComponents() {
   for (const file of tsxFiles(SRC)) {
-    const rel = path.relative(SRC, file)
+    const rel = relPath(file)
     if (rel === 'components/Section.tsx') continue
     const src = withoutComments(fs.readFileSync(file, 'utf8'))
     for (const cls of SECTION_ONLY) {
@@ -220,7 +232,7 @@ const EMPTY_ONLY = ['empty__title', 'empty__note', 'empty__actions', 'empty--inl
 
 function ruleEmptyStatesAreComponents() {
   for (const file of tsxFiles(SRC)) {
-    const rel = path.relative(SRC, file)
+    const rel = relPath(file)
     if (rel === 'components/EmptyState.tsx') continue
     const src = withoutComments(fs.readFileSync(file, 'utf8'))
     for (const cls of EMPTY_ONLY) {
@@ -264,7 +276,7 @@ function withoutComments(src) {
 
 function ruleDropdownsAreOurs() {
   for (const file of tsxFiles(SRC)) {
-    const rel = path.relative(SRC, file)
+    const rel = relPath(file)
     if (DROPDOWN_EXEMPT.has(rel)) continue
     const src = withoutComments(fs.readFileSync(file, 'utf8'))
     for (const [tag, hint] of [
@@ -293,7 +305,7 @@ function ruleDropdownsAreOurs() {
  *  reason. Badge.tsx itself is where the strings are supposed to be. */
 function ruleBadgesAreComponents() {
   for (const file of tsxFiles(SRC)) {
-    const rel = path.relative(SRC, file)
+    const rel = relPath(file)
     if (rel === 'components/Badge.tsx') continue
     const src = withoutComments(fs.readFileSync(file, 'utf8'))
     for (const m of src.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
@@ -331,7 +343,7 @@ function ruleBadgesAreComponents() {
  *  costs more than the rule is worth. It lives in docs/design-system.md. */
 function ruleMessageSurfaces() {
   for (const file of tsxFiles(SRC)) {
-    const rel = path.relative(SRC, file)
+    const rel = relPath(file)
     const src = withoutComments(fs.readFileSync(file, 'utf8'))
     for (const m of src.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
       // Interpolations out first, so `alert--${level}` still reads as a
@@ -391,7 +403,7 @@ const PRIMARY_ALLOWED = new Map([
  *  main path. */
 function rulePrimaryButtons() {
   for (const file of tsxFiles(SRC)) {
-    const rel = path.relative(SRC, file)
+    const rel = relPath(file)
     const n = (withoutComments(fs.readFileSync(file, 'utf8')).match(/variant="primary"/g) ?? [])
       .length
     const [allowed, why] = PRIMARY_ALLOWED.get(rel) ?? [1, '']
