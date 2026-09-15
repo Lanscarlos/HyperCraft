@@ -8,7 +8,7 @@
          rather than one per mode: the page colour is a mode *and* a 配色 now,
          and a media query only knows about the first half. The script below
          sets it before first paint and theme.ts keeps it in step after. -->
-    <meta name="theme-color" content="#fff8f6" />
+    <meta name="theme-color" content="#f5f6f8" />
     <meta name="description" content="HyperCraft —— 自托管的 Minecraft 服务器面板" />
     <!-- The same cube as components/Logo.tsx and docs/images/logo.svg. Inline so
          it travels inside the single binary with everything else, and with the
@@ -22,7 +22,7 @@
          the artwork and not one of two. -->
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3ClinearGradient id='f' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23c97b62'/%3E%3Cstop offset='1' stop-color='%237d402e'/%3E%3C/linearGradient%3E%3Crect width='64' height='64' rx='16' fill='url(%23f)'/%3E%3Cg fill='%23fff'%3E%3Cpolygon points='32,13 46,21 32,29 18,21' opacity='.96'/%3E%3Cpolygon points='18,21 32,29 32,45 18,37' opacity='.72'/%3E%3Cpolygon points='46,21 32,29 32,45 46,37' opacity='.52'/%3E%3C/g%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3ClinearGradient id='f' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2335c48d'/%3E%3Cstop offset='1' stop-color='%230a5f41'/%3E%3C/linearGradient%3E%3Crect width='64' height='64' rx='16' fill='url(%23f)'/%3E%3Cg fill='%23fff'%3E%3Cpolygon points='32,13 46,21 32,29 18,21' opacity='.96'/%3E%3Cpolygon points='18,21 32,29 32,45 18,37' opacity='.72'/%3E%3Cpolygon points='46,21 32,29 32,45 46,37' opacity='.52'/%3E%3C/g%3E%3C/svg%3E"
     />
     <title>HyperCraft 面板</title>
     <!-- Mode is resolved before the first paint rather than in React, so a
@@ -48,9 +48,10 @@
         // The page colour of each scheme is duplicated here as the one thing
         // that has to be known before the stylesheet exists — it paints the
         // document behind the app and the browser's own chrome, and both are
-        // visible in the frame before the CSS arrives. Eight values, kept in
+        // visible in the frame before the CSS arrives. Ten values, kept in
         // step with the token blocks in styles.css by hand.
         var page = {
+          stone: ['#f5f6f8', '#121417'],
           sakura: ['#fff8f6', '#1a1110'],
           green: ['#f9faef', '#12140e'],
           yellow: ['#fff9ee', '#15130b'],
@@ -65,8 +66,8 @@
         // hasOwnProperty rather than a truthiness test: a hand-edited key of
         // "constructor" is a real value on every object literal, and it would
         // get written onto <html> as a scheme no stylesheet answers to.
-        if (!Object.prototype.hasOwnProperty.call(page, palette)) palette = 'sakura'
-        if (palette !== 'sakura') document.documentElement.dataset.palette = palette
+        if (!Object.prototype.hasOwnProperty.call(page, palette)) palette = 'stone'
+        if (palette !== 'stone') document.documentElement.dataset.palette = palette
 
         var bg = page[palette][dark ? 1 : 0]
         document.documentElement.style.background = bg
