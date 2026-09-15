@@ -325,7 +325,12 @@ export function PathPicker({
 function parentDirectoryOf(path: string): string {
   const trimmed = path.trim()
   const cut = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
-  return cut > 0 ? trimmed.slice(0, cut) : trimmed
+  if (cut > 0) return trimmed.slice(0, cut)
+  // A separator at index 0 means the file sits at the filesystem root, whose
+  // own name is that separator — slicing it off would leave "" and start the
+  // picker at the panel's servers directory instead.
+  if (cut === 0) return trimmed.slice(0, 1)
+  return trimmed
 }
 
 /**

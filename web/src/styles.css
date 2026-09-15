@@ -12577,8 +12577,14 @@ button.rows__name:hover strong {
 }
 
 /* The file picked in file mode. The accent edge is what .row--pick uses for the
-   same job, so a picked row reads the same way wherever it turns up. */
-.picker__row--on {
+   same job, so a picked row reads the same way wherever it turns up.
+
+   :hover is listed too, and not for emphasis: .picker__row:hover carries a
+   pseudo-class and so outranks a lone modifier class, which would leave the
+   picked row losing its tint under the pointer — exactly when you are checking
+   what is picked. */
+.picker__row--on,
+.picker__row--on:hover {
   background: var(--accent-soft);
   box-shadow: inset 2px 0 0 var(--accent);
 }
