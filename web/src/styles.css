@@ -6179,6 +6179,26 @@ details[open]::details-content {
   font-size: 12px;
 }
 
+/* The inline form standing in for a table's rows rather than a form's fields.
+   It takes the row padding the table's own rows have, so the sentence starts
+   under the first column's heading instead of against the frame — and enough
+   height that the frame does not collapse to a header with a caption stuck to
+   the bottom of it. Bigger type than the form variant, because here it is the
+   only thing in the card and it is the page's first instruction, not a note
+   under something else. */
+.dtable > .empty--inline {
+  padding: 26px 16px 28px;
+}
+
+.dtable > .empty--inline .empty__title {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.dtable > .empty--inline .empty__note {
+  font-size: 13px;
+}
+
 /* ----------------------------------------------------------------- rowlist
 
    Rows inside a card: an account, a paired device, a token, an index source,
