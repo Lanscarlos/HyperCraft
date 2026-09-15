@@ -12604,19 +12604,24 @@ button.rows__name:hover strong {
   gap: 6px;
 }
 
+/* Wraps rather than squeezing: on a phone the card is ~300px inside its
+   padding, and a name box crushed to 40px is not a name box. Both flexible
+   items carry a basis wide enough to be worth reading, so whichever does not
+   fit drops to its own line on its own — no breakpoint needed. */
 .picker__fav {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .picker__fav > .input-slim {
-  flex: 0 1 180px;
+  flex: 1 1 160px;
   min-width: 0;
 }
 
 .picker__favpath {
-  flex: 1;
+  flex: 1 1 140px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
