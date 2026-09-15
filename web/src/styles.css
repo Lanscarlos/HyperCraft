@@ -6188,15 +6188,21 @@ details[open]::details-content {
   font-size: 12px;
 }
 
-/* The inline form standing in for a table's rows rather than a form's fields.
-   It takes the row padding the table's own rows have, so the sentence starts
-   under the first column's heading instead of against the frame — and enough
-   height that the frame does not collapse to a header with a caption stuck to
-   the bottom of it. Bigger type than the form variant, because here it is the
-   only thing in the card and it is the page's first instruction, not a note
-   under something else. */
+/* The inline form standing in for a table's rows rather than a form's fields,
+   which is where the variant's left alignment stops applying. That rule is
+   written for a column of fields hanging off the left edge; here the thing
+   being stood in for is the whole row area, and .dtable__empty — the one-line
+   "nothing matched" that occupies this exact slot — has always centred. Two
+   absences in the same box, one ranged left and one centred, is the panel
+   disagreeing with itself about what an empty table looks like.
+
+   Bigger type than the form variant too, because here it is the only thing in
+   the card and it is the page's first instruction, not a note under something
+   else. */
 .dtable > .empty--inline {
-  padding: 26px 16px 28px;
+  align-items: center;
+  padding: 30px 16px 32px;
+  text-align: center;
 }
 
 .dtable > .empty--inline .empty__title {
