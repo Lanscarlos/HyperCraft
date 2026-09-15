@@ -287,8 +287,21 @@ export function AddCoreDialog({
                                 onClick={() => setVersionId(item.id)}
                               >
                                 <span className="vrow__id">{item.id}</span>
+                                {/* 最新 marks the one row worth marking. 旧 used
+                                    to sit on every version upstream had stopped
+                                    supporting, which on a list that runs back
+                                    through 1.21.x is most of them — a badge
+                                    that is on almost every row has stopped
+                                    telling anyone anything, and it was the
+                                    loudest thing in a column of quiet numbers.
+                                    The list is newest-first, so which end is
+                                    old is already on screen.
+
+                                    预览 stays: a snapshot is not "older", it is
+                                    a different kind of build, and it only
+                                    appears at all once the switch above asks
+                                    for them. */}
                                 {group.newest && index === 0 && <Badge tone="ok">最新</Badge>}
-                                {item.support === 'UNSUPPORTED' && <Badge tone="muted">旧</Badge>}
                                 {!item.stable && <Badge tone="warn">预览</Badge>}
                               </button>
                             ))}
