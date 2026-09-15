@@ -28,6 +28,7 @@ import type {
   EulaStatus,
   HostInspection,
   HostListing,
+  HostShortcut,
   JavaMajor,
   JavaOverview,
   JavaInstallJob,
@@ -642,6 +643,24 @@ export const api = {
    *  worlds, and whether an instance already owns it. */
   inspectHost: (dir: string) =>
     request<HostInspection>('GET', `/api/fs/inspect?path=${encodeURIComponent(dir)}`),
+
+  /** Pins a directory in the picker. An empty label means "name it after the
+   *  directory", which is what clicking 收藏 without typing anything sends. */
+  addHostShortcut: (path: string, label = '') =>
+    request<{ shortcuts: HostShortcut[] }>('POST', '/api/fs/shortcuts', { path, label }),
+  /** Retitles a pinned directory. The label is the only thing that can change:
+   *  the id follows the path, so a moved shortcut is a different shortcut. */
+  renameHostShortcut: (id: string, label: string) =>
+    request<{ shortcuts: HostShortcut[] }>(
+      'PUT',
+      `/api/fs/shortcuts/${encodeURIComponent(id)}`,
+      { label },
+    ),
+  removeHostShortcut: (id: string) =>
+    request<{ shortcuts: HostShortcut[] }>(
+      'DELETE',
+      `/api/fs/shortcuts/${encodeURIComponent(id)}`,
+    ),
 
   javaOverview: () => request<JavaOverview>('GET', '/api/java'),
   javaMajors: (distribution: string) =>

@@ -11,6 +11,7 @@ import { Button } from './Button'
 import { EmptyState } from './EmptyState'
 import { Note } from './Note'
 import { Page } from './Page'
+import { PathPicker } from './PathPicker'
 import { Section } from './Section'
 import { Select } from './Select'
 import { Shelf } from './Shelf'
@@ -73,6 +74,7 @@ export function JavaPage({
   // this page is mostly opened to install one or to read what is there.
   const [adding, setAdding] = useState(false)
   const [newPath, setNewPath] = useState('')
+  const [browsing, setBrowsing] = useState(false)
   const [major, setMajor] = useState<number | null>(null)
   const [imageType, setImageType] = useState<'jre' | 'jdk'>('jre')
   const [showAllMajors, setShowAllMajors] = useState(false)
@@ -273,6 +275,9 @@ export function JavaPage({
               placeholder="/usr/lib/jvm/java-21-openjdk/bin/java"
               onChange={(e) => setNewPath(e.target.value)}
             />
+            <Button type="button" onClick={() => setBrowsing(true)}>
+              浏览…
+            </Button>
             <Button type="submit" disabled={busy || newPath.trim() === ''}>
               登记
             </Button>
@@ -280,6 +285,20 @@ export function JavaPage({
               填 java 可执行文件本身，不是它所在的目录。面板会跑一次{' '}
               <code>java -version</code> 问出版本再记下来——问不出来的不会被登记。
             </p>
+
+            {browsing && (
+              <PathPicker
+                mode="file"
+                title="选择 java 可执行文件"
+                lead="进到 JDK 的 bin 目录，选里面的 java（Windows 上是 java.exe）。"
+                initialPath={newPath.trim()}
+                onCancel={() => setBrowsing(false)}
+                onPick={(file) => {
+                  setNewPath(file)
+                  setBrowsing(false)
+                }}
+              />
+            )}
           </form>
         )}
 

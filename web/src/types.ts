@@ -1929,6 +1929,13 @@ export interface HostEntry {
 export interface HostShortcut {
   label: string
   path: string
+  /** Set only on the operator's own shortcuts; derived from the path, so it
+   *  survives a rename. */
+  id?: string
+  /** The operator's own, which is the only kind that can be renamed or
+   *  removed — the panel's directories and the filesystem roots are not
+   *  theirs to retitle. */
+  custom?: boolean
 }
 
 /** One directory on the machine the panel runs on, for the path picker. */
