@@ -12601,7 +12601,10 @@ button.rows__name:hover strong {
 .picker__favs {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  /* Wider than .picker__fav's row-gap below, and that ordering is the point:
+     once a row wraps on a phone, an item's own two lines have to sit closer
+     together than two items do, or the grouping reads backwards. */
+  gap: 10px;
 }
 
 /* Wraps rather than squeezing: on a phone the card is ~300px inside its
@@ -12611,7 +12614,8 @@ button.rows__name:hover strong {
 .picker__fav {
   display: flex;
   align-items: center;
-  gap: 8px;
+  column-gap: 8px;
+  row-gap: 4px;
   flex-wrap: wrap;
 }
 
