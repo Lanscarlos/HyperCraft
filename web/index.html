@@ -76,12 +76,12 @@
 
         // The pixel face, resolved here for the same reason: it changes the
         // metrics of every line on the page, so deciding it after the bundle
-        // loads means watching the whole panel re-typeset itself. On is the
+        // loads means watching the whole panel re-typeset itself. Off is the
         // default and is stored as no key at all; the key and that rule match
         // pixelfont.ts.
-        var pixel = true
+        var pixel = false
         try {
-          pixel = localStorage.getItem('hypercraft.pixelfont') !== 'off'
+          pixel = localStorage.getItem('hypercraft.pixelfont') === 'on'
         } catch (e) {
           /* storage disabled; the default stands */
         }

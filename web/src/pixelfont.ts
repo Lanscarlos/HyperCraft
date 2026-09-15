@@ -7,11 +7,19 @@
  * one face and then swaps to the other. Everything visual is in styles.css —
  * this module only decides whether `data-pixel-font` is there.
  *
- * On is the default, and it is stored as the *absence* of a key. That is the
+ * Off is the default, and it is stored as the *absence* of a key. That is the
  * same trick theme.ts uses for 跟随系统: the stored value only ever means "I
- * went out of my way to turn this off", so nobody who has never opened the
+ * went out of my way to turn this on", so nobody who has never opened the
  * setting is pinned to whatever the default happened to be the day they first
  * loaded the panel.
+ *
+ * It shipped defaulting to on and was turned around, because the face is a
+ * display face doing a body face's job. Set as running prose it loses the
+ * rhythm a sentence is read by — every glyph advances by the same cell, so
+ * there is no word shape left to skim — and most of this panel's prose is CJK,
+ * which Monocraft has no glyphs for at all and which falls through to Fusion
+ * Pixel. The mark and the numbers are where it earns its place, and those are
+ * still there for anyone who switches it back on.
  *
  * The two terminal canvases are deliberately outside all of this. They take
  * their font from constants in Console.tsx and HostTerminal.tsx, not from CSS,
@@ -29,12 +37,12 @@ const STORAGE_KEY = 'hypercraft.pixelfont'
 
 export function readPref(): PixelFontPref {
   try {
-    // Anything that is not the explicit opt-out reads as on, including a value
-    // left behind by an older or newer build.
-    return window.localStorage.getItem(STORAGE_KEY) === 'off' ? 'off' : 'on'
+    // Anything that is not the explicit opt-in reads as off, including the
+    // 'off' an older build wrote to mean the same thing it means now.
+    return window.localStorage.getItem(STORAGE_KEY) === 'on' ? 'on' : 'off'
   } catch {
-    // Private mode, or storage disabled by policy. The default is still on.
-    return 'on'
+    // Private mode, or storage disabled by policy. The default is still off.
+    return 'off'
   }
 }
 
@@ -46,8 +54,8 @@ export function current(): PixelFontPref {
 
 export function applyPref(pref: PixelFontPref): void {
   try {
-    if (pref === 'on') window.localStorage.removeItem(STORAGE_KEY)
-    else window.localStorage.setItem(STORAGE_KEY, 'off')
+    if (pref === 'off') window.localStorage.removeItem(STORAGE_KEY)
+    else window.localStorage.setItem(STORAGE_KEY, 'on')
   } catch {
     /* nothing to remember it with; the session still switches */
   }

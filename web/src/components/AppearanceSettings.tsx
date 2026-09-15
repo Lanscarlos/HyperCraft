@@ -15,13 +15,13 @@ import { Section } from './Section'
  * 外观 — the switches that decide what the panel looks like.
  *
  * It is a settings page rather than a glyph next to the mode toggle in the
- * sidebar footer, and the reason is who needs it: the person reaching for this
- * is the person who finds the pixel face hard to read, and asking them to
- * recognise an unlabelled 18px icon would be a joke at their expense. 面板设置
- * is where this panel keeps the switches you flip once and forget, which is
- * exactly what this is.
+ * sidebar footer, and the reason is who needs it: the pixel face is off out of
+ * the box now, so the person reaching for this is the person who came looking
+ * for it, and an unlabelled 18px icon is not something you go looking for.
+ * 面板设置 is where this panel keeps the switches you flip once and forget,
+ * which is exactly what this is.
  *
- * 配色 is here for the same test and one more. It is picked once; it needs four
+ * 配色 is here for the same test and one more. It is picked once; it needs five
  * labels a cycling glyph has no room for; and a colour is the one setting that
  * can show itself, which the swatches do — each one is painted by the scheme's
  * own tokens rather than by a copy of them.
