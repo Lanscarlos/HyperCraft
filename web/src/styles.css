@@ -48,10 +48,12 @@
 
 /* ------------------------------------------------------------------ tokens
 
-   Colour is one Material 3 scheme in two modes — 樱花, grown from a warm
-   #8F4C38, the one the panel ships with. Three more schemes sit in the
-   palettes section below and work exactly the same way. These two blocks and
-   those six are the only place a raw hex appears; every rule after them works
+   Colour is one scheme in two modes — 苔石, the one the panel ships with, and
+   the only one of the five not grown from a Material seed: its values come
+   from the panel's own interface design, which is why the roles below are
+   assigned rather than exported. Four more schemes sit in the palettes section
+   below and work exactly the same way. These two blocks and those eight are
+   the only place a raw hex appears; every rule after them works
    in named roles, so a mode is a table of values and nothing else.
    `data-theme` on <html> is always resolved to light or dark before first
    paint (see theme.ts), so dark needs one block, not a media query and an
@@ -59,9 +61,9 @@
 
    Each block answers to a second selector as well, and it is not decoration:
    <html> never carries data-palette for the default (the absence of it *is*
-   the default), so without this the 外观 picker's 樱花 swatch would have no
+   the default), so without this the 外观 picker's 苔石 swatch would have no
    scheme of its own to read and would inherit whichever one is currently on —
-   showing 松绿 while claiming to be 樱花. The default needs a name a swatch
+   showing 松绿 while claiming to be 苔石. The default needs a name a swatch
    can ask for, even though the page itself never uses it.
 
    The M3 roles come first, copied from the scheme. Under them are the working
@@ -72,30 +74,38 @@
    inventing a value. */
 
 :root,
-[data-theme='light'][data-palette='sakura'] {
-  /* --- M3 roles, light ----------------------------------------------
-     Only the roles the panel actually paints with; the scheme's secondary
-     family and the containers nothing reads are left out rather than carried
-     as decoration. */
-  --primary: #8f4c38;
+[data-theme='light'][data-palette='stone'] {
+  /* --- the roles, light ----------------------------------------------
+     苔石. The surfaces are the design's own: a cool neutral page, a plain
+     white card on top of it, and a border a full step harder than an M3
+     outline-variant. That gap is the whole point of this scheme — the four
+     Material schemes all put the page at ~98% lightness against a white card,
+     which is a difference of about two percent, and at two percent a card
+     stops reading as a sheet of paper on a desk. An empty page under those
+     schemes is one flat wash with a dashed box floating in it.
+
+     The accent is the design's green. The button face takes the darker
+     #0b7650 rather than the #12a06c the design labels: white on #12a06c is
+     about 3:1, which is fine for a dot and not fine for a label. */
+  --primary: #0b7650;
   --on-primary: #ffffff;
-  --primary-container: #ffdbd1;
-  --on-primary-container: #723523;
+  --primary-container: #b6e2cf;
+  --on-primary-container: #084e36;
   --error: #ba1a1a;
   --on-error-container: #93000a;
-  --surface: #fff8f6;
-  --on-surface: #231917;
-  --on-surface-variant: #53433f;
-  --outline: #85736e;
-  --outline-variant: #d8c2bc;
+  --surface: #f5f6f8;
+  --on-surface: #161a21;
+  --on-surface-variant: #5a6371;
+  --outline: #6e7686;
+  --outline-variant: #e3e6eb;
   --surface-lowest: #ffffff;
-  --surface-low: #fff1ed;
-  --surface-container: #fceae5;
-  --surface-high: #f7e4e0;
-  --surface-highest: #f1dfda;
-  --inverse-surface: #392e2b;
-  --inverse-on-surface: #ffede8;
-  --inverse-primary: #ffb5a0;
+  --surface-low: #fafbfc;
+  --surface-container: #eef0f3;
+  --surface-high: #e7eaee;
+  --surface-highest: #e0e4e9;
+  --inverse-surface: #262b33;
+  --inverse-on-surface: #eef0f3;
+  --inverse-primary: #7fd9b4;
 
   /* --- semantics the scheme has no role for -------------------------- */
 
@@ -127,12 +137,12 @@
 
   /* Two very faint washes over the page, drawn from the scheme rather than
      from a hue of their own. */
-  --wash-1: rgba(143, 76, 56, 0.05);
-  --wash-2: rgba(108, 93, 47, 0.045);
+  --wash-1: rgba(18, 160, 108, 0.05);
+  --wash-2: rgba(90, 99, 113, 0.045);
 
   --border: var(--outline-variant);
-  --border-strong: #c3aca6;
-  --border-accent: #dfaf9f;
+  --border-strong: #d2d7df;
+  --border-accent: #b6e2cf;
 
   --text: var(--on-surface);
   --text-dim: var(--on-surface-variant);
@@ -143,12 +153,12 @@
      lightens on dark rather than always going one way. */
   --accent-hover: var(--on-primary-container);
   --accent-ink: var(--on-primary);
-  --accent-soft: rgba(143, 76, 56, 0.1);
-  --accent-glow: rgba(143, 76, 56, 0.22);
-  --accent-face: linear-gradient(180deg, #9d5641, #8a4835);
-  --accent-face-hover: linear-gradient(180deg, #ac6149, #96513c);
-  --accent-face-off: #ead7d0;
-  --accent-ink-off: #ab948c;
+  --accent-soft: rgba(18, 160, 108, 0.1);
+  --accent-glow: rgba(18, 160, 108, 0.22);
+  --accent-face: linear-gradient(180deg, #14ab73, #0b7650);
+  --accent-face-hover: linear-gradient(180deg, #17b97d, #0d8a5d);
+  --accent-face-off: #d5e7de;
+  --accent-ink-off: #8aa89a;
 
   --danger: var(--error);
   --danger-hover: var(--on-error-container);
@@ -168,11 +178,11 @@
      is a white sheen, on dark a much fainter one, and neither is a colour a
      rule should have to know. */
   --sheen: rgba(255, 255, 255, 0.6);
-  --sunken: rgba(87, 60, 52, 0.035);
-  --inset: inset 0 1px 2px rgba(87, 60, 52, 0.09);
-  --scrim: rgba(43, 32, 29, 0.44);
+  --sunken: rgba(22, 26, 33, 0.035);
+  --inset: inset 0 1px 2px rgba(22, 26, 33, 0.09);
+  --scrim: rgba(16, 19, 24, 0.44);
   --stripe: rgba(255, 255, 255, 0.24);
-  --brand-face: linear-gradient(150deg, #a85c45, #7d402e);
+  --brand-face: linear-gradient(150deg, #17b97d, #0a5f41);
 
   /* The two stops of the tab icon. It is drawn once in index.html and its
      stops are repainted from these (syncFavicon in theme.ts), because a
@@ -180,8 +190,8 @@
      can reach it. Not folded into --brand-face: a tab strip has no theme to
      follow, so the mark keeps the light gradient in both modes — which is why
      this is the same pair here and in the dark block. */
-  --mark-1: #c97b62;
-  --mark-2: #7d402e;
+  --mark-1: #35c48d;
+  --mark-2: #0a5f41;
   --selection: var(--primary-container);
   --on-selection: var(--on-primary-container);
 
@@ -205,24 +215,30 @@
   --term-bg: var(--inverse-surface);
   --term-fg: var(--inverse-on-surface);
   --term-cursor: var(--inverse-primary);
-  --term-selection: #6b4c42;
-  --term-black: #8a7871;
-  --term-bright-black: #a89791;
+  --term-selection: #34503f;
+  --term-black: #7d8894;
+  --term-bright-black: #9aa4af;
   --term-blue: #8ab4f8;
   --term-bright-blue: #adc9fb;
-  --term-edge: #4a3c38;
+  --term-edge: #3a4048;
 
   /* The host shell gets a canvas of its own, and not for decoration: a shell
      on the whole machine and a Minecraft console are different risk levels,
      and the only thing stopping an operator typing `rm -rf` into the wrong one
-     is that the two do not look alike. Cool slate against the panel's
-     terracotta — no other surface in the panel is this colour. */
-  --shell-bg: #101820;
-  --shell-fg: #cfd8e3;
-  --shell-cursor: #6fb3d2;
-  --shell-selection: #24455c;
-  --shell-edge: #2b3b4a;
-  --shell-accent: #6fb3d2;
+     is that the two do not look alike.
+
+     The other four schemes put the slate here. 苔石 cannot: its own surfaces
+     are cool neutral greys and its dark page sits about where that slate does,
+     so the console and the shell would be a shade apart rather than two
+     different things. Green is already spoken for by the accent, so this one
+     takes deep plum — no other surface in the panel is anywhere near it.
+     碧蓝 had the same collision and solved it the same way. */
+  --shell-bg: #1b1526;
+  --shell-fg: #d6cfe3;
+  --shell-cursor: #a992d8;
+  --shell-selection: #3a2d52;
+  --shell-edge: #362b47;
+  --shell-accent: #a992d8;
 
   --radius-sm: 6px;
   --radius: 9px;
@@ -236,13 +252,15 @@
   --content-max: 880px;
   --content-max-wide: 1440px;
 
-  /* One soft shadow per elevation step, tinted with the scheme's own brown so
-     a card never drops a grey shadow onto a warm page. */
-  --shadow-sm: 0 1px 2px rgba(87, 60, 52, 0.11);
-  --shadow: 0 1px 3px rgba(87, 60, 52, 0.1), 0 8px 22px -12px rgba(87, 60, 52, 0.3);
-  --shadow-lg: 0 4px 10px rgba(87, 60, 52, 0.12), 0 26px 52px -20px rgba(87, 60, 52, 0.36);
+  /* One soft shadow per elevation step, tinted with the scheme's own ink so a
+     card never drops a shadow of a hue the page has nothing to do with. Softer
+     here than in the Material schemes: this page has a real border to separate
+     a card, so the shadow only has to lift it, not draw it. */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 8px 22px -12px rgba(16, 24, 40, 0.22);
+  --shadow-lg: 0 4px 10px rgba(16, 24, 40, 0.08), 0 26px 52px -20px rgba(16, 24, 40, 0.3);
 
-  --ring: 0 0 0 3px rgba(143, 76, 56, 0.2);
+  --ring: 0 0 0 3px rgba(18, 160, 108, 0.2);
   --ring-danger: 0 0 0 3px rgba(186, 26, 26, 0.18);
 
   /* --- motion ---------------------------------------------------------
@@ -296,33 +314,33 @@
      background image rather than a pseudo-element, because a <select> cannot
      carry one reliably — which also means the stroke colour has to be baked
      in, so the token is redefined in the dark block rather than derived. */
-  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%2353433f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%235a6371' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
 }
 
 /* The same scheme's dark mode. Only the values move — no rule below this
    block tests for a mode. */
 :root[data-theme='dark'],
-[data-theme='dark'][data-palette='sakura'] {
-  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%23d8c2bc' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
-  --primary: #ffb5a0;
-  --on-primary: #561f0f;
-  --primary-container: #723523;
-  --on-primary-container: #ffdbd1;
+[data-theme='dark'][data-palette='stone'] {
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%23c2c7d0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+  --primary: #6fdcae;
+  --on-primary: #003824;
+  --primary-container: #005237;
+  --on-primary-container: #8bf8c8;
   --error: #ffb4ab;
   --on-error-container: #ffdad6;
-  --surface: #1a1110;
-  --on-surface: #f1dfda;
-  --on-surface-variant: #d8c2bc;
-  --outline: #a08c87;
-  --outline-variant: #53433f;
-  --surface-lowest: #140c0b;
-  --surface-low: #231917;
-  --surface-container: #271d1b;
-  --surface-high: #322825;
-  --surface-highest: #3d3230;
-  --inverse-surface: #f1dfda;
-  --inverse-on-surface: #392e2b;
-  --inverse-primary: #8f4c38;
+  --surface: #121417;
+  --on-surface: #e0e4e9;
+  --on-surface-variant: #c2c7d0;
+  --outline: #8b929d;
+  --outline-variant: #3c424b;
+  --surface-lowest: #0d0f11;
+  --surface-low: #181b1f;
+  --surface-container: #1c2025;
+  --surface-high: #262b31;
+  --surface-highest: #31363d;
+  --inverse-surface: #e0e4e9;
+  --inverse-on-surface: #2b3036;
+  --inverse-primary: #0b7650;
 
   --ok: #58c58c;
   --ok-ink: #9ddcb8;
@@ -353,18 +371,18 @@
   --surface-3: var(--surface-high);
   --surface-4: var(--surface-highest);
 
-  --wash-1: rgba(255, 181, 160, 0.07);
-  --wash-2: rgba(216, 197, 141, 0.05);
+  --wash-1: rgba(111, 220, 174, 0.07);
+  --wash-2: rgba(138, 160, 190, 0.05);
 
-  --border-strong: #62504b;
-  --border-accent: #7d5445;
+  --border-strong: #4e5661;
+  --border-accent: #3f7a62;
 
-  --accent-soft: rgba(255, 181, 160, 0.12);
-  --accent-glow: rgba(255, 181, 160, 0.26);
-  --accent-face: linear-gradient(180deg, #ffb5a0, #eb9c86);
-  --accent-face-hover: linear-gradient(180deg, #ffc6b4, #f7a893);
-  --accent-face-off: #4a332c;
-  --accent-ink-off: #97817a;
+  --accent-soft: rgba(111, 220, 174, 0.12);
+  --accent-glow: rgba(111, 220, 174, 0.26);
+  --accent-face: linear-gradient(180deg, #6fdcae, #57c397);
+  --accent-face-hover: linear-gradient(180deg, #7ee5ba, #63d0a4);
+  --accent-face-off: #2a3a33;
+  --accent-ink-off: #7d8f86;
 
   --danger-soft: rgba(255, 180, 171, 0.11);
   --danger-face: linear-gradient(180deg, #3a2320, #2e1b19);
@@ -375,37 +393,40 @@
   --sheen: rgba(255, 255, 255, 0.03);
   --sunken: rgba(255, 255, 255, 0.014);
   --inset: inset 0 1px 2px rgba(0, 0, 0, 0.3);
-  --scrim: rgba(10, 6, 5, 0.7);
+  --scrim: rgba(4, 6, 8, 0.7);
   --stripe: rgba(255, 255, 255, 0.16);
-  --brand-face: linear-gradient(150deg, #ffb5a0, #c97b62);
-  --mark-1: #c97b62;
-  --mark-2: #7d402e;
-  --selection: rgba(255, 181, 160, 0.28);
-  --on-selection: #ffede8;
+  --brand-face: linear-gradient(150deg, #6fdcae, #3d8a68);
+  --mark-1: #35c48d;
+  --mark-2: #0a5f41;
+  --selection: rgba(111, 220, 174, 0.28);
+  --on-selection: #e8fff5;
 
   --term-bg: var(--surface-lowest);
   --term-fg: var(--on-surface);
   --term-cursor: var(--primary);
-  --term-selection: #5d4037;
-  --term-black: #7c6a65;
-  --term-bright-black: #a08c87;
+  --term-selection: #2e4a3c;
+  --term-black: #6b7580;
+  --term-bright-black: #8b929d;
   --term-blue: #8ab4f8;
   --term-bright-blue: #adc9fb;
   --term-edge: var(--outline-variant);
 
-  /* Same job in dark mode: cool where everything else is warm. */
-  --shell-bg: #0b1219;
-  --shell-fg: #c3cedb;
-  --shell-cursor: #6fb3d2;
-  --shell-selection: #1d3a4e;
-  --shell-edge: #23313d;
-  --shell-accent: #7cc0de;
+  /* Same job in dark mode, and the collision is sharper here: the console's
+     canvas is --surface-lowest, which under 苔石 is #0d0f11 — the slate the
+     other schemes use for the shell is #0b1219, and those two are not a
+     difference anyone should have to spot before typing rm -rf. */
+  --shell-bg: #150f1f;
+  --shell-fg: #cfc6e0;
+  --shell-cursor: #a992d8;
+  --shell-selection: #33275c;
+  --shell-edge: #2c2340;
+  --shell-accent: #b39fe0;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.42);
   --shadow: 0 2px 4px rgba(0, 0, 0, 0.34), 0 8px 24px -12px rgba(0, 0, 0, 0.7);
   --shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.38), 0 28px 60px -20px rgba(0, 0, 0, 0.75);
 
-  --ring: 0 0 0 3px rgba(255, 181, 160, 0.24);
+  --ring: 0 0 0 3px rgba(111, 220, 174, 0.24);
   --ring-danger: 0 0 0 3px rgba(255, 180, 171, 0.2);
 
   color-scheme: dark;
@@ -6511,12 +6532,20 @@ details[open]::details-content {
 
    Swapping any of them, adding a fifth, or moving the card surface under them
    means re-running it — the worst pair is rarely the one you changed. The
-   status trio is separate and never used as a series. */
+   status trio is separate and never used as a series.
+
+   Those two figures were run against 樱花's card surfaces, which is what the
+   panel shipped with at the time. The light card is still #ffffff under every
+   scheme, so that row stands as written. The dark card is now #181b1f under
+   the default — darker than the #231917 it was measured on, which moves every
+   pair further from its background rather than closer, so the ≥ 3:1 floor is
+   not at risk. The ΔE figures are between the series themselves and do not
+   depend on the surface at all. Re-run it anyway before touching a series. */
 
 :root {
   --chart-surface: var(--surface-1);
-  --chart-grid: #ead6d0;
-  --chart-reference: #c3aca6;
+  --chart-grid: #e3e6eb;
+  --chart-reference: #b9c0ca;
   --series-cpu: #2a6ad6;
   --series-memory: #1b8a5f;
   --series-net-down: #b3399c;
@@ -6527,8 +6556,8 @@ details[open]::details-content {
 }
 
 :root[data-theme='dark'] {
-  --chart-grid: #3d3230;
-  --chart-reference: #6b5b57;
+  --chart-grid: #2b3036;
+  --chart-reference: #555f6a;
   --series-cpu: #3987e5;
   --series-memory: #199e70;
   --series-net-down: #c95fae;
@@ -6536,8 +6565,8 @@ details[open]::details-content {
 }
 
 /* The grid and the reference line are the scheme's own neutrals, so they follow
-   the 配色 the way every other border does — a 樱花 grid under 碧蓝 is
-   the one thing on the page that would still be pink. The series colours above
+   the 配色 the way every other border does — a 苔石 grid under 碧蓝 is
+   the one thing on the page that would still be grey. The series colours above
    do not follow it and must not: they are picked to stay apart from *each
    other* under colour vision deficiency, and that is a validation of the four
    against a surface, not a decoration of the brand.
@@ -6545,6 +6574,16 @@ details[open]::details-content {
    Here rather than up in the palettes section because the two blocks these
    override are :root blocks in this section, which match at the same weight —
    so order is what decides it. */
+[data-theme='light'][data-palette='sakura'] {
+  --chart-grid: #ead6d0;
+  --chart-reference: #c3aca6;
+}
+
+[data-theme='dark'][data-palette='sakura'] {
+  --chart-grid: #3d3230;
+  --chart-reference: #6b5b57;
+}
+
 [data-theme='light'][data-palette='green'] {
   --chart-grid: #dfead0;
   --chart-reference: #b6c3a6;
