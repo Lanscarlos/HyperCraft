@@ -16773,11 +16773,24 @@ select.input-slim option {
    the answers. Fixed widths survive only where the content cannot grow: a
    right-aligned number, a relative date, the menu button. */
 
+/* The surplus goes to the name, and it used to go to 使用中. That column holds
+   either one short phrase or two or three chips; the name holds a name with the
+   jar's file name printed under it, and the file name is the one thing in the
+   row that truncates. At 1440 the old split gave 使用中 about 210px for the
+   word 未使用 and left the name 460 — so the row had a void in the middle and
+   an ellipsis on the left. 0.9fr keeps 使用中 at its 150px floor on a wide
+   screen, which is what a couple of chips need, and nothing more.
+
+   体积 is 90 rather than 78 because .reslist__num now holds 12px of it back as
+   a right pad: a right-aligned column against a left-aligned one is separated
+   by the 12px column gap alone, and 「160 B 未使用」 read as one run of text.
+   Grid has no per-track gap, so the cell pays for it and the track grows by
+   the same amount to keep the number's box the width it was. */
 .reslist__head,
 .reslist__row {
   grid-template-columns:
-    minmax(240px, 2.4fr) minmax(140px, 1fr) minmax(104px, 0.78fr)
-    minmax(88px, 0.62fr) 78px minmax(150px, 1.1fr) 76px 34px;
+    minmax(240px, 3.4fr) minmax(140px, 1fr) minmax(104px, 0.78fr)
+    minmax(88px, 0.62fr) 90px minmax(150px, 0.9fr) 76px 34px;
 }
 
 /* Two lines of text per row — the name and the file under it — which is what
@@ -16868,6 +16881,10 @@ select.input-slim option {
 .reslist__num {
   font-variant-numeric: tabular-nums;
   text-align: right;
+  /* See the track list: this is the gap the grid cannot put between one
+     right-aligned column and the left-aligned one after it. Cancelled at the
+     widths where 使用中 is hidden and nothing is being separated from. */
+  padding-right: 12px;
 }
 
 /* Not a blank cell. "Nothing is using this" and "the panel could not tell" are
@@ -16955,8 +16972,8 @@ select.input-slim option {
   .reslist__head,
   .reslist__row {
     grid-template-columns:
-      minmax(220px, 2.4fr) minmax(132px, 1fr) minmax(100px, 0.78fr)
-      minmax(84px, 0.62fr) 78px minmax(140px, 1.1fr) 34px;
+      minmax(220px, 3.4fr) minmax(132px, 1fr) minmax(100px, 0.78fr)
+      minmax(84px, 0.62fr) 90px minmax(140px, 0.9fr) 34px;
   }
 }
 
@@ -16969,8 +16986,8 @@ select.input-slim option {
   .reslist__head,
   .reslist__row {
     grid-template-columns:
-      minmax(200px, 2.4fr) minmax(124px, 1fr) minmax(80px, 0.62fr) 78px
-      minmax(132px, 1.1fr) 34px;
+      minmax(200px, 3.4fr) minmax(124px, 1fr) minmax(80px, 0.62fr) 90px
+      minmax(132px, 0.9fr) 34px;
   }
 }
 
@@ -16985,6 +17002,13 @@ select.input-slim option {
   .reslist__head,
   .reslist__row {
     grid-template-columns: minmax(0, 1fr) 110px 72px 34px;
+  }
+
+  /* 使用中 is gone from here down, so the size column has nothing left of it
+     to be told apart from and gets its 12px back — which at these widths is
+     the difference between 「1.5 GB」 and 「1.5 G…」. */
+  .reslist__num {
+    padding-right: 0;
   }
 
   /* No hover on a touch screen, so the menu has nothing to appear on. */
