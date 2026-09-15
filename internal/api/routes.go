@@ -374,6 +374,14 @@ func (s *Server) protectedRoutes() []route {
 		// the file manager's.
 		rt("GET /api/fs", s.handleBrowseHost, authz.CapPanelHostFS),
 		rt("GET /api/fs/inspect", s.handleInspectHost, authz.CapPanelHostFS),
+		// The operator's own starting points for that picker. Governed by the
+		// browse capability rather than the settings one: the list holds no
+		// secrets and buys no reach — the directory field has always taken any
+		// absolute path — so somebody allowed to browse the host is exactly who
+		// has a use for it.
+		rt("POST /api/fs/shortcuts", s.handleAddHostShortcut, authz.CapPanelHostFS),
+		rt("PUT /api/fs/shortcuts/{id}", s.handleRenameHostShortcut, authz.CapPanelHostFS),
+		rt("DELETE /api/fs/shortcuts/{id}", s.handleRemoveHostShortcut, authz.CapPanelHostFS),
 		// Reading a start script for the launch settings in it. Two
 		// boundaries, so both are named: it reads a file anywhere on the host,
 		// and it exists to create an instance from what it finds.

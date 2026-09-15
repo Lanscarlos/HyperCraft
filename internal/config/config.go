@@ -145,6 +145,18 @@ type Panel struct {
 	// everybody else. Listing those addresses here restores per-client
 	// counting.
 	TrustedProxies []string `json:"trustedProxies,omitempty"`
+	// HostShortcuts are the operator's own starting points for the directory
+	// picker, on top of the panel's own directories and the filesystem roots.
+	//
+	// Minecraft servers on a given machine nearly always live under one or two
+	// directories, and those are rarely the panel's own — so without this every
+	// instance added costs the same three or four clicks down the same tree.
+	//
+	// No secrets in here, and nothing that grants reach: the directory field
+	// has always accepted any absolute path, so a saved shortcut only spares
+	// the operator the walk. That is why the browse capability governs it
+	// rather than the settings one — see the routes in routes.go.
+	HostShortcuts []HostShortcut `json:"hostShortcuts,omitempty"`
 	// Terminal configures the host shell terminal. Off unless the operator
 	// turns it on — see Terminal.
 	Terminal Terminal `json:"terminal"`
@@ -175,6 +187,18 @@ type GitHubToken struct {
 	// Token is the credential. It leaves this file only as an Authorization
 	// header to api.github.com.
 	Token string `json:"token"`
+}
+
+// HostShortcut is one directory the operator pinned in the path picker.
+type HostShortcut struct {
+	// ID is derived from the path by hostfs.ShortcutID, so it survives a rename
+	// and collides on a re-add of the same directory. Kept in the file rather
+	// than re-derived on load so that the id the picker holds cannot drift from
+	// the id stored if the derivation ever changes.
+	ID string `json:"id"`
+	// Label is the operator's own name for the place — 「我的服务端」, 「备份盘」.
+	Label string `json:"label"`
+	Path  string `json:"path"`
 }
 
 // Terminal configures the in-panel shell.

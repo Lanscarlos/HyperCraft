@@ -12,6 +12,8 @@
 package hostfs
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -46,8 +48,16 @@ type Jar struct {
 
 // Shortcut is a starting point offered beside the listing.
 type Shortcut struct {
+	// ID is set only on the operator's own shortcuts, and is derived from the
+	// path — so renaming one does not move it, and re-adding a path it already
+	// holds collides instead of making a second row that says the same thing.
+	ID    string `json:"id,omitempty"`
 	Label string `json:"label"`
 	Path  string `json:"path"`
+	// Custom marks a shortcut the operator added. The built-in ones are the
+	// panel's own directories and the filesystem roots, which are not theirs
+	// to rename or remove — so the picker needs to tell them apart.
+	Custom bool `json:"custom,omitempty"`
 }
 
 // Listing is one directory as the path picker sees it.
@@ -151,31 +161,61 @@ func parentOf(dir string) string {
 }
 
 // Shortcuts are the starting points the picker offers: the panel's own
-// directories first, since that is where most servers live, then the operator's
-// home directory and the filesystem roots.
+// directories first, since that is where most servers live, then the
+// operator's own saved locations, then their home directory and the filesystem
+// roots.
+//
+// Deduplication is by path and first-one-wins, so the caller's order decides
+// which label a path is shown under. Custom entries therefore have to come
+// after the panel's own two and before home: a shortcut the operator saved on
+// top of the servers directory would otherwise rename a built-in, and one
+// saved on their home directory would be unremovable.
 func Shortcuts(named []Shortcut) []Shortcut {
 	out := make([]Shortcut, 0, len(named)+4)
 	seen := make(map[string]bool)
-	add := func(label, path string) {
-		if path == "" || seen[path] {
+	add := func(shortcut Shortcut) {
+		if shortcut.Path == "" || seen[shortcut.Path] {
 			return
 		}
-		seen[path] = true
-		out = append(out, Shortcut{Label: label, Path: path})
+		seen[shortcut.Path] = true
+		out = append(out, shortcut)
 	}
 
 	for _, shortcut := range named {
 		if abs, err := filepath.Abs(shortcut.Path); err == nil {
-			add(shortcut.Label, abs)
+			shortcut.Path = abs
+			add(shortcut)
 		}
 	}
 	if home, err := os.UserHomeDir(); err == nil {
-		add("用户主目录", home)
+		add(Shortcut{Label: "用户主目录", Path: home})
 	}
 	for _, root := range roots() {
-		add(root, root)
+		add(Shortcut{Label: root, Path: root})
 	}
 	return out
+}
+
+// ShortcutID derives a shortcut's id from its path. Stable across a rename,
+// which is the only thing about a saved shortcut that can change, and equal for
+// two attempts to save the same directory — which is what makes the second one
+// a duplicate rather than a second chip.
+func ShortcutID(path string) string {
+	sum := sha256.Sum256([]byte(path))
+	return "fav-" + hex.EncodeToString(sum[:6])
+}
+
+// CleanShortcutPath is List's path check without the listing: a saved shortcut
+// has to be absolute, but it does not have to exist — a NAS that is not
+// mounted yet is exactly the kind of place worth keeping a chip for.
+func CleanShortcutPath(path string) (string, error) {
+	if strings.TrimSpace(path) == "" || !filepath.IsAbs(path) {
+		return "", fmt.Errorf("%w: %q is not an absolute path", ErrInvalidPath, path)
+	}
+	if strings.ContainsRune(path, 0) {
+		return "", fmt.Errorf("%w: path contains a null byte", ErrInvalidPath)
+	}
+	return filepath.Clean(path), nil
 }
 
 // roots lists the tops of the filesystem: one on Unix, one per mounted drive

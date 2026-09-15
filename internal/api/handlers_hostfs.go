@@ -100,11 +100,22 @@ func sameDirectory(a, b string) bool {
 	return a == b
 }
 
-// hostShortcuts are the starting points the picker offers first: where the
-// panel puts servers by default, and where it keeps its own data.
+// hostShortcuts are the starting points the picker offers: where the panel puts
+// servers by default, where it keeps its own data, then whatever the operator
+// has pinned.
+//
+// Order is meaning — hostfs.Shortcuts deduplicates by path and keeps the first
+// label it sees, so the panel's own two have to come before the saved ones and
+// the saved ones before home and the roots. See its comment.
 func (s *Server) hostShortcuts() []hostfs.Shortcut {
-	return hostfs.Shortcuts([]hostfs.Shortcut{
+	named := []hostfs.Shortcut{
 		{Label: "面板服务器目录", Path: s.paths.ServersRoot()},
 		{Label: "面板数据目录", Path: s.paths.Root},
-	})
+	}
+	for _, saved := range s.customShortcuts() {
+		named = append(named, hostfs.Shortcut{
+			ID: saved.ID, Label: saved.Label, Path: saved.Path, Custom: true,
+		})
+	}
+	return hostfs.Shortcuts(named)
 }
