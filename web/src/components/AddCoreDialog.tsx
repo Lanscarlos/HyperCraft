@@ -185,45 +185,52 @@ export function AddCoreDialog({
           </header>
 
           <div className="addcore__body">
+            {/* The three steps, named. This is one decision — which core, which
+                version, which build — made in three places, and until they were
+                numbered the dialog was three unlabelled regions with no reading
+                order. The design calls them out; so does this. */}
             <section className="addcore__kinds" aria-label="核心类型">
-              {projects.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`kindcard${item.id === picked ? ' kindcard--on' : ''}`}
-                  aria-pressed={item.id === picked}
-                  onClick={() => setPicked(item.id)}
-                >
-                  <span className="kindcard__tile" aria-hidden="true">
-                    {item.name.slice(0, 1)}
-                  </span>
-                  <span className="kindcard__name">
-                    {item.name}
-                    {item.kind === 'proxy' && <Badge>代理端</Badge>}
-                  </span>
-                  <span className="kindcard__note">{item.description}</span>
-                </button>
-              ))}
+              <span className="addcore__step">1 · 选择核心</span>
+              <div className="addcore__kindgrid">
+                {projects.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`kindcard${item.id === picked ? ' kindcard--on' : ''}`}
+                    aria-pressed={item.id === picked}
+                    onClick={() => setPicked(item.id)}
+                  >
+                    <span className="kindcard__tile" aria-hidden="true">
+                      {item.name.slice(0, 1)}
+                    </span>
+                    <span className="kindcard__name">
+                      {item.name}
+                      {item.kind === 'proxy' && <Badge>代理端</Badge>}
+                    </span>
+                    <span className="kindcard__note">{item.description}</span>
+                  </button>
+                ))}
 
-              {/* The jar the catalogue cannot reach — Forge, Fabric, a modpack's
-                  own server. The panel has always accepted one dropped into the
-                  cores directory and has never had a way in from the page, so
-                  the instruction to go and do it by hand was printed on the
-                  page instead. */}
-              <button
-                type="button"
-                className={`kindcard${picked === UPLOAD ? ' kindcard--on' : ''}`}
-                aria-pressed={picked === UPLOAD}
-                onClick={() => setPicked(UPLOAD)}
-              >
-                <span className="kindcard__tile kindcard__tile--quiet" aria-hidden="true">
-                  +
-                </span>
-                <span className="kindcard__name">上传自定义 jar</span>
-                <span className="kindcard__note">
-                  Forge、Fabric、整合包自带的服务端，或者任何一个自己编译的 jar。
-                </span>
-              </button>
+                {/* The jar the catalogue cannot reach — Forge, Fabric, a modpack's
+                    own server. The panel has always accepted one dropped into the
+                    cores directory and has never had a way in from the page, so
+                    the instruction to go and do it by hand was printed on the
+                    page instead. */}
+                <button
+                  type="button"
+                  className={`kindcard${picked === UPLOAD ? ' kindcard--on' : ''}`}
+                  aria-pressed={picked === UPLOAD}
+                  onClick={() => setPicked(UPLOAD)}
+                >
+                  <span className="kindcard__tile kindcard__tile--quiet" aria-hidden="true">
+                    +
+                  </span>
+                  <span className="kindcard__name">上传自定义 jar</span>
+                  <span className="kindcard__note">
+                    Forge、Fabric、整合包自带的服务端，或者任何一个自己编译的 jar。
+                  </span>
+                </button>
+              </div>
             </section>
 
             {picked === UPLOAD ? (
@@ -231,29 +238,31 @@ export function AddCoreDialog({
             ) : (
               <div className="addcore__pick">
                 <section className="addcore__versions" aria-label="版本">
-                  <div className="addcore__tools">
-                    <input
-                      className="input-slim"
-                      type="search"
-                      value={filter}
-                      placeholder="筛选版本"
-                      aria-label="筛选版本"
-                      onChange={(event) => setFilter(event.target.value)}
-                      disabled={versions.length === 0}
-                    />
-                    <label className="checkbox checkbox--inline">
+                  <span className="addcore__step">2 · 版本</span>
+                  <div className="addcore__pane">
+                    <div className="addcore__panehead">
                       <input
-                        type="checkbox"
-                        checked={unstable}
-                        onChange={(event) => {
-                          setUnstable(event.target.checked)
-                          if (!event.target.checked && version && !version.stable) {
-                            setVersionId(pickDefault(versions))
-                          }
-                        }}
+                        className="input-slim"
+                        type="search"
+                        value={filter}
+                        placeholder="筛选版本"
+                        aria-label="筛选版本"
+                        onChange={(event) => setFilter(event.target.value)}
+                        disabled={versions.length === 0}
                       />
-                      <span>显示预览版与快照</span>
-                    </label>
+                      <label className="checkbox checkbox--inline">
+                        <input
+                          type="checkbox"
+                          checked={unstable}
+                          onChange={(event) => {
+                            setUnstable(event.target.checked)
+                            if (!event.target.checked && version && !version.stable) {
+                              setVersionId(pickDefault(versions))
+                            }
+                          }}
+                        />
+                        <span>显示预览版与快照</span>
+                      </label>
                   </div>
 
                   <div className="addcore__vlist">
@@ -283,14 +292,17 @@ export function AddCoreDialog({
                           </div>
                         ))}
                   </div>
+                  </div>
                 </section>
 
                 <section className="addcore__builds" aria-label="构建">
-                  <div className="addcore__bhead">
-                    <span>构建号</span>
-                    <span>变更摘要</span>
-                    <span>发布时间</span>
-                    <span className="addcore__num">体积</span>
+                  <span className="addcore__step">3 · 构建</span>
+                  <div className="addcore__pane">
+                    <div className="addcore__bhead">
+                      <span>构建号</span>
+                      <span>变更摘要</span>
+                      <span>发布时间</span>
+                      <span className="addcore__num">体积</span>
                   </div>
 
                   <div className="addcore__blist">
@@ -332,6 +344,7 @@ export function AddCoreDialog({
                         </button>
                       ))
                     )}
+                  </div>
                   </div>
                 </section>
               </div>

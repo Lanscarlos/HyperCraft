@@ -17098,7 +17098,23 @@ select.input-slim option {
   overflow-y: auto;
 }
 
+/* The three steps, named. Quiet and small, above each pane: the dialog is one
+   decision made in three places, and three unlabelled regions have no reading
+   order at all. */
+.addcore__step {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
 .addcore__kinds {
+  min-width: 0;
+}
+
+.addcore__kindgrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: 8px;
@@ -17177,15 +17193,34 @@ select.input-slim option {
 .addcore__builds {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   min-width: 0;
   min-height: 0;
 }
 
-.addcore__tools {
+/* Each list sits in a card, and its controls sit *inside* that card. The
+   filter box and the build table's header used to be siblings of the list,
+   floating on the dialog's own background with nothing to line up against —
+   so the two panes' tops disagreed by however tall each one's controls
+   happened to be, which is most of why this dialog read as a jumble. */
+.addcore__pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  max-height: 320px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.addcore__panehead {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex: none;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
 }
 
 .addcore__vlist,
@@ -17194,11 +17229,7 @@ select.input-slim option {
   flex-direction: column;
   gap: 2px;
   min-height: 0;
-  max-height: 300px;
   padding: 4px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
   overflow-y: auto;
 }
 
@@ -17264,10 +17295,20 @@ select.input-slim option {
   min-width: 0;
 }
 
+/* A table header, so it is painted like one: inside the card, on the recessed
+   surface, with a rule under it. It used to sit above the card on the dialog's
+   background, where it read as four stray words rather than as the head of the
+   list they name. */
 .addcore__bhead {
-  padding: 0 8px;
+  flex: none;
+  height: 30px;
+  padding: 0 12px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
   color: var(--text-faint);
   font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 .brow {
@@ -17484,6 +17525,12 @@ select.input-slim option {
   .addcore__bhead > :nth-child(3),
   .brow > :nth-child(3) {
     display: none;
+  }
+
+  /* Stacked rather than side by side, so each pane has to give something up:
+     two 320px lists under the type cards is taller than the dialog itself. */
+  .addcore__pane {
+    max-height: 240px;
   }
 }
 
