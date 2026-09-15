@@ -12798,6 +12798,26 @@ button.rows__name:hover strong {
     display: none;
   }
 
+  /* — and a page that gave its title *to* the trail has to take it back here,
+     or it is the one page with no name on it at all. `titleHidden` trades the
+     h1 for the breadcrumb's last step; above this width that is one title in
+     one place, below it the breadcrumb is gone and the trade has nothing on
+     the other side of it. So the heading comes out of .sr-only and the head
+     goes back to stacking, exactly as an ordinary page head does. */
+  .page__head--bare > .page__heading > h1.sr-only {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip-path: none;
+    white-space: normal;
+  }
+
+  .page__head--bare {
+    align-items: flex-start;
+  }
+
   /* The page has to be told which track it is in. The rail leaves the flow
      just below, and the scrim and the skip link are out of flow too, so
      without this the page is the grid's only in-flow child, lands in the
