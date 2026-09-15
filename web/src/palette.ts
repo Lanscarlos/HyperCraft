@@ -5,7 +5,7 @@
  * preference lives in localStorage, the resolved answer lives as a `data-`
  * attribute on <html>, and index.html applies it inline before the bundle loads
  * so a reload never paints one scheme and then swaps to another. Everything
- * visual is in styles.css — this module only decides which of the four token
+ * visual is in styles.css — this module only decides which of the five token
  * tables `data-palette` selects.
  *
  * This is a second axis, not a replacement for the mode. A scheme and a mode
@@ -22,7 +22,7 @@
 import { crossFade } from './motion'
 import { notifyColours, syncChrome, syncFavicon } from './theme'
 
-export type Palette = 'sakura' | 'green' | 'yellow' | 'blue'
+export type Palette = 'stone' | 'sakura' | 'green' | 'yellow' | 'blue'
 
 export interface PaletteInfo {
   id: Palette
@@ -31,16 +31,18 @@ export interface PaletteInfo {
   note: string
 }
 
-/** Display order, default first. The three extras are Material Theme Builder
- *  schemes grown from one seed each; their token tables are in styles.css. */
+/** Display order, default first. 苔石 comes from the panel's own interface
+ *  design; the four after it are Material Theme Builder schemes grown from one
+ *  seed each. All five token tables are in styles.css. */
 export const PALETTES: PaletteInfo[] = [
-  { id: 'sakura', name: '樱花', note: '出厂的暖粉色。' },
+  { id: 'stone', name: '苔石', note: '出厂的冷灰配绿。' },
+  { id: 'sakura', name: '樱花', note: '暖粉色，面板从前的出厂配色。' },
   { id: 'green', name: '松绿', note: '草木调的黄绿。' },
-  { id: 'yellow', name: '杏黄', note: '四套里最亮的。' },
-  { id: 'blue', name: '碧蓝', note: '唯一一套冷色。' },
+  { id: 'yellow', name: '杏黄', note: '五套里最亮的。' },
+  { id: 'blue', name: '碧蓝', note: '偏蓝的冷色。' },
 ]
 
-const DEFAULT: Palette = 'sakura'
+const DEFAULT: Palette = 'stone'
 
 /** Shared with the inline script in index.html — changing it here alone would
  *  strand a stored preference and flash the wrong scheme on load. */

@@ -180,6 +180,11 @@ export function CoreLibraryPage({
   return (
     <Page
       wide
+      // The top bar's trail already ends on 服务端核心 in bold. Saying it again
+      // at 23px directly underneath cost about ninety pixels of the first
+      // screen and two rows that neither of them filled. The h1 stays for the
+      // outline and the screen reader; it just is not painted twice.
+      titleHidden
       title="服务端核心"
       facts={
         <>
@@ -202,7 +207,12 @@ export function CoreLibraryPage({
               上传 jar
             </Button>
           )}
-          <Button variant="primary" type="button" onClick={() => setAdding('catalogue')}>
+          {/* Not the filled one. check-ui's rulePrimaryButtons says the screen's
+              single filled button is "what the screen is asking for right
+              now" — an empty state's call to action, not the standing entrance
+              in a page head. On a shelf with cores on it nothing is being
+              asked, so nothing here is filled. */}
+          <Button type="button" onClick={() => setAdding('catalogue')}>
             添加核心
           </Button>
         </>
@@ -210,107 +220,115 @@ export function CoreLibraryPage({
     >
       {cores.error && <div className="alert">{cores.error}</div>}
 
-      {stored.length === 0 && !downloading ? (
-        <EmptyState
-          title="还没有任何核心"
-          action={
-            <>
-              <Button type="button" onClick={() => setAdding('catalogue')}>
-                添加核心
-              </Button>
-              <Button type="button" onClick={() => setAdding('upload')}>
-                上传 jar
-              </Button>
-            </>
-          }
-        >
-          下载一个 Paper 或 Velocity，或者把自己的 jar（Forge、Fabric、整合包自带的服务端）上传进来。
-          核心下好之后，新建实例时选它就行。
-        </EmptyState>
-      ) : (
-        <>
-          <Toolbar>
-            <input
-              className="toolbar__search"
-              type="search"
-              value={query}
-              placeholder="筛选核心"
-              aria-label="筛选核心"
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <div className="toolbar__chips">
-              {SEGMENTS.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`chip${segment === item.id ? ' chip--on' : ''}`}
-                  aria-pressed={segment === item.id}
-                  onClick={() => setSegment(item.id)}
-                >
-                  {item.label}
-                  <b>{counts[item.id]}</b>
-                </button>
-              ))}
-            </div>
-            {/* The count, then the sort beside it: a Select alone at the end
-                of a wide toolbar is a control floating in a corner, seven
-                hundred pixels from the chips it belongs with and lined up
-                against nothing. `.toolbar__count + .toolbar__tools` drops the
-                auto margin so the two read as one cluster. */}
-            <span className="toolbar__count">
-              {shown.length} / {stored.length}
-            </span>
-            <div className="toolbar__tools">
-              <Select
-                value={sort}
-                onChange={(value) => setSort(value as Sort)}
-                options={SORTS}
-                className="input-slim"
-                ariaLabel="排序"
-              />
-            </div>
-          </Toolbar>
+      {/* The table stays when the shelf is empty. It used to be swapped out
+          for a placard, which left a 1440px band with three lines floating in
+          the middle of it and told nobody what this page looks like once it has
+          something in it. The header is the page's promise — these are the
+          columns a core is judged by — so the frame and the header stay and the
+          absence goes inside them, where the rows would have been.
 
-          <ResourceTable heads={{ compat: '支持 MC', requires: '运行要求' }} label="核心库">
-            {downloading && job && (
-              <ResourcePendingRow
-                title={`${job.title}${job.subtitle ? ` ${job.subtitle}` : ''}`}
-                fileName={job.fileName}
-                downloaded={job.downloaded}
-                total={job.total}
-              />
-            )}
-            {shown.length === 0 ? (
-              <DataTableEmpty>没有符合条件的核心。</DataTableEmpty>
-            ) : (
-              shown.map((core) => (
-                <ResourceRow key={core.id} entry={entryOf(core, () => void remove(core))} />
-              ))
-            )}
-          </ResourceTable>
-
-          {/* The hygiene card only when there is something to clean. It used
-              to stand there reading 「0 个核心没有被任何实例使用，合计 0 B」
-              beside a disabled button — half a row spent telling the operator
-              that the thing they did not ask about has not happened. A clean
-              shelf says nothing. */}
-          <div className="rescards">
-            {idle.length > 0 && (
-              <StorageHygiene
-                idle={idle.length}
-                bytes={idle.reduce((sum, core) => sum + core.size, 0)}
-                unit="个核心"
-                onClean={() => void clean()}
-                busy={busy}
-              />
-            )}
-            <ResourceHint>
-              手动丢进核心库目录的 jar 也会出现在这里，但它的版本和 Java 要求需要你补一下 ——
-              从「添加核心 → 上传自定义 jar」传进来的会带上这些信息。
-            </ResourceHint>
+          The toolbar is the one thing that does go: filtering nothing is a row
+          of controls that cannot do anything. */}
+      {stored.length > 0 && (
+        <Toolbar>
+          <input
+            className="toolbar__search"
+            type="search"
+            value={query}
+            placeholder="筛选核心"
+            aria-label="筛选核心"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <div className="toolbar__chips">
+            {SEGMENTS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`chip${segment === item.id ? ' chip--on' : ''}`}
+                aria-pressed={segment === item.id}
+                onClick={() => setSegment(item.id)}
+              >
+                {item.label}
+                <b>{counts[item.id]}</b>
+              </button>
+            ))}
           </div>
-        </>
+          {/* The count, then the sort beside it: a Select alone at the end
+              of a wide toolbar is a control floating in a corner, seven
+              hundred pixels from the chips it belongs with and lined up
+              against nothing. `.toolbar__count + .toolbar__tools` drops the
+              auto margin so the two read as one cluster. */}
+          <span className="toolbar__count">
+            {shown.length} / {stored.length}
+          </span>
+          <div className="toolbar__tools">
+            <Select
+              value={sort}
+              onChange={(value) => setSort(value as Sort)}
+              options={SORTS}
+              className="input-slim"
+              ariaLabel="排序"
+            />
+          </div>
+        </Toolbar>
       )}
+
+      <ResourceTable heads={{ compat: '支持 MC', requires: '运行要求' }} label="核心库">
+        {downloading && job && (
+          <ResourcePendingRow
+            title={`${job.title}${job.subtitle ? ` ${job.subtitle}` : ''}`}
+            fileName={job.fileName}
+            downloaded={job.downloaded}
+            total={job.total}
+          />
+        )}
+        {stored.length === 0 && !downloading ? (
+          <EmptyState
+            inline
+            title="还没有任何核心"
+            action={
+              <>
+                <Button variant="primary" type="button" onClick={() => setAdding('catalogue')}>
+                  添加核心
+                </Button>
+                <Button type="button" onClick={() => setAdding('upload')}>
+                  上传 jar
+                </Button>
+              </>
+            }
+          >
+            下载一个 Paper 或 Velocity，或者把自己的 jar（Forge、Fabric、整合包自带的服务端）上传进来。
+            核心下好之后，新建实例时选它就行。
+          </EmptyState>
+        ) : shown.length === 0 ? (
+          <DataTableEmpty>没有符合条件的核心。</DataTableEmpty>
+        ) : (
+          shown.map((core) => (
+            <ResourceRow key={core.id} entry={entryOf(core, () => void remove(core))} />
+          ))
+        )}
+      </ResourceTable>
+
+      {/* The hygiene card only when there is something to clean. It used
+          to stand there reading 「0 个核心没有被任何实例使用，合计 0 B」
+          beside a disabled button — half a row spent telling the operator
+          that the thing they did not ask about has not happened. A clean
+          shelf says nothing. */}
+      <div className="rescards">
+        {idle.length > 0 && (
+          <StorageHygiene
+            idle={idle.length}
+            bytes={idle.reduce((sum, core) => sum + core.size, 0)}
+            unit="个核心"
+            onClean={() => void clean()}
+            busy={busy}
+          />
+        )}
+        <ResourceHint>
+          手动丢进核心库目录的 jar 也会出现在这里，但它的版本和 Java 要求需要你补一下 ——
+          从「添加核心 → 上传自定义 jar」传进来的会带上这些信息。
+        </ResourceHint>
+      </div>
 
       {adding !== null && (
         <AddCoreDialog
