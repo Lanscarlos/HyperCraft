@@ -84,7 +84,7 @@ export function Dashboard({
             variant={instances.length === 0 ? 'default' : 'primary'}
             onClick={onCreate}
           >
-            + 新建实例
+            + 添加实例
           </Button>
         )
       }
@@ -176,7 +176,7 @@ export function Dashboard({
               title="还没有任何实例。"
               action={
                 <Button variant="primary" onClick={onCreate}>
-                  新建第一个服务器
+                  添加第一个服务器
                 </Button>
               }
             />

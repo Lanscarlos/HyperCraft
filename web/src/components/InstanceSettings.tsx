@@ -156,7 +156,7 @@ export function InstanceSettings({ instance, onSaved, onDeleted, onOpenSection }
             lead: '面板不再管理它，列表里也不会再出现。',
             detail: (
               <>
-                服务器文件原样留在 <code>{instance.directory}</code>，之后可以用「导入现有目录」再加回来。
+                服务器文件原样留在 <code>{instance.directory}</code>，之后可以用「添加实例 → 导入现有目录」再加回来。
                 这台实例的配置历史会被删除，它存在面板的数据目录里而不是服务器目录里。
               </>
             ),

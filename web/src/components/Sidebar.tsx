@@ -501,9 +501,9 @@ function GlobalScope(props: Props) {
       </div>
 
       {can(CAP.panelCreate) && (
-        <Button variant="primary" className="sidebar__new" onClick={onCreate} title="新建实例">
+        <Button variant="primary" className="sidebar__new" onClick={onCreate} title="添加实例">
           <span aria-hidden="true">+</span>
-          <span className="sidebar__name">新建实例</span>
+          <span className="sidebar__name">添加实例</span>
         </Button>
       )}
     </>

@@ -12,6 +12,7 @@ import { DownloadsPage } from './components/DownloadsPage'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { HostPage } from './components/HostPage'
 import { HostTerminal } from './components/HostTerminal'
+import { AddInstanceDialog } from './components/AddInstanceDialog'
 import { ImportInstanceDialog } from './components/ImportInstanceDialog'
 import { InstanceList } from './components/InstanceList'
 import { InstanceView } from './components/InstanceView'
@@ -235,6 +236,10 @@ export default function App() {
   // history entry, so a reload in the middle of a session keeps its answer.
   const [backTo, setBackTo] = useState<Route | null>(cameFrom)
   const [showImport, setShowImport] = useState(false)
+  // The fork between the two ways in. The entrances that used to go straight
+  // to 新建实例 — the sidebar, 概览, 所有实例 — come through here instead; see
+  // AddInstanceDialog. 新建代理端 does not: that one names the act it is.
+  const [showAdd, setShowAdd] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -584,7 +589,7 @@ export default function App() {
           plugins={plugins}
           schematics={schematics}
           terminal={terminal}
-          onCreate={() => navigate({ kind: 'new-instance' })}
+          onCreate={() => setShowAdd(true)}
           onOpenPalette={() => setPaletteOpen(true)}
           onChangePassword={() => setShowPassword(true)}
           onSignOut={() => void signOut()}
@@ -762,7 +767,7 @@ export default function App() {
                     navigate({ kind: 'instances', ...next }, true)
                   }
                   onNavigate={navigate}
-                  onCreate={() => navigate({ kind: 'new-instance' })}
+                  onCreate={() => setShowAdd(true)}
                   onImport={() => setShowImport(true)}
                   onChanged={applyInstance}
                 />
@@ -819,7 +824,7 @@ export default function App() {
                   system={system.info}
                   alerts={alerts}
                   onSelect={openInstance}
-                  onCreate={() => navigate({ kind: 'new-instance' })}
+                  onCreate={() => setShowAdd(true)}
                   onNavigate={navigate}
                   onChanged={applyInstance}
                 />
@@ -841,6 +846,20 @@ export default function App() {
             }}
             onImport={() => {
               setPaletteOpen(false)
+              setShowImport(true)
+            }}
+          />
+        )}
+
+        {showAdd && (
+          <AddInstanceDialog
+            onCancel={() => setShowAdd(false)}
+            onCreate={() => {
+              setShowAdd(false)
+              navigate({ kind: 'new-instance' })
+            }}
+            onImport={() => {
+              setShowAdd(false)
               setShowImport(true)
             }}
           />

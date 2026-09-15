@@ -74,19 +74,15 @@ export function InstanceList({
       wide
       title="所有实例"
       actions={
-        /* Adopting is the rarer of the two and the one with a world at
-           stake, so it sits beside 新建 rather than inside it — but it is
-           here, on the list, because that is where someone who has just
-           realised the panel does not know about their server looks. */
+        /* One entrance, because the two ways in are not ranked: on a machine
+           that has been running servers for a year, adopting one is the normal
+           case. Which it is gets asked in the dialog — see AddInstanceDialog.
+           The empty state below still links straight to 导入, which is a named
+           path rather than a default, so it cannot cause the same mix-up. */
         can(CAP.panelCreate) && (
-          <>
-            <Button onClick={onImport}>
-              导入现有目录
-            </Button>
-            <Button variant="primary" onClick={onCreate}>
-              + 新建实例
-            </Button>
-          </>
+          <Button variant="primary" onClick={onCreate}>
+            + 添加实例
+          </Button>
         )
       }
     >
@@ -124,7 +120,7 @@ export function InstanceList({
         </DataTableHead>
         {shown.length === 0 &&
           (instances.length === 0 ? (
-            <EmptyState inline title="还没有实例，先新建一个吧。">
+            <EmptyState inline title="还没有实例。">
               机器上已经有服务端目录的话，
               <button className="link" onClick={onImport}>
                 直接导入它
