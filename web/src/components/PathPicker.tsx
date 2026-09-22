@@ -163,7 +163,9 @@ export function PathPicker({
         </form>
 
         {shortcuts.length > 0 && (
-          <Toolbar>
+          /* --flow because this row wraps as a matter of course: the chips are
+             the operator's own saved directories. */
+          <Toolbar className="toolbar--flow">
             <span className="toolbar__label">快捷位置</span>
             <div className="toolbar__chips">
               {shortcuts.map((shortcut) => (

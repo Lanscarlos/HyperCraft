@@ -6100,6 +6100,26 @@ details[open]::details-content {
   margin-left: 0;
 }
 
+/* Tools that follow the chips rather than the row's far end.
+
+   `margin-left: auto` reads right only while the tools share a line with
+   something: the moment they wrap they sit alone against the right edge with
+   the whole line empty to their left, which looks like a bug rather than a
+   wrap. A row whose chips are fixed and few (时间范围) never gets there, and
+   keeping its tool away from the ranges is worth the auto margin. The picker's
+   shortcut row is the other kind — the chips are directories the operator
+   saved, so how many there are and how long their names run is up to them, and
+   inside a 640px card wrapping is the normal case. Here the chips take the
+   free space on their line and the tools open the next one, so the ragged edge
+   falls on the right the way it does in any other wrapped row. */
+.toolbar--flow .toolbar__chips {
+  flex: 1 1 auto;
+}
+
+.toolbar--flow .toolbar__tools {
+  margin-left: 0;
+}
+
 /* A placeholder standing in for a section's head: the title on the left, the
    fact or the control at the far end, the same row .panel__head draws. */
 .skeleton-panel__head {
