@@ -21,12 +21,12 @@
 ```bash
 sudo mkdir -p /opt/hypercraft
 cd /opt/hypercraft
-sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v0.5.0/hypercraft-0.5.0-linux-amd64.tar.gz
-sudo tar -xzf hypercraft-0.5.0-linux-amd64.tar.gz --strip-components=1
+sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v0.5.1/hypercraft-0.5.1-linux-amd64.tar.gz
+sudo tar -xzf hypercraft-0.5.1-linux-amd64.tar.gz --strip-components=1
 ```
 
 包里是二进制、`hypercraft.service` 和几个文档文件。ARM 机器（`uname -m` 显示 `aarch64`）把 URL 里的
-`amd64` 换成 `arm64`。上面这个 URL 固定指向 v0.5.0，更新的版本见
+`amd64` 换成 `arm64`。上面这个 URL 固定指向 v0.5.1，更新的版本见
 [Releases 页面](https://github.com/Lanscarlos/HyperCraft/releases/latest) —— 不过装好之后面板能自己
 升级，这个链接一般只用一次。
 
@@ -37,7 +37,7 @@ sudo tar -xzf hypercraft-0.5.0-linux-amd64.tar.gz --strip-components=1
 都从同一个镜像拿的话，校验就没多大意义了）：
 
 ```bash
-sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v0.5.0/SHA256SUMS.txt
+sudo wget https://github.com/Lanscarlos/HyperCraft/releases/download/v0.5.1/SHA256SUMS.txt
 sha256sum -c SHA256SUMS.txt --ignore-missing
 ```
 
