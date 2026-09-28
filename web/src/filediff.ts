@@ -64,7 +64,75 @@ export function diffLines(original: string, current: string): Map<number, LineCh
       out.set(head + op.right + 1, { kind: 'mod', was: left[op.left] })
     }
   }
+  settle(out, b)
   return out
+}
+
+/** How far one added block is walked up looking for a better seat. Only a
+ *  file of near-identical lines gets anywhere near it. */
+const SLIDE_LIMIT = 400
+
+/**
+ * Moves each run of added lines to where a person would say it went.
+ *
+ * An inserted block that repeats its neighbours can be drawn at several
+ * places, all equally true. The head trim above always picks the lowest one,
+ * and on the input this editor sees that is usually wrong: copy one entry of a
+ * JSON list and paste it under itself, and the trim eats the new entry's
+ * `{`, `"type"`, `"price"` as "unchanged", so the marks start at the fourth
+ * line of the paste and end four lines into the next entry (issue #6).
+ *
+ * Every seat marks the same number of lines, so this only chooses where. The
+ * choice is the seat whose first and last lines are least indented — the
+ * block's edges then sit on the structure's own boundaries (`{` … `},`, a
+ * top-level key) rather than halfway into one. Blocks are only walked up,
+ * and a tie keeps the lower seat: that is the one the trim picked, so a
+ * pasted copy still reads as the one below the original.
+ *
+ * Moving a block up one line is sound whenever the line above it is unchanged
+ * and equals the block's last line: that last line takes over the partner the
+ * line above had, and nothing else changes pairs.
+ */
+function settle(out: Map<number, LineChange>, b: string[]): void {
+  // `b` is 0-based, the map is 1-based; `line(n)` reads the map's numbering.
+  const line = (n: number) => b[n - 1]
+  const runs: [number, number][] = []
+  let n = 1
+  while (n <= b.length) {
+    if (out.get(n)?.kind !== 'add') {
+      n++
+      continue
+    }
+    const start = n
+    while (out.get(n)?.kind === 'add') n++
+    runs.push([start, n - 1])
+  }
+
+  for (const [start, end] of runs) {
+    let best = 0
+    let bestScore = indent(line(start)) + indent(line(end))
+    for (let up = 1; up <= SLIDE_LIMIT; up++) {
+      const above = start - up
+      if (above < 1 || out.has(above) || line(above) !== line(end - up + 1)) break
+      const score = indent(line(above)) + indent(line(end - up))
+      if (score < bestScore) {
+        best = up
+        bestScore = score
+      }
+    }
+    for (let k = 0; k < best; k++) {
+      out.delete(end - k)
+      out.set(start - 1 - k, { kind: 'add' })
+    }
+  }
+}
+
+/** Leading whitespace, tabs counted as one. A blank line counts as none: it
+ *  is a boundary, not something nested. */
+function indent(text: string): number {
+  let i = 0
+  while (i < text.length && (text[i] === ' ' || text[i] === '\t')) i++
+  return i === text.length ? 0 : i
 }
 
 /** One row of a side-by-side comparison. `null` on a side means that side has
